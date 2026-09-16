@@ -116,6 +116,60 @@ public sealed class ResourceToolTests
         result.Content.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(FileSnapshotStatus.NotFound, "does not exist", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
+    [InlineData(FileSnapshotStatus.Denied, "was denied", ToolTerminalStatus.Denied, ToolCallOutcomeKind.Rejected)]
+    [InlineData(FileSnapshotStatus.LimitExceeded, "byte boundary", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
+    [InlineData(FileSnapshotStatus.Changed, "changed while", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
+    [InlineData(FileSnapshotStatus.Failed, "could not be read", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
+    public async Task InvokeAsync_WhenSnapshotFailsWithoutSafeMessage_ProjectsGenericStatusMessage(
+        FileSnapshotStatus status, string expectedSubstring, ToolTerminalStatus expectedTerminalStatus, ToolCallOutcomeKind expectedKind)
+    {
+        var reader = new RecordingSnapshotReader
+        {
+            Result = new FileSnapshotResult(status, [], null, null),
+        };
+
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(expectedKind);
+        result.Outcome.SourceStatus.ShouldBe(expectedTerminalStatus);
+        result.Outcome.FailureReason!.ShouldContain(expectedSubstring);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotOmitsContentFingerprint_ReturnsTypedFailure()
+    {
+        var reader = new RecordingSnapshotReader
+        {
+            Result = new FileSnapshotResult(FileSnapshotStatus.Success, [.. Encoding.UTF8.GetBytes("hi")], null, null),
+        };
+
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.FailureReason!.ShouldContain("fingerprint");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotHasUtf8Bom_RemovesBomFromContent()
+    {
+        byte[] withBom = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("hi")];
+        var reader = new RecordingSnapshotReader
+        {
+            Result = new FileSnapshotResult(
+                FileSnapshotStatus.Success, [.. withBom], FileSecurityBinding.ContentFingerprint(withBom), null),
+        };
+
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
+
+        using var json = Json(result);
+        json.RootElement.GetProperty("content").GetString().ShouldBe("hi");
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenSnapshotIsInvalidUtf8_ReturnsTypedFailure()
     {
@@ -126,6 +180,21 @@ public sealed class ResourceToolTests
         var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.FailureReason!.ShouldContain("UTF-8");
+    }
+
+    [Fact]
+    public void ResourceId_ToString_ReturnsUnderlyingValue() =>
+        new ResourceId("docs").ToString().ShouldBe("docs");
+
+    [Fact]
+    public void FileResourceDefinition_With_WhenCloningWithoutChanges_ProducesAnEqualIndependentInstance()
+    {
+        var definition = Definition();
+
+        var clone = definition with { };
+
+        clone.ShouldNotBeSameAs(definition);
+        clone.ShouldBe(definition);
     }
 
     [Fact]

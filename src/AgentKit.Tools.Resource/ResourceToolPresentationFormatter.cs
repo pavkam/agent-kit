@@ -273,6 +273,7 @@ public sealed class ResourceToolPresentationFormatter: IToolPresentationFormatte
     {
         value = 0;
         return root.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.Number
             && property.TryGetInt64(out value)
             && value >= 0;
     }

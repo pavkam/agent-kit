@@ -95,7 +95,173 @@ public sealed class ResourceToolPresentationFormatterTests
         presentation.OmittedCharacters.ShouldBeGreaterThan(0);
     }
 
-    private static async ValueTask<ToolPresentation> FormatCallAsync(string json)
+    [Fact]
+    public async Task FormatAsync_WhenSourceKindIsUnsupported_ReturnsNull()
+    {
+        var formatter = new ResourceToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallExceedsInputBytes_ReturnsTruncatedSafeMessage()
+    {
+        var presentation = await FormatCallAsync(
+            /*lang=json,strict*/ """{"action":"read","id":"docs"}""",
+            new ToolPresentationBounds(maximumInputBytes: 4));
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldContain("exceeds the presentation input limit");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListAction_ShowsFixedText()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/ """{"action":"list"}""");
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("List configured resources");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListActionHasExplicitNullId_ShowsFixedText()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/ """{"action":"list","id":null}""");
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("List configured resources");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListActionHasId_ReturnsMalformedFallback()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/ """{"action":"list","id":"x"}""");
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldContain("malformed");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenActionUnsupported_ReturnsMalformedFallback()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/ """{"action":"delete"}""");
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListResultCatalogVersionMissing_ReturnsMalformedFallback()
+    {
+        var invocation = SuccessResult( /*lang=json,strict*/ """{"resources":[]}""");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListResultItemMalformed_ReturnsMalformedFallback()
+    {
+        var invocation = SuccessResult(
+            /*lang=json,strict*/ """{"catalog_version":"v1","resources":[{"id":"a"}]}""");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListResultHasIntegrityPinnedResource_MentionsIntegrityPinned()
+    {
+        var invocation = SuccessResult(
+            /*lang=json,strict*/ """{"catalog_version":"v1","resources":[{"id":"a","kind":"Documentation","trust":"Workspace","description":"Desc","media_type":"text/plain","integrity_pinned":true}]}""");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldContain("integrity pinned");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotExactlyOneTextPart_ReturnsMalformedFallback()
+    {
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
+        var invocation = new ToolInvocationResult(outcome, []);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotValidJson_ReturnsMalformedFallback()
+    {
+        var invocation = SuccessResult("not json at all");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenOutputExceedsMaximumParts_OmitsRemainingPartsAndReportsTruncation()
+    {
+        var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("body text") };
+        var tool = Tool(reader, new RecordingSecurityAuthority());
+        var invocation = await tool.InvokeAsync(
+            Request(/*lang=json,strict*/"""{"action":"read","id":"docs"}"""),
+            TestContext.Current.CancellationToken);
+
+        var presentation = await FormatResultAsync(tool, invocation, new ToolPresentationBounds(1024, 1024, 1));
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        presentation.Parts.Length.ShouldBe(1);
+        presentation.OmittedCharacters.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenReadResultHasMissingBooleanField_ReturnsMalformedFallback()
+    {
+        var invocation = SuccessResult(
+            /*lang=json,strict*/ """{"id":"a","kind":"Documentation","trust":"Workspace","media_type":"text/plain","bytes":5,"truncated":false,"content":"hello"}""");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Theory]
+    [InlineData("application/json", "json")]
+    [InlineData("application/xml", "xml")]
+    [InlineData("text/xml", "xml")]
+    [InlineData("application/yaml", "yaml")]
+    [InlineData("text/yaml", "yaml")]
+    [InlineData("text/plain", null)]
+    public async Task FormatAsync_WhenReadResultHasMediaType_SelectsExpectedLanguageHint(string mediaType, string? expectedLanguage)
+    {
+        var invocation = SuccessResult(
+            $$"""{"id":"a","kind":"Documentation","trust":"Workspace","media_type":"{{mediaType}}","bytes":5,"instruction_authority":false,"truncated":false,"content":"hello"}""");
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts[1].Language.ShouldBe(expectedLanguage);
+    }
+
+    private sealed record UnsupportedPresentationSource: ToolPresentationSource;
+
+    private static ToolInvocationResult SuccessResult(string json) => new(
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+        [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
+
+    private static async ValueTask<ToolPresentation> FormatCallAsync(string json, ToolPresentationBounds? bounds = null)
     {
         using var document = JsonDocument.Parse(json);
         var formatter = new ResourceToolPresentationFormatter();
@@ -109,7 +275,7 @@ public sealed class ResourceToolPresentationFormatterTests
             new ToolPresentationRequest(
                 formatter.Descriptor,
                 new ToolCallPresentationSource(call),
-                new ToolPresentationBounds()),
+                bounds ?? new ToolPresentationBounds()),
             TestContext.Current.CancellationToken)).ShouldNotBeNull();
     }
 
