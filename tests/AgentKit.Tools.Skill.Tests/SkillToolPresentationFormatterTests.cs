@@ -74,6 +74,145 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
+    public async Task FormatAsync_WhenSourceIsUnrecognized_ReturnsNull()
+    {
+        var formatter = new SkillToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListCallOmitsId_RendersPublicListAction()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/"""{"action":"list"}""");
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("List available skills");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallActionIsUnsupported_UsesSafeBoundedFallback()
+    {
+        var presentation = await FormatCallAsync(/*lang=json,strict*/"""{"action":"delete"}""");
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill request is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotOneTextPart_UsesSafeBoundedFallback()
+    {
+        var invocation = new ToolInvocationResult(
+            new ToolCallOutcome(
+                ToolCallOutcomeKind.Success,
+                ToolTerminalStatus.Succeeded,
+                SideEffectCertainty.DefinitelyPerformed,
+                false,
+                null,
+                ExtensionData.Empty),
+            []);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionIsNotJson_UsesSafeBoundedFallback()
+    {
+        var invocation = new ToolInvocationResult(
+            new ToolCallOutcome(
+                ToolCallOutcomeKind.Success,
+                ToolTerminalStatus.Succeeded,
+                SideEffectCertainty.DefinitelyPerformed,
+                false,
+                null,
+                ExtensionData.Empty),
+            [new TextPart("not json", TextSemantics.Code, ExtensionData.Empty)]);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListPayloadDeclaresInstructionAuthority_UsesSafeBoundedFallback()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            catalog_version = "v1",
+            instruction_authority = true,
+            skills = Array.Empty<object>(),
+        });
+        var invocation = SuccessResult(json);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListPayloadOmitsInstructionAuthority_UsesSafeBoundedFallback()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            catalog_version = "v1",
+            skills = Array.Empty<object>(),
+        });
+        var invocation = SuccessResult(json);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenListEntryMissingTrust_UsesSafeBoundedFallback()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            catalog_version = "v1",
+            instruction_authority = false,
+            skills = new[]
+            {
+                new { id = "docs", Name = "Documentation", Description = "desc" },
+            },
+        });
+        var invocation = SuccessResult(json);
+
+        var presentation = await FormatResultAsync(
+            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenActivationHasMoreCodePartsThanBoundAllows_TruncatesAndReportsOmittedTail()
+    {
+        var reader = new RecordingSnapshotReader
+        {
+            Result = RecordingSnapshotReader.Success("# Workflow\nRun the checks."),
+        };
+        var tool = Tool(reader, new RecordingSecurityAuthority());
+        var invocation = await tool.InvokeAsync(
+            Request(/*lang=json,strict*/"""{"action":"activate","id":"docs"}"""),
+            TestContext.Current.CancellationToken);
+
+        var presentation = await FormatResultAsync(
+            tool, invocation, new ToolPresentationBounds(maximumParts: 1));
+
+        presentation.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        _ = presentation.Parts.ShouldHaveSingleItem();
+        presentation.OmittedCharacters.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
     public async Task FormatAsync_WhenSuccessPayloadIsMalformed_UsesSafeBoundedFallback()
     {
         var invocation = new ToolInvocationResult(
@@ -95,6 +234,16 @@ public sealed class SkillToolPresentationFormatterTests
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldNotContain("do not echo");
         presentation.OmittedCharacters.ShouldBeGreaterThan(0);
     }
+
+    private static ToolInvocationResult SuccessResult(string json) => new(
+        new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty),
+        [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
 
     private static async ValueTask<ToolPresentation> FormatCallAsync(string json)
     {

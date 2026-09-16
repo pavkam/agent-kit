@@ -117,6 +117,40 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenSnapshotReadFailsAfterAuthorization_ReturnsTypedFailure()
+    {
+        var reader = new RecordingSnapshotReader
+        {
+            Result = new FileSnapshotResult(FileSnapshotStatus.NotFound, [], null, "Not found."),
+        };
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"activate","id":"docs"}"""), TestContext.Current.CancellationToken);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("Not found.");
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotHasUtf8Bom_StripsBomBeforeProjectingContent()
+    {
+        byte[] withBom = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("hello")];
+        var reader = new RecordingSnapshotReader
+        {
+            Result = new FileSnapshotResult(
+                FileSnapshotStatus.Success,
+                [.. withBom],
+                FileSecurityBinding.ContentFingerprint(withBom.AsSpan()),
+                null),
+        };
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"activate","id":"docs"}"""), TestContext.Current.CancellationToken);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        using var json = Json(result);
+        json.RootElement.GetProperty("content").GetString().ShouldBe("hello");
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenSnapshotIsInvalidUtf8_ReturnsTypedFailure()
     {
         var reader = new RecordingSnapshotReader
