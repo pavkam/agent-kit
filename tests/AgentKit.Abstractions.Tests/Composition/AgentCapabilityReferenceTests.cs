@@ -53,4 +53,12 @@ public sealed class AgentCapabilityReferenceTests
         var exception = Should.Throw<ArgumentException>(() => new AgentCapabilityReference(new CapabilityId("cap"), default));
         exception.ParamName.ShouldBe("profileId");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new AgentCapabilityReference(new CapabilityId("cap"), new CapabilityProfileId("profile"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

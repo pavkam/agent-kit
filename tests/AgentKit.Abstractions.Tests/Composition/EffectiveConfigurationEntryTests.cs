@@ -60,6 +60,14 @@ public sealed class EffectiveConfigurationEntryTests
         exception.ParamName.ShouldBe("contributors");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new EffectiveConfigurationEntry(new ConfigurationPath("agent.value"), ConfigurationMergeOperation.Replace, JsonValue(), [Source("host", 1)]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ConfigurationSourceReference Source(string id, long version) => new(new ConfigurationSourceId(id), new ConfigurationSourceVersion(version), ConfigurationLayerKind.HostGlobal, ConfigurationTrustClass.HostEstablished, new ContentHash($"hash-{id}-{version}"));
     private static ConfigurationJsonValue JsonValue()
     {

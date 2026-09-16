@@ -124,6 +124,14 @@ public sealed class EffectiveConfigurationSnapshotTests
         first.ShouldNotBe(reordered);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new EffectiveConfigurationSnapshot(new ConfigurationVersion(1), new ContentHash("snapshot"), [], []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static EffectiveConfigurationSnapshot Snapshot(ImmutableArray<EffectiveConfigurationEntry> entries, ImmutableArray<ConfigurationSourceReference> sources) => new(new ConfigurationVersion(1), new ContentHash("snapshot"), entries, sources);
     private static EffectiveConfigurationEntry Entry(string path, ConfigurationSourceReference source) => new(new ConfigurationPath(path), ConfigurationMergeOperation.Replace, JsonValue(), [source]);
     private static ConfigurationSourceReference Source(string id, long version) => new(new ConfigurationSourceId(id), new ConfigurationSourceVersion(version), ConfigurationLayerKind.HostGlobal, ConfigurationTrustClass.HostEstablished, new ContentHash($"hash-{id}-{version}"));

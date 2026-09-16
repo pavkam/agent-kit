@@ -20,6 +20,20 @@ public sealed class ComponentRegistrationDescriptorTests
 
         descriptor.Dependencies.ShouldBeEmpty();
         descriptor.ImplementationType.ShouldBe(typeof(Implementation));
+        descriptor.Service.ShouldBe(ComponentContractReference.Unkeyed<IContract>());
+        descriptor.Lifetime.ShouldBe(ServiceLifetime.Singleton);
+    }
+
+    [Fact]
+    public void Constructor_WhenValid_SupportsWithExpression()
+    {
+        var descriptor = new ComponentRegistrationDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(),
+            typeof(Implementation),
+            ServiceLifetime.Singleton,
+            []);
+        var copy = descriptor with { };
+        copy.ShouldBe(descriptor);
     }
 
     [Fact]
@@ -72,6 +86,23 @@ public sealed class ComponentRegistrationDescriptorTests
         var exception = Should.Throw<ArgumentException>(() => ComponentContractReference.From(default(ComponentKey<IContract>)));
 
         exception.ParamName.ShouldBe("key");
+    }
+
+    [Fact]
+    public void From_WhenTypedKeyIsValid_CreatesKeyedReference()
+    {
+        var reference = ComponentContractReference.From(new ComponentKey<IContract>("primary"));
+
+        reference.ContractType.ShouldBe(typeof(IContract));
+        reference.Key.ShouldBe("primary");
+    }
+
+    [Fact]
+    public void ContractReference_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = ComponentContractReference.Unkeyed<IContract>();
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     [Fact]
@@ -178,6 +209,16 @@ public sealed class ComponentRegistrationDescriptorTests
     }
 
     [Fact]
+    public void Dependency_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ComponentDependencyDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(),
+            ComponentDependencyCardinality.RequiredSingular);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
     public void DependencyConstructor_WhenValidationBoundaryIsUndefined_ThrowsWithParameterName()
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ComponentDependencyDescriptor(
@@ -210,6 +251,27 @@ public sealed class ComponentRegistrationDescriptorTests
         rootException.GetType().ShouldBe(typeof(ArgumentNullException));
         ownerException.ParamName.ShouldBe("owner");
         rootException.ParamName.ShouldBe("operationRoot");
+    }
+
+    [Fact]
+    public void FactoryBoundaryConstructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var owner = ComponentContractReference.Unkeyed<IContract>();
+        var operationRoot = ComponentContractReference.Unkeyed<IContract>();
+        var boundary = new ComponentFactoryBoundary(owner, operationRoot, typeof(IDisposable));
+
+        boundary.Owner.ShouldBe(owner);
+        boundary.OperationRoot.ShouldBe(operationRoot);
+        boundary.DisposalContractType.ShouldBe(typeof(IDisposable));
+    }
+
+    [Fact]
+    public void FactoryBoundary_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ComponentFactoryBoundary(
+            ComponentContractReference.Unkeyed<IContract>(), ComponentContractReference.Unkeyed<IContract>(), typeof(IDisposable));
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private interface IContract;

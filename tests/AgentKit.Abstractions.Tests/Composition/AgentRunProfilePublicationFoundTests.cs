@@ -3,32 +3,25 @@
 
 namespace AgentKit.Abstractions.Tests.Composition;
 
-
-
-/// <summary>Verifies AgentRunProfilePublicationSnapshot behavior and contracts.</summary>
-public sealed class AgentRunProfilePublicationSnapshotTests
+/// <summary>Verifies AgentRunProfilePublicationFound behavior and contracts.</summary>
+public sealed class AgentRunProfilePublicationFoundTests
 {
     [Fact]
-    public void AgentRunProfilePublicationSnapshot_WhenArrayIsInvalid_ThrowsWithParameterName()
-    {
-        var uninitialized = Should.Throw<ArgumentException>(() => new AgentRunProfilePublicationSnapshot(default));
-        var containingNull = Should.Throw<ArgumentException>(() => new AgentRunProfilePublicationSnapshot([null!]));
-        uninitialized.ParamName.ShouldBe("publications");
-        containingNull.ParamName.ShouldBe("publications");
-    }
+    public void Constructor_WhenPublicationIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new AgentRunProfilePublicationFound(null!)).ParamName.ShouldBe("publication");
 
     [Fact]
-    public void Constructor_WhenArgumentsAreValid_RoundTripsPublications()
+    public void Constructor_WhenArgumentsAreValid_RoundTripsPublication()
     {
         var publication = new AgentRunProfilePublication(SecurityProfile(), SessionProfile());
-        var snapshot = new AgentRunProfilePublicationSnapshot([publication]);
-        snapshot.Publications.ShouldBe([publication]);
+        var found = new AgentRunProfilePublicationFound(publication);
+        found.Publication.ShouldBeSameAs(publication);
     }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new AgentRunProfilePublicationSnapshot([new AgentRunProfilePublication(SecurityProfile(), SessionProfile())]);
+        var original = new AgentRunProfilePublicationFound(new AgentRunProfilePublication(SecurityProfile(), SessionProfile()));
         var copy = original with { };
         copy.ShouldBe(original);
     }
