@@ -22,4 +22,16 @@ public sealed class ToolProviderRegistrationTests
         registration.ShouldBe(new ToolProviderRegistration(source));
         registration.ShouldNotBe(new ToolProviderRegistration(new ToolSourceId("source")));
     }
+
+    [Fact]
+    public void With_WhenCloningWithoutChanges_ProducesAnEqualIndependentInstance()
+    {
+        var registration = new ToolProviderRegistration(new ToolSourceId("source"));
+
+        var clone = registration with { };
+
+        clone.ShouldNotBeSameAs(registration);
+        clone.ShouldBe(registration);
+        clone.SourceId.ShouldBe(registration.SourceId);
+    }
 }

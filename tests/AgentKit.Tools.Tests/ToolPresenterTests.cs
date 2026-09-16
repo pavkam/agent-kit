@@ -171,15 +171,168 @@ public sealed class ToolPresenterTests
         result.OmittedCharacters.ShouldBe(9);
     }
 
+    [Fact]
+    public async Task PresentAsync_WhenSourceKindIsUnsupported_UsesGenericFallbackMessage()
+    {
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new UnsupportedPresentationSource(), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        result.Parts.ShouldHaveSingleItem().Text.ShouldContain("Unsupported tool presentation source omitted.");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenResultHasFailureReason_IncludesItGenerically()
+    {
+        var resultPart = Result(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, "boom", []);
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolResultPresentationSource(resultPart), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
+
+        var text = result.Parts.ShouldHaveSingleItem().Text;
+        text.ShouldContain("failure: ");
+        text.ShouldContain("boom");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenResultContainsTextContent_RendersItDirectly()
+    {
+        var resultPart = Result(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, null, [new TextPart("hello world", TextSemantics.Plain, ExtensionData.Empty)]);
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolResultPresentationSource(resultPart), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
+
+        result.Parts.ShouldHaveSingleItem().Text.ShouldContain("hello world");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenMaximumInputBytesIsExhaustedMidContent_OmitsRemainingContentEntries()
+    {
+        var resultPart = Result(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, null, [
+            new TextPart("a", TextSemantics.Plain, ExtensionData.Empty),
+            new TextPart("b", TextSemantics.Plain, ExtensionData.Empty),
+        ]);
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolResultPresentationSource(resultPart), new ToolPresentationBounds(maximumInputBytes: "status: Succeeded\n".Length)), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        result.OmittedCharacters.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenBoundExactlyFillsRemainingBytes_OmitsExtraCharactersWithoutPartialAppend()
+    {
+        var call = Call("custom", "{}");
+        var exactBytes = call.Arguments.GetRawText().Length;
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolCallPresentationSource(call), new ToolPresentationBounds(maximumInputBytes: exactBytes)), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        result.OmittedCharacters.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenResultContainsUnrecognizedContentPartSubtype_OmitsItGenerically()
+    {
+        using var payload = JsonDocument.Parse("{}");
+        var resultPart = Result(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, null, [
+            new UnknownContentPart("custom.extension", payload.RootElement.Clone(), ExtensionData.Empty),
+        ]);
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolResultPresentationSource(resultPart), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
+
+        result.Parts.ShouldHaveSingleItem().Text.ShouldContain("unsupported content omitted");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenResultHeaderExactlyExhaustsInputBytes_OmitsTrailingNewlineExplicitly()
+    {
+        var resultPart = Result(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, null, []);
+        var exactBytes = "status: ".Length + nameof(ToolTerminalStatus.Succeeded).Length;
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolResultPresentationSource(resultPart), new ToolPresentationBounds(maximumInputBytes: exactBytes)), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        result.Parts.ShouldHaveSingleItem().Text.ShouldBe("status: Succeeded");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenMultiByteRuneExceedsRemainingInputBytes_StopsBeforeThatRune()
+    {
+        var call = Call("custom", "\"\uD83D\uDE00ab\"");
+
+        var result = await new ToolPresenter([]).PresentAsync(
+            new ToolPresentationRequest(null, new ToolCallPresentationSource(call), new ToolPresentationBounds(maximumInputBytes: 2)), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        result.Parts.ShouldHaveSingleItem().Text.ShouldBe("\"");
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenFormatterReturnsNull_FallsThroughToGenericPresentation()
+    {
+        var descriptor = Descriptor("custom");
+
+        var result = await new ToolPresenter([new NullFormatter(descriptor)]).PresentAsync(
+            new ToolPresentationRequest(descriptor, new ToolCallPresentationSource(Call("custom", "{}")), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenFormatterCancelsTheRequestToken_RethrowsCancellation()
+    {
+        var descriptor = Descriptor("custom");
+        using var cancellation = new CancellationTokenSource();
+        var formatter = new CancelingFormatter(descriptor, cancellation);
+
+        var action = async () => await new ToolPresenter([formatter]).PresentAsync(
+            new ToolPresentationRequest(descriptor, new ToolCallPresentationSource(Call("custom", "{}")), new ToolPresentationBounds()), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task PresentAsync_WhenMaximumPartsIsExceeded_OmitsRemainingParts()
+    {
+        var descriptor = Descriptor("custom");
+        var formatter = new MultiPartFormatter(descriptor);
+
+        var result = await new ToolPresenter([formatter]).PresentAsync(
+            new ToolPresentationRequest(descriptor, new ToolCallPresentationSource(Call("custom", "{}")), new ToolPresentationBounds(1024, 1024, 1)), TestContext.Current.CancellationToken);
+
+        result.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        result.Parts.Length.ShouldBe(1);
+        result.OmittedCharacters.ShouldBeGreaterThan(0);
+    }
+
+    private sealed record UnsupportedPresentationSource: ToolPresentationSource;
+
+    private sealed class MultiPartFormatter(ToolDescriptor descriptor): IToolPresentationFormatter
+    {
+        public ToolDescriptor Descriptor { get; } = descriptor;
+        public ValueTask<ToolPresentation?> FormatAsync(ToolPresentationRequest request, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolPresentation?>(new ToolPresentation(
+                [new ToolPresentationPart(ToolPresentationPartKind.Text, "one"), new ToolPresentationPart(ToolPresentationPartKind.Text, "two")],
+                ToolPresentationDisposition.Formatted));
+    }
+
     private static ToolCallPart Call(string id, string json)
     {
         using var document = JsonDocument.Parse(json);
         return new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias(id), new ToolId(id), new ToolVersion("1.0")), document.RootElement.Clone(), null, ExtensionData.Empty);
     }
 
-    private static ToolResultPart Result(ImmutableArray<ContentPart> content) => new(
+    private static ToolResultPart Result(ImmutableArray<ContentPart> content) =>
+        Result(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, null, content);
+
+    private static ToolResultPart Result(ToolCallOutcomeKind kind, ToolTerminalStatus status, string? failureReason, ImmutableArray<ContentPart> content) => new(
         new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("custom"), new ToolId("custom"), new ToolVersion("1.0")),
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), content,
+        new ToolCallOutcome(kind, status, SideEffectCertainty.DefinitelyPerformed, false, failureReason, ExtensionData.Empty), content,
         new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
     private static ToolDescriptor Descriptor(string id, string description = "Test descriptor", string sourceId = "tests")
@@ -212,5 +365,22 @@ public sealed class ToolPresenterTests
         public ToolDescriptor Descriptor { get; } = descriptor;
         public ValueTask<ToolPresentation?> FormatAsync(ToolPresentationRequest request, CancellationToken cancellationToken = default) =>
             throw new InvalidDataException("Formatter fault.");
+    }
+
+    private sealed class NullFormatter(ToolDescriptor descriptor): IToolPresentationFormatter
+    {
+        public ToolDescriptor Descriptor { get; } = descriptor;
+        public ValueTask<ToolPresentation?> FormatAsync(ToolPresentationRequest request, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolPresentation?>(null);
+    }
+
+    private sealed class CancelingFormatter(ToolDescriptor descriptor, CancellationTokenSource cancellation): IToolPresentationFormatter
+    {
+        public ToolDescriptor Descriptor { get; } = descriptor;
+        public ValueTask<ToolPresentation?> FormatAsync(ToolPresentationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        }
     }
 }

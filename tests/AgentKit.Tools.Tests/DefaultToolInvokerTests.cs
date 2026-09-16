@@ -5,6 +5,11 @@ namespace AgentKit.Tools.Tests;
 
 using System.Diagnostics.CodeAnalysis;
 
+using AgentKit.TestSupport;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 /// <summary>Verifies DefaultToolInvoker behavior and contracts.</summary>
 public sealed class DefaultToolInvokerTests
 {
@@ -166,7 +171,10 @@ public sealed class DefaultToolInvokerTests
         Activity.Current.ShouldBeSameAs(parent);
     }
 
-    private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, params string[] allowed)
+    private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, params string[] allowed) =>
+        CreateInvoker(tools, NullLogger<DefaultToolInvoker>.Instance, allowed);
+
+    private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, ILogger<DefaultToolInvoker> logger, params string[] allowed)
     {
         var options = new AgentToolsOptions();
         foreach (var id in allowed)
@@ -174,7 +182,77 @@ public sealed class DefaultToolInvokerTests
             _ = options.AllowedToolIds.Add(new ToolId(id));
         }
 
-        return new DefaultToolInvoker(new ToolCatalog(tools), new AllowListToolAuthorizer(Options.Create(options)));
+        return new DefaultToolInvoker(new ToolCatalog(tools), new AllowListToolAuthorizer(Options.Create(options)), logger);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenObservedWithEnabledLogger_RecordsStartedAndCompletedEntries()
+    {
+        var tool = new FakeTool { Descriptor = TestFactory.Descriptor("logged") };
+        var logger = new RecordingLogger<DefaultToolInvoker>();
+        var invoker = CreateInvoker([tool], logger, "logged");
+
+        var result = await invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("logged")), TestContext.Current.CancellationToken);
+
+        result.Invocation.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4000, 4003]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUnknownToolWithEnabledLogger_RecordsUnknownEntry()
+    {
+        var logger = new RecordingLogger<DefaultToolInvoker>();
+        var invoker = CreateInvoker([], logger);
+
+        _ = await invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("missing")), TestContext.Current.CancellationToken);
+
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4000, 4001]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenDeniedWithEnabledLogger_RecordsDeniedEntry()
+    {
+        var tool = new FakeTool { Descriptor = TestFactory.Descriptor("guarded-logged") };
+        var logger = new RecordingLogger<DefaultToolInvoker>();
+        var invoker = CreateInvoker([tool], logger);
+
+        _ = await invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("guarded-logged")), TestContext.Current.CancellationToken);
+
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4000, 4002]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenToolThrowsWithEnabledLogger_RecordsFailedEntry()
+    {
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("throws-logged"),
+            OnInvoke = (_, _) => throw new InvalidOperationException("boom"),
+        };
+        var logger = new RecordingLogger<DefaultToolInvoker>();
+        var invoker = CreateInvoker([tool], logger, "throws-logged");
+
+        _ = await invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("throws-logged")), TestContext.Current.CancellationToken);
+
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4000, 4005]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenCancelledWithEnabledLogger_RecordsCancelledEntry()
+    {
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("cancels-logged"),
+            OnInvoke = (_, ct) => Task.FromCanceled<ToolInvocationResult>(ct),
+        };
+        var logger = new RecordingLogger<DefaultToolInvoker>();
+        var invoker = CreateInvoker([tool], logger, "cancels-logged");
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("cancels-logged")), cts.Token));
+
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4000, 4004]);
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
@@ -238,6 +316,62 @@ public sealed class DefaultToolInvokerTests
         invoked.ShouldBeFalse();
         result.Invocation.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Invocation.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenAuthorizerCancelsCallerToken_PropagatesOperationCanceledException()
+    {
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("guarded"),
+        };
+        using var cts = new CancellationTokenSource();
+        var authorizer = new CancelingAuthorizer(cts);
+        var invoker = new DefaultToolInvoker(new ToolCatalog([tool]), authorizer);
+        await cts.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("guarded")), cts.Token));
+        tool.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenToolReturnsNonSuccessResultWithoutThrowing_MarksActivityFailed()
+    {
+        const string protectedArguments = "do-not-export-this-argument";
+        using var parent = new Activity("observed-non-success-tool-invocation").Start();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == parent.TraceId && activity.OperationName == AgentKitActivityNames.ExecuteTool) { stopped = activity; }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("declines"),
+            OnInvoke = (_, _) => Task.FromResult(new ToolInvocationResult(
+                new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed, false, "invalid input", ExtensionData.Empty),
+                [])),
+        };
+        var invoker = CreateInvoker([tool], allowed: "declines");
+        using var arguments = JsonDocument.Parse($$"""{"secret":"{{protectedArguments}}"}""");
+        var request = TestFactory.CallRequest(new ToolId("declines"), arguments.RootElement);
+
+        var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        result.Invocation.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+    }
+
+    private sealed class CancelingAuthorizer(CancellationTokenSource cancellation): IToolAuthorizer
+    {
+        public ValueTask<ToolAuthorizationDecision> AuthorizeAsync(ToolAuthorizationRequest request, CancellationToken cancellationToken = default) =>
+            throw new OperationCanceledException(cancellation.Token);
     }
 
     private sealed class ThrowingAuthorizer: IToolAuthorizer

@@ -22,4 +22,16 @@ public sealed class ToolsetRegistrationTests
         registration.ShouldBe(new ToolsetRegistration(key));
         registration.ShouldNotBe(new ToolsetRegistration(new ToolsetKey("tools")));
     }
+
+    [Fact]
+    public void With_WhenCloningWithoutChanges_ProducesAnEqualIndependentInstance()
+    {
+        var registration = new ToolsetRegistration(new ToolsetKey("first"));
+
+        var clone = registration with { };
+
+        clone.ShouldNotBeSameAs(registration);
+        clone.ShouldBe(registration);
+        clone.Key.ShouldBe(registration.Key);
+    }
 }
