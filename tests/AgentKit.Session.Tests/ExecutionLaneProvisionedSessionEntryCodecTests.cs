@@ -183,6 +183,7 @@ public sealed class ExecutionLaneProvisionedSessionEntryCodecTests: SessionEntry
     [InlineData("\"sessionProfile\":{\"key\":\"default\"", "\"sessionProfile\":{\"key\":\"\\uD800\"")]
     [InlineData("\"sessionId\":", "\"future\":\"\\uD800\",\"sessionId\":")]
     [InlineData("\"sessionId\":", "\"\\uD800\":0,\"sessionId\":")]
+    [InlineData("\"sessionProfile\":{\"key\":\"default\"", "\"sessionProfile\":{\"key\":\"\\uDC00\"")]
     public void ExecutionLaneCodec_WhenJsonContainsLoneSurrogateEscape_Rejects(string original, string replacement)
     {
         var codec = LaneCodec();
