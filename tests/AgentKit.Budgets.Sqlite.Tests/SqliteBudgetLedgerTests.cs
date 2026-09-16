@@ -681,6 +681,382 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         log.State.ShouldNotContain(item => item.Key.Contains("Resource", StringComparison.OrdinalIgnoreCase) || item.Key.Contains("Fingerprint", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Proves scope creation rejects a nonexistent parent scope reference.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenParentScopeIsUnavailable_ThrowsReferenceUnavailable()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var missingParent = new BudgetScopeId(Guid.NewGuid());
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var request = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(missingParent, address, [], new("missing-parent-scope")), new(8, 32, TimeSpan.FromMinutes(5)));
+
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Proves a child scope exceeding the captured admission depth is rejected without persisting.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenDepthExceedsCapturedMaximum_ReturnsMaximumDepthRejection()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var shallowAdmission = new BudgetScopeAdmission(1, 32, TimeSpan.FromMinutes(5));
+        var root = (await ledger.CreateScopeAsync(new(new(null, address, [], new("depth-root")), shallowAdmission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var childRequest = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(root.Id, address, [], new("depth-child")), shallowAdmission);
+
+        var rejected = (await ledger.CreateScopeAsync(childRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreateRejected>();
+
+        rejected.Failure.Kind.ShouldBe(BudgetScopeCreationFailureKind.MaximumDepthExceeded);
+    }
+
+    /// <summary>Proves concurrent atomic batches bound to disjoint idempotency keys cannot be replayed as one batch.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenItemKeysBelongToDifferentBatches_ThrowsMutationConflict()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "batch-conflict-scope");
+        var operationId = new OperationId(Guid.NewGuid());
+        var firstItem = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), operationId, null, new("batch-conflict-a"));
+        var secondItem = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), operationId, null, new("batch-conflict-b"));
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [firstItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [secondItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        var mixedFirst = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), operationId, null, new("batch-conflict-a"));
+        var mixedSecond = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), operationId, null, new("batch-conflict-b"));
+
+        _ = await Should.ThrowAsync<BudgetLedgerMutationConflictException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [mixedFirst, mixedSecond]), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Proves the atomic batch dimension-projection bound is enforced across an entire lineage boundary.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenBatchExceedsDimensionProjectionBound_ThrowsBudgetLedgerStateException()
+    {
+        var defaults = SqliteBudgetLedgerSettings.CreateDefault();
+        var settings = new SqliteBudgetLedgerSettings(defaults.LockTimeout, defaults.MaximumPayloadBytes, defaults.MaximumResultBytes, defaults.MaximumBatchSize, 1, defaults.MaximumLineageDepth);
+        var fixture = new SqliteBudgetLedgerConformanceFixture();
+        var ledger = fixture.CreateLedgerWithSettings(settings);
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = (await ledger.CreateScopeAsync(new(new(null, address, [], new("projection-bound-scope")), new(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var operationId = new OperationId(Guid.NewGuid());
+        var first = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), operationId, null, new("projection-bound-first"));
+        var second = new BudgetReservationRequest(scope.Id, new("test.maximum"), 1, new("count"), operationId, null, new("projection-bound-second"));
+
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [first, second]), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Proves a reservation unit that conflicts with a captured scope limit's unit is rejected.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenReservationUnitConflictsWithScopeLimit_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var request = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, address, [new(new("test.multi-unit"), 100, new("count"), BudgetLimitKind.Hard)], new("limit-unit-conflict-scope")), new(8, 32, TimeSpan.FromMinutes(5)));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new("test.multi-unit"), 1, new("bytes"), new OperationId(Guid.NewGuid()), null, new("limit-unit-conflict-item"));
+
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Proves unstarted expired reservations are cleaned up while admitting a fresh atomic batch.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenPriorReservationExpired_CleansUpExpiredCapacityWhileAdmittingNewBatch()
+    {
+        var fixture = new SqliteBudgetLedgerConformanceFixture();
+        var ledger = fixture.CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "expire-cleanup-scope");
+        _ = await ReserveAsync(ledger, scope, "expire-cleanup-first");
+        fixture.Advance(TimeSpan.FromMinutes(10));
+        var second = await ReserveAsync(ledger, scope, "expire-cleanup-second");
+        var snapshot = await ledger.GetSnapshotAsync(scope, TestContext.Current.CancellationToken);
+
+        snapshot.Usages.Single(usage => usage.Dimension == new BudgetDimension("test.sum")).Reserved.ShouldBe(BudgetQuantity.FromDecimal(1));
+        second.Id.ShouldNotBe(default);
+    }
+
+    /// <summary>Proves a reservation identity source that produces a duplicate value is rejected.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenReservationIdentitySourceProducesDuplicate_ThrowsBudgetLedgerStateException()
+    {
+        var duplicateId = new BudgetReservationId(Guid.NewGuid());
+        var ledger = new SqliteBudgetLedger(TargetIn(CreateDirectoryPath()), SqliteBudgetLedgerSettings.CreateDefault(), TimeProvider.System, new ScopeIds(), new ConstantReservationIds(duplicateId), new Catalog());
+        await ledger.InitializeAsync(TestContext.Current.CancellationToken);
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = (await ledger.CreateScopeAsync(new(new(null, address, [], new("duplicate-reservation-scope")), new(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var firstItem = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("duplicate-reservation-first"));
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [firstItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        var secondItem = new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("duplicate-reservation-second"));
+
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [secondItem]), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Verifies settlement of a reservation that never started is rejected.</summary>
+    [Fact]
+    public async Task SettleAsync_WhenReservationNeverStarted_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unstarted-settle-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unstarted-settle-reservation");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("not started or is released");
+    }
+
+    /// <summary>Verifies releasing a settled reservation reports the terminal settlement instead of releasing capacity.</summary>
+    [Fact]
+    public async Task ReleaseUnstartedAsync_WhenReservationAlreadySettled_ReturnsAlreadySettled()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "already-settled-scope");
+        var reservation = await ReserveAsync(ledger, scope, "already-settled-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+
+        var release = (await ledger.ReleaseUnstartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerAlreadySettled>();
+
+        release.Commit.ShouldBe(commit);
+    }
+
+    /// <summary>Verifies correction before settlement is rejected.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenReservationNotYetSettled_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unsettled-correct-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unsettled-correct-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("Only settled accounting");
+    }
+
+    /// <summary>Verifies a correction revision that does not increase monotonically is rejected.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenRevisionDoesNotIncreaseMonotonically_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "non-monotonic-scope");
+        var reservation = await ReserveAsync(ledger, scope, "non-monotonic-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 5), TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 3), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("monotonically");
+    }
+
+    /// <summary>Proves a correction that crosses a reservation from within bounds into overrun evaluates the
+    /// per-boundary active-hold check and creates exactly one new hold generation.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenCorrectionCrossesIntoOverrun_CreatesHoldAfterCheckingExistingHolds()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "crossing-into-overrun-scope");
+        var reservation = await ReserveAsync(ledger, scope, "crossing-into-overrun-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+        commit.CreatedOverrunHolds.ShouldBeEmpty();
+
+        var corrected = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 2, 1), TestContext.Current.CancellationToken);
+
+        corrected.CreatedOverrunHolds.ShouldNotBeEmpty();
+    }
+
+    /// <summary>Proves a correction that repeatedly crosses a reservation into overrun at a boundary that retains a
+    /// non-clearing active hold does not create a duplicate hold generation.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenBoundaryAlreadyHasActiveHoldForReservation_DoesNotDuplicateHold()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scopeRequest = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, address, [new(new("test.sum"), 10, new("count"), BudgetLimitKind.Hard)], new("existing-hold-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution));
+        var scope = (await ledger.CreateScopeAsync(scopeRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var reservation = await ReserveAsync(ledger, scope, "existing-hold-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+        commit.CreatedOverrunHolds.ShouldBeEmpty();
+        var firstCorrection = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 2, 1), TestContext.Current.CancellationToken);
+        firstCorrection.CreatedOverrunHolds.ShouldNotBeEmpty();
+        var secondCorrection = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 2), TestContext.Current.CancellationToken);
+        secondCorrection.CreatedOverrunHolds.ShouldBeEmpty();
+
+        var thirdCorrection = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 2, 3), TestContext.Current.CancellationToken);
+
+        thirdCorrection.CreatedOverrunHolds.ShouldBeEmpty();
+    }
+
+    /// <summary>Proves a correction eligible for automatic clearing with no captured hard limit clears the overrun hold.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenDimensionHasNoHardLimitAndCorrectionReturnsWithinReserved_ClearsOverrunHold()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = (await ledger.CreateScopeAsync(new(new(null, address, [], new("no-hard-limit-clear-scope")), new(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new("test.unlimited"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("no-hard-limit-clear-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+
+        var corrected = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+
+        corrected.ClearedOverrunHolds.ShouldNotBeEmpty();
+    }
+
+    /// <summary>Proves a correction eligible for automatic clearing on a concurrent-gauge dimension with a hard
+    /// limit clears the overrun hold using concurrent-gauge aggregation semantics.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenDimensionUsesConcurrentGaugeAggregationAndCorrectionClears_ClearsOverrunHold()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var request = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, address, [new(new("test.gauge"), 10, new("count"), BudgetLimitKind.Hard)], new("gauge-clear-scope")), new(8, 32, TimeSpan.FromMinutes(5)));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var operationId = new OperationId(Guid.NewGuid());
+        var item = new BudgetReservationRequest(scope.Id, new("test.gauge"), 1, new("count"), operationId, null, new("gauge-clear-item"));
+        var concurrentItem = new BudgetReservationRequest(scope.Id, new("test.gauge"), 1, new("count"), operationId, null, new("gauge-clear-concurrent-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [concurrentItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+
+        var corrected = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+
+        corrected.ClearedOverrunHolds.ShouldNotBeEmpty();
+    }
+
+    /// <summary>Verifies a page size above the captured finite ledger bound is rejected.</summary>
+    [Fact]
+    public async Task ReadUnresolvedStartedAsync_WhenPageSizeExceedsCapturedBound_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "page-size-scope");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReadUnresolvedStartedAsync(new BudgetUnresolvedReservationQuery(scope, 33, null), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("page size");
+    }
+
+    /// <summary>Verifies reconciliation of an unstarted reservation is rejected.</summary>
+    [Fact]
+    public async Task ReconcileAsync_WhenReservationNeverStarted_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unstarted-reconcile-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unstarted-reconcile-reservation");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReconcileAsync(new BudgetLedgerReconciliationRequest(reservation, new BudgetStillUnknown(), new IdempotencyKey("unstarted-reconcile-key")), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("started reservation");
+    }
+
+    /// <summary>Verifies estimated reconciliation evidence settles the reservation using the estimated actual.</summary>
+    [Fact]
+    public async Task ReconcileAsync_WhenEvidenceIsEstimated_SettlesUsingEstimatedActual()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "estimated-reconcile-scope");
+        var reservation = await ReserveAsync(ledger, scope, "estimated-reconcile-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+
+        var result = (await ledger.ReconcileAsync(new BudgetLedgerReconciliationRequest(reservation, new BudgetActualEstimated(1), new IdempotencyKey("estimated-reconcile-key")), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerReconciliationSettled>();
+
+        result.Commit.Actual.ShouldBe(1);
+    }
+
+    /// <summary>Verifies an overrun hold generation referencing a revision the ledger never recorded is rejected.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenHoldGenerationIsStale_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "stale-hold-scope");
+        var reservation = await ReserveAsync(ledger, scope, "stale-hold-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var realHold = commit.CreatedOverrunHolds.Single().Reference;
+        var staleHold = new BudgetOverrunHoldReference(realHold.Boundary, realHold.Reservation, new(realHold.TriggeringRevision.Value + 1000));
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(ResolutionRequest(staleHold), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("stale or unavailable");
+    }
+
+    /// <summary>Verifies operator resolution is rejected for a hold owned by a boundary that did not capture the authorized-resolution policy.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenPolicyDoesNotAcceptOperatorResolution_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "wrong-policy-scope");
+        var reservation = await ReserveAsync(ledger, scope, "wrong-policy-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("cannot accept operator resolution");
+    }
+
+    /// <summary>Verifies overrun resolution finds no hard-limit blockers for a dimension with no captured hard limit.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenDimensionHasNoHardLimit_FindsNoHardFailures()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var request = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, address, [], new("no-hard-limit-scope")), new(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new("test.unlimited"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("no-hard-limit-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+
+        _ = (await ledger.ResolveOverrunHoldAsync(ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolved>();
+    }
+
+    /// <summary>Verifies overrun resolution correctly aggregates a maximum-aggregation dimension against its hard limit.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenDimensionUsesMaximumAggregation_EvaluatesHardFailureWithMaximum()
+    {
+        var ledger = new SqliteBudgetLedgerConformanceFixture().CreateLedger();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var request = new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, address, [new(new("test.maximum"), 1, new("count"), BudgetLimitKind.Hard)], new("maximum-agg-scope")), new(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new("test.maximum"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("maximum-agg-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+
+        var result = (await ledger.ResolveOverrunHoldAsync(ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolutionBlocked>();
+
+        result.HardLimitFailures.ShouldNotBeEmpty();
+    }
+
+    private static async Task<BudgetLedgerScopeReference> CreateScopeAsync(IBudgetLedger ledger, string key) => (await ledger.CreateScopeAsync(CreateRequest(key, new("test.sum")), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+    private static async Task<BudgetLedgerReservationReference> ReserveAsync(IBudgetLedger ledger, BudgetLedgerScopeReference scope, string key) => (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [new BudgetReservationRequest(scope.Id, new("test.sum"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new(key))]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+
+    private static BudgetOverrunHoldResolutionRequest ResolutionRequest(BudgetOverrunHoldReference hold)
+    {
+        var enforcement = new SecurityEnforcementRequest(
+            new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null)),
+            TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human),
+            new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
+        var receipt = new SecurityEnforcementIntentReceipt(new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()), enforcement, null, new ContentHash("sha256:sqlite-resolution-test"), DateTimeOffset.UnixEpoch);
+        return new(hold, receipt, new IdempotencyKey($"resolution-{Guid.NewGuid()}"));
+    }
+
+    private static SqliteBudgetLedgerTarget TargetIn(string directory)
+    {
+        _ = Directory.CreateDirectory(directory);
+        return new(Path.Combine(directory, "ledger.db"), new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
+    }
+
+    private sealed class ConstantReservationIds(BudgetReservationId value): IIdentifierGenerator<BudgetReservationId>
+    {
+        public BudgetReservationId Create() => value;
+    }
+
     private sealed class CaptureLogger: ILogger<SqliteBudgetLedger>
     {
         internal ConcurrentQueue<(EventId EventId, KeyValuePair<string, object?>[] State)> Entries { get; } = new();

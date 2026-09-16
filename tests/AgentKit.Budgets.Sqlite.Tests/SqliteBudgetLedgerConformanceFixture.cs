@@ -31,7 +31,12 @@ public sealed class SqliteBudgetLedgerConformanceFixture: IBudgetLedgerConforman
     private readonly TestDimensionCatalog _catalog = new();
 
     /// <inheritdoc/>
-    public IBudgetLedger CreateLedger()
+    public IBudgetLedger CreateLedger() => CreateLedgerWithSettings(SqliteBudgetLedgerSettings.CreateDefault());
+
+    /// <summary>Creates a fresh ledger over an isolated target using explicitly configured settings.</summary>
+    /// <param name="settings">The immutable transaction and codec bounds to apply.</param>
+    /// <returns>A fully initialized ledger sharing this fixture's deterministic collaborators.</returns>
+    internal IBudgetLedger CreateLedgerWithSettings(SqliteBudgetLedgerSettings settings)
     {
         var root = Path.GetTempPath();
         if (OperatingSystem.IsMacOS() && root.StartsWith("/var/", StringComparison.Ordinal))
@@ -42,7 +47,7 @@ public sealed class SqliteBudgetLedgerConformanceFixture: IBudgetLedgerConforman
         _ = Directory.CreateDirectory(directory);
         var ledger = new SqliteBudgetLedger(
             new SqliteBudgetLedgerTarget(Path.Combine(directory, "ledger.db"), new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
-            SqliteBudgetLedgerSettings.CreateDefault(), _timeProvider, _scopeIds, _reservationIds, _catalog, _logger);
+            settings, _timeProvider, _scopeIds, _reservationIds, _catalog, _logger);
         ledger.InitializeAsync().AsTask().GetAwaiter().GetResult();
         return ledger;
     }

@@ -672,9 +672,16 @@ public sealed class SqliteBudgetLedger: IBudgetLedger
         }
         var projection = ReadProjection(connection, transaction, boundary.Reference.Id, dimension)
             ?? throw new InvalidDataException("Settled accounting has no dimension projection.");
-        var committed = correcting.Aggregation == BudgetAggregationKind.Maximum
-            ? MaximumAfterReplacement(connection, transaction, boundary.Reference.Id, dimension, correcting.CurrentCommit!.Actual, correctedActual)
-            : Subtract(projection.Committed, correcting.CurrentCommit!.Actual).Add(BudgetQuantity.FromDecimal(correctedActual));
+        var committed = correcting.Aggregation switch
+        {
+            BudgetAggregationKind.Maximum => MaximumAfterReplacement(connection, transaction, boundary.Reference.Id, dimension, correcting.CurrentCommit!.Actual, correctedActual),
+            // Concurrent-gauge committed accounting is never retained (it always stays zero), so there is no
+            // previously-added actual to subtract before adding the corrected one; computing it anyway would
+            // underflow the always-zero baseline. The observed switch below never reads this value for gauges.
+            BudgetAggregationKind.ConcurrentGauge => default,
+            BudgetAggregationKind.Sum or BudgetAggregationKind.Duration => Subtract(projection.Committed, correcting.CurrentCommit!.Actual).Add(BudgetQuantity.FromDecimal(correctedActual)),
+            _ => throw new BudgetLedgerStateException("The corrected accounting has unsupported aggregation semantics."),
+        };
         var observed = correcting.Aggregation switch
         {
             BudgetAggregationKind.Maximum => Max(projection.Reserved, committed),
