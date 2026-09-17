@@ -3547,6 +3547,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   calls in a swallow-all helper so observer failures cannot alter the returned
   decision.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F06 — `Build()` failure path disposes the provider synchronously, which throws and masks the real error for `IAsyncDisposable`-only services
 

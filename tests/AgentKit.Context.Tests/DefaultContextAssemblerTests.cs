@@ -410,4 +410,81 @@ public sealed class DefaultContextAssemblerTests
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
+
+    /// <summary>Verifies a hostile logging provider cannot replace a successful ContextReady with a thrown exception.</summary>
+    [Fact]
+    public async Task AssembleAsync_WhenLoggerThrowsOnSuccess_StillReturnsContextReady()
+    {
+        var assembler = new DefaultContextAssembler(new ThrowingLogger());
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()]);
+
+        var result = await assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ContextReady>();
+    }
+
+    /// <summary>Verifies a hostile logging provider cannot replace a typed ContextPreparationFailed with a thrown exception.</summary>
+    [Fact]
+    public async Task AssembleAsync_WhenLoggerThrowsOnRejection_StillReturnsContextPreparationFailed()
+    {
+        var assembler = new DefaultContextAssembler(new ThrowingLogger());
+        var request = TestFactory.AssemblyRequest([]);
+
+        var result = await assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ContextPreparationFailed>();
+        failed.Failure.Kind.ShouldBe(ContextPreparationFailureKind.EmptyHistory);
+    }
+
+    /// <summary>Verifies a hostile activity listener cannot replace the typed result with a thrown exception.</summary>
+    [Fact]
+    public async Task AssembleAsync_WhenActivityListenerThrows_StillReturnsTypedResult()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = ThrowingSample,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ContextReady>();
+    }
+
+    private static ActivitySamplingResult ThrowingSample(ref ActivityCreationOptions<ActivityContext> _) =>
+        throw new InvalidOperationException("Simulated hostile sampler failure.");
+
+    /// <summary>Verifies a hostile meter listener cannot replace the typed result with a thrown exception.</summary>
+    [Fact]
+    public async Task AssembleAsync_WhenMeterListenerThrows_StillReturnsTypedResult()
+    {
+        using var meterListener = new MeterListener
+        {
+            InstrumentPublished = static (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName)
+                {
+                    listener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        meterListener.SetMeasurementEventCallback<long>(static (_, _, _, _) =>
+            throw new InvalidOperationException("Simulated hostile meter-listener failure."));
+        meterListener.Start();
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ContextReady>();
+    }
+
+    private sealed class ThrowingLogger: Microsoft.Extensions.Logging.ILogger<DefaultContextAssembler>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            throw new InvalidOperationException("Simulated hostile logging provider failure.");
+    }
 }

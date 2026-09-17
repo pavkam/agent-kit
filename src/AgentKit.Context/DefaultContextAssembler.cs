@@ -83,40 +83,40 @@ public sealed class DefaultContextAssembler: IContextAssembler
         var toolChoice = evidence?.Agent.ToolChoice ?? request.ToolChoice;
         var settings = evidence?.Agent.Settings ?? request.Settings;
 
-        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+        using var activityScope = AgentKitActivityScope.Start(
             AgentKitActivityNames.ContextPrepare,
             ActivityKind.Internal,
-            parentContext: Activity.Current?.Context ?? default,
-            tags: new ActivityTagsCollection
+            new KeyValuePair<string, object?>[]
             {
-                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ContextPrepare },
-                { AgentKitTagNames.AgentId, agentId.ToString() },
-                { AgentKitTagNames.SessionId, sessionId.ToString() },
-                { AgentKitTagNames.RunId, request.RunId.ToString() },
-                { AgentKitTagNames.TurnId, request.TurnId.ToString() },
-                { AgentKitTagNames.ModelRequestId, request.ModelRequestId.ToString() },
-                { AgentKitTagNames.RequestModel, request.Model.ModelId.ToString() },
+                new(AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ContextPrepare),
+                new(AgentKitTagNames.AgentId, agentId.ToString()),
+                new(AgentKitTagNames.SessionId, sessionId.ToString()),
+                new(AgentKitTagNames.RunId, request.RunId.ToString()),
+                new(AgentKitTagNames.TurnId, request.TurnId.ToString()),
+                new(AgentKitTagNames.ModelRequestId, request.ModelRequestId.ToString()),
+                new(AgentKitTagNames.RequestModel, request.Model.ModelId.ToString()),
             });
-        ContextLog.Preparing(_logger, request.ModelRequestId, history.Length);
+        var activity = activityScope.Activity;
+        SafeLog(() => ContextLog.Preparing(_logger, request.ModelRequestId, history.Length));
 
         var repairedHistory = RepairHistory(history, out var repairs, out var excludedIncompleteMessages, out var excludedInstructionMessages);
         if (excludedInstructionMessages > 0)
         {
-            ContextLog.ExcludedInstructionMessagesFromHistory(_logger, request.ModelRequestId, excludedInstructionMessages);
+            SafeLog(() => ContextLog.ExcludedInstructionMessagesFromHistory(_logger, request.ModelRequestId, excludedInstructionMessages));
         }
 
         if (!repairs.IsEmpty)
         {
-            ContextLog.AppliedHistoryRepairs(
-                _logger, request.ModelRequestId, repairs.Length, excludedIncompleteMessages, excludedInstructionMessages);
+            SafeLog(() => ContextLog.AppliedHistoryRepairs(
+                _logger, request.ModelRequestId, repairs.Length, excludedIncompleteMessages, excludedInstructionMessages));
         }
 
         if (repairedHistory.IsEmpty)
         {
             const string outcome = "empty_history";
-            activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.EmptyHistory));
-            ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
-            ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.EmptyHistory);
+            SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.EmptyHistory)));
+            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.EmptyHistory));
             return Task.FromResult<ContextAssemblyResult>(
                 new ContextPreparationFailed(
                     new ContextPreparationFailure(
@@ -131,9 +131,9 @@ public sealed class DefaultContextAssembler: IContextAssembler
             var outcome = structuralFailure.Kind == ContextPreparationFailureKind.InvalidRolePartCombination
                 ? "invalid_role_part_combination"
                 : "broken_tool_call_causality";
-            activity.SetFailed(outcome, structuralFailure.Kind.ToString());
-            ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
-            ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind);
+            SafeSetActivity(() => activity.SetFailed(outcome, structuralFailure.Kind.ToString()));
+            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind));
             return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(structuralFailure));
         }
 
@@ -148,10 +148,49 @@ public sealed class DefaultContextAssembler: IContextAssembler
             settings,
             request.Extensions);
 
-        activity.SetSuccessful("ready");
-        ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready"));
-        ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length);
+        SafeSetActivity(() => activity.SetSuccessful("ready"));
+        SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready")));
+        SafeLog(() => ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length));
         return Task.FromResult<ContextAssemblyResult>(new ContextReady(context, repairs));
+    }
+
+    /// <summary>Runs one activity mutation, containing a hostile diagnostics listener so it cannot alter the returned decision.</summary>
+    private static void SafeSetActivity(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a listener failure must never alter the assembled result.
+        }
+    }
+
+    /// <summary>Runs one log call, containing a hostile logging provider so it cannot alter the returned decision.</summary>
+    private static void SafeLog(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a logging-provider failure must never alter the assembled result.
+        }
+    }
+
+    /// <summary>Runs one metrics call, containing a hostile measurement callback so it cannot alter the returned decision.</summary>
+    private static void SafeObserve(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a meter-listener failure must never alter the assembled result.
+        }
     }
 
     /// <summary>
