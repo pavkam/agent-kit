@@ -481,6 +481,72 @@ public sealed class InMemoryDurableOperationJournalTests
     }
 
     [Fact]
+    public async Task RecordStartAsync_WhenTheClockFailsForANewRecord_DoesNotCommitTheWrite()
+    {
+        // If the clock is read after the mutation, a caller that received the propagated exception would
+        // wrongly conclude nothing was recorded while LoadEvidenceAsync would actually find a record.
+        var journal = new InMemoryDurableOperationJournal(new ThrowingUtcNowTimeProvider());
+
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () =>
+            _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken));
+
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+        _ = evidence.ShouldBeOfType<RecoveryEvidenceNotFound>();
+    }
+
+    [Fact]
+    public async Task RecordStartAsync_WhenTheClockFailsOnARestart_DoesNotAdvanceTheWriterToken()
+    {
+        // A record still in the Accepted state may be restarted with a fresh fencing token; the clock
+        // failure here must hit the same "read before mutate" ordering as the new-record path.
+        var clock = new ConditionalThrowingTimeProvider();
+        var journal = new InMemoryDurableOperationJournal(clock);
+        _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken);
+        var tokenTwo = new FencingToken(2);
+
+        clock.ShouldThrow = true;
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () =>
+            _ = await journal.RecordStartAsync(DurableJournalTestData.Start(tokenTwo), TestContext.Current.CancellationToken));
+
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+        evidence.ShouldBeOfType<RecoveryEvidenceLoaded>().Evidence.LastWriterToken.ShouldBe(TokenOne);
+    }
+
+    [Fact]
+    public async Task RecordCheckpointAsync_WhenTheClockFails_DoesNotCommitTheWrite()
+    {
+        var clock = new ConditionalThrowingTimeProvider();
+        var journal = new InMemoryDurableOperationJournal(clock);
+        _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken);
+
+        clock.ShouldThrow = true;
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () =>
+            _ = await journal.RecordCheckpointAsync(DurableJournalTestData.Checkpoint(TokenOne), TestContext.Current.CancellationToken));
+
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+        var loaded = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>().Evidence;
+        loaded.State.ShouldBe(DurableOperationState.Accepted);
+        loaded.LatestCheckpoint.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RecordTerminalAsync_WhenTheClockFails_DoesNotCommitTheWrite()
+    {
+        var clock = new ConditionalThrowingTimeProvider();
+        var journal = new InMemoryDurableOperationJournal(clock);
+        _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken);
+
+        clock.ShouldThrow = true;
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () =>
+            _ = await journal.RecordTerminalAsync(DurableJournalTestData.Result(TokenOne), TestContext.Current.CancellationToken));
+
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+        var loaded = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>().Evidence;
+        loaded.State.ShouldBe(DurableOperationState.Accepted);
+        loaded.TerminalResultRecorded.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task LoadEvidenceAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
     {
         var recorder = new RecordingLogger<InMemoryDurableOperationJournal>();
@@ -499,6 +565,16 @@ public sealed class InMemoryDurableOperationJournalTests
     private sealed class ThrowingUtcNowTimeProvider: TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => throw new InvalidTimeZoneException("clock failure during write");
+    }
+
+    /// <summary>A clock that only fails GetUtcNow() once armed, so a prior write can seed real state first.</summary>
+    private sealed class ConditionalThrowingTimeProvider: TimeProvider
+    {
+        public bool ShouldThrow { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => ShouldThrow
+            ? throw new InvalidTimeZoneException("clock failure during write")
+            : base.GetUtcNow();
     }
 
     private sealed class ThrowingTimeProvider: TimeProvider

@@ -4060,6 +4060,7 @@ return Recorded(result.FencingToken, _timeProvider.GetUtcNow());
   before taking the gate (as `AcquireAsync` does) and use it for the result, so
   no state mutates if the clock fails.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

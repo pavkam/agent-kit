@@ -72,12 +72,17 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
                         return Failed("This operation has already progressed past acceptance and cannot be restarted.", committed: true);
                     }
 
+                    // Read the clock before mutating: if GetUtcNow() throws after the mutation, the caller
+                    // would see an exception for a write the journal had already committed, bypassing the
+                    // DurableRecordFailed(committed: …) channel meant to report exactly that.
+                    var recordedAt = _timeProvider.GetUtcNow();
                     existing.LastWriterToken = start.FencingToken;
-                    return Recorded(start.FencingToken, _timeProvider.GetUtcNow());
+                    return Recorded(start.FencingToken, recordedAt);
                 }
 
+                var recordedAtNew = _timeProvider.GetUtcNow();
                 _records[address] = new DurableOperationRecord(binding, start.FencingToken);
-                return Recorded(start.FencingToken, _timeProvider.GetUtcNow());
+                return Recorded(start.FencingToken, recordedAtNew);
             }
         }, cancellationToken);
     }
@@ -107,11 +112,13 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
                     return Failed("This operation already has a terminal record; a further checkpoint cannot be recorded.", committed: true);
                 }
 
+                // Read the clock before mutating; see the identical comment in RecordStartAsync.
+                var recordedAt = _timeProvider.GetUtcNow();
                 existing.State = DurableOperationState.EffectPending;
                 existing.SideEffectCertainty = SideEffectCertainty.Unknown;
                 existing.LatestCheckpoint = checkpoint;
                 existing.LastWriterToken = checkpoint.FencingToken;
-                return Recorded(checkpoint.FencingToken, _timeProvider.GetUtcNow());
+                return Recorded(checkpoint.FencingToken, recordedAt);
             }
         }, cancellationToken);
     }
@@ -143,11 +150,13 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
                         : Failed("A different terminal result is already recorded for this operation.", committed: true);
                 }
 
+                // Read the clock before mutating; see the identical comment in RecordStartAsync.
+                var recordedAt = _timeProvider.GetUtcNow();
                 existing.State = result.State;
                 existing.SideEffectCertainty = result.SideEffectCertainty;
                 existing.TerminalResult = result;
                 existing.LastWriterToken = result.FencingToken;
-                return Recorded(result.FencingToken, _timeProvider.GetUtcNow());
+                return Recorded(result.FencingToken, recordedAt);
             }
         }, cancellationToken);
     }
