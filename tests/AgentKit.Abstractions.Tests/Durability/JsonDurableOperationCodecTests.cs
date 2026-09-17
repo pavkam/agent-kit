@@ -128,6 +128,20 @@ public sealed class JsonDurableOperationCodecTests
     }
 
     [Fact]
+    public void Decode_WhenStateTypeCannotBeRepresentedAsJson_ReturnsIncompatibleWithoutThrowing()
+    {
+        // Symmetric with Encode_WhenValueCannotBeRepresentedAsJson_ThrowsArgumentException: deserializing
+        // into a type JsonSerializer cannot represent (System.Type) throws NotSupportedException, not
+        // JsonException, so Decode must catch it too rather than letting it escape the codec.
+        var codec = Codec<Type>();
+        var payload = new OperationPayload(new SchemaVersion(Version.Value), [.. "\"System.Int32\""u8.ToArray()]);
+
+        var result = codec.Decode(payload);
+
+        result.ShouldBeOfType<DurableDecodeIncompatible<Type>>().RecordedVersion.ShouldBe(payload.SchemaVersion);
+    }
+
+    [Fact]
     public void Decode_WhenPayloadHasAnUnrecognizedProperty_DropsItSilentlyLikeOrdinaryJsonDeserialization()
     {
         var codec = Codec();

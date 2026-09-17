@@ -393,6 +393,7 @@ findings).
   `DurableDecodeIncompatible<TState>`, or document the additional exceptions on
   the interface; add a test with `Codec<Type>()` decoding a valid payload.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A08 — `AgentRunRequest` `init` setters let a request diverge from its pinned `AgentDefinition`
 

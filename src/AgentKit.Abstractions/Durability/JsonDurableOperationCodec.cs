@@ -99,8 +99,13 @@ public sealed class JsonDurableOperationCodec<TState>: IDurableOperationCodec<TS
             var state = JsonSerializer.Deserialize<TState>(payload.Data.AsSpan(), _serializerOptions);
             return new DurableDecoded<TState>(state!);
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
         {
+            // Mirrors Encode's own catch: JsonSerializer also reports an unreadable payload through
+            // NotSupportedException (an unsupported TState shape) and InvalidOperationException
+            // (serializer/converter misconfiguration), not only JsonException. The interface documents
+            // that an unreadable payload returns this incompatible result rather than throwing, so
+            // recovery over an existing journal must not crash on any of the three.
             return new DurableDecodeIncompatible<TState>(
                 payload.SchemaVersion,
                 "The payload could not be parsed as valid JSON for this codec's state type.");
