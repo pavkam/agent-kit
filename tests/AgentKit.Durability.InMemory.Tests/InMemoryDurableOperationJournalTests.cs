@@ -439,7 +439,52 @@ public sealed class InMemoryDurableOperationJournalTests
         _ = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>();
     }
 
+    [Fact]
+    public async Task RecordStartAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableOperationJournal>();
+        var journal = new InMemoryDurableOperationJournal(TimeProvider.System, recorder);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), cancellation.Token));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 21001 && entry.Level == LogLevel.Debug);
+    }
+
+    [Fact]
+    public async Task RecordStartAsync_WhenTheClockFailsDuringTheWriteAndLoggingIsEnabled_RecordsFailureEventAndPropagates()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableOperationJournal>();
+        var journal = new InMemoryDurableOperationJournal(new ThrowingUtcNowTimeProvider(), recorder);
+
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () =>
+            _ = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 21002 && entry.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task LoadEvidenceAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableOperationJournal>();
+        var journal = new InMemoryDurableOperationJournal(TimeProvider.System, recorder);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            _ = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), cancellation.Token));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 21004 && entry.Level == LogLevel.Debug);
+    }
+
     private static InMemoryDurableOperationJournal Journal() => new(TimeProvider.System);
+
+    private sealed class ThrowingUtcNowTimeProvider: TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => throw new InvalidTimeZoneException("clock failure during write");
+    }
 
     private sealed class ThrowingTimeProvider: TimeProvider
     {

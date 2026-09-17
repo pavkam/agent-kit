@@ -196,6 +196,62 @@ public sealed class InMemoryDurableLeaseManagerTests
     }
 
     [Fact]
+    public async Task AcquireAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableLeaseManager>();
+        var manager = new InMemoryDurableLeaseManager(new GuidExecutionLeaseIdGenerator(), new FakeTimeProvider(Epoch), recorder);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), cancellation.Token));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 20001 && entry.Level == LogLevel.Debug);
+    }
+
+    [Fact]
+    public async Task AcquireAsync_WhenGeneratorFailsAndLoggingIsEnabled_RecordsFailureEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableLeaseManager>();
+        var manager = new InMemoryDurableLeaseManager(new FixedLeaseIdGenerator(default), new FakeTimeProvider(Epoch), recorder);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 20002 && entry.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task RenewAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableLeaseManager>();
+        var manager = new InMemoryDurableLeaseManager(new GuidExecutionLeaseIdGenerator(), new FakeTimeProvider(Epoch), recorder);
+        var acquired = await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+        await using var lease = acquired.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await lease.RenewAsync(cancellation.Token));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 20004 && entry.Level == LogLevel.Debug);
+    }
+
+    [Fact]
+    public async Task RenewAsync_WhenClockThrowsAndLoggingIsEnabled_RecordsFailureEvent()
+    {
+        var recorder = new RecordingLogger<InMemoryDurableLeaseManager>();
+        var clock = new ToggleClockTimeProvider(Epoch);
+        var manager = new InMemoryDurableLeaseManager(new GuidExecutionLeaseIdGenerator(), clock, recorder);
+        var acquired = await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+        await using var lease = acquired.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+        clock.ThrowOnGetUtcNow = true;
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await lease.RenewAsync(TestContext.Current.CancellationToken));
+
+        recorder.Snapshot().ShouldContain(entry => entry.EventId.Id == 20005 && entry.Level == LogLevel.Error);
+    }
+
+    [Fact]
     public async Task RenewAsync_WhenPresentedTokenIsStillCurrent_ExtendsExpiryByTheOriginalDuration()
     {
         var clock = new FakeTimeProvider(Epoch);

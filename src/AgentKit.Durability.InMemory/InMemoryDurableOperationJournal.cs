@@ -235,6 +235,11 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
             FinishWrite(activity, operation, DurableJournalWriteOutcome.Cancelled, started, nameof(OperationCanceledException));
             throw;
         }
+        catch (Exception exception)
+        {
+            FinishWrite(activity, operation, DurableJournalWriteOutcome.Failed, started, ErrorType(exception));
+            throw;
+        }
     }
 
     /// <summary>Classifies a committed write outcome for diagnostics only.</summary>
@@ -257,6 +262,12 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
 
     private static DurableRecordFenced Fenced(FencingToken presented, FencingToken current) => new(presented, current);
 
+    private static string ErrorType(Exception exception)
+    {
+        Debug.Assert(exception is not null, "Only observed exceptions are classified.");
+        return exception.GetType().FullName ?? exception.GetType().Name;
+    }
+
     private static DurableRecordFailed Failed(string safeMessage, bool committed) => new(safeMessage, committed);
 
     private void FinishWrite(Activity? activity, DurableJournalWriteOperation operation, DurableJournalWriteOutcome outcome, long? started, string? errorType)
@@ -276,7 +287,11 @@ public sealed class InMemoryDurableOperationJournal: IDurableOperationJournal
         });
         try
         {
-            if (errorType is not null && outcome == DurableJournalWriteOutcome.Cancelled)
+            if (errorType is not null && outcome == DurableJournalWriteOutcome.Failed)
+            {
+                DurableJournalLog.WriteFailed(_logger, operationValue, errorType);
+            }
+            else if (errorType is not null && outcome == DurableJournalWriteOutcome.Cancelled)
             {
                 DurableJournalLog.WriteCancelled(_logger, operationValue);
             }

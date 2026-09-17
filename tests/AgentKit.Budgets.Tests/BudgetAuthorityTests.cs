@@ -234,6 +234,40 @@ public sealed class BudgetAuthorityTests
         result.ShouldBeSameAs(failure);
     }
 
+    /// <summary>Verifies the rejected outcome enriches a live sampled activity, not only the no-listener default path.</summary>
+    [Fact]
+    public async Task CreateChildScopeAsync_WhenLedgerRejectsWithAnActiveListener_MarksTheActivityAsRejected()
+    {
+        using var parent = new Activity("budget-scope-create-rejected-test").Start();
+        var activities = new System.Collections.Concurrent.ConcurrentQueue<(string Name, ActivityStatusCode Status, string? Outcome)>();
+        var parentSpanId = parent.SpanId;
+        var traceId = parent.TraceId;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == traceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.ParentSpanId == parentSpanId && activity.TraceId == traceId && activity.OperationName == AgentKitActivityNames.BudgetScopeCreate)
+                {
+                    activities.Enqueue((activity.OperationName, activity.Status, activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString()));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var failure = new BudgetScopeCreationFailed(BudgetScopeCreationFailureKind.MaximumDepthExceeded, "depth exceeded");
+        var ledger = new RecordingBudgetLedger
+        {
+            CreateResult = new BudgetLedgerScopeCreateRejected(failure)
+        };
+        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+
+        var result = await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(failure);
+        activities.ShouldContain(entry => entry.Name == AgentKitActivityNames.BudgetScopeCreate && entry.Status == ActivityStatusCode.Error && entry.Outcome == "rejected");
+    }
+
     [Fact]
     public async Task CreateChildScopeAsync_WhenLoggerFactoryThrows_ReturnsCommittedLedgerResult()
     {

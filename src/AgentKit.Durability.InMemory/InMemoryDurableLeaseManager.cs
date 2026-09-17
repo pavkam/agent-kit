@@ -143,7 +143,7 @@ public sealed class InMemoryDurableLeaseManager: IDurableLeaseManager
                     && current.FencingToken == lease.FencingToken
                     && current.ExpiresAt > now)
                 {
-                    var expiresAt = now + lease.Duration;
+                    var expiresAt = now + current.Duration;
                     current.ExpiresAt = expiresAt;
                     lease.ExpiresAt = expiresAt;
                     result = new LeaseRenewed(expiresAt);

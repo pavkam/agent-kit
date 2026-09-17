@@ -75,11 +75,9 @@ public sealed class InMemoryArtifactStore: IArtifactStore
             return RejectPrepare(ArtifactFailureKind.Denied, "The declared creator does not match the authenticated identity.");
         }
 
-        if (request.ExpiresAt <= request.CreatedAt)
-        {
-            return RejectPrepare(ArtifactFailureKind.Conflict, "The staging lifetime must be positive.");
-        }
-
+        // A non-positive staging lifetime cannot reach this method: ArtifactStorePrepareRequest's own
+        // constructor already rejects ExpiresAt <= CreatedAt, so every valid request instance guarantees
+        // a positive staging lifetime by construction.
         var observedHash = FileSecurityBinding.ContentFingerprint(request.Content.AsSpan());
         if (request.Content.Length != request.Metadata.DeclaredLength || observedHash != request.Metadata.DeclaredContentHash)
         {
@@ -88,7 +86,6 @@ public sealed class InMemoryArtifactStore: IArtifactStore
 
         var snapshot = new PreparedSnapshot(
             request.ArtifactId,
-            request.PreparationId,
             request.Version,
             request.ProfileKey,
             request.ProfileVersion,
@@ -349,7 +346,6 @@ public sealed class InMemoryArtifactStore: IArtifactStore
     private sealed record PreparedState(PreparedSnapshot Snapshot, ArtifactPrepared Receipt);
     private sealed record PreparedSnapshot(
         ArtifactId ArtifactId,
-        ArtifactPreparationId PreparationId,
         ArtifactVersion Version,
         ArtifactProfileKey ProfileKey,
         ArtifactProfileVersion ProfileVersion,
@@ -361,5 +357,4 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         DateTimeOffset CreatedAt,
         DateTimeOffset ExpiresAt);
     private sealed record FinalizedState(PreparedSnapshot Snapshot, ArtifactFinalized Result);
-    private readonly record struct ReplayKey(TenantId TenantId, string Operation, string Key);
 }
