@@ -2475,6 +2475,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `error`, build the failure from the `:error-code` and `:error-message` headers
   and map the code through `AwsBedrockErrorMapping`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N08 — Anthropic streaming: `input_json_delta` on a non-`tool_use` block throws instead of failing typed
 

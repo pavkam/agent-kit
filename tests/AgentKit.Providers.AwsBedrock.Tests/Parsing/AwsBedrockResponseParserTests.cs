@@ -354,6 +354,28 @@ public sealed class AwsBedrockResponseParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenErrorFrameArrivesMidStream_FailsWithMappedProviderFailureKindNotMalformedEvent()
+    {
+        // The AWS event-stream protocol's "error" message type carries no JSON payload at all - unlike
+        // "exception" - so deserializing it before checking :message-type would misreport this as a
+        // malformed streaming event instead of the mapped provider failure the headers actually describe.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeError("throttlingException", "Too many requests"));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.SafeMessage.ShouldBe("Too many requests");
+        failed.Failure.ProviderCode.ShouldBe("throttlingException");
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenToolArgumentsAreMalformed_ReturnsProtocolFailure()
     {
         // The completed text block is retained; the tool block whose input never became valid JSON is not

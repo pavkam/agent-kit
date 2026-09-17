@@ -187,6 +187,31 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                 break;
             }
 
+            // The AWS event-stream protocol has two distinct failure message types: "exception" (a JSON
+            // payload, identified by the :exception-type header) and "error" (:error-code/:error-message
+            // headers, typically no JSON payload at all). Checking message type before ever attempting to
+            // deserialize the payload means an "error" frame's empty or non-JSON payload never gets
+            // misreported as a malformed streaming event; the error code and message are read from the
+            // headers exactly as this format requires.
+            if (message.MessageType == "error")
+            {
+                var errorFailure = BuildFailure(
+                    context,
+                    AwsBedrockErrorMapping.MapExceptionName(message.ErrorCode),
+                    statusCode: null,
+                    message.ErrorCode,
+                    message.ErrorMessage ?? "The provider reported a streaming error.",
+                    diagnosticCause: null);
+
+                var errorPartialParts = BuildPartialParts(blocks);
+                var errorRetainedUsage = TryBuildRetainedUsage(usageDto);
+                await observer.OnEventAsync(
+                        new ModelResponseFailed(requestId, sequence++, errorFailure, errorPartialParts, errorRetainedUsage),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return new ModelAttemptFailed(errorFailure, errorPartialParts, errorRetainedUsage);
+            }
+
             AwsBedrockStreamEventDto payload;
             try
             {

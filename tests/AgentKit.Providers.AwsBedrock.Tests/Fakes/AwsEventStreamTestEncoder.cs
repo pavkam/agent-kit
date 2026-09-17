@@ -53,6 +53,23 @@ internal static class AwsEventStreamTestEncoder
             ],
             Encoding.UTF8.GetBytes(jsonPayload));
 
+    /// <summary>
+    /// Encodes one <c>error</c> frame, as Bedrock emits for a mid-stream error using the AWS event-stream
+    /// protocol's distinct "error" message type: the error code and message are carried entirely in
+    /// headers, typically with no JSON payload at all (unlike <c>exception</c>).
+    /// </summary>
+    /// <param name="errorCode">The <c>:error-code</c> header value.</param>
+    /// <param name="errorMessage">The <c>:error-message</c> header value.</param>
+    /// <returns>The complete framed message bytes, with an empty payload.</returns>
+    public static byte[] EncodeError(string errorCode, string errorMessage) =>
+        EncodeMessage(
+            [
+                new(":message-type", "error"),
+                new(":error-code", errorCode),
+                new(":error-message", errorMessage),
+            ],
+            []);
+
     /// <summary>Encodes one well-formed frame from string headers and an arbitrary payload.</summary>
     /// <param name="headers">The string headers, in the order they should be written.</param>
     /// <param name="payload">The raw payload bytes.</param>

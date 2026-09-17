@@ -41,4 +41,16 @@ internal sealed record AwsEventStreamMessage
 
     /// <summary>Gets the <c>:exception-type</c> header value, when present.</summary>
     public string? ExceptionType => Headers.GetValueOrDefault(":exception-type");
+
+    /// <summary>Gets the <c>:error-code</c> header value, when present.</summary>
+    /// <remarks>
+    /// Present on a <c>:message-type: error</c> frame instead of an
+    /// <c>:exception-type</c> header. The event-stream <c>error</c> message
+    /// type typically carries no JSON payload at all, unlike <c>exception</c>.
+    /// </remarks>
+    public string? ErrorCode => Headers.GetValueOrDefault(":error-code");
+
+    /// <summary>Gets the <c>:error-message</c> header value, when present.</summary>
+    /// <remarks>Present on a <c>:message-type: error</c> frame instead of a JSON body <c>message</c> field.</remarks>
+    public string? ErrorMessage => Headers.GetValueOrDefault(":error-message");
 }
