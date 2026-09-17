@@ -10,8 +10,10 @@ global using AgentKit.FileSystem.InMemory;
 global using AgentKit.Observability;
 global using AgentKit.Permissions;
 global using AgentKit.Permissions.InMemory;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
 global using Microsoft.Extensions.Options;
 
 global using Shouldly;
