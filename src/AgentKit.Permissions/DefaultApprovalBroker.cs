@@ -97,9 +97,21 @@ public sealed class DefaultApprovalBroker: IApprovalBroker
         }
 
         ApprovalHandlerResult handlerResult;
+        // The handler wait must not outlive request.Binding.ExpiresAt: honouring an approval past
+        // that instant would be incorrect regardless of how long the handler is willing to wait
+        // (the expected production shape is "wait for a human"), and every path below that consumed
+        // the answer past expiry already discards it as ApprovalBrokerExpired. Bounding the wait
+        // itself turns that into a liveness guarantee instead of only a correctness check.
+        var remaining = request.Binding.ExpiresAt - _timeProvider.GetUtcNow();
+        using var deadline = new CancellationTokenSource(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, _timeProvider);
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
-            handlerResult = await _handler.TryResolveAsync(request, cancellationToken).ConfigureAwait(false);
+            handlerResult = await _handler.TryResolveAsync(request, bounded.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            return new ApprovalBrokerExpired();
         }
         catch (OperationCanceledException)
         {

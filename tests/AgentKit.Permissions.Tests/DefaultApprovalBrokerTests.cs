@@ -71,6 +71,26 @@ public sealed class DefaultApprovalBrokerTests
     }
 
     [Fact]
+    public async Task RequestAsync_WhenHandlerOutlivesBindingExpiry_CancelsTheWaitAndReturnsExpired()
+    {
+        var request = CreateApprovalRequest(expiresAt: _now.AddSeconds(30));
+        var store = new InMemoryApprovalStore();
+        var handler = new HangingHandler();
+        var timeProvider = new FakeTimeProvider(_now);
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher(), timeProvider);
+
+        var pending = broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask();
+        await Task.Delay(TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
+        pending.IsCompleted.ShouldBeFalse("the handler must still be waiting before the binding expires");
+
+        timeProvider.Advance(TimeSpan.FromSeconds(31));
+        var completed = await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        completed.ShouldBeSameAs(pending, "the handler wait must be bounded by the approval binding's expiry, not block indefinitely");
+        _ = (await pending).ShouldBeOfType<ApprovalBrokerExpired>();
+    }
+
+    [Fact]
     public async Task RequestAsync_WhenStoreLacksTrustedControlPlane_ReturnsUnavailable()
     {
         var request = CreateApprovalRequest();
@@ -362,13 +382,14 @@ public sealed class DefaultApprovalBrokerTests
         IApprovalStore store,
         IApprovalHandler handler,
         IApprovalResponderAuthorizer authorizer,
-        ISecurityAuditDispatcher auditDispatcher) => new(
+        ISecurityAuditDispatcher auditDispatcher,
+        TimeProvider? timeProvider = null) => new(
         store,
         handler,
         authorizer,
         auditDispatcher,
         new FixedAuditRecordIdGenerator(),
-        new FakeTimeProvider(_now));
+        timeProvider ?? new FakeTimeProvider(_now));
 
     private static ApprovalRequest CreateApprovalRequest(DateTimeOffset? expiresAt = null)
     {
@@ -488,6 +509,18 @@ public sealed class DefaultApprovalBrokerTests
             ApprovalRequest request,
             CancellationToken cancellationToken = default) =>
             throw exception;
+    }
+
+    /// <summary>An approval handler that waits for its cancellation token, as a real "wait for a human" handler would.</summary>
+    private sealed class HangingHandler: IApprovalHandler
+    {
+        public async ValueTask<ApprovalHandlerResult> TryResolveAsync(
+            ApprovalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable: the delay above never completes without cancellation.");
+        }
     }
 
     private sealed class ThrowingResponderAuthorizer(Exception exception): IApprovalResponderAuthorizer

@@ -2883,6 +2883,7 @@ retained capacity and can leave a scope stuck in `Held`.
   cancellation caused by the deadline to `ApprovalBrokerExpired` while still
   propagating caller cancellation.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### Areas reviewed (Group 07)
 
