@@ -3162,6 +3162,7 @@ foreach (var header in request.Headers.Headers)
   headers (`:authority`, `Proxy-*`, `Upgrade`, `Connection`), so the destination
   identity in the grant is the only authority for host/SNI.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### H07 — In-memory Glob/Search with a non-null `BasePath` double-prefix result paths and match patterns/exclusions against the full workspace path instead of the base-relative path
 

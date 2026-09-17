@@ -229,6 +229,27 @@ public sealed class DefaultNetworkTransportTests
         server.AcceptedConnections.ShouldBe(2, "a pooled connection reused across independently authorized sends would bypass per-send address verification");
     }
 
+    [Theory]
+    [InlineData("Host")]
+    [InlineData("host")]
+    [InlineData(":authority")]
+    [InlineData("Connection")]
+    [InlineData("Upgrade")]
+    [InlineData("Proxy-Authorization")]
+    public async Task SendAsync_WhenHeadersIncludeAConnectionControllingHeader_DeniesWithoutConnecting(string headerName)
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var baseline = Request(Destination(server.Port));
+        var request = new NetworkRequest(
+            baseline.Id, baseline.Method, baseline.Destination,
+            new NetworkHeaderSet([new NetworkHeader(headerName, "attacker-controlled.example")]),
+            baseline.Content, baseline.Bounds, baseline.ResolvedAddresses, baseline.Classification, baseline.Grant);
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkDenied>().SafeMessage.ShouldContain("connection-controlling header");
+        server.AcceptedConnections.ShouldBe(0);
+    }
+
     [Fact]
     public async Task SendAsync_WhenConnectionIsRefused_ReturnsConnectionFailedWithCertainSideEffect()
     {

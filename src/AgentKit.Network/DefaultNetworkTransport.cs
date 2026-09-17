@@ -109,6 +109,12 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
             return new NetworkDenied("The destination is excluded by the configured network policy.");
         }
 
+        if (HasConnectionControllingHeader(request.Headers))
+        {
+            return new NetworkDenied(
+                "The request headers include a connection-controlling header that would override the destination's virtual host, SNI/certificate target, or connection semantics.");
+        }
+
         var now = _timeProvider.GetUtcNow();
         var resolved = request.ResolvedAddresses.FirstOrDefault(address =>
             address.ExpiresAt > now && _policy.AllowsAddress(address.Address));
@@ -263,6 +269,32 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
                 NetworkFailureKind.ConnectionFailed,
                 exception);
         }
+    }
+
+    /// <summary>
+    /// Header names that, if forwarded verbatim, would let a caller-supplied value override the
+    /// wire-level host/authority, TLS SNI/certificate target, or connection framing that
+    /// <see cref="SocketsHttpHandler"/> derives from <see cref="HttpRequestMessage.Headers"/>.
+    /// <see cref="NetworkDestination.Host"/> - not a free-form header - must be the only authority
+    /// for those, since <see cref="NetworkDestinationPolicy.AllowsSchemeAndHost"/> only inspects
+    /// <see cref="NetworkDestination.Host"/>, not the header set.
+    /// </summary>
+    private static readonly string[] _connectionControllingHeaderNames = ["host", ":authority", "connection", "upgrade"];
+
+    private static bool HasConnectionControllingHeader(NetworkHeaderSet headers)
+    {
+        foreach (var header in headers.Headers)
+        {
+            if (Array.Exists(
+                    _connectionControllingHeaderNames,
+                    name => string.Equals(name, header.Name, StringComparison.OrdinalIgnoreCase))
+                || header.Name.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsRedirect(HttpStatusCode status) => status is
