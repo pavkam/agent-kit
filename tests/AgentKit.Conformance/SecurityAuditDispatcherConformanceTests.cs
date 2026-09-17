@@ -230,6 +230,32 @@ public abstract class SecurityAuditDispatcherConformanceTests<TFixture>
         blocking.Records[0].Id.ShouldBe(record.Id);
     }
 
+    /// <summary>Verifies the fixture binding constructor rejects a missing registration or sink before retaining either.</summary>
+    [Fact]
+    public void SecurityAuditDispatcherConformanceSink_WhenRegistrationOrSinkIsNull_ThrowsWithExactParameterNames()
+    {
+        var registration = new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], SecurityAuditDelivery.BestEffort, providesDurableAcceptance: false);
+        var sink = new RecordingSink();
+
+        var invalidRegistration = Should.Throw<ArgumentNullException>(() => new SecurityAuditDispatcherConformanceSink(null!, sink));
+        var invalidSink = Should.Throw<ArgumentNullException>(() => new SecurityAuditDispatcherConformanceSink(registration, null!));
+
+        invalidRegistration.ParamName.ShouldBe("registration");
+        invalidSink.ParamName.ShouldBe("sink");
+    }
+
+    /// <summary>Verifies copying the fixture binding without changes retains its exact registration and sink.</summary>
+    [Fact]
+    public void SecurityAuditDispatcherConformanceSink_WhenCopyingWithoutChanges_RetainsTheOriginalRegistrationAndSink()
+    {
+        var original = Sink(SecurityAuditDelivery.BestEffort, durable: false, new RecordingSink());
+
+        var copy = original with { };
+
+        copy.ShouldBe(original);
+        copy.ShouldNotBeSameAs(original);
+    }
+
     /// <summary>Creates one public fixture binding for a sink with support for the standard grant-consumption event.</summary>
     /// <param name="delivery">The binding's required or best-effort delivery class.</param>
     /// <param name="durable">Whether successful completion proves durable acceptance.</param>
