@@ -2630,6 +2630,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   bounds every attempt) or document that applications must configure the
   `HttpClient` timeout at or above their attempt deadlines.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### Areas reviewed (Group 06)
 

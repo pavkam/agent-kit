@@ -27,6 +27,21 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAwsBedrock_WhenRegistered_DisablesTheHttpClientTimeoutInFavorOfThePerRequestDeadline()
+    {
+        // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered Converse
+        // attempt regardless of the caller's LlmModelRequest.Deadline, since this adapter's own
+        // deadlineSource is layered on top of, not instead of, the transport-level timeout.
+        var services = new ServiceCollection();
+        _ = services.AddAwsBedrock(options => options.Region = "us-east-1");
+
+        using var provider = services.BuildServiceProvider();
+        var client = provider.GetRequiredService<HttpClient>();
+
+        client.Timeout.ShouldBe(Timeout.InfiniteTimeSpan);
+    }
+
+    [Fact]
     public void AddAwsBedrock_WhenRegionNotConfigured_FailsValidationOnAccess()
     {
         var services = new ServiceCollection();

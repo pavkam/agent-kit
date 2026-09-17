@@ -29,6 +29,20 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddOpenAI_WhenRegistered_DisablesTheHttpClientTimeoutInFavorOfThePerRequestDeadline()
+    {
+        // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered attempt
+        // regardless of the caller's LlmModelRequest.Deadline, since this adapter's own deadlineSource
+        // is layered on top of, not instead of, the transport-level timeout.
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        using var provider = services.BuildServiceProvider();
+        var client = provider.GetRequiredService<HttpClient>();
+
+        client.Timeout.ShouldBe(Timeout.InfiniteTimeSpan);
+    }
+
+    [Fact]
     public void AddOpenAI_WhenOptionsConfigured_AppliesOverrides()
     {
         var services = new ServiceCollection();

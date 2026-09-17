@@ -63,7 +63,11 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IAnthropicMessageStreamParser, AnthropicMessageStreamParser>();
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton(_ => new HttpClient());
+            // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered
+            // (non-streaming) attempt regardless of the caller's LlmModelRequest.Deadline, since
+            // this adapter's own deadlineSource is layered on top of, not instead of, the
+            // transport-level timeout. The per-request deadlineSource already bounds every attempt.
+            services.TryAddSingleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 
             return services;
         }
