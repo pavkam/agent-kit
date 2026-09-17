@@ -59,7 +59,8 @@ public sealed class ModelRequestPreflightTests
             [new TextPart("Follow the style guide.", TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
 
-    private static EmbeddingModelRequest CreateEmbeddingRequest(EmbeddingModelDescriptor descriptor) =>
+    private static EmbeddingModelRequest CreateEmbeddingRequest(
+        EmbeddingModelDescriptor descriptor, int? dimensions = null, EmbeddingEncoding? encoding = null) =>
         new(
             new EmbeddingRequestContext(
                 new EmbeddingRequestId(Guid.NewGuid()),
@@ -67,8 +68,8 @@ public sealed class ModelRequestPreflightTests
                 new EmbeddingRequest(
                     [new TextEmbeddingInput("hello", null)],
                     EmbeddingPurpose.Unspecified,
-                    null,
-                    null,
+                    dimensions,
+                    encoding,
                     EmbeddingTruncation.ProviderDefault,
                     ExtensionData.Empty)),
             attempt: 1,
@@ -355,5 +356,75 @@ public sealed class ModelRequestPreflightTests
         var failure = ModelRequestPreflight.Validate(request, descriptor);
 
         failure.ShouldNotBeNull().Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+    }
+
+    [Fact]
+    public void Validate_WhenDimensionsRequestedAndModelDoesNotSupportDimensions_ReturnsInvalidRequest()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", dimensions: false);
+        var request = CreateEmbeddingRequest(descriptor, dimensions: 256);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        var rejected = failure.ShouldNotBeNull();
+        rejected.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        rejected.SafeMessage.ShouldBe("The selected model does not support requesting a reduced output dimensionality.");
+    }
+
+    [Fact]
+    public void Validate_WhenDimensionsNotRequestedAndModelDoesNotSupportDimensions_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", dimensions: false);
+        var request = CreateEmbeddingRequest(descriptor);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenDimensionsRequestedAndModelSupportsDimensions_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", dimensions: true);
+        var request = CreateEmbeddingRequest(descriptor, dimensions: 256);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenEncodingRequestedAndModelDoesNotSupportEncodingSelection_ReturnsInvalidRequest()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", encodingSelection: false);
+        var request = CreateEmbeddingRequest(descriptor, encoding: EmbeddingEncoding.Int8);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        var rejected = failure.ShouldNotBeNull();
+        rejected.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        rejected.SafeMessage.ShouldBe("The selected model does not support requesting a specific vector encoding.");
+    }
+
+    [Fact]
+    public void Validate_WhenEncodingNotRequestedAndModelDoesNotSupportEncodingSelection_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", encodingSelection: false);
+        var request = CreateEmbeddingRequest(descriptor);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenEncodingRequestedAndModelSupportsEncodingSelection_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.EmbeddingModel("embed", encodingSelection: true);
+        var request = CreateEmbeddingRequest(descriptor, encoding: EmbeddingEncoding.Int8);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
     }
 }

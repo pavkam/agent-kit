@@ -60,6 +60,12 @@ public static class ModelRequestPreflight
     /// <summary>The safe message reported when a system or developer instruction is sent to a model without a distinct instruction role.</summary>
     private const string _systemInstructionsUnsupportedMessage = "The selected model does not support a distinct system or developer instruction role.";
 
+    /// <summary>The safe message reported when a reduced output dimensionality is requested from a model that cannot reduce it.</summary>
+    private const string _dimensionsUnsupportedMessage = "The selected model does not support requesting a reduced output dimensionality.";
+
+    /// <summary>The safe message reported when a specific vector encoding is requested from a model that cannot select one.</summary>
+    private const string _encodingUnsupportedMessage = "The selected model does not support requesting a specific vector encoding.";
+
     /// <summary>
     /// Validates one conversational request against the adapter's configured
     /// descriptor, checking descriptor identity, reasoning support, system
@@ -122,7 +128,8 @@ public static class ModelRequestPreflight
 
     /// <summary>
     /// Validates one embedding request against the adapter's configured
-    /// descriptor, checking descriptor identity.
+    /// descriptor, checking descriptor identity, requested-dimensionality
+    /// support, and vector-encoding-selection support in that order.
     /// </summary>
     /// <param name="request">The request the adapter was asked to execute.</param>
     /// <param name="descriptor">The descriptor the adapter instance was constructed to serve.</param>
@@ -130,7 +137,7 @@ public static class ModelRequestPreflight
     /// <see langword="null"/> when the request may proceed to credential
     /// resolution and translation; otherwise an
     /// <see cref="ProviderFailureKind.InvalidRequest"/> failure describing
-    /// the descriptor mismatch.
+    /// the first violated precondition.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="descriptor"/> is <see langword="null"/>.</exception>
     public static ProviderFailure? Validate(EmbeddingModelRequest request, EmbeddingModelDescriptor descriptor)
@@ -138,9 +145,17 @@ public static class ModelRequestPreflight
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(descriptor);
 
-        return request.Context.Model != descriptor
-            ? Reject(descriptor.ProviderId, _descriptorMismatchMessage)
-            : null;
+        var capabilities = descriptor.Capabilities;
+        return request.Context switch
+        {
+            { Model: var model } when model != descriptor =>
+                Reject(descriptor.ProviderId, _descriptorMismatchMessage),
+            { Request.Dimensions: not null } when !capabilities.SupportsDimensions =>
+                Reject(descriptor.ProviderId, _dimensionsUnsupportedMessage),
+            { Request.Encoding: not null } when !capabilities.SupportsEncodingSelection =>
+                Reject(descriptor.ProviderId, _encodingUnsupportedMessage),
+            _ => null,
+        };
     }
 
     private static ProviderFailure Reject(ProviderId providerId, string safeMessage)

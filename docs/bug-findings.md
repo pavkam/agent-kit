@@ -2100,6 +2100,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   them, and have the parser assert the returned dimensionality equals the
   requested `dimensions` when one was sent.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

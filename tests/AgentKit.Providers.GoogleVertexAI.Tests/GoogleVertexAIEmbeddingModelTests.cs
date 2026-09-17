@@ -238,8 +238,12 @@ public sealed class GoogleVertexAIEmbeddingModelTests
     }
 
     [Fact]
-    public async Task GenerateAsync_WhenTranslatorRejectsUnsupportedEncoding_ReturnsInvalidRequestFailureWithoutSendingHttpRequest()
+    public async Task GenerateAsync_WhenPreflightRejectsUnsupportedEncoding_ReturnsInvalidRequestFailureWithoutSendingHttpRequest()
     {
+        // The Vertex AI descriptor's default EmbeddingCapabilities declares SupportsEncodingSelection: false, so
+        // the shared ModelRequestPreflight now rejects a requested encoding before credential resolution or
+        // translation ever runs (P10), rather than the translator's own NotSupportedException guard being the
+        // only thing standing between an unsupported request and the wire.
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response.json");
         var descriptor = CreateDescriptor();
         var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
@@ -253,7 +257,8 @@ public sealed class GoogleVertexAIEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        failed.Failure.SafeMessage.ShouldBe("The selected model does not support requesting a specific vector encoding.");
+        failed.Failure.DiagnosticCause.ShouldBeNull();
         handler.Requests.ShouldBeEmpty();
     }
 
