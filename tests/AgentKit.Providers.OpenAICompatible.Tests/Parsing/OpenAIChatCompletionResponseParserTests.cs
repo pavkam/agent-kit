@@ -451,6 +451,25 @@ public sealed class OpenAIChatCompletionResponseParserTests
         failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hel");
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenChunkContainsOpenRouterShapedError_ParsesNumericCodeAndMetadataErrorType()
+    {
+        // OpenRouter sends `code` as a JSON number and its error category as `metadata.error_type`
+        // instead of the common `type` member; both previously threw JsonException mid-stream.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            "data: {\"error\":{\"message\":\"failure\",\"code\":429,\"metadata\":{\"error_type\":\"rate_limit_exceeded\"}}}\n\ndata: [DONE]\n\n");
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.ProviderCode.ShouldBe("429");
+    }
+
     public static TheoryData<string, ProviderFailureKind> StreamingErrorFrameKinds => new()
     {
         { "authentication_error", ProviderFailureKind.Authentication },

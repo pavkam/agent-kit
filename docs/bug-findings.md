@@ -1741,6 +1741,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   path; add OpenRouter error fixtures (HTTP 402/429 body, mid-stream error
   chunk, 200-with-error body).
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ---
 

@@ -1,0 +1,9 @@
+{
+  "error": {
+    "message": "Rate limited by upstream provider.",
+    "code": 429,
+    "metadata": {
+      "error_type": "rate_limit_exceeded"
+    }
+  }
+}

@@ -151,6 +151,23 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyCarriesANumericCode_ParsesItAndMapsMetadataErrorType()
+    {
+        // OpenRouter's documented error shape sends `code` as a JSON number (the HTTP status) and its
+        // error category as `error.metadata.error_type` instead of the common `error.type` member.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.TooManyRequests, "responses/error_openrouter_429.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-bad")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.ProviderCode.ShouldBe("429");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_hostile.json");

@@ -548,7 +548,9 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         ModelUsage? usage,
         CancellationToken cancellationToken)
     {
-        var kind = error.Type switch
+        // OpenRouter does not send the common `type` member; its error category instead arrives as
+        // `error.metadata.error_type`, so that is consulted only when `type` itself is absent.
+        var kind = (error.Type ?? error.Metadata?.ErrorType) switch
         {
             "rate_limit_error" or "rate_limit_exceeded" or "insufficient_quota" => ProviderFailureKind.Throttling,
             "authentication_error" => ProviderFailureKind.Authentication,
