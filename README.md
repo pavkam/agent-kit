@@ -1,9 +1,14 @@
+<!-- The banner switches artwork with the reader's color scheme, which needs a
+     <picture> element; Markdown has no equivalent. Rule exemptions are scoped
+     to this block only. -->
+<!-- markdownlint-disable MD033 MD013 -->
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/agentkit-banner-dark.svg">
     <img src="docs/assets/brand/agentkit-banner-light.svg" alt="AgentKit — composable agents for .NET" width="1280">
   </picture>
 </h1>
+<!-- markdownlint-restore -->
 
 Build agents in C# from parts you can see, swap, and trust.
 

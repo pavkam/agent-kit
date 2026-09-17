@@ -8,11 +8,11 @@ within one composable system.
 
 ## Concepts
 
-| Direction | Meaning | Files |
-| --- | --- | --- |
-| Assembly | Replaceable parts forming the project's initial. | [SVG](concepts/assembly.svg) · [PNG](concepts/assembly.png) |
-| Relay | Independent agents coordinated around a shared connection. | [SVG](concepts/relay.svg) · [PNG](concepts/relay.png) |
-| Dovetail | Three fitted sections forming an open structure. | [SVG](concepts/dovetail.svg) · [PNG](concepts/dovetail.png) |
+| Direction | Meaning                                                    | Files                                                       |
+| --------- | ---------------------------------------------------------- | ----------------------------------------------------------- |
+| Assembly  | Replaceable parts forming the project's initial.           | [SVG](concepts/assembly.svg) · [PNG](concepts/assembly.png) |
+| Relay     | Independent agents coordinated around a shared connection. | [SVG](concepts/relay.svg) · [PNG](concepts/relay.png)       |
+| Dovetail  | Three fitted sections forming an open structure.           | [SVG](concepts/dovetail.svg) · [PNG](concepts/dovetail.png) |
 
 The comparison sheet includes color, single-color, reversed, and small-size
 treatments. Relay is the selected direction; the alternatives remain available
@@ -20,16 +20,16 @@ as design explorations.
 
 ## Assets
 
-| Use | SVG source | PNG export |
-| --- | --- | --- |
-| Transparent mark, light backgrounds | [SVG](agentkit-mark.svg) | [1024 × 1024](agentkit-mark.png) |
-| Transparent mark, dark backgrounds | [SVG](agentkit-mark-dark.svg) | [1024 × 1024](agentkit-mark-dark.png) |
-| Single-color mark | [SVG](agentkit-mark-mono.svg) | [1024 × 1024](agentkit-mark-mono.png) |
-| White mark | [SVG](agentkit-mark-white.svg) | [1024 × 1024](agentkit-mark-white.png) |
-| Square avatar | [SVG](agentkit-avatar.svg) | [1024 × 1024](agentkit-avatar.png) |
-| README banner, light | [SVG](agentkit-banner-light.svg) | [1280 × 440](agentkit-banner-light.png) |
-| README banner, dark | [SVG](agentkit-banner-dark.svg) | [1280 × 440](agentkit-banner-dark.png) |
-| Social preview artwork | [SVG](agentkit-social.svg) | [1280 × 640](agentkit-social.png) |
+| Use                                 | SVG source                       | PNG export                              |
+| ----------------------------------- | -------------------------------- | --------------------------------------- |
+| Transparent mark, light backgrounds | [SVG](agentkit-mark.svg)         | [1024 × 1024](agentkit-mark.png)        |
+| Transparent mark, dark backgrounds  | [SVG](agentkit-mark-dark.svg)    | [1024 × 1024](agentkit-mark-dark.png)   |
+| Single-color mark                   | [SVG](agentkit-mark-mono.svg)    | [1024 × 1024](agentkit-mark-mono.png)   |
+| White mark                          | [SVG](agentkit-mark-white.svg)   | [1024 × 1024](agentkit-mark-white.png)  |
+| Square avatar                       | [SVG](agentkit-avatar.svg)       | [1024 × 1024](agentkit-avatar.png)      |
+| README banner, light                | [SVG](agentkit-banner-light.svg) | [1280 × 440](agentkit-banner-light.png) |
+| README banner, dark                 | [SVG](agentkit-banner-dark.svg)  | [1280 × 440](agentkit-banner-dark.png)  |
+| Social preview artwork              | [SVG](agentkit-social.svg)       | [1280 × 640](agentkit-social.png)       |
 
 The root README selects a banner for the reader's color scheme. The square
 avatar and social preview are separate uploadable assets; embedding the README
@@ -51,6 +51,6 @@ The light palette is indigo `#514AC4`, lavender `#938BF0`, and coral `#F0806D`
 on pale lavender `#F7F7FD`. The dark treatment uses `#8B83EF`, `#C3BDFF`, and
 `#FFAC98` on deep indigo `#191831`.
 
-These assets were authored directly as SVG and exported to PNG, as requested.
-No image-generation model was used. They are covered by the repository's
+These assets were authored directly as SVG and exported to PNG, as requested. No
+image-generation model was used. They are covered by the repository's
 [MIT license](../../../LICENSE).

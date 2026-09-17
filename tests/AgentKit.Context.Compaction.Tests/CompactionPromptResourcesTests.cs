@@ -37,7 +37,7 @@ public sealed class CompactionPromptResourcesTests
         using var stream = typeof(CompactionPromptResources).Assembly
             .GetManifestResourceStream(CompactionPromptResources.DefaultSummaryPromptResourceName)
             .ShouldNotBeNull();
-        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
         var expected = reader.ReadToEnd().TrimEnd();
 
         CompactionPromptResources.DefaultSummaryPrompt.ShouldBe(expected);
