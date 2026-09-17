@@ -3509,6 +3509,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   `TimeProvider`/`IIdentifierGenerator<MessageId>`) and reuse the same instances
   for both the definition and the conversation options.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F05 — `DefaultContextAssembler` lets metric/activity failures replace the typed result
 

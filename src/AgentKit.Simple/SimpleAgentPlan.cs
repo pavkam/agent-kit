@@ -16,6 +16,23 @@ internal sealed class SimpleAgentPlan
 {
     private static readonly AgentId _defaultAgentId = new(Guid.Parse("a9e0f3d2-5c1b-4e8a-9f6d-2b7c8d9e0f11"));
 
+    /// <summary>The memoized instruction messages, built once from <see cref="Instructions"/> the first time
+    /// either <see cref="Definition"/> or <see cref="Apply"/> needs them.</summary>
+    /// <remarks>
+    /// Both call sites must observe the exact same identity, timestamp, and content for "the same"
+    /// instruction: the engine's pinned <see cref="AgentDefinition"/> and the conversation session's
+    /// actual sent instructions are two projections of one plan, and minting a fresh
+    /// <see cref="MessageId"/>/<see cref="DateTimeOffset.UtcNow"/> per call (the prior behavior) made
+    /// them uncorrelated and non-deterministic. Only one memoization is required because, per this
+    /// type's own documented lifecycle, both call sites run after every <c>Use*</c>/<c>With*</c> call
+    /// has already finished mutating <see cref="Instructions"/>.
+    /// </remarks>
+    private ImmutableArray<AgentMessage>? _instructionMessages;
+
+    /// <summary>The memoized local-development identity, built once so every caller within one plan observes
+    /// the same identity and authentication timestamp instead of a fresh one per call.</summary>
+    private ExecutionIdentity? _localDevelopmentIdentity;
+
     /// <summary>Gets the instructions in call order.</summary>
     public List<string> Instructions { get; } = [];
 
@@ -83,7 +100,7 @@ internal sealed class SimpleAgentPlan
     public ExecutionIdentity RequireIdentity() =>
         Identity
         ?? (LocalDevelopmentDefaults
-            ? LocalDevelopmentIdentity()
+            ? _localDevelopmentIdentity ??= LocalDevelopmentIdentity()
             : throw new InvalidOperationException(
                 "No identity was supplied. Call WithIdentity, or UseLocalDevelopmentDefaults for a local single-user agent."));
 
@@ -144,7 +161,7 @@ internal sealed class SimpleAgentPlan
         "agent",
         new ModelSelectionPolicy([RequireModelAlias()]),
         ModelRequirements.None,
-        [.. Instructions.Select(InstructionMessage)],
+        InstructionMessages(),
         tools,
         LlmToolChoice.Auto,
         RequestSettings,
@@ -168,13 +185,18 @@ internal sealed class SimpleAgentPlan
         options.RequestSettings = RequestSettings;
         options.MaxTurns = MaxTurns;
         options.AttemptTimeout = AttemptTimeout;
-        foreach (var instruction in Instructions)
+        foreach (var instruction in InstructionMessages())
         {
-            options.Instructions.Add(InstructionMessage(instruction));
+            options.Instructions.Add(instruction);
         }
     }
 
-    private SystemMessage InstructionMessage(string text) => new(
+    /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>
+    /// <returns>One immutable message per entry in <see cref="Instructions"/>, in call order.</returns>
+    private ImmutableArray<AgentMessage> InstructionMessages() =>
+        _instructionMessages ??= [.. Instructions.Select(BuildInstructionMessage).Cast<AgentMessage>()];
+
+    private SystemMessage BuildInstructionMessage(string text) => new(
         new MessageId(Guid.NewGuid()),
         EffectiveAgentId,
         default,
