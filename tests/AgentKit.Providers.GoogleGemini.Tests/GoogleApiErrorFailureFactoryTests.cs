@@ -132,6 +132,80 @@ public sealed class GoogleApiErrorFailureFactoryTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenBodyCarriesRetryInfoDetailAndNoHeader_ResolvesRetryAfterFromRetryDelay()
+    {
+        // Google APIs communicate RESOURCE_EXHAUSTED retry guidance through error.details[] entries of
+        // type google.rpc.RetryInfo with a retryDelay (such as "20s"), not through a Retry-After header.
+        using var response = JsonResponse(
+            HttpStatusCode.TooManyRequests,
+            /*lang=json,strict*/ """
+            {
+              "error": {
+                "code": 429,
+                "message": "Resource has been exhausted.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                  { "@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "20s" }
+                ]
+              }
+            }
+            """);
+
+        var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
+
+        failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(20));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenBodyCarriesFractionalRetryDelayAmongOtherDetailTypes_ParsesTheRetryInfoEntry()
+    {
+        using var response = JsonResponse(
+            HttpStatusCode.TooManyRequests,
+            /*lang=json,strict*/ """
+            {
+              "error": {
+                "code": 429,
+                "message": "Resource has been exhausted.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                  { "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED" },
+                  { "@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "1.500s" }
+                ]
+              }
+            }
+            """);
+
+        var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
+
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(1.5));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenBothHeaderAndRetryInfoDetailPresent_PrefersTheHeader()
+    {
+        using var response = JsonResponse(
+            HttpStatusCode.TooManyRequests,
+            /*lang=json,strict*/ """
+            {
+              "error": {
+                "code": 429,
+                "message": "slow down",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                  { "@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "20s" }
+                ]
+              }
+            }
+            """);
+        response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(7));
+
+        var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
+
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(7));
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenHostileMessage_NeverPlacesItInSafeMessage()
     {
         const string hostile = "Authorization failed for sk-live-super-secret; tenant alice@example.test.";

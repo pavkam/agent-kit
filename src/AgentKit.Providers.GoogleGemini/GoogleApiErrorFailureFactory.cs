@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
+using System.Globalization;
 using System.Net.Http;
 
 using AgentKit.Providers.GoogleGemini.Wire;
@@ -75,6 +76,7 @@ public static class GoogleApiErrorFailureFactory
 
         string? providerMessage = null;
         string? status = null;
+        List<JsonElement>? details = null;
         Exception? diagnosticCause = null;
 
         try
@@ -87,6 +89,7 @@ public static class GoogleApiErrorFailureFactory
                     .ConfigureAwait(false);
                 providerMessage = envelope?.Error?.Message;
                 status = envelope?.Error?.Status;
+                details = envelope?.Error?.Details;
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -101,16 +104,68 @@ public static class GoogleApiErrorFailureFactory
             ? HttpStatusFailureKindMapper.Map(response.StatusCode)
             : mappedBodyKind;
 
+        // A Retry-After header takes precedence when present; Google APIs normally communicate
+        // RESOURCE_EXHAUSTED retry guidance through a google.rpc.RetryInfo detail's retryDelay instead
+        // of a header, so that is the only source most Gemini/Vertex throttling responses ever carry.
+        var retryAfter = RetryAfterResolver.Resolve(response.Headers, timeProvider) ?? ResolveRetryInfoDelay(details);
+
         return new ProviderFailure(
             kind,
             providerId,
             requestId: null,
             (int) response.StatusCode,
             status,
-            RetryAfterResolver.Resolve(response.Headers, timeProvider),
+            retryAfter,
             $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
             ProviderErrorMessageEvidence.Create(providerMessage));
+    }
+
+    private const string _retryInfoTypeUrl = "type.googleapis.com/google.rpc.RetryInfo";
+
+    /// <summary>
+    /// Locates a <c>google.rpc.RetryInfo</c> entry in <paramref name="details"/> and parses its
+    /// <c>retryDelay</c> protobuf Duration string (such as <c>"20s"</c> or <c>"1.5s"</c>).
+    /// </summary>
+    /// <param name="details">The raw <c>error.details</c> entries, or <see langword="null"/> when the body carried none.</param>
+    /// <returns>The parsed non-negative delay, or <see langword="null"/> when no valid RetryInfo entry is present.</returns>
+    private static TimeSpan? ResolveRetryInfoDelay(List<JsonElement>? details)
+    {
+        if (details is null)
+        {
+            return null;
+        }
+
+        foreach (var detail in details)
+        {
+            if (detail.ValueKind != JsonValueKind.Object
+                || !detail.TryGetProperty("@type", out var typeProperty)
+                || typeProperty.ValueKind != JsonValueKind.String
+                || typeProperty.GetString() != _retryInfoTypeUrl
+                || !detail.TryGetProperty("retryDelay", out var delayProperty)
+                || delayProperty.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var delayText = delayProperty.GetString();
+            if (delayText is not { Length: > 1 } || delayText[^1] != 's')
+            {
+                continue;
+            }
+
+            if (double.TryParse(
+                    delayText.AsSpan(0, delayText.Length - 1),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var seconds)
+                && seconds >= 0)
+            {
+                return TimeSpan.FromSeconds(seconds);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

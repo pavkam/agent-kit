@@ -2598,6 +2598,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `type.googleapis.com/google.rpc.RetryInfo` entry, parse its `retryDelay`
   duration string, and use it as `retryAfter` when no header is present.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N12 — Default `HttpClient` registration keeps the 100 s `HttpClient.Timeout`, silently capping non-streaming attempts below the request deadline
 
