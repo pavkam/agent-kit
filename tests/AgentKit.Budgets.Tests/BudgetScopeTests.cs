@@ -58,6 +58,48 @@ public sealed class BudgetScopeTests
         held.ShouldBe(new BudgetHeld([hold]));
     }
 
+    /// <summary>Verifies session and run correlation tags are attached when the scope address carries both.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenAddressHasSessionAndRun_TagsFullCorrelation()
+    {
+        using var parent = new Activity("budget-reserve-correlation-test").Start();
+        var parentSpanId = parent.SpanId;
+        var traceId = parent.TraceId;
+        var observed = new System.Collections.Concurrent.ConcurrentQueue<(string? SessionId, string? RunId)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == traceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.ParentSpanId == parentSpanId && activity.TraceId == traceId && activity.OperationName == AgentKitActivityNames.BudgetReserve)
+                {
+                    observed.Enqueue((
+                        activity.GetTagItem(AgentKitTagNames.SessionId)?.ToString(),
+                        activity.GetTagItem(AgentKitTagNames.RunId)?.ToString()));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var address = new BudgetScopeAddress(
+            new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
+        var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), address);
+        var request = TestFactory.ReservationRequest(scopeReference.Id);
+        var ledger = new RecordingBudgetLedger
+        {
+            ReserveResult = new BudgetLedgerBatchReserved([TestFactory.Receipt(scopeReference, request)])
+        };
+        var scope = new BudgetScope(ledger, scopeReference);
+
+        var result = await scope.ReserveBatchAsync([request], TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<BudgetBatchReserved>();
+        var recorded = observed.ShouldHaveSingleItem();
+        recorded.SessionId.ShouldBe(address.SessionId!.Value.ToString());
+        recorded.RunId.ShouldBe(address.RunId!.Value.ToString());
+    }
+
     [Fact]
     public async Task GetSnapshotAsync_WhenActivityListenerThrows_RestoresParentAndReturnsLedgerResult()
     {
@@ -87,6 +129,49 @@ public sealed class BudgetScopeTests
     }
 
 
+
+    /// <summary>Verifies session, run, and operation correlation tags are attached when the scope address carries all three.</summary>
+    [Fact]
+    public async Task GetSnapshotAsync_WhenAddressHasSessionRunAndOperation_TagsFullCorrelation()
+    {
+        using var parent = new Activity("budget-snapshot-correlation-test").Start();
+        var parentSpanId = parent.SpanId;
+        var traceId = parent.TraceId;
+        var observed = new System.Collections.Concurrent.ConcurrentQueue<(string? SessionId, string? RunId, string? OperationId)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == traceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.ParentSpanId == parentSpanId && activity.TraceId == traceId && activity.OperationName == AgentKitActivityNames.BudgetSnapshot)
+                {
+                    observed.Enqueue((
+                        activity.GetTagItem(AgentKitTagNames.SessionId)?.ToString(),
+                        activity.GetTagItem(AgentKitTagNames.RunId)?.ToString(),
+                        activity.GetTagItem(AgentKitTagNames.OperationId)?.ToString()));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var address = new BudgetScopeAddress(
+            new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new OperationId(Guid.NewGuid()));
+        var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), address);
+        var ledger = new RecordingBudgetLedger
+        {
+            SnapshotResult = new BudgetSnapshot(scopeReference.Id, DateTimeOffset.UnixEpoch, [], [])
+        };
+        var scope = new BudgetScope(ledger, scopeReference);
+
+        var result = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(ledger.SnapshotResult);
+        var recorded = observed.ShouldHaveSingleItem();
+        recorded.SessionId.ShouldBe(address.SessionId!.Value.ToString());
+        recorded.RunId.ShouldBe(address.RunId!.Value.ToString());
+        recorded.OperationId.ShouldBe(address.OperationId!.Value.ToString());
+    }
 
     [Fact]
     public void Constructors_WhenRequiredDependencyIsNull_ThrowExactParameterName()
