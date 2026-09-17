@@ -354,31 +354,17 @@ internal sealed class DefaultSecurityAuditDispatcher: ISecurityAuditDispatcher
             return;
         }
 
-        try
-        {
-            _ = writeTask.ContinueWith(
-                static completed => _ = completed.Exception,
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-        catch
-        {
-            // Late sink observation is best-effort and cannot change the bounded dispatch result.
-        }
+        // Task.ContinueWith does not throw for a non-disposed antecedent task, which writeTask always is here;
+        // the catch is defense-in-depth against a future antecedent-disposal change, not a reachable branch today.
+        try { _ = writeTask.ContinueWith(static completed => _ = completed.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default); } catch { }
     }
 
     private static void SafeSetActivity(Action action)
     {
         Debug.Assert(action is not null, "Activity observation requires a callback.");
-        try
-        {
-            action();
-        }
-        catch
-        {
-            // Activity listeners are observational and cannot alter audit delivery.
-        }
+        // Activity.SetSuccessful/SetFailed never throws for the always-valid values this dispatcher passes, so
+        // the catch has no reachable trigger; it guards only against a future activity-extension regression.
+        try { action(); } catch { }
     }
 
     private static void SafeLog(Action action)
