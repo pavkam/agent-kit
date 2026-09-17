@@ -236,4 +236,51 @@ internal static class TestFactory
         new ProviderFailure(kind, new ProviderId("test-provider"), null, null, null, null, "test provider failure", null, ExtensionData.Empty),
         [],
         null);
+
+    /// <summary>Builds an active <see cref="CompactionSessionEntry"/> covering entries before <paramref name="retainedSuffixStart"/>.</summary>
+    public static CompactionSessionEntry CompactionEntry(
+        SessionAddress address,
+        BranchId branchId,
+        long sequence,
+        long retainedSuffixStart,
+        CompactionId? supersedes = null)
+    {
+        var context = CompactionContext(address.AgentId, address.SessionId);
+        var manifest = new CompactionManifest(
+            new CompactionManifestId(Guid.NewGuid()),
+            context,
+            branchId,
+            new SessionVersion(sequence),
+            new CompactionSourceRange(new SessionSequence(1), new SessionSequence(sequence)),
+            new SessionSequence(retainedSuffixStart),
+            new CompactionProducer(new CompactionStrategyKey("test"), true, ExtensionData.Empty),
+            new ContextEpoch(0),
+            new CompactionSizeEstimate(1, 1, 1),
+            new CompactionSizeEstimate(1, 1, 1),
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        var checkpoint = new CompactionCheckpoint(
+            [new TextPart("earlier summary", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var record = new CompactionRecord(
+            context,
+            new SessionVersion(sequence),
+            new SessionVersion(sequence),
+            CompactionRecordStatus.Active,
+            manifest,
+            checkpoint,
+            supersedes,
+            null,
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        return new CompactionSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            Correlation(),
+            branchId,
+            new SessionSequence(sequence),
+            null,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            record);
+    }
 }

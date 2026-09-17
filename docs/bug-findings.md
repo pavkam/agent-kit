@@ -3948,6 +3948,7 @@ var cursor = new SessionSequence(0);
   ceiling.
 - **Confidence:** Medium
 - **Status:** Fixed ✅
+- **Status:** Fixed ✅
 
 ### M04 — `DefaultCompactor` never populates `CompactionRecord.Supersedes` even when the cut covers an earlier active record
 

@@ -199,6 +199,51 @@ public sealed class StructuralCompactionCutSelectorTests
         noCut.Rejection.Kind.ShouldBe(CompactionRejectionKind.SourceLimitExceeded);
     }
 
+    [Fact]
+    public async Task SelectAsync_WhenAnEarlierActiveRecordAlreadyCoversMostOfTheBranch_DoesNotCountThatPrefixAgainstTheMaximum()
+    {
+        // Six entries loaded, but the first three (two messages plus the earlier compaction entry
+        // itself) are already covered by an active compaction record whose RetainedSuffixStart is 4.
+        // Only the three entries after it are "new" since that checkpoint; with maximumSourceEntries=3
+        // this must succeed even though entries.Length (6) exceeds it.
+        var selector = CreateSelector(maximumSourceEntries: 3);
+        var address = Address();
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1),
+            TestFactory.MessageEntry(address, _branchId, 2),
+            TestFactory.CompactionEntry(address, _branchId, sequence: 3, retainedSuffixStart: 4),
+            TestFactory.MessageEntry(address, _branchId, 4),
+            TestFactory.MessageEntry(address, _branchId, 5),
+            TestFactory.MessageEntry(address, _branchId, 6));
+
+        var result = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 1), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionCutSelected>();
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenEntriesSinceTheEarlierActiveRecordStillExceedTheMaximum_ReturnsSourceLimitExceeded()
+    {
+        // Same shape as above, but maximumSourceEntries is now smaller than the 3 entries appended
+        // since the earlier checkpoint, so the ceiling must still reject - it is relaxed, not removed.
+        var selector = CreateSelector(maximumSourceEntries: 2);
+        var address = Address();
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1),
+            TestFactory.MessageEntry(address, _branchId, 2),
+            TestFactory.CompactionEntry(address, _branchId, sequence: 3, retainedSuffixStart: 4),
+            TestFactory.MessageEntry(address, _branchId, 4),
+            TestFactory.MessageEntry(address, _branchId, 5),
+            TestFactory.MessageEntry(address, _branchId, 6));
+
+        var result = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 1), TestContext.Current.CancellationToken);
+
+        var noCut = result.ShouldBeOfType<NoSafeCompactionCut>();
+        noCut.Rejection.Kind.ShouldBe(CompactionRejectionKind.SourceLimitExceeded);
+    }
+
     private SessionAddress Address() => new(_agentId, _sessionId);
 
     private CompactionCutSelectionRequest SelectionRequest(

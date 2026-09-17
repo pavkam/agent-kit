@@ -54,12 +54,19 @@ public sealed class StructuralCompactionCutSelector: ICompactionCutSelector
 
         var entries = request.Source.Entries;
 
-        if (entries.Length > _maximumSourceEntries)
+        // The loaded source always starts at sequence 0 (causal-parent safety needs the full branch
+        // prefix), so a long-lived branch that has already been compacted once permanently accumulates
+        // more entries than any fixed ceiling. Counting only entries not yet covered by the newest
+        // active compaction record against the ceiling keeps that record's already-summarized prefix
+        // "free," so compaction remains possible for exactly the sessions that need it most instead of
+        // being permanently rejected past MaximumSourceEntries.
+        var uncoveredCount = entries.Length - CountEntriesCoveredByNewestActiveRecord(entries);
+        if (uncoveredCount > _maximumSourceEntries)
         {
             return ValueTask.FromResult<CompactionCutSelectionResult>(new NoSafeCompactionCut(
                 new CompactionRejection(
                     CompactionRejectionKind.SourceLimitExceeded,
-                    $"The eligible source range carries {entries.Length} entries, exceeding the configured maximum of {_maximumSourceEntries}.",
+                    $"The eligible source range carries {uncoveredCount} entries not yet covered by an earlier compaction, exceeding the configured maximum of {_maximumSourceEntries}.",
                     ExtensionData.Empty)));
         }
 
@@ -108,6 +115,39 @@ public sealed class StructuralCompactionCutSelector: ICompactionCutSelector
                 CompactionRejectionKind.NoSafeCut,
                 "No boundary was found that does not split a causal pairing.",
                 ExtensionData.Empty)));
+    }
+
+    /// <summary>
+    /// Counts how many of the loaded entries fall before the <see cref="CompactionManifest.RetainedSuffixStart"/>
+    /// of the newest <see cref="CompactionRecordStatus.Active"/> <see cref="CompactionSessionEntry"/> in
+    /// <paramref name="entries"/> - the prefix an earlier compaction already summarized, and therefore
+    /// need not count against <see cref="_maximumSourceEntries"/> again.
+    /// </summary>
+    private static int CountEntriesCoveredByNewestActiveRecord(ImmutableArray<SessionEntry> entries)
+    {
+        for (var i = entries.Length - 1; i >= 0; i--)
+        {
+            if (entries[i] is not CompactionSessionEntry { Record.Status: CompactionRecordStatus.Active } active)
+            {
+                continue;
+            }
+
+            var retainedSuffixStart = active.Record.Manifest.RetainedSuffixStart.Value;
+            var covered = 0;
+            foreach (var entry in entries)
+            {
+                if (entry.Sequence.Value >= retainedSuffixStart)
+                {
+                    break;
+                }
+
+                covered++;
+            }
+
+            return covered;
+        }
+
+        return 0;
     }
 
     private static CompactionCut BuildCut(ImmutableArray<SessionEntry> entries, int covered)
