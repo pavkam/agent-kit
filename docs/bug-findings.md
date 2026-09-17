@@ -3861,6 +3861,7 @@ public McpToolMethodDescriptor Resolve(MethodInfo method)
   before comparison; add a test for a derived contract that inherits without
   overriding.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### M02 — `McpClientVersionPolicy.RequireAtLeast` pins negotiation to exactly the "minimum" revision (never a newer one)
 

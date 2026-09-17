@@ -15,7 +15,7 @@ using System.Reflection;
 public sealed class McpToolContract<TTools>
     where TTools : class
 {
-    private readonly ImmutableDictionary<MethodInfo, McpToolMethodDescriptor> _methodsByReflectionIdentity;
+    private readonly ImmutableDictionary<RuntimeMethodHandle, McpToolMethodDescriptor> _methodsByReflectionIdentity;
 
     /// <summary>Creates and validates the complete reflected contract.</summary>
     /// <exception cref="InvalidOperationException">
@@ -41,8 +41,14 @@ public sealed class McpToolContract<TTools>
             : throw new InvalidOperationException($"MCP tool surface '{toolClass}' does not declare any attributed tool methods.");
 
         var duplicate = methods.GroupBy(static method => method.Name).FirstOrDefault(static group => group.Count() > 1);
+        // Keyed by MethodHandle rather than MethodInfo: RuntimeMethodInfo.Equals/GetHashCode
+        // incorporate ReflectedType, and toolClass.GetMethods() always reflects toolClass even for a
+        // method inherited without being overridden. An expression-reflected MethodCallExpression.Method
+        // for that same inherited call is materialized with ReflectedType == DeclaringType (the base
+        // class), so the two MethodInfo instances would never compare equal even though they identify
+        // the exact same method. MethodHandle identity is independent of ReflectedType.
         _methodsByReflectionIdentity = duplicate is null
-            ? methods.ToImmutableDictionary(static descriptor => descriptor.Method)
+            ? methods.ToImmutableDictionary(static descriptor => descriptor.Method.MethodHandle)
             : throw new InvalidOperationException(
                 $"MCP tool surface '{toolClass}' declares duplicate tool name '{duplicate.Key}'. MCP names do not select tool versions.");
     }
@@ -58,7 +64,7 @@ public sealed class McpToolContract<TTools>
     public McpToolMethodDescriptor Resolve(MethodInfo method)
     {
         ArgumentNullException.ThrowIfNull(method);
-        return _methodsByReflectionIdentity.TryGetValue(method, out var descriptor)
+        return _methodsByReflectionIdentity.TryGetValue(method.MethodHandle, out var descriptor)
             ? descriptor
             : throw new ArgumentException(
                 $"Method '{method.Name}' is not an MCP tool in '{typeof(TTools)}'.",

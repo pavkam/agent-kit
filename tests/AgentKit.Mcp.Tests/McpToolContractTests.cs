@@ -252,6 +252,22 @@ public sealed class McpToolContractTests
         exception.Message.ShouldContain(nameof(ToString));
     }
 
+    [Fact]
+    public void Resolve_WhenMethodIsInheritedWithoutBeingOverridden_ReturnsTheDescriptor()
+    {
+        // The contract indexes toolClass.GetMethods(), which always reflects toolClass (the derived
+        // type) even for a method the derived type inherits without overriding. A call-site expression
+        // over that same inherited method is compiled with ReflectedType == DeclaringType (the base
+        // class) instead. Resolve must treat both MethodInfo instances as identifying the same method.
+        var contract = new McpToolContract<InheritingNonOverridingTools>();
+        var baseReflected = typeof(InheritableBaseTools).GetMethod(nameof(InheritableBaseTools.ExecuteAsync))!;
+        baseReflected.ReflectedType.ShouldBe(typeof(InheritableBaseTools));
+
+        var descriptor = contract.Resolve(baseReflected);
+
+        descriptor.Name.ShouldBe(new McpToolName("inherited-without-override"));
+    }
+
     private sealed record Request(string Value);
     private readonly record struct StructRequest(string Value);
     private sealed record Response(string Value);
@@ -417,6 +433,14 @@ public sealed class McpToolContractTests
         [McpTool("fallback", "1")]
         public abstract Task<Response> ExecuteAsync(Request request);
     }
+
+    private class InheritableBaseTools
+    {
+        [McpTool("inherited-without-override", "1")]
+        public virtual Task<Response> ExecuteAsync(Request request) => throw new NotSupportedException();
+    }
+
+    private sealed class InheritingNonOverridingTools: InheritableBaseTools;
 
     private abstract class EffectHintTools
     {
