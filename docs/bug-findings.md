@@ -2799,6 +2799,7 @@ retained capacity and can leave a scope stuck in `Held`.
   `ReserveBatch`/`GetSnapshot`; add a conformance test covering an expired
   unstarted row at correction/resolution time.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### B03 — SQLite hold clearance and hard-failure checks read `projection.Reserved`, which still includes expired-but-unswept unstarted reservations
 
@@ -2840,6 +2841,7 @@ retained capacity and can leave a scope stuck in `Held`.
   or subtract them from `projection.Reserved` / recompute `MaximumRetained`
   exactly as `ReserveBatchCore` does.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### B04 — Approval broker never bounds the handler wait by the approval binding's expiry
 

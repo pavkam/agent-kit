@@ -446,8 +446,9 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                     createdStates.Add((boundary, new OverrunHoldState(evidence)));
                 }
             }
+            var expiredForClearing = FindExpired(_timeProvider.GetUtcNow());
             var clearing = state.Lineage
-                .SelectMany(boundary => EligibleForClear(boundary, state, request.CorrectedActual)
+                .SelectMany(boundary => EligibleForClear(boundary, state, request.CorrectedActual, expiredForClearing)
                     ? boundary.OverrunHolds.Where(hold => hold.IsActive && hold.Evidence.Policy == BudgetOverrunHoldPolicy.ClearWhenReconciled && hold.Evidence.Dimension == state.Receipt.OriginalRequest.Dimension)
                     : [])
                 .ToImmutableArray();
@@ -624,7 +625,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                 throw new BudgetLedgerStateException("The enforcement receipt is not structurally bound to the requested hold.");
             }
             var currentOverruns = CurrentOverruns(boundary, hold.Evidence.Dimension);
-            var hardFailures = CurrentHardFailures(boundary, hold.Evidence.Dimension);
+            var hardFailures = CurrentHardFailures(boundary, hold.Evidence.Dimension, FindExpired(_timeProvider.GetUtcNow()));
             BudgetOverrunHoldResolutionResult result;
             EnsureRevisionCapacity(1);
             result = !currentOverruns.IsEmpty || !hardFailures.IsEmpty
@@ -1012,10 +1013,15 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             .Select(hold => CurrentEvidence(hold.Evidence))
             .Where(hold => hold.CurrentActual > hold.Reserved)];
 
-    private static bool EligibleForClear(ScopeState boundary, ReservationState correcting, decimal correctedActual)
+    private static bool EligibleForClear(
+        ScopeState boundary,
+        ReservationState correcting,
+        decimal correctedActual,
+        HashSet<ReservationState> expired)
     {
         Debug.Assert(boundary is not null, "The correction supplies a charged boundary.");
         Debug.Assert(correcting is not null, "The correction supplies settled reservation state.");
+        Debug.Assert(expired is not null, "The caller supplies the current expired-reservation set.");
         var original = correcting.Receipt.OriginalRequest;
         if (boundary.Reservations.Any(item =>
             item.Commit is not null
@@ -1033,8 +1039,11 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             .Where(item => item.Commit is not null && item.Receipt.OriginalRequest.Dimension == original.Dimension)
             .Select(item => ReferenceEquals(item, correcting) ? correctedActual : item.Commit!.Actual)
             .ToArray();
+        // Expired-but-unswept unstarted reservations no longer retain capacity: FindExpired only marks
+        // rows lazily (on reserve/snapshot/mark-started), so without this exclusion a dead reservation
+        // could inflate `observed` past the hard ceiling and keep a clearable hold stuck open forever.
         var retainedValues = boundary.Reservations
-            .Where(item => item.IsCapacityRetaining && item.Receipt.OriginalRequest.Dimension == original.Dimension)
+            .Where(item => item.IsCapacityRetaining && !expired.Contains(item) && item.Receipt.OriginalRequest.Dimension == original.Dimension)
             .Select(item => item.Receipt.OriginalRequest.Amount)
             .ToArray();
         var aggregation = correcting.Aggregation;
@@ -1050,15 +1059,19 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
         return observed.CompareTo(BudgetQuantity.FromDecimal(hard.Value)) <= 0;
     }
 
-    private static ImmutableArray<BudgetLimitFailure> CurrentHardFailures(ScopeState boundary, BudgetDimension dimension)
+    private static ImmutableArray<BudgetLimitFailure> CurrentHardFailures(
+        ScopeState boundary,
+        BudgetDimension dimension,
+        HashSet<ReservationState> expired)
     {
         Debug.Assert(boundary is not null, "The caller resolves the hold-owning boundary.");
+        Debug.Assert(expired is not null, "The caller supplies the current expired-reservation set.");
         var hard = boundary.Request.OriginalRequest.Limits.FirstOrDefault(limit => limit.Dimension == dimension && limit.Kind == BudgetLimitKind.Hard);
         if (hard is null)
         {
             return [];
         }
-        var (reserved, committed) = Usage(boundary, dimension);
+        var (reserved, committed) = Usage(boundary, dimension, expired);
         var aggregation = boundary.Reservations.First(item => item.Receipt.OriginalRequest.Dimension == dimension).Aggregation;
         var observed = aggregation switch
         {

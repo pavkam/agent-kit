@@ -699,6 +699,59 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
             .ShouldBeOfType<BudgetLedgerBatchReserveRejected>();
     }
 
+    /// <summary>
+    /// Verifies an expired-but-unswept unstarted reservation is excluded from the hard-limit accounting
+    /// a correction uses to decide whether a ClearWhenReconciled hold becomes eligible to clear.
+    /// </summary>
+    [Fact]
+    public async Task CorrectAsync_WhenAnotherReservationExpiredButUnswept_StillClearsAnEligibleHold()
+    {
+        var fixture = new TFixture();
+        var ledger = fixture.CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "expired-clear-eligibility", 100);
+        var expiring = Reservation(scope, "expired-row", 60) with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1) };
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [expiring])))
+            .ShouldBeOfType<BudgetLedgerBatchReserved>();
+        fixture.Advance(TimeSpan.FromMinutes(10));
+        // The expired row above is never swept by a reserve/snapshot/mark-started call before the
+        // correction below, so it stays "IsCapacityRetaining" unless the correction path itself
+        // excludes it.
+        var reservation = await ReserveOneAsync(ledger, scope, "settled-row", 45, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 50));
+        _ = commit.CreatedOverrunHolds.ShouldHaveSingleItem();
+
+        var correction = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 45, 1));
+
+        correction.ClearedOverrunHolds.ShouldBe([commit.CreatedOverrunHolds.Single().Reference]);
+        (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Verifies an expired-but-unswept unstarted reservation is excluded from the hard-limit accounting
+    /// an operator resolution uses to decide whether the boundary still has a hard-limit failure.
+    /// </summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenAnotherReservationExpiredButUnswept_StillResolvesAnEligibleHold()
+    {
+        var fixture = new TFixture();
+        var ledger = fixture.CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "expired-resolve-eligibility", 100, policy: BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+        var expiring = Reservation(scope, "expired-row", 60) with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1) };
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [expiring])))
+            .ShouldBeOfType<BudgetLedgerBatchReserved>();
+        fixture.Advance(TimeSpan.FromMinutes(10));
+        var reservation = await ReserveOneAsync(ledger, scope, "settled-row", 45, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 50));
+        var hold = commit.CreatedOverrunHolds.ShouldHaveSingleItem().Reference;
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 45, 1));
+
+        var resolution = await ledger.ResolveOverrunHoldAsync(ResolutionRequest(hold, "expired-resolve", "operator", 1));
+
+        _ = resolution.ShouldBeOfType<BudgetOverrunHoldResolved>();
+    }
+
     /// <summary>Verifies operator resolution waits for eligible truth, replays exactly, and never clears a later generation.</summary>
     [Fact]
     public async Task ResolveOverrunHoldAsync_WhenAccountingBecomesEligible_PreservesGenerationReplay()

@@ -672,6 +672,13 @@ public sealed class SqliteBudgetLedger: IBudgetLedger
         }
         var projection = ReadProjection(connection, transaction, boundary.Reference.Id, dimension)
             ?? throw new InvalidDataException("Settled accounting has no dimension projection.");
+        // projection.Reserved still includes any expired-but-unswept unstarted reservation charged to this
+        // boundary: PersistExpiration only decrements it lazily, from a later reserve/snapshot/mark-started
+        // call. Without this exclusion a dead reservation can inflate `observed` past the hard ceiling and
+        // keep a ClearWhenReconciled hold stuck open indefinitely.
+        var reserved = correcting.Aggregation is BudgetAggregationKind.Sum or BudgetAggregationKind.Duration or BudgetAggregationKind.ConcurrentGauge
+            ? Subtract(projection.Reserved, ExpiredRetainedAmount(connection, transaction, boundary.Reference.Id, dimension))
+            : projection.Reserved;
         var committed = correcting.Aggregation switch
         {
             BudgetAggregationKind.Maximum => MaximumAfterReplacement(connection, transaction, boundary.Reference.Id, dimension, correcting.CurrentCommit!.Actual, correctedActual),
@@ -684,12 +691,24 @@ public sealed class SqliteBudgetLedger: IBudgetLedger
         };
         var observed = correcting.Aggregation switch
         {
-            BudgetAggregationKind.Maximum => Max(projection.Reserved, committed),
-            BudgetAggregationKind.ConcurrentGauge => projection.Reserved,
-            BudgetAggregationKind.Sum or BudgetAggregationKind.Duration => projection.Reserved.Add(committed),
+            BudgetAggregationKind.Maximum => Max(reserved, committed),
+            BudgetAggregationKind.ConcurrentGauge => reserved,
+            BudgetAggregationKind.Sum or BudgetAggregationKind.Duration => reserved.Add(committed),
             _ => throw new BudgetLedgerStateException("The corrected accounting has unsupported aggregation semantics."),
         };
         return observed.CompareTo(BudgetQuantity.FromDecimal(hard.Value)) <= 0;
+    }
+
+    /// <summary>Sums the still-charged amount of every expired-but-unswept unstarted reservation for one boundary and dimension.</summary>
+    private decimal ExpiredRetainedAmount(SqliteConnection connection, SqliteTransaction transaction, BudgetScopeId scopeId, BudgetDimension dimension)
+    {
+        Debug.Assert(connection is not null && transaction is not null, "Validated expiry-accounting inputs are required.");
+        var now = _timeProvider.GetUtcNow();
+        var expired = ReadCapacityReservations(connection, transaction, scopeId)
+            .Where(row => row.IsCapacityRetaining && row.StartedAt is null
+                && row.Receipt.OriginalRequest.Dimension == dimension
+                && now >= row.Receipt.EffectiveReservation.ExpiresAt);
+        return expired.Sum(static row => row.Receipt.OriginalRequest.Amount);
     }
 
     private static BudgetQuantity MaximumAfterReplacement(SqliteConnection connection, SqliteTransaction transaction, BudgetScopeId scopeId,
@@ -1437,7 +1456,12 @@ public sealed class SqliteBudgetLedger: IBudgetLedger
         var projection = ReadProjection(connection, transaction, boundary.Reference.Id, dimension)
             ?? throw new InvalidDataException("A hold references missing dimension accounting.");
         var aggregation = projection.Aggregation;
-        var (reserved, committed) = (projection.Reserved, projection.Committed);
+        // See EligibleForClear: projection.Reserved still includes expired-but-unswept unstarted
+        // reservations, which must not count toward a hard-limit failure evaluated here.
+        var reserved = aggregation is BudgetAggregationKind.Sum or BudgetAggregationKind.Duration or BudgetAggregationKind.ConcurrentGauge
+            ? Subtract(projection.Reserved, ExpiredRetainedAmount(connection, transaction, boundary.Reference.Id, dimension))
+            : projection.Reserved;
+        var committed = projection.Committed;
         var observed = aggregation switch
         {
             BudgetAggregationKind.Maximum => Max(reserved, committed),
