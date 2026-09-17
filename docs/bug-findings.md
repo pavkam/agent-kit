@@ -2313,6 +2313,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `GoogleGeminiContentTranslator` and return a `ProtocolViolation` failure when
   more than one candidate (or a candidate with `index != 0`) is observed.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N03 — Gemini embedding space identity discards the requested `taskType`
 

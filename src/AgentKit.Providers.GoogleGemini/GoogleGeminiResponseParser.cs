@@ -101,6 +101,20 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                 cancellationToken).ConfigureAwait(false);
         }
 
+        if (dto.Candidates!.Count > 1)
+        {
+            // The request pins candidateCount to 1 and this operation represents exactly one candidate.
+            // Silently keeping only candidates[0] would discard model output the caller never sees.
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned more than one candidate for a single-candidate request.",
+                diagnosticCause: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var partsDto = candidate.Content?.Parts ?? [];
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
 
@@ -216,7 +230,24 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             responseId ??= chunk.ResponseId;
             blockReason ??= chunk.PromptFeedback?.BlockReason;
 
-            var candidate = chunk.Candidates?.Count > 0 ? chunk.Candidates[0] : null;
+            var candidates = chunk.Candidates;
+            if (candidates is { Count: > 1 } or [{ Index: not (null or 0) }])
+            {
+                // A streamed chunk for candidate index 1+ belongs to a second candidate; merging its
+                // fragments into candidate 0 would corrupt the only candidate this operation represents.
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    ProviderFailureKind.ProtocolViolation,
+                    "The provider streamed a candidate other than the single requested candidate.",
+                    diagnosticCause: null,
+                    cancellationToken,
+                    BuildPartialParts(parts),
+                    TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
+            }
+
+            var candidate = candidates?.Count > 0 ? candidates[0] : null;
             if (chunk.UsageMetadata is not null)
             {
                 usage = chunk.UsageMetadata;

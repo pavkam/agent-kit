@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hello"}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hi"}]}, "index": 1}]}
+

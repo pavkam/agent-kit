@@ -74,7 +74,12 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
 
     private static JsonObject TranslateGenerationConfig(LlmRequestSettings settings)
     {
-        var generationConfig = new JsonObject();
+        var generationConfig = new JsonObject
+        {
+            // This operation always represents exactly one candidate; the parser also fails closed if the
+            // provider (or an extension overriding this below) still returns more than one candidate.
+            ["candidateCount"] = 1,
+        };
 
         if (settings.Temperature is { } temperature)
         {

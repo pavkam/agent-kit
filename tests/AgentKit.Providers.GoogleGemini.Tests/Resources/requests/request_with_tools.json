@@ -48,6 +48,7 @@
     "functionCallingConfig": { "mode": "ANY" }
   },
   "generationConfig": {
+    "candidateCount": 1,
     "maxOutputTokens": 200,
     "stopSequences": ["STOP"]
   }

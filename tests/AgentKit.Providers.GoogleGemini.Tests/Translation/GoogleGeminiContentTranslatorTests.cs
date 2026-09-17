@@ -123,7 +123,11 @@ public sealed class GoogleGeminiContentTranslatorTests
 
         var body = new GoogleGeminiContentTranslator().Translate(request);
 
-        body.AsObject().ContainsKey("generationConfig").ShouldBeFalse();
+        // generationConfig is always present now (it always pins candidateCount to 1), but must carry
+        // no parallel-call control: Gemini exposes no way to forbid parallel function calls.
+        var generationConfig = body.AsObject()["generationConfig"].ShouldNotBeNull().AsObject();
+        generationConfig["candidateCount"]!.GetValue<int>().ShouldBe(1);
+        generationConfig.ContainsKey("parallelToolCalls").ShouldBeFalse();
     }
 
     [Fact]

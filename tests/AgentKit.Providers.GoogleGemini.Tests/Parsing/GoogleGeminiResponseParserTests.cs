@@ -170,6 +170,33 @@ public sealed class GoogleGeminiResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenMoreThanOneCandidateIsReturned_FailsWithProtocolViolationInsteadOfDiscardingIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_multiple_candidates.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenAChunkStreamsASecondCandidateIndex_FailsWithProtocolViolationInsteadOfMergingIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_multiple_candidates.sse");
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        // The candidate-0 fragment already observed must still be reported, not silently dropped.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

@@ -4,6 +4,7 @@
     "parts": [{ "text": "You are a helpful assistant." }]
   },
   "generationConfig": {
+    "candidateCount": 1,
     "temperature": 0.2,
     "maxOutputTokens": 100
   }
