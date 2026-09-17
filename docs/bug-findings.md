@@ -3285,6 +3285,7 @@ if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
   group (`setsid` + `kill(-pgid)`) or accept the narrow window and at least
   re-check `HasExited` immediately before signalling.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### Areas reviewed (Group 08)
 

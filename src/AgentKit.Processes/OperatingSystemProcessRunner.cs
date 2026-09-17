@@ -413,7 +413,11 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
             return true;
         }
 
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        // A narrow check-then-signal race remains here: the process can exit and its PID can be
+        // reused by an unrelated process between this re-check and the raw kill(2) call below.
+        // .NET's SIGCHLD handler reaps immediately on exit, so re-checking as late as possible
+        // (rather than only once, above) shrinks - without eliminating - that window.
+        if ((OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) && !process.HasExited)
         {
             _ = Kill(process.Id, _signalTerminate);
         }
@@ -423,12 +427,12 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
             return true;
         }
 
+        // Process.Kill(entireProcessTree: true) checks exit state under the runtime's own
+        // wait-state lock before signalling, so it cannot target a reused PID the way a raw
+        // kill(pid, SIGKILL) P/Invoke can. Do not follow it with a redundant unsynchronized
+        // SIGKILL: by the time TryKillTree returns, the process may already have been reaped,
+        // freeing its PID for a different process to receive the raw signal instead.
         _ = TryKillTree(process);
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-        {
-            _ = Kill(process.Id, 9);
-        }
-
         return await WaitForExitWithinAsync(process, _forcedTerminationWait).ConfigureAwait(false);
     }
 
