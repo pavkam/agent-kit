@@ -24,4 +24,25 @@ public sealed class ToolSchemaCompiledTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void Schema_WhenValidateIsConfigured_UsesTheConfiguredCallback()
+    {
+        var handle = new CallbackCompiledToolSchema();
+        var expected = ToolSchemaValidationResult.Valid;
+        handle.OnValidate = (_, _, _) => expected;
+        var compiled = new ToolSchemaCompiled(handle);
+
+        compiled.Schema.Validate(ToolSchemaTestData.Instance("null"), handle.CompilationLimits, TestContext.Current.CancellationToken).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Schema_WhenValidateIsNotConfigured_ThrowsWithoutFabricatingASuccessfulResult()
+    {
+        var handle = new CallbackCompiledToolSchema();
+        var compiled = new ToolSchemaCompiled(handle);
+
+        _ = Should.Throw<InvalidOperationException>(
+            () => compiled.Schema.Validate(ToolSchemaTestData.Instance("null"), handle.CompilationLimits, TestContext.Current.CancellationToken));
+    }
 }

@@ -6,6 +6,25 @@ namespace AgentKit.Tests;
 public sealed class AgentEngineTests
 {
     [Fact]
+    public async Task UnsupportedSessionCoordinator_WhenInvokedDirectly_ThrowsFromEveryMemberBecauseCompositionFakesMustNeverBeCalled()
+    {
+        var coordinator = new TestSupport.UnsupportedSessionCoordinator();
+
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.CreateAsync(null!, null!, TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.LoadAsync(null!, null!, TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.AppendAsync(null!, null!, TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.ReadAsync(null!, null!, TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.BranchAsync(null!, null!, TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await coordinator.DeleteAsync(null!, null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public void Constructor_WhenServicesIsNull_ThrowsBeforeAssignment()
     {
         var exception = Should.Throw<ArgumentNullException>(

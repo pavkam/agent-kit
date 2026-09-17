@@ -11,10 +11,23 @@ using Microsoft.Extensions.Logging;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    public void EqualToAnyServiceKey_WhenComparedOrHashed_ReportsPathologicalEqualityAgainstAnything()
+    {
+        var key = new EqualToAnyServiceKey();
+
+        key.Equals(new object()).ShouldBeTrue();
+        key.GetHashCode().ShouldBe(0);
+
+        key.Comparisons.ShouldBe(1);
+    }
+
+    [Fact]
     public void AddToolSchemaEngine_WhenRepeated_PreservesExplicitHostChoices()
     {
         var services = new ServiceCollection();
         var selected = new CallbackToolSchemaEngine();
+        var expected = new ToolSchemaCompilationRejected(ToolSchemaRejectionReason.ResourceLimitExceeded);
+        selected.OnCompile = (_, _, _) => expected;
         var clock = new CallbackTimestampTimeProvider(() => 0);
         _ = services.AddSingleton<IToolSchemaEngine>(selected);
         _ = services.AddSingleton<TimeProvider>(clock);
@@ -23,6 +36,7 @@ public sealed class ServiceExtensionsTests
         using var host = services.BuildServiceProvider();
         host.GetServices<IToolSchemaEngine>().ShouldBe([selected]);
         host.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        host.GetRequiredService<IToolSchemaEngine>().Compile(ToolSchemaTestData.Schema("true"), ToolSchemaTestData.Limits, TestContext.Current.CancellationToken).ShouldBeSameAs(expected);
         Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddToolSchemaEngine()).ParamName.ShouldBe("services");
         Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).ReplaceToolSchemaEngine<CallbackToolSchemaEngine>()).ParamName.ShouldBe("services");
     }
@@ -43,6 +57,8 @@ public sealed class ServiceExtensionsTests
         newHost.GetRequiredKeyedService<IToolSchemaEngine>("host-key").ShouldBeSameAs(keyed);
         oldHost.GetRequiredService<IToolSchemaEngine>().ShouldBeSameAs(oldEngine);
         handle.Validate(ToolSchemaTestData.Instance("null"), ToolSchemaTestData.Limits, TestContext.Current.CancellationToken).ShouldBe(ToolSchemaValidationResult.Valid);
+        keyed.Compile(ToolSchemaTestData.Schema("true"), ToolSchemaTestData.Limits, TestContext.Current.CancellationToken)
+            .ShouldBeOfType<ToolSchemaCompilationRejected>().Reason.ShouldBe(ToolSchemaRejectionReason.UnsupportedKeyword);
     }
 
     [Theory]

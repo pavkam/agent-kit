@@ -343,6 +343,29 @@ public sealed class ServerSentEventReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_WhenBlockedReadCompletesWithoutBytes_EndsEnumerationCleanly()
+    {
+        var gate = new GatedReadStream();
+
+        var reading = Task.Run(async () =>
+        {
+            var events = new List<ServerSentEvent>();
+            await foreach (var serverSentEvent in ServerSentEventReader.ReadAsync(gate, TestContext.Current.CancellationToken))
+            {
+                events.Add(serverSentEvent);
+            }
+
+            return events;
+        }, TestContext.Current.CancellationToken);
+
+        await gate.Entered.WaitAsync(TestContext.Current.CancellationToken);
+        gate.Release();
+
+        var events = await reading;
+        events.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenCancellationIsSuppliedThroughWithCancellation_HonorsIt()
     {
         var gate = new GatedReadStream();
