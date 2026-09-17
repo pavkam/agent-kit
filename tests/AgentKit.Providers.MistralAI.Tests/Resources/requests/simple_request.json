@@ -5,6 +5,7 @@
     { "role": "user", "content": "Hello!" }
   ],
   "stream": false,
+  "n": 1,
   "temperature": 0.2,
   "max_tokens": 100
 }

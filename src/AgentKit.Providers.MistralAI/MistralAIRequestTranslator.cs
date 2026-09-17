@@ -39,6 +39,9 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
             ["model"] = context.Model.ModelId.Value,
             ["messages"] = TranslateMessages(context.Messages, wireCallIds),
             ["stream"] = useStreaming,
+            // This operation always represents exactly one candidate; the parser also fails closed if the
+            // provider (or an extension overriding this below) still returns more than one choice.
+            ["n"] = 1,
         };
 
         if (context.Tools.Length > 0)

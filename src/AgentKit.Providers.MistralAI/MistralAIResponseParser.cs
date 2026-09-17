@@ -96,6 +96,20 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 cancellationToken).ConfigureAwait(false);
         }
 
+        if (dto.Choices!.Count > 1)
+        {
+            // The request pins n to 1 and this operation represents exactly one candidate. Silently keeping
+            // only choices[0] would discard model output the caller never sees.
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned more than one choice for a single-candidate request.",
+                diagnosticCause: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         List<(ContentDelta? Delta, ContentPart Part)> built;
         try
         {
@@ -234,7 +248,24 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
 
             resolvedModel ??= chunk.Model;
             responseId ??= chunk.Id;
-            var choice = chunk.Choices?.Count > 0 ? chunk.Choices[0] : null;
+            var choices = chunk.Choices;
+            if (choices is { Count: > 1 } or [{ Index: not (null or 0) }])
+            {
+                // A streamed chunk for choice index 1+ belongs to a second candidate; merging its deltas into
+                // choice 0 would corrupt the only candidate this operation represents.
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    ProviderFailureKind.ProtocolViolation,
+                    "The provider streamed a choice other than the single requested candidate.",
+                    diagnosticCause: null,
+                    cancellationToken,
+                    BuildPartialParts(state),
+                    TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
+            }
+
+            var choice = choices?.Count > 0 ? choices[0] : null;
             if (chunk.Usage is not null)
             {
                 usage = chunk.Usage;

@@ -25,6 +25,7 @@
     }
   ],
   "stream": false,
+  "n": 1,
   "tools": [
     {
       "type": "function",

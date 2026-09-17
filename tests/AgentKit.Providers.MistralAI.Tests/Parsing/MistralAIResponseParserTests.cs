@@ -294,6 +294,33 @@ public sealed class MistralAIResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenMoreThanOneChoiceIsReturned_FailsWithProtocolViolationInsteadOfDiscardingIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_multiple_choices.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenAChunkStreamsASecondChoiceIndex_FailsWithProtocolViolationInsteadOfMergingIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_multiple_choices.sse");
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        // The choice-0 delta already observed must still be reported, not silently dropped.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

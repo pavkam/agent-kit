@@ -1,0 +1,29 @@
+{
+  "id": "cmpl-e5cc70bb28c444948073e77776eb30ef",
+  "object": "chat.completion",
+  "created": 1702256327,
+  "model": "mistral-large-latest-2412",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "index": 1,
+      "message": {
+        "role": "assistant",
+        "content": "Hi there!"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 9,
+    "total_tokens": 29
+  }
+}

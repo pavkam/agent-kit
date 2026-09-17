@@ -2281,6 +2281,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `choice.index != 0` is observed, mirroring
   `OpenAIChatCompletionResponseParser`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N02 — Gemini parser silently keeps only `candidates[0]` and merges streamed candidates
 
