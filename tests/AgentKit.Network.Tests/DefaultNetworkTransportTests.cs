@@ -148,6 +148,32 @@ public sealed class DefaultNetworkTransportTests
         var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
         var redirect = result.ShouldBeOfType<NetworkRedirectReceived>();
         redirect.Destination.Host.ShouldBe(new NormalizedHost("example.com"));
+        redirect.Destination.Port.ShouldBe(443);
+        redirect.CrossOrigin.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenRedirectLocationIsRelative_ResolvesAgainstTheOriginalDestination()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
+        var redirect = result.ShouldBeOfType<NetworkRedirectReceived>();
+        redirect.Destination.Host.ShouldBe(new NormalizedHost("127.0.0.1"));
+        redirect.Destination.Port.ShouldBe(server.Port);
+        redirect.Destination.Route.Value.ShouldBe("/next");
+        redirect.CrossOrigin.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenRedirectLocationHasAnExplicitNonDefaultPort_PreservesThatPort()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 302 Found\r\nLocation: http://example.com:8080/next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
+        var redirect = result.ShouldBeOfType<NetworkRedirectReceived>();
+        redirect.Destination.Host.ShouldBe(new NormalizedHost("example.com"));
+        redirect.Destination.Port.ShouldBe(8080);
         redirect.CrossOrigin.ShouldBeTrue();
     }
 
@@ -257,7 +283,39 @@ public sealed class DefaultNetworkTransportTests
         exception.Message.ShouldBe("boom");
     }
 
-    private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null) => new(store, timeProvider ?? new FixedTimeProvider(), Options.Create(OptionsForNetwork()));
+    [Fact]
+    public async Task SendAsync_WhenLoggerIsEnabledAndResponseAuthorized_EmitsCompletedStructuredEvent()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        var logger = new RecordingLogger<DefaultNetworkTransport>();
+        using var transport = Transport(new TestGrantStore(), logger: logger);
+        var request = Request(Destination(server.Port));
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var received = result.ShouldBeOfType<NetworkResponseReceived>();
+        await received.Response.DisposeAsync();
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(14000);
+        completed.State["Stage"].ShouldBe("send");
+        completed.State["NetworkOperationId"].ShouldBe(request.Id);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenLoggerIsEnabledAndActionThrowsUnexpectedException_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<DefaultNetworkTransport>();
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        using var transport = Transport(store, logger: logger);
+        var request = Request(Destination(1));
+        var action = async () => await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        _ = await action.ShouldThrowAsync<InvalidOperationException>();
+        var failed = logger.Snapshot().ShouldHaveSingleItem();
+        failed.EventId.Id.ShouldBe(14001);
+        failed.State["Stage"].ShouldBe("send");
+        failed.State["NetworkOperationId"].ShouldBe(request.Id);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
+    private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null, ILogger<DefaultNetworkTransport>? logger = null) => new(store, timeProvider ?? new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
     private static AgentNetworkOptions OptionsForNetwork() => new()
     {
         DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: true),
