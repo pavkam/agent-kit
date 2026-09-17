@@ -312,7 +312,16 @@ public sealed class DefaultCompactor: ICompactor
                 break;
         }
 
-        return await ActivateAsync(sessionContext, context, request, loaded.BranchTip, cut, manifest, candidate, cancellationToken)
+        // A newer active record names the prior CompactionId in Supersedes rather than mutating the
+        // older record (docs/architecture/context-compaction.md); scan the covered range for the
+        // newest earlier active record this cut subsumes. coveredEntries is in branch order, so the
+        // last match is the newest.
+        var supersedes = coveredEntries
+            .OfType<CompactionSessionEntry>()
+            .LastOrDefault(static entry => entry.Record.Status == CompactionRecordStatus.Active)
+            ?.Record.Context.CompactionId;
+
+        return await ActivateAsync(sessionContext, context, request, loaded.BranchTip, cut, manifest, candidate, supersedes, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -464,6 +473,7 @@ public sealed class DefaultCompactor: ICompactor
         CompactionCut cut,
         CompactionManifest manifest,
         CompactionCandidate candidate,
+        CompactionId? supersedes,
         CancellationToken cancellationToken)
     {
         // Version and sequence advance independently (one version per append, one sequence per entry), so the
@@ -481,7 +491,7 @@ public sealed class DefaultCompactor: ICompactor
             CompactionRecordStatus.Active,
             manifest,
             candidate.Checkpoint,
-            supersedes: null,
+            supersedes,
             rejection: null,
             _timeProvider.GetUtcNow(),
             ExtensionData.Empty);

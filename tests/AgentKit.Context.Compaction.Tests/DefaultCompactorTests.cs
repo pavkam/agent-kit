@@ -71,6 +71,27 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenCutCoversAnEarlierActiveRecord_NamesItInSupersedes()
+    {
+        // docs/architecture/context-compaction.md: "A newer active record names the prior CompactionId
+        // in Supersedes; it does not mutate the older record." A second compaction whose cut covers the
+        // first compaction's entry must carry that first record's CompactionId as Supersedes.
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
+        var firstContext = TestFactory.CompactionContext(_agentId, _sessionId);
+        var firstRequest = TestFactory.Request(firstContext, _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+        var firstResult = (await compactor.CompactAsync(firstRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+
+        coordinator.Seed(Enumerable.Range(12, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
+        var secondContext = TestFactory.CompactionContext(_agentId, _sessionId);
+        var secondRequest = TestFactory.Request(secondContext, _branchId, coordinator.Version, coordinator.TipSequence, minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+        var secondResult = (await compactor.CompactAsync(secondRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+
+        secondResult.Record.Supersedes.ShouldBe(firstResult.Record.Context.CompactionId);
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenSuccessful_AppendsAnEntryTheFirstPartyCodecCatalogCanRoundTrip()
     {
         // The loop, stores, and every codec use schema version "1"; an entry authored with a different embedded version

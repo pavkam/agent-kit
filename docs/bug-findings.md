@@ -3983,6 +3983,7 @@ var record = new CompactionRecord(
   `Context.CompactionId` as `supersedes`; add a validator check that
   `Supersedes` is set when such an entry is covered.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### M05 — MCP client leaks the connected SDK session if `SdkMcpToolCaller` construction throws after `McpClient.CreateAsync` succeeds
 
