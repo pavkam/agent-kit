@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">AgentKit Relay mark</title>
+<desc id="desc">AgentKit's Relay identity connects three independent nodes through a shared junction, representing agents working together in a composable system.</desc>
+<g fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linejoin="round">
+<path d="M128 62v68m0 0-70 52m70-52 70 52"/>
+</g>
+<rect x="101" y="20" width="54" height="54" rx="17" fill="#FFFFFF"/>
+<rect x="23" y="159" width="54" height="54" rx="17" fill="#FFFFFF"/>
+<rect x="179" y="159" width="54" height="54" rx="17" fill="#FFFFFF"/>
+<rect x="103" y="103" width="50" height="50" rx="13" transform="rotate(45 128 128)" fill="#FFFFFF"/>
+</svg>

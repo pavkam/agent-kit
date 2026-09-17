@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">AgentKit — Assembly</title>
+<desc id="desc">Original geometric artwork for AgentKit, a framework for composing agents from replaceable parts.</desc>
+<path fill="#146B59" d="M24 224 104 32h44L68 224Z"/>
+<path fill="#3FAF91" d="m156 64 68 160h-48l-44-104Z"/>
+<path fill="#E3A33A" d="M103 166h37l14 32H90Z"/>
+</svg>

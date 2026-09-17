@@ -1,4 +1,9 @@
-# AgentKit
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/agentkit-banner-dark.svg">
+    <img src="docs/assets/brand/agentkit-banner-light.svg" alt="AgentKit — composable agents for .NET" width="1280">
+  </picture>
+</h1>
 
 Build agents in C# from parts you can see, swap, and trust.
 
@@ -70,3 +75,5 @@ for bugs, use the [issue tracker](https://github.com/pavkam/agent-kit/issues)
 with the commit you tried and a small reproduction.
 
 MIT licensed. See [LICENSE](LICENSE).
+
+Logo and artwork: [brand assets](docs/assets/brand/README.md).

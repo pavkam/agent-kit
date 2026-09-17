@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" role="img" aria-labelledby="title desc">
+<title id="title">AgentKit — composable agents for .NET</title>
+<desc id="desc">AgentKit's Relay identity connects three independent nodes through a shared junction, representing agents working together in a composable system.</desc>
+<rect width="1280" height="440" fill="#191831"/>
+<defs>
+<pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+<path d="M32 0H0V32" fill="none" stroke="#403C62" stroke-width=".6" opacity=".5"/>
+</pattern>
+</defs>
+<rect x="740" y="0" width="540" height="440" fill="url(#grid)"/>
+<path d="M740 0v440" stroke="#403C62" stroke-width="1"/>
+<g transform="translate(60 48) scale(.16)">
+<g fill="none" stroke="#8B83EF" stroke-width="18" stroke-linejoin="round">
+<path d="M128 62v68m0 0-70 52m70-52 70 52"/>
+</g>
+<rect x="101" y="20" width="54" height="54" rx="17" fill="#C3BDFF"/>
+<rect x="23" y="159" width="54" height="54" rx="17" fill="#8B83EF"/>
+<rect x="179" y="159" width="54" height="54" rx="17" fill="#C3BDFF"/>
+<rect x="103" y="103" width="50" height="50" rx="13" transform="rotate(45 128 128)" fill="#FFAC98"/>
+</g>
+<text x="116" y="76" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" letter-spacing="1.8" fill="#B0ACC9">AGENTKIT / .NET</text>
+<text x="60" y="227" font-family="Arial, Helvetica, sans-serif" font-size="105" font-weight="700" letter-spacing="-4" fill="#F5F4FF">AgentKit</text>
+<text x="65" y="286" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="400" letter-spacing="0" fill="#B0ACC9">Composable agents for .NET.</text>
+<path d="M65 338h46" stroke="#FFAC98" stroke-width="4"/>
+<text x="65" y="381" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#B0ACC9">Built from parts you can see, swap, and trust.</text>
+<g transform="translate(818 66)">
+<circle cx="160" cy="160" r="179" fill="none" stroke="#403C62" stroke-width="1"/>
+<path d="M-37 160h394M160-37v394" stroke="#403C62" stroke-width="1" stroke-dasharray="3 7"/>
+<g transform="scale(1.25)">
+<g fill="none" stroke="#8B83EF" stroke-width="18" stroke-linejoin="round">
+<path d="M128 62v68m0 0-70 52m70-52 70 52"/>
+</g>
+<rect x="101" y="20" width="54" height="54" rx="17" fill="#C3BDFF"/>
+<rect x="23" y="159" width="54" height="54" rx="17" fill="#8B83EF"/>
+<rect x="179" y="159" width="54" height="54" rx="17" fill="#C3BDFF"/>
+<rect x="103" y="103" width="50" height="50" rx="13" transform="rotate(45 128 128)" fill="#FFAC98"/>
+</g>
+<g fill="#191831" stroke="#403C62" stroke-width="1.4">
+<circle cx="160" cy="-19" r="4"/>
+<circle cx="339" cy="160" r="4"/>
+<circle cx="-19" cy="160" r="4"/>
+<circle cx="160" cy="339" r="4"/>
+</g>
+</g>
+</svg>

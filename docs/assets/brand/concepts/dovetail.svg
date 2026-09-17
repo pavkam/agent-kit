@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">AgentKit — Dovetail</title>
+<desc id="desc">Original geometric artwork for AgentKit, a framework for composing agents from replaceable parts.</desc>
+<path fill="#B84C32" transform="rotate(0 128 128)" d="m36 76 92-53 92 53-28 16-64-37-64 37Z"/>
+<path fill="#E68655" transform="rotate(120 128 128)" d="m36 76 92-53 92 53-28 16-64-37-64 37Z"/>
+<path fill="#DDB18B" transform="rotate(240 128 128)" d="m36 76 92-53 92 53-28 16-64-37-64 37Z"/>
+</svg>
