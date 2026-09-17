@@ -427,6 +427,7 @@ findings).
   accessors (null/default/range checks) and reject overrides of
   definition-derived members when `Agent` is non-null.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A09 — `NetworkDestinationPolicy` throws `NullReferenceException` for null/blank schemes and misses NAT64-embedded IPv4
 

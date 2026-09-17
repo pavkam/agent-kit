@@ -197,35 +197,152 @@ public sealed record AgentRunRequest
     /// resolves that policy against the engine-wide catalog. The run does not
     /// name a concrete provider adapter.
     /// </value>
-    public ModelSelectionPolicy ModelPolicy { get; init; }
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own, when <see cref="Agent"/> is not null.</exception>
+    public ModelSelectionPolicy ModelPolicy
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(ModelPolicy));
+            if (Agent is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Agent.Models, value, nameof(ModelPolicy));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the portable behaviors this run's requests need.</summary>
     /// <value>
     /// Used to reject or downgrade an incompatible model before any provider
     /// request is sent.
     /// </value>
-    public ModelRequirements ModelRequirements { get; init; }
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own, when <see cref="Agent"/> is not null.</exception>
+    public ModelRequirements ModelRequirements
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(ModelRequirements));
+            if (Agent is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Agent.ModelRequirements, value, nameof(ModelRequirements));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the system and developer instructions to place first in every request.</summary>
-    public ImmutableArray<AgentMessage> Instructions { get; init; }
+    /// <exception cref="ArgumentException">The initialized array is default, or a record copy assigns a value different from the pinned <see cref="Agent"/>'s own.</exception>
+    public ImmutableArray<AgentMessage> Instructions
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(Instructions));
+            if (Agent is not null && !Agent.Instructions.SequenceEqual(value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own instructions.", nameof(Instructions));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the tools available for the model to call during this run.</summary>
-    public ImmutableArray<LlmToolDefinition> Tools { get; init; }
+    /// <exception cref="ArgumentException">The initialized array is default, or a record copy assigns a value different from the pinned <see cref="Agent"/>'s own.</exception>
+    public ImmutableArray<LlmToolDefinition> Tools
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(Tools));
+            if (Agent is not null && !Agent.Tools.SequenceEqual(value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own tools.", nameof(Tools));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the tool-call selection policy.</summary>
-    public LlmToolChoice ToolChoice { get; init; }
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own, when <see cref="Agent"/> is not null.</exception>
+    public LlmToolChoice ToolChoice
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(ToolChoice));
+            if (Agent is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Agent.ToolChoice, value, nameof(ToolChoice));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the effective sampling and output settings.</summary>
-    public LlmRequestSettings Settings { get; init; }
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own, when <see cref="Agent"/> is not null.</exception>
+    public LlmRequestSettings Settings
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Settings));
+            if (Agent is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Agent.Settings, value, nameof(Settings));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the maximum number of turns this run may take before it is halted.</summary>
-    public int MaxTurns { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not positive.</exception>
+    public int MaxTurns
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, 0, nameof(MaxTurns));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the maximum duration allowed for a single model attempt.</summary>
-    public TimeSpan AttemptTimeout { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not positive.</exception>
+    public TimeSpan AttemptTimeout
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, TimeSpan.Zero, nameof(AttemptTimeout));
+            field = value;
+        }
+    }
 
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Extensions));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the optional best-effort observer for provisional model and tool progress.</summary>
     /// <remarks>

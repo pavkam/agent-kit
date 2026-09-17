@@ -5274,6 +5274,8 @@ namespace AgentKit
         public AgentKit.NetworkOperationId Id { get; }
         public AgentKit.NetworkMethod Method { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> ResolvedAddresses { get; }
+        public bool Equals(AgentKit.NetworkRequest? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class NetworkRequestContent : System.IEquatable<AgentKit.NetworkRequestContent>
     {

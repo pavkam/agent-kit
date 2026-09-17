@@ -1504,16 +1504,18 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenExactEvidenceIsPresent_PropagatesSnapshotAndUsesAgentInsteadOfMutableMirrors()
     {
+        // AgentRunRequest's ModelPolicy/Instructions init accessors now reject any value that
+        // diverges from the pinned Agent's own (see AgentRunRequestTests), so the request can no
+        // longer be constructed in a "poisoned" state to prove the loop ignores the mirrors at run
+        // time; the mirrors are provably identical to Agent's own values for every request that
+        // exists. This test now only confirms the loop reads the exact evidence (Agent,
+        // Configuration) through to selection and context assembly.
         var coordinator = new FakeSessionCoordinator(_branchId);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var descriptor = TestFactory.Model();
         var selector = FakeModelSelector.Selecting(descriptor);
         var assembler = new RecordingContextAssembler();
-        var request = TestFactory.ExactRunRequest(_agentId, _sessionId, _branchId) with
-        {
-            ModelPolicy = new ModelSelectionPolicy([new ModelAlias("poisoned")]),
-            Instructions = [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "poisoned").Message],
-        };
+        var request = TestFactory.ExactRunRequest(_agentId, _sessionId, _branchId);
         var loop = CreateLoopWith(
             coordinator,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),

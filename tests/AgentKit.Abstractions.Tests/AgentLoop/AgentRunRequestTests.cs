@@ -208,4 +208,65 @@ public sealed class AgentRunRequestTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void With_WhenInstructionsIsSetToDefault_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var action = () => request with { Instructions = default };
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("Instructions");
+    }
+
+    [Fact]
+    public void With_WhenToolsIsSetToDefault_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var action = () => request with { Tools = default };
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("Tools");
+    }
+
+    [Fact]
+    public void With_WhenMaxTurnsIsSetToZero_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var action = () => request with { MaxTurns = 0 };
+        action.ShouldThrow<ArgumentOutOfRangeException>().ParamName.ShouldBe("MaxTurns");
+    }
+
+    [Fact]
+    public void With_WhenAttemptTimeoutIsSetToZero_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var action = () => request with { AttemptTimeout = TimeSpan.Zero };
+        action.ShouldThrow<ArgumentOutOfRangeException>().ParamName.ShouldBe("AttemptTimeout");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsSetToNull_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var action = () => request with { Extensions = null! };
+        action.ShouldThrow<ArgumentNullException>().ParamName.ShouldBe("Extensions");
+    }
+
+    [Fact]
+    public void SecondConstructor_With_WhenModelPolicyDivergesFromThePinnedAgent_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequestFromDefinition();
+        var action = () => request with { ModelPolicy = new ModelSelectionPolicy([new ModelAlias("poisoned")]) };
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("ModelPolicy");
+    }
+
+    [Fact]
+    public void SecondConstructor_With_WhenInstructionsDivergesFromThePinnedAgent_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequestFromDefinition();
+        var poisoned = new SystemMessage(
+            new MessageId(Guid.Parse("c0000000-0000-0000-0000-000000000001")),
+            LoopTestData.AgentId, LoopTestData.SessionId, null, LoopTestData.BranchId, null, null,
+            DateTimeOffset.UnixEpoch, MessageState.Complete,
+            [new TextPart("poisoned", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var action = () => request with { Instructions = [poisoned] };
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("Instructions");
+    }
 }
