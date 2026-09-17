@@ -119,15 +119,23 @@ public static class AwsBedrockProviderDefaults
     /// embedding in a <c>Converse</c>/<c>ConverseStream</c> request path.
     /// </summary>
     /// <remarks>
-    /// Only the colon character is percent-encoded (as <c>%3A</c>), which
-    /// versioned model IDs such as <c>anthropic.claude-3-sonnet-20240229-v1:0</c>
-    /// and ARNs both use as a literal separator. A forward slash, which an
-    /// ARN-shaped model ID may also contain, is left unescaped to match the
-    /// wire format shown in AWS's own Converse documentation.
+    /// The Converse <c>modelId</c> URI label is a single non-greedy path
+    /// segment, so every character that would otherwise be interpreted as a
+    /// path separator or reserved delimiter must be percent-encoded, not
+    /// only the colon that separates a versioned model ID's version suffix
+    /// (<c>anthropic.claude-3-sonnet-20240229-v1:0</c>). ARNs for inference
+    /// profiles, application inference profiles, provisioned/custom models,
+    /// and prompts all contain <c>/</c>
+    /// (e.g. <c>...:inference-profile/us.anthropic.claude-...</c>); leaving
+    /// it unescaped splits the label into extra path segments that no
+    /// longer match <c>/model/{modelId}/converse</c> and get
+    /// routed/validated as a different resource.
+    /// <see cref="Uri.EscapeDataString(string)"/> percent-encodes both
+    /// characters (and every other reserved character) in one pass.
     /// <see cref="AwsSigV4Signer"/> canonicalizes whatever wire path this
     /// method produces by encoding each already-escaped segment a second
     /// time, as SigV4 requires for non-S3 services, so the escaped form
     /// chosen here and the signed form stay consistent by construction.
     /// </remarks>
-    private static string EscapeModelId(string modelId) => modelId.Replace(":", "%3A", StringComparison.Ordinal);
+    private static string EscapeModelId(string modelId) => Uri.EscapeDataString(modelId);
 }

@@ -2407,6 +2407,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   (which encodes both `:` and `/`) and update the defaults test to expect `%2F`;
   the signer already double-encodes correctly from `Uri.AbsolutePath`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### N06 — Bedrock translator emits consecutive same-role messages that Converse rejects
 
