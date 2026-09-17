@@ -255,6 +255,27 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         {
             return await CancelAsync().ConfigureAwait(false);
         }
+        catch (OperationCanceledException exception)
+        {
+            // The credential source's own internal timeout (e.g. a token provider's HTTP call), not the
+            // caller's cancellation: the same distinction the transport path below already makes.
+            return await FailWithKindAsync(
+                ProviderFailureKind.Timeout,
+                "The credential source did not resolve a credential before its own deadline.",
+                exception).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // IProviderCredentialSource.GetCredentialAsync is user-supplied and routinely fails with
+            // provider-specific exceptions (e.g. an Entra/Azure.Identity token provider's
+            // AuthenticationFailedException). Every other auth failure in this class reports
+            // Authentication; an uncaught exception here would break the "terminal outcome equals last
+            // event" contract instead.
+            return await FailWithKindAsync(
+                ProviderFailureKind.Authentication,
+                "The request credential could not be resolved.",
+                exception).ConfigureAwait(false);
+        }
 
         var authorization = ProviderAuthorizationHeaderFactory.Create(
             credential,

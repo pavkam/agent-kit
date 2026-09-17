@@ -1915,6 +1915,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   non-caller `OperationCanceledException` to `Timeout` like the transport path
   does.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

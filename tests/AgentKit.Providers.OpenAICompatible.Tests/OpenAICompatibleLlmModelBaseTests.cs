@@ -151,6 +151,46 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenCredentialSourceThrows_ReturnsAuthenticationFailureInsteadOfPropagating()
+    {
+        // IProviderCredentialSource.GetCredentialAsync is user-supplied (e.g. an Entra/Azure.Identity token
+        // provider) and routinely fails with provider-specific exceptions. Only a caller-cancellation
+        // OperationCanceledException was caught; any other exception escaped ExecuteAsync uncaught instead of
+        // producing the typed Authentication failure every other auth failure in this class uses.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(
+            handler, NonStreamingProfile, new ThrowingProviderCredentialSource(new InvalidOperationException("token endpoint unreachable")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failed.Failure.SafeMessage.ShouldBe("The request credential could not be resolved.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCredentialSourceTimesOutWithoutCallerCancellation_ReturnsTimeoutFailure()
+    {
+        // A token provider's own internal deadline (e.g. its HTTP call timing out) surfaces as an
+        // OperationCanceledException while the caller's token is not cancelled; this must be distinguished
+        // from caller cancellation the same way the transport path below already is.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(
+            handler, NonStreamingProfile, new ThrowingProviderCredentialSource(new OperationCanceledException("credential source timed out")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenErrorBodyCarriesANumericCode_ParsesItAndMapsMetadataErrorType()
     {
         // OpenRouter's documented error shape sends `code` as a JSON number (the HTTP status) and its

@@ -222,6 +222,27 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         {
             return Cancel(Descriptor.ProviderId);
         }
+        catch (OperationCanceledException exception)
+        {
+            // The credential source's own internal timeout (e.g. a token provider's HTTP call), not the
+            // caller's cancellation: the same distinction the transport path below already makes.
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The credential source did not resolve a credential before its own deadline.",
+                exception);
+        }
+        catch (Exception exception)
+        {
+            // IProviderCredentialSource.GetCredentialAsync is user-supplied and routinely fails with
+            // provider-specific exceptions (e.g. an Entra/Azure.Identity token provider's
+            // AuthenticationFailedException). Every other auth failure in this class reports
+            // Authentication; an uncaught exception here would break the "terminal outcome equals last
+            // event" contract instead.
+            return FailWithKind(
+                ProviderFailureKind.Authentication,
+                "The request credential could not be resolved.",
+                exception);
+        }
 
         var authorization = ProviderAuthorizationHeaderFactory.Create(
             credential,

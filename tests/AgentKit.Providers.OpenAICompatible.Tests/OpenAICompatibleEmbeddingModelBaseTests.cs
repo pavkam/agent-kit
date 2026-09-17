@@ -174,6 +174,44 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenCredentialSourceThrows_ReturnsAuthenticationFailureInsteadOfPropagating()
+    {
+        // IProviderCredentialSource.GetCredentialAsync is user-supplied (e.g. an Entra/Azure.Identity token
+        // provider) and routinely fails with provider-specific exceptions. Only a caller-cancellation
+        // OperationCanceledException was caught; any other exception escaped GenerateAsync uncaught instead of
+        // producing the typed Authentication failure every other auth failure in this class uses.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(
+            handler, Profile, new ThrowingProviderCredentialSource(new InvalidOperationException("token endpoint unreachable")));
+        var request = CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1));
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failed.Failure.SafeMessage.ShouldBe("The request credential could not be resolved.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenCredentialSourceTimesOutWithoutCallerCancellation_ReturnsTimeoutFailure()
+    {
+        // A token provider's own internal deadline (e.g. its HTTP call timing out) surfaces as an
+        // OperationCanceledException while the caller's token is not cancelled; this must be distinguished
+        // from caller cancellation the same way the transport path below already is.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(
+            handler, Profile, new ThrowingProviderCredentialSource(new OperationCanceledException("credential source timed out")));
+        var request = CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1));
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenErrorBodyIsNotJson_LeavesNoProviderMessageEvidence()
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
