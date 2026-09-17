@@ -128,19 +128,13 @@ internal static class AgentCompositionBuildObservability
             "Provider-build metrics use only bounded outcomes.");
         Debug.Assert(writeLog is not null, "Every terminal outcome has a source-generated log call.");
 
-        try
+        if (errorType is null)
         {
-            if (errorType is null)
-            {
-                scope.Activity.SetSuccessful(outcome);
-            }
-            else
-            {
-                scope.Activity.SetFailed(outcome, errorType);
-            }
+            scope.Activity.SetSuccessful(outcome);
         }
-        catch (Exception)
+        else
         {
+            scope.Activity.SetFailed(outcome, errorType);
         }
 
         var outcomeTag = new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome);
