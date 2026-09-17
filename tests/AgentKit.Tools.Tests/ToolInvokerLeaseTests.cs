@@ -29,6 +29,18 @@ public sealed class ToolInvokerLeaseTests: ToolInvokerLeaseConformanceTests
         invoker.Disposals.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task InvokeAsync_WhenCalledDirectly_ThrowsBecauseACaptureMustNeverInvokeItsTools()
+    {
+        var invoker = new CaptureTestToolInvoker();
+        var request = TestFactory.CallRequest(ToolCaptureTestData.Descriptor().Id);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await invoker.InvokeAsync(request, TestContext.Current.CancellationToken));
+
+        invoker.Invocations.ShouldBe(1);
+    }
+
     private static void AssertExact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);
