@@ -142,14 +142,7 @@ internal sealed class DefaultSecurityAuthoritySelector: ISecurityAuthoritySelect
     private static void SafeSetActivity(Action action)
     {
         Debug.Assert(action is not null, "Activity observation requires a callback.");
-        try
-        {
-            action();
-        }
-        catch
-        {
-            // Activity listeners are observational and cannot alter selection.
-        }
+        try { action(); } catch { /* Activity listeners are observational and cannot alter selection. */ }
     }
 
     private static void SafeLog(Action action)
