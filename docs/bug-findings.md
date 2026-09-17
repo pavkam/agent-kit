@@ -3437,6 +3437,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   other packages use (or `AgentKitActivityScope.Start`). Add
   hostile-listener/logger tests mirroring the Goals suite.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F03 — Delegation broker throws `OperationCanceledException` after the child was successfully dispatched, discarding the result
 

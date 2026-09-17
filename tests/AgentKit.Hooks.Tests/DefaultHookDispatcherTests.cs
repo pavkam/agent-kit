@@ -436,6 +436,53 @@ public sealed class DefaultHookDispatcherTests
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
 
+    /// <summary>Verifies a hostile logging provider cannot fail the dispatch and cannot prevent mutation rollback:
+    /// restoration must run before the isolated-failure log call, not after.</summary>
+    [Fact]
+    public async Task DispatchAsync_WhenIsolatedFailureLoggerThrows_RollsBackMutationAndDoesNotFailDispatch()
+    {
+        var dispatcher = new DefaultHookDispatcher(new ThrowingLogger());
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.RejectPayload = true;
+                    throw new InvalidOperationException("boom");
+                }
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        args.RejectPayload.ShouldBeFalse();
+        args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
+    }
+
+    /// <summary>Verifies a hostile logging provider cannot fail an ordinary (non-isolated) completed dispatch.</summary>
+    [Fact]
+    public async Task DispatchAsync_WhenCompletionLoggerThrows_StillCompletes()
+    {
+        var dispatcher = new DefaultHookDispatcher(new ThrowingLogger());
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    private sealed class ThrowingLogger: ILogger<DefaultHookDispatcher>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            throw new InvalidOperationException("Simulated hostile logging provider failure.");
+    }
+
     [Fact]
     public async Task DispatchAsync_WhenCancelledBeforeRemainingHooks_ThrowsOperationCanceledException()
     {

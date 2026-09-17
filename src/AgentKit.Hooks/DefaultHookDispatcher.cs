@@ -94,23 +94,29 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         ArgumentNullException.ThrowIfNull(invoke);
         ArgumentNullException.ThrowIfNull(scope);
 
-        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.HookDispatch);
-        _ = activity?.SetTag(AgentKitTagNames.HookPoint, point.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.HookInvocationId, args.InvocationId.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.AgentId, args.AgentId.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.SessionId, args.SessionId?.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString());
+        using var activityScope = AgentKitActivityScope.Start(
+            AgentKitActivityNames.HookDispatch,
+            ActivityKind.Internal,
+            new KeyValuePair<string, object?>[]
+            {
+                new(AgentKitTagNames.HookPoint, point.ToString()),
+                new(AgentKitTagNames.HookInvocationId, args.InvocationId.ToString()),
+                new(AgentKitTagNames.AgentId, args.AgentId.ToString()),
+                new(AgentKitTagNames.SessionId, args.SessionId?.ToString()),
+                new(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString()),
+            });
+        var activity = activityScope.Activity;
 
         var effectiveDepth = Math.Min(maxReentrantDepth, _maximumInvocationDepth);
         if (effectiveDepth != maxReentrantDepth)
         {
-            HookLog.ReentrantDepthClamped(_logger, point, args.InvocationId, maxReentrantDepth, effectiveDepth);
+            SafeLog(() => HookLog.ReentrantDepthClamped(_logger, point, args.InvocationId, maxReentrantDepth, effectiveDepth));
         }
 
         var effectiveFailureMode = Strictest(failureMode, _minimumFailureMode);
         if (effectiveFailureMode != failureMode)
         {
-            HookLog.FailureModeEscalated(_logger, point, args.InvocationId, failureMode, effectiveFailureMode);
+            SafeLog(() => HookLog.FailureModeEscalated(_logger, point, args.InvocationId, failureMode, effectiveFailureMode));
         }
 
         try
@@ -118,27 +124,64 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
             await DispatchCoreAsync(
                 point, hooks, args, invoke, scope, effectiveFailureMode, effectiveDepth, activity, cancellationToken)
                 .ConfigureAwait(false);
-            activity.SetSuccessful(args is IShortCircuitingHookArgs { IsShortCircuited: true } ? "short_circuited" : "completed");
-            HookLog.DispatchCompleted(_logger, point, args.InvocationId);
-            HookMetrics.RecordDispatch("completed");
+            var outcome = args is IShortCircuitingHookArgs { IsShortCircuited: true } ? "short_circuited" : "completed";
+            SafeSetActivity(() => activity.SetSuccessful(outcome));
+            SafeLog(() => HookLog.DispatchCompleted(_logger, point, args.InvocationId));
+            SafeObserve(static () => HookMetrics.RecordDispatch("completed"));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            activity.SetFailed("cancelled", nameof(OperationCanceledException));
-            HookLog.DispatchCancelled(_logger, point, args.InvocationId);
-            HookMetrics.RecordDispatch("cancelled");
+            SafeSetActivity(() => activity.SetFailed("cancelled", nameof(OperationCanceledException)));
+            SafeLog(() => HookLog.DispatchCancelled(_logger, point, args.InvocationId));
+            SafeObserve(static () => HookMetrics.RecordDispatch("cancelled"));
             throw;
         }
         catch (Exception exception)
         {
-            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
-            HookLog.DispatchFailed(
-                _logger,
-                point,
-                args.InvocationId,
-                exception.GetType().FullName ?? exception.GetType().Name);
-            HookMetrics.RecordDispatch("failed");
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            SafeSetActivity(() => activity.SetFailed("failed", errorType));
+            SafeLog(() => HookLog.DispatchFailed(_logger, point, args.InvocationId, errorType));
+            SafeObserve(static () => HookMetrics.RecordDispatch("failed"));
             throw;
+        }
+    }
+
+    /// <summary>Runs one activity mutation, containing a hostile diagnostics listener so it cannot fail the dispatch.</summary>
+    private static void SafeSetActivity(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a listener failure must never alter the dispatch outcome.
+        }
+    }
+
+    /// <summary>Runs one log call, containing a hostile logging provider so it cannot fail the dispatch.</summary>
+    private static void SafeLog(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a logging-provider failure must never alter the dispatch outcome.
+        }
+    }
+
+    /// <summary>Runs one metrics call, containing a hostile measurement callback so it cannot fail the dispatch.</summary>
+    private static void SafeObserve(Action observation)
+    {
+        try
+        {
+            observation();
+        }
+        catch (Exception)
+        {
+            // Instrumentation is observational only; a meter-listener failure must never alter the dispatch outcome.
         }
     }
 
@@ -200,21 +243,20 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
                 }
                 catch (Exception exception)
                 {
-                    HookLog.InvocationIsolated(
-                        _logger,
-                        point,
-                        hook.Id,
-                        args.InvocationId,
-                        exception.GetType().FullName ?? exception.GetType().Name);
-                    _ = activity?.AddEvent(new ActivityEvent(
+                    // Restore before any diagnostics call: if a hostile logger or listener throws, the
+                    // isolated hook's partial mutation must already be rolled back, not leaked because
+                    // the exception propagated out of this catch block before restoration ran.
+                    args.RestoreMutableState(snapshot);
+                    args.Validate();
+                    var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+                    SafeLog(() => HookLog.InvocationIsolated(_logger, point, hook.Id, args.InvocationId, errorType));
+                    SafeSetActivity(() => activity?.AddEvent(new ActivityEvent(
                         "hook.failure.isolated",
                         tags: new ActivityTagsCollection
                         {
                             { AgentKitTagNames.Outcome, "isolated" },
-                            { AgentKitTagNames.ErrorType, exception.GetType().FullName ?? exception.GetType().Name },
-                        }));
-                    args.RestoreMutableState(snapshot);
-                    args.Validate();
+                            { AgentKitTagNames.ErrorType, errorType },
+                        })));
                     continue;
                 }
             }
