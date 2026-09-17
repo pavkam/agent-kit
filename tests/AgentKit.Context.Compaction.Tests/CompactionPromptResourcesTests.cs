@@ -3,6 +3,8 @@
 
 namespace AgentKit.Context.Compaction.Tests;
 
+using System.Text;
+
 /// <summary>Verifies the embedded default prompt is present, loadable, and cached.</summary>
 public sealed class CompactionPromptResourcesTests
 {
@@ -47,4 +49,38 @@ public sealed class CompactionPromptResourcesTests
     [InlineData("instruction")]
     public void DefaultSummaryPrompt_WhenAccessed_StatesTheCoreSummaryConstraints(string requiredPhrase) =>
         CompactionPromptResources.DefaultSummaryPrompt.ShouldContain(requiredPhrase, Case.Insensitive);
+
+    [Fact]
+    public void DecodeAndValidate_WhenStreamExceedsTheSizeBound_ThrowsInvalidOperationException()
+    {
+        using var oversized = new MemoryStream(new byte[(64 * 1024) + 1]);
+
+        var exception = Should.Throw<InvalidOperationException>(
+            () => CompactionPromptResources.DecodeAndValidate(oversized, "test-resource"));
+
+        exception.Message.ShouldContain("test-resource");
+        exception.Message.ShouldContain("exceeding");
+    }
+
+    [Fact]
+    public void DecodeAndValidate_WhenStreamContainsNoNonWhitespaceText_ThrowsInvalidOperationException()
+    {
+        using var blank = new MemoryStream(Encoding.UTF8.GetBytes("   \n\t  "));
+
+        var exception = Should.Throw<InvalidOperationException>(
+            () => CompactionPromptResources.DecodeAndValidate(blank, "test-resource"));
+
+        exception.Message.ShouldContain("test-resource");
+        exception.Message.ShouldContain("no prompt text");
+    }
+
+    [Fact]
+    public void DecodeAndValidate_WhenStreamHasValidText_TrimsTrailingWhitespaceOnly()
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("  leading kept, trailing trimmed  \n\n"));
+
+        var text = CompactionPromptResources.DecodeAndValidate(stream, "test-resource");
+
+        text.ShouldBe("  leading kept, trailing trimmed");
+    }
 }

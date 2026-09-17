@@ -37,6 +37,49 @@ public sealed class RecordingLogger<T>: ILogger<T>
         var fields = state is IEnumerable<KeyValuePair<string, object?>> values
             ? values.ToImmutableDictionary(StringComparer.Ordinal)
             : [];
+        ExerciseStateContract(state);
         _entries.Enqueue(new(typeof(T).FullName!, logLevel, eventId, fields, formatter(state, exception)));
+    }
+
+    /// <summary>Drives the full public surface a real logging provider may use against a source-generated log
+    /// state, so every structured log call observably supports out-of-band field access rather than only the
+    /// narrow path this fixture happens to take for its own field snapshot.</summary>
+    /// <param name="state">The state instance passed to <see cref="Log{TState}"/>.</param>
+    /// <typeparam name="TState">The compiler-selected state type for the call.</typeparam>
+    private static void ExerciseStateContract<TState>(TState state)
+    {
+        if (state is IReadOnlyList<KeyValuePair<string, object?>> indexed)
+        {
+            var count = indexed.Count;
+            for (var index = 0; index < count; index++)
+            {
+                _ = indexed[index];
+            }
+
+            try
+            {
+                _ = indexed[count];
+            }
+            catch (IndexOutOfRangeException)
+            {
+                // Out-of-range access is expected to fail closed; a real provider that walks past the
+                // reported count must observe the same guard the source generator documents.
+            }
+        }
+
+        if (state is System.Collections.IEnumerable nonGeneric)
+        {
+            var enumerator = nonGeneric.GetEnumerator();
+            try
+            {
+                while (enumerator.MoveNext())
+                {
+                }
+            }
+            finally
+            {
+                (enumerator as IDisposable)?.Dispose();
+            }
+        }
     }
 }
