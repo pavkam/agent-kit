@@ -38,6 +38,7 @@ public sealed class AgentEngine: IAsyncDisposable
     private readonly ImmutableDictionary<(AgentId, AgentDefinitionRevision), AgentRunProfilePublication> _pinnedRunProfiles;
     private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes an engine over one captured composition.
@@ -131,9 +132,11 @@ public sealed class AgentEngine: IAsyncDisposable
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
+    /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
     public async ValueTask<ImmutableArray<AgentDefinition>> GetAgentsAsync(
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var snapshot = await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         return snapshot.Definitions;
     }
@@ -160,10 +163,12 @@ public sealed class AgentEngine: IAsyncDisposable
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
+    /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
     public async ValueTask<Agent?> GetAgentAsync(
         AgentId agentId,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var resolution = await _catalog.ResolveAsync(agentId, cancellationToken).ConfigureAwait(false);
 
         return resolution switch
@@ -196,6 +201,7 @@ public sealed class AgentEngine: IAsyncDisposable
     {
         lock (_disposeLock)
         {
+            _disposed = true;
             _disposeTask ??= DisposeOwnedProviderAsync(_ownedProvider);
             return new ValueTask(_disposeTask);
         }
@@ -221,6 +227,10 @@ public sealed class AgentEngine: IAsyncDisposable
     /// exact pinned content and revision. The exception is raised before a
     /// run identity or scope is created.
     /// </exception>
+    /// <exception cref="ObjectDisposedException">
+    /// This engine has already been disposed. Raised before a run identity is minted or
+    /// authorization is captured, on both the standalone and host-managed ownership paths.
+    /// </exception>
     internal async Task<AgentLoopResult> RunAgentAsync(
         AgentDefinition definition,
         AgentRunOptions options,
@@ -228,6 +238,7 @@ public sealed class AgentEngine: IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(options);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var activity = AgentAdmissionObservability.Start(definition.Id);
         var admissionCompleted = false;
         try

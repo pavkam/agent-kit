@@ -254,6 +254,42 @@ public sealed class AgentEngineBuilderTests
         loop.DisposeCount.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Engine_WhenDisposedAndThenUsed_ThrowsObjectDisposedExceptionOnBothOwnershipPaths(bool hostManaged)
+    {
+        // Agent.RunAsync documents ObjectDisposedException when the owning engine has been disposed.
+        // A host-managed engine's DisposeAsync is intentionally a no-op over the host-owned provider
+        // (the host owns disposal of its own container), but the engine must still stop admitting new
+        // work after it has been told it is disposed, on both ownership paths.
+        AgentEngine engine;
+        AgentId agentId;
+        if (hostManaged)
+        {
+            var services = CreateHostedServices();
+            var provider = CompositionTestData.BuildHostedProvider(services);
+            engine = provider.GetRequiredService<AgentEngine>();
+            agentId = CompositionTestData.Definition().Id;
+        }
+        else
+        {
+            var builder = CompositionTestData.RunnableBuilder();
+            engine = builder.Build();
+            agentId = CompositionTestData.Definition().Id;
+        }
+
+        var agent = (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        await engine.DisposeAsync();
+
+        _ = await Should.ThrowAsync<ObjectDisposedException>(
+            () => engine.GetAgentsAsync(TestContext.Current.CancellationToken).AsTask());
+        _ = await Should.ThrowAsync<ObjectDisposedException>(
+            () => engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken).AsTask());
+        _ = await Should.ThrowAsync<ObjectDisposedException>(
+            () => agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void Build_WhenSeveralProblemsExist_ReportsAllOfThem()
     {

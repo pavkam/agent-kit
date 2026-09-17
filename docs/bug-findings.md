@@ -3612,6 +3612,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   `GetAgentAsync`, and `GetAgentsAsync`, so no identity is minted or
   authorization captured after disposal on either ownership path.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### F08 — Resolving `AgentEngine` from a standalone engine's `Services` yields a second, unowned engine
 
