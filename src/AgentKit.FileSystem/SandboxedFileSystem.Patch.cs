@@ -275,7 +275,6 @@ public sealed partial class SandboxedFileSystem
         var sourcePath = PatchSourcePath(entry);
         if (!TryOpenParentDirectory(
                 sourcePath,
-                createMissingDirectories: false,
                 cancellationToken,
                 out var parent,
                 out var name,
@@ -330,7 +329,6 @@ public sealed partial class SandboxedFileSystem
 
                     if (!TryOpenParentDirectory(
                             move.DestinationPath,
-                            createMissingDirectories: false,
                             cancellationToken,
                             out destinationParent,
                             out var destinationName,
