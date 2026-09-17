@@ -3016,6 +3016,7 @@ descriptor = OpenAt(parentDescriptor, fileName, ExistingFileOpenFlags(mode), 0);
   path (stage with `O_EXCL`, fsync, `renameat`) instead of reopening with
   `O_TRUNC`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H03 — `ReadAsync`/`WriteAsync` open the target without `O_NONBLOCK`, so a FIFO inside the workspace hangs the operation uncancellably
 

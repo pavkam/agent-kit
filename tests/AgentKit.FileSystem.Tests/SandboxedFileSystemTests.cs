@@ -81,6 +81,33 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task WriteAsync_WhenModeCreateOrOverwriteTargetsAnExistingFile_ReplacesAtomicallyAndPreservesMode()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        var target = Path.Combine(_root, "notes.txt");
+        File.WriteAllText(target, "old content");
+        File.SetUnixFileMode(target, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var result = await fs.WriteAsync(
+            new FileWriteRequest(new FileSystemPath("notes.txt"), "new", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        var written = result.ShouldBeOfType<FileWritten>();
+        written.BytesWritten.ShouldBe(3L);
+        File.ReadAllText(target).ShouldBe("new");
+        // Mode preservation is only meaningful if the replace-via-staged-rename path actually ran
+        // (it explicitly copies the prior mode onto the staged file before renaming it over the
+        // target); the previous truncate-in-place implementation never exercised that copy at all.
+        File.GetUnixFileMode(target).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Directory.GetFiles(_root, ".agentkit-write-*").ShouldBeEmpty("no staging file should remain after a committed atomic replace");
+    }
+
+    [Fact]
     public async Task WriteAsync_WhenPathContainsEmbeddedNul_DoesNotWriteToTheTruncatedPath()
     {
         // The grant binds the resource string "allowed.md\0x"; libc sees only "allowed.md". An effect on a different

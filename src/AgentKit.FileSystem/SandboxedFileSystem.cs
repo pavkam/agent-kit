@@ -273,6 +273,19 @@ public sealed partial class SandboxedFileSystem:
                     return await ReplaceExistingWriteAsync(
                         parent,
                         fileName,
+                        request.Path,
+                        request.Content,
+                        contentBytes,
+                        enforcementIntent.Id,
+                        reportBoundaryViolationsAsDenied: false,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                if (request.Mode == FileWriteMode.CreateOrOverwrite)
+                {
+                    return await CreateOrReplaceWriteAsync(
+                        parent,
+                        fileName,
+                        request.Path,
                         request.Content,
                         contentBytes,
                         enforcementIntent.Id,
@@ -319,9 +332,11 @@ public sealed partial class SandboxedFileSystem:
     private static async ValueTask<FileWriteResult> ReplaceExistingWriteAsync(
         SafeFileHandle parent,
         string fileName,
+        FileSystemPath path,
         string content,
         int contentBytes,
         SecurityEnforcementIntentId intentId,
+        bool reportBoundaryViolationsAsDenied,
         CancellationToken cancellationToken)
     {
         var parentDescriptor = parent.DangerousGetHandle().ToInt32();
@@ -332,8 +347,18 @@ public sealed partial class SandboxedFileSystem:
             0);
         if (currentDescriptor < 0)
         {
-            return Marshal.GetLastPInvokeError() == _errorNotFound
-                ? new FileWriteFailed("The replacement target does not exist.")
+            var openError = Marshal.GetLastPInvokeError();
+            if (openError == _errorNotFound)
+            {
+                return new FileWriteFailed(_replacementTargetVanishedMessage);
+            }
+
+            // FileWriteMode.ReplaceExisting reports every open failure as a generic FileWriteFailed
+            // (its documented contract makes no boundary/denial distinction); CreateOrReplaceWriteAsync
+            // delegates here for FileWriteMode.CreateOrOverwrite's existing-target case and needs the
+            // same FileWriteDenied a boundary violation produces everywhere else in this class.
+            return reportBoundaryViolationsAsDenied
+                ? BoundaryWriteFailure(path, openError)
                 : new FileWriteFailed("The replacement target could not be opened.");
         }
 
@@ -408,6 +433,82 @@ public sealed partial class SandboxedFileSystem:
                 _ = UnlinkAt(parentDescriptor, stagingName, 0);
             }
         }
+    }
+
+    /// <summary>The exact failure text <see cref="ReplaceExistingWriteAsync"/> reports when its target vanished
+    /// between the caller's existence check and its own open, used by <see cref="CreateOrReplaceWriteAsync"/> to
+    /// distinguish "retry as a fresh create" from every other replacement failure.</summary>
+    private const string _replacementTargetVanishedMessage = "The replacement target does not exist.";
+
+    /// <summary>
+    /// Creates <paramref name="fileName"/> when it does not exist, or atomically replaces its content via the
+    /// same staged write-then-rename <see cref="ReplaceExistingWriteAsync"/> uses when it does.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="FileWriteMode.CreateOrOverwrite"/> previously reopened an existing target with
+    /// <c>O_WRONLY | O_TRUNC</c> and wrote into the truncated file in place: a cancellation observed during the
+    /// write, a disk-full/IO error, or process death between the truncating open and the write left the target
+    /// empty or partially written, and never restored the file it replaced. Routing the existing-target case
+    /// through the staged replace path means every failure before the final <c>renameat</c> commit leaves the
+    /// prior target completely unchanged, matching the atomic-replace contract <c>ReplaceExisting</c> already
+    /// honors. The bounded retry mirrors <see cref="TryOpenWriteTarget"/>: if the target is removed by another
+    /// writer in the narrow window between this method's own create-exclusive attempt failing with "already
+    /// exists" and the replace attempt's own open, the replace fails with a "does not exist" outcome and this
+    /// method retries the whole create-or-replace attempt rather than surfacing a transient race as a failure.
+    /// </remarks>
+    private static async ValueTask<FileWriteResult> CreateOrReplaceWriteAsync(
+        SafeFileHandle parent,
+        string fileName,
+        FileSystemPath path,
+        string content,
+        int contentBytes,
+        SecurityEnforcementIntentId intentId,
+        CancellationToken cancellationToken)
+    {
+        var parentDescriptor = parent.DangerousGetHandle().ToInt32();
+        for (var attempt = 0; attempt < _writeOpenAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var descriptor = OpenAt(
+                parentDescriptor,
+                fileName,
+                _openWriteOnly | CreateFlag | ExclusiveFlag | NoFollowFlag | CloseOnExecFlag,
+                _unixFilePermissions);
+            if (descriptor >= 0)
+            {
+                using var handle = new SafeFileHandle(new IntPtr(descriptor), ownsHandle: true);
+                _ = ChangeMode(descriptor, _ownerReadWritePermissions);
+                try
+                {
+                    await using var stream = new FileStream(handle, FileAccess.Write, bufferSize: 81920, isAsync: false);
+                    var bytes = Encoding.UTF8.GetBytes(content);
+                    await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    return new FileWriteFailed("The file could not be written.");
+                }
+
+                return new FileWritten(contentBytes);
+            }
+
+            var error = Marshal.GetLastPInvokeError();
+            if (error != _errorAlreadyExists)
+            {
+                return BoundaryWriteFailure(path, error);
+            }
+
+            var replaced = await ReplaceExistingWriteAsync(
+                parent, fileName, path, content, contentBytes, intentId, reportBoundaryViolationsAsDenied: true, cancellationToken)
+                .ConfigureAwait(false);
+            if (replaced is not FileWriteFailed { SafeMessage: _replacementTargetVanishedMessage })
+            {
+                return replaced;
+            }
+        }
+
+        return new FileWriteFailed("The file could not be created or replaced after repeated concurrent modification.");
     }
 
     /// <inheritdoc/>
@@ -936,6 +1037,12 @@ public sealed partial class SandboxedFileSystem:
         return true;
     }
 
+    // Only FileWriteMode.CreateNew and FileWriteMode.Append reach this method: WriteCoreAsync routes
+    // ReplaceExisting through ReplaceExistingWriteAsync and CreateOrOverwrite through
+    // CreateOrReplaceWriteAsync, both of which stage-and-rename instead of truncating an existing
+    // target in place. CreateNew's O_CREAT | O_EXCL open fails outright on "already exists" (it must
+    // never touch an existing target), and Append's O_APPEND open without O_CREAT can only fail with
+    // "not found", so neither mode ever needs the reopen-existing retry the pre-fix implementation had.
     private static bool TryOpenWriteTarget(
         int parentDescriptor,
         string fileName,
@@ -944,69 +1051,29 @@ public sealed partial class SandboxedFileSystem:
         out bool created,
         out int error)
     {
-        for (var attempt = 0; attempt < _writeOpenAttempts; attempt++)
+        descriptor = OpenAt(parentDescriptor, fileName, NewFileOpenFlags(mode), _unixFilePermissions);
+        if (descriptor >= 0)
         {
-            descriptor = OpenAt(
-                parentDescriptor,
-                fileName,
-                NewFileOpenFlags(mode),
-                _unixFilePermissions);
-            if (descriptor >= 0)
-            {
-                // Append opens without O_CREAT, so a successful first open means the target already existed.
-                created = mode != FileWriteMode.Append;
-                error = 0;
-                return true;
-            }
-
-            error = Marshal.GetLastPInvokeError();
-            if (mode == FileWriteMode.CreateNew || error != _errorAlreadyExists)
-            {
-                created = false;
-                return false;
-            }
-
-            descriptor = OpenAt(parentDescriptor, fileName, ExistingFileOpenFlags(mode), 0);
-            if (descriptor >= 0)
-            {
-                created = false;
-                error = 0;
-                return true;
-            }
-
-            error = Marshal.GetLastPInvokeError();
-            if (error != _errorNotFound)
-            {
-                created = false;
-                return false;
-            }
+            // Append opens without O_CREAT, so a successful open means the target already existed.
+            created = mode != FileWriteMode.Append;
+            error = 0;
+            return true;
         }
 
-        descriptor = -1;
+        error = Marshal.GetLastPInvokeError();
         created = false;
-        error = _errorNotFound;
         return false;
     }
 
     private static int NewFileOpenFlags(FileWriteMode mode) => mode switch
     {
-        FileWriteMode.CreateOrOverwrite =>
-            _openWriteOnly | CreateFlag | ExclusiveFlag | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.CreateNew => _openWriteOnly | CreateFlag | ExclusiveFlag | NoFollowFlag | CloseOnExecFlag,
-        FileWriteMode.ReplaceExisting => throw new UnreachableException(),
+        FileWriteMode.CreateOrOverwrite or FileWriteMode.ReplaceExisting => throw new UnreachableException(),
         // Append never creates: the disposition table requires "not found, no mutation" for a missing target,
         // so the new-file open is attempted without O_CREAT and fails with ENOENT when the target is absent.
         FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
         _ => throw new UnreachableException()
     };
-
-    // TryOpenWriteTarget only reopens an existing target after its first attempt fails with "already exists", which
-    // NewFileOpenFlags can only produce for CreateOrOverwrite (the only mode that opens with O_CREAT | O_EXCL here):
-    // CreateNew returns its own failure before reopening, ReplaceExisting never reaches TryOpenWriteTarget, and
-    // Append never passes O_CREAT so it can fail only with "not found", never "already exists".
-    private static int ExistingFileOpenFlags(FileWriteMode mode) => mode == FileWriteMode.CreateOrOverwrite
-        ? _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag
-        : throw new UnreachableException();
 
     [LibraryImport("libc", EntryPoint = "fchmod", SetLastError = true)]
     private static partial int ChangeMode(int descriptor, int mode);
