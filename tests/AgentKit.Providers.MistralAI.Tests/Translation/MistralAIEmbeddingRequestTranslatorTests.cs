@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI.Tests.Translation;
 
+using System.Diagnostics;
+
 /// <summary>
 /// Verifies that <see cref="MistralAIEmbeddingRequestTranslator"/> produces
 /// the exact Mistral AI embeddings request body expected for
@@ -96,6 +98,16 @@ public sealed class MistralAIEmbeddingRequestTranslatorTests
             [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.Reject, ExtensionData.Empty);
 
         _ = Should.Throw<NotSupportedException>(
+            () => new MistralAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
+    public void Translate_WhenEncodingIsUndefined_ThrowsUnreachableException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Unspecified, null, (EmbeddingEncoding) 999, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
+
+        _ = Should.Throw<UnreachableException>(
             () => new MistralAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
     }
 }
