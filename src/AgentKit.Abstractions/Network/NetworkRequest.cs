@@ -77,4 +77,46 @@ public sealed record NetworkRequest
     public NetworkDataClassification Classification { get; }
     /// <summary>Gets the exact single-use egress authority.</summary>
     public SecurityGrant Grant { get; }
+
+    /// <summary>Compares every member structurally, including the ordered <see cref="ResolvedAddresses"/> sequence.</summary>
+    /// <param name="other">The request to compare with.</param>
+    /// <returns><see langword="true"/> when both requests describe the same network operation.</returns>
+    /// <remarks>
+    /// The compiler-synthesized record equality this overrides would compare
+    /// <see cref="ResolvedAddresses"/> by <see cref="ImmutableArray{T}"/>'s reference equality over
+    /// its backing array, contradicting this type's documented structural-equality contract: two
+    /// requests built from identical inputs would compare unequal and hash differently whenever
+    /// their address arrays happened to be distinct instances.
+    /// </remarks>
+    public bool Equals(NetworkRequest? other) =>
+        other is not null
+        && Id == other.Id
+        && Method == other.Method
+        && Destination == other.Destination
+        && Headers == other.Headers
+        && Content == other.Content
+        && Bounds == other.Bounds
+        && ResolvedAddresses.SequenceEqual(other.ResolvedAddresses)
+        && Classification == other.Classification
+        && Grant == other.Grant;
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Id);
+        hash.Add(Method);
+        hash.Add(Destination);
+        hash.Add(Headers);
+        hash.Add(Content);
+        hash.Add(Bounds);
+        foreach (var address in ResolvedAddresses)
+        {
+            hash.Add(address);
+        }
+
+        hash.Add(Classification);
+        hash.Add(Grant);
+        return hash.ToHashCode();
+    }
 }

@@ -318,6 +318,7 @@ findings).
   the documentation; audit the other listed records and add structural equality
   where callers or docs rely on it.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A06 — `SequencingModelResponseObserver` marks the attempt started before delivery succeeds
 

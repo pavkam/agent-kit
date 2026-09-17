@@ -103,6 +103,39 @@ public sealed class NetworkRequestTests
     }
 
     [Fact]
+    public void Equals_WhenResolvedAddressesAreDifferentArrayInstancesWithTheSameElements_AreEqual()
+    {
+        // Two independently-built ImmutableArray<NetworkAddress> instances with identical elements
+        // must compare equal here: the documented "structural equality over its fields" contract
+        // must not fall back to ImmutableArray<T>'s own reference equality.
+        var first = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [Address()], NetworkDataClassification.Public, Grant());
+        var second = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [Address()], NetworkDataClassification.Public, Grant());
+
+        first.ResolvedAddresses.ShouldNotBeSameAs(second.ResolvedAddresses);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_WhenResolvedAddressesDiffer_AreNotEqual()
+    {
+        var other = new NetworkAddress(
+            IPAddress.Parse("192.0.2.2"), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1));
+        var first = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [Address()], NetworkDataClassification.Public, Grant());
+        var second = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [other], NetworkDataClassification.Public, Grant());
+
+        first.ShouldNotBe(second);
+    }
+
+    [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
         var original = new NetworkRequest(
