@@ -3129,6 +3129,7 @@ _invoker = new HttpMessageInvoker(
   `PooledConnectionLifetime = TimeSpan.Zero`), or verify `RemoteEndPoint` of the
   connection against the request's address before each send.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H06 — Caller-supplied `Host` header is forwarded verbatim, overriding the HTTP virtual host and TLS SNI/certificate target without re-enforcement against the destination allow-list
 

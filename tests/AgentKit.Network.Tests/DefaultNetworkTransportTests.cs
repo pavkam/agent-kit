@@ -207,6 +207,29 @@ public sealed class DefaultNetworkTransportTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenSecondSendReusesAKeepAliveEligiblePooledConnection_OpensAFreshConnectionInstead()
+    {
+        // A response without "Connection: close" is keep-alive eligible under HTTP/1.1, so
+        // SocketsHttpHandler's default pool would normally return this connection for reuse by a
+        // later, unrelated send to the same (scheme, host, port). Each send here carries its own
+        // pinned resolved address and must be independently verified via ConnectCallback, which is
+        // only invoked for a genuinely new connection - so if the fix holds, both sends open their
+        // own connection instead of the second one silently reusing the first's.
+        await using var server = LoopbackServer.StartKeepAlive("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", maxConnections: 2);
+        using var transport = Transport(new TestGrantStore());
+        var request = Request(Destination(server.Port));
+
+        var first = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var firstReceived = first.ShouldBeOfType<NetworkResponseReceived>();
+        await firstReceived.Response.DisposeAsync();
+        var second = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var secondReceived = second.ShouldBeOfType<NetworkResponseReceived>();
+        await secondReceived.Response.DisposeAsync();
+
+        server.AcceptedConnections.ShouldBe(2, "a pooled connection reused across independently authorized sends would bypass per-send address verification");
+    }
+
+    [Fact]
     public async Task SendAsync_WhenConnectionIsRefused_ReturnsConnectionFailedWithCertainSideEffect()
     {
         var probe = new TcpListener(IPAddress.Loopback, 0);

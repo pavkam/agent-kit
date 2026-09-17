@@ -62,6 +62,15 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
                 AllowAutoRedirect = false,
                 MaxResponseHeadersLength = options.Value.MaximumResponseHeaderKilobytes,
                 ConnectCallback = ConnectAsync,
+                // The pool key is (scheme, host, port, SNI host) - not the resolved peer address - and
+                // ConnectCallback only runs when a genuinely new connection is opened. Every send is
+                // independently authorized against a specific still-valid resolved address, so a
+                // connection reused from the pool for a later send would bypass that per-send
+                // verification entirely (a different or re-resolved address for the same origin could
+                // silently reuse an earlier send's connection for up to the idle timeout). Disabling
+                // reuse forces ConnectCallback - and therefore address verification - to run for every
+                // send, per docs/architecture/network.md's "verifies... before each send" requirement.
+                PooledConnectionLifetime = TimeSpan.Zero,
             },
             disposeHandler: true);
     }
