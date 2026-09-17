@@ -676,6 +676,17 @@ public sealed class AnthropicLlmModelTests
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
 
+    /// <summary>Verifies the fixture reports a precise argument failure instead of silently returning the full untruncated payload.</summary>
+    [Fact]
+    public void ResponseBodyFixture_WhenMarkerIsAbsentFromEveryLine_ThrowsInsteadOfReturningTheFullPayload()
+    {
+        var payload = TestResources.ReadAllBytes("responses/streaming_text.sse");
+
+        var exception = Should.Throw<ArgumentException>(() => ResponseBodyFixture.TruncateAfterLineContaining(payload, "no-such-marker"));
+
+        exception.ParamName.ShouldBe("marker");
+    }
+
     /// <summary>Verifies a stream that ends after a completed text block settles with that text and the interim usage rather than an empty terminal.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
