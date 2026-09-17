@@ -154,6 +154,28 @@ public sealed class DefaultDelegatedIdentityDeriverTests
     }
 
     [Fact]
+    public async Task DeriveAsync_WhenValidationWaitIsCancelled_LogsDeriveCancelled()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
+        var parent = Identity(clock, [Claim("issuer", "scope", "read")]);
+        var gate = new AsyncGate();
+        var services = CreateServices(clock, new TestIssuerSettings(clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddHours(1)));
+        _ = services.AddSingleton(gate);
+        _ = services.ReplaceIdentityValidationPolicy<GatedValidationPolicy>();
+        var logger = new RecordingLogger<DefaultDelegatedIdentityDeriver>();
+        _ = services.AddSingleton<ILogger<DefaultDelegatedIdentityDeriver>>(logger);
+        using var provider = services.BuildServiceProvider();
+        using var cancellation = new CancellationTokenSource();
+        var pending = provider.GetRequiredService<IDelegatedIdentityDeriver>().DeriveAsync(new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), parent, parent.Claims, parent.Assurance), cancellation.Token).AsTask();
+        await gate.Entered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+        _ = await Should.ThrowAsync<OperationCanceledException>(pending);
+
+        var cancelled = logger.Entries.Single(entry => entry.EventId == 17005);
+        cancelled.Level.ShouldBe(LogLevel.Debug);
+    }
+
+    [Fact]
     public async Task DeriveAsync_WhenValidatorThrows_ReturnsUnavailableAndCompletesDiagnostics()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
@@ -165,6 +187,25 @@ public sealed class DefaultDelegatedIdentityDeriverTests
         using var listener = ThrowingStoppedListener();
         var result = await provider.GetRequiredService<IDelegatedIdentityDeriver>().DeriveAsync(new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), parent, parent.Claims, parent.Assurance), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<IdentityRejected>().Failure.Kind.ShouldBe(IdentityFailureKind.Unavailable);
+    }
+
+    [Fact]
+    public async Task DeriveAsync_WhenValidatorThrowsUnexpectedly_LogsDeriveFailedAndRejectsUnavailable()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
+        var parent = Identity(clock, [Claim("issuer", "scope", "read")]);
+        var services = CreateServices(clock, new TestIssuerSettings(clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddHours(1)));
+        _ = services.ReplaceIdentityValidationPolicy<ThrowingValidationPolicy>();
+        var logger = new RecordingLogger<DefaultDelegatedIdentityDeriver>();
+        _ = services.AddSingleton<ILogger<DefaultDelegatedIdentityDeriver>>(logger);
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IDelegatedIdentityDeriver>().DeriveAsync(new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), parent, parent.Claims, parent.Assurance), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<IdentityRejected>().Failure.Kind.ShouldBe(IdentityFailureKind.Unavailable);
+        var failed = logger.Entries.Single(entry => entry.EventId == 17004);
+        failed.Level.ShouldBe(LogLevel.Error);
+        failed.Message.ShouldContain(nameof(InvalidOperationException));
     }
 
     [Fact]

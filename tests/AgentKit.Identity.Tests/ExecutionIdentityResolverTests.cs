@@ -31,6 +31,7 @@ public sealed class ExecutionIdentityResolverTests: IdentityNormalizerConformanc
 
     /// <inheritdoc/>
     protected override IdentityNormalizerConformanceFixture CreateFixture() => new();
+
     [Fact]
     public async Task ResolveAsync_WhenIssuerIsMissing_ReturnsUnknownIssuer()
     {
@@ -270,6 +271,25 @@ public sealed class ExecutionIdentityResolverTests: IdentityNormalizerConformanc
         using var scope = provider.CreateScope();
         var result = await scope.ServiceProvider.GetRequiredService<IExecutionIdentityResolver>().ResolveAsync(Assertion("issuer"), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<IdentityRejected>().Failure.Kind.ShouldBe(IdentityFailureKind.Unavailable);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenValidatorThrowsUnexpectedly_LogsResolveFailedAndRejectsUnavailable()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
+        var services = CreateServices(clock, new TestIssuerSettings(clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddHours(1)));
+        _ = services.ReplaceIdentityValidationPolicy<ThrowingValidationPolicy>();
+        var logger = new RecordingLogger<ExecutionIdentityResolver>();
+        _ = services.AddSingleton<ILogger<ExecutionIdentityResolver>>(logger);
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IExecutionIdentityResolver>().ResolveAsync(Assertion("issuer"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<IdentityRejected>().Failure.Kind.ShouldBe(IdentityFailureKind.Unavailable);
+        var failed = logger.Entries.Single(entry => entry.EventId == 17003);
+        failed.Level.ShouldBe(LogLevel.Error);
+        failed.Message.ShouldContain(nameof(InvalidOperationException));
     }
 
     [Fact]
