@@ -52,6 +52,18 @@ public sealed class SqliteSessionEntryJsonConverterTests
     }
 
     [Fact]
+    public void Read_WhenCodecReportsAnUnrecognizedDecodeResult_ThrowsJsonException()
+    {
+        var persisted = JsonSerializer.Serialize<SessionEntry>(MessageEntry(), Options(Catalog()));
+        var codecs = new FixedResultCodecCatalog(decodeResult: new UnrecognizedDecodeResult());
+        var options = Options(codecs);
+
+        var exception = Should.Throw<JsonException>(() => JsonSerializer.Deserialize<SessionEntry>(persisted, options));
+
+        exception.Message.ShouldBe("The persisted session entry decode outcome is unsupported.");
+    }
+
+    [Fact]
     public void Write_WhenCodecRejectsEncode_ThrowsJsonException()
     {
         var codecs = new FixedResultCodecCatalog(encodeResult: new SessionEntryEncodeRejected("no codec"));
@@ -83,6 +95,9 @@ public sealed class SqliteSessionEntryJsonConverterTests
         public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) =>
             decodeResult ?? throw new InvalidOperationException("This test catalog does not decode.");
     }
+
+    /// <summary>A decode result outside the converter's known closed set, to drive its exhaustive-switch default arm.</summary>
+    private sealed record UnrecognizedDecodeResult: SessionEntryDecodeResult;
 
     private static MessageSessionEntry MessageEntry()
     {
