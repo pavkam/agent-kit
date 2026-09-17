@@ -189,6 +189,18 @@ public sealed class ServiceExtensionsTests
         policy.RequiredVersion.ShouldBe(version);
     }
 
+    [Fact]
+    public void With_WhenNoMemberIsChanged_ProducesAnEqualDistinctCopy()
+    {
+        var policy = McpServerVersionPolicy.Require(McpProtocolVersions.November2025);
+
+        var copy = policy with { };
+
+        copy.ShouldNotBeSameAs(policy);
+        copy.ShouldBe(policy);
+        copy.RequiredVersion.ShouldBe(policy.RequiredVersion);
+    }
+
     private abstract class WeatherContract
     {
         [McpTool("weather.get", "2.1", ReadOnly = true)]
