@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere.Tests.Translation;
 
+using System.Diagnostics;
+
 /// <summary>
 /// Verifies that <see cref="CohereEmbeddingRequestTranslator"/> produces
 /// the exact Cohere v2 embed request body expected for representative
@@ -140,6 +142,36 @@ public sealed class CohereEmbeddingRequestTranslatorTests
         var body = new CohereEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest));
 
         body.ContainsKey("truncate").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Translate_WhenPurposeIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], (EmbeddingPurpose) 999, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new CohereEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
+    public void Translate_WhenEncodingIsUndefined_ThrowsUnreachableException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Document, null, (EmbeddingEncoding) 999, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
+
+        _ = Should.Throw<UnreachableException>(
+            () => new CohereEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
+    public void Translate_WhenTruncationIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Document, null, null, (EmbeddingTruncation) 999, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new CohereEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
     }
 
 }
