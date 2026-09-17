@@ -32,4 +32,48 @@ public sealed class ConversationTurnResultTests
         result.Succeeded.ShouldBeFalse();
         result.Events.ShouldBe(events);
     }
+
+    [Fact]
+    public void Equals_WhenSucceededAndEventsMatch_ReturnsTrueWithMatchingHashCode()
+    {
+        var events = ImmutableArray.Create<ConversationEvent>(new ConversationAssistantTextEvent("hi"));
+        var first = new ConversationTurnResult(true, events);
+        var second = new ConversationTurnResult(true, events);
+
+        first.Equals(second).ShouldBeTrue();
+        first.Equals((object) second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_WhenSucceededDiffers_ReturnsFalse()
+    {
+        var events = ImmutableArray.Create<ConversationEvent>(new ConversationAssistantTextEvent("hi"));
+        var first = new ConversationTurnResult(true, events);
+        var second = new ConversationTurnResult(false, events);
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToString_WhenCalled_IncludesTypeNameAndSucceeded()
+    {
+        var result = new ConversationTurnResult(true, []);
+
+        var text = result.ToString();
+
+        text.ShouldContain(nameof(ConversationTurnResult));
+        text.ShouldContain("Succeeded");
+    }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationTurnResult(true, []);
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }
