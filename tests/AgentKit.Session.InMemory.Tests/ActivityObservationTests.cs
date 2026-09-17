@@ -43,4 +43,28 @@ public sealed class ActivityObservationTests
         var exception = Should.Throw<ArgumentException>(() => observation.GetTagItem(" "));
         exception.ParamName.ShouldBe("key");
     }
+
+    [Fact]
+    public void ActivityObservation_WhenValuesMatch_AreStructurallyEqualAndReturnTheCapturedTag()
+    {
+        var tags = new Dictionary<string, object?> { ["tag.key"] = "tag.value" }.ToFrozenDictionary();
+        var first = new ActivityObservation("test.operation", ActivityStatusCode.Ok, tags);
+        var second = new ActivityObservation("test.operation", ActivityStatusCode.Ok, tags);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        first.GetTagItem("tag.key").ShouldBe("tag.value");
+    }
+
+    [Fact]
+    public void With_WhenCopyingWithoutChanges_RetainsTheOriginalValues()
+    {
+        var tags = new Dictionary<string, object?> { ["tag.key"] = "tag.value" }.ToFrozenDictionary();
+        var original = new ActivityObservation("test.operation", ActivityStatusCode.Ok, tags);
+
+        var copy = original with { };
+
+        copy.ShouldBe(original);
+        copy.ShouldNotBeSameAs(original);
+    }
 }
