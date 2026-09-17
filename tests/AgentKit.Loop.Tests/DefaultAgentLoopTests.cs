@@ -1275,6 +1275,150 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenCancelledBeforeAnyCommit_LogsRunCancelled()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        using var cts = new CancellationTokenSource();
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            },
+            logger: logger);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token));
+
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1003);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Information);
+        _ = entry.State["RunId"].ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsOnce_LogsSessionAppendConflictRetried()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+            coordinator.Seed([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, request.ExpectedVersion.Value + 1)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1041);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Information);
+        entry.State["Attempt"].ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsWithAnInterleavedMessage_LogsSessionAppendStaleAfterInterleavedMessage()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
+        coordinator.EnforceSequenceContinuity = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, "steer")]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1042);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenADanglingToolCallIsSettledBeforeTheFirstTurn_LogsDanglingToolCallsSettled()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
+        var dangling = TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 3, callId);
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            dangling,
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1090);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Warning);
+        entry.State["ToolCount"].ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMaxTurnsReachedWithPendingToolCalls_LogsToolBatchRejectedAtTurnLimit()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithToolCall(requestId, callId), maxTurns: 1,
+            options: new AgentLoopOptions { DisableToolsOnFinalTurn = false }, logger: logger);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1035);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Information);
+        entry.State["ToolCount"].ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelReportsToolUseWithoutAnyToolCall_LogsModelResponseNotAccepted()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var textPart = new TextPart("I will call a tool", TextSemantics.Plain, ExtensionData.Empty);
+        var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(
+            TestFactory.Response(requestId, [textPart], NormalizedStopReason.ToolUse)), logger: logger);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunFailed>();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1024);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Warning);
+        entry.State["Reason"].ShouldBe("tool-use stop without any tool call");
+    }
+
+    [Fact]
     public async Task RunAsync_WhenRunAuthorizationCannotBeCaptured_ReturnsAgentRunAuthorizationUnavailableBeforeAnyEffect()
     {
         var selector = new FakeSecurityProfileSelector
