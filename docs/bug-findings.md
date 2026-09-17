@@ -3700,6 +3700,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   composition validator resolve `IOptions<AgentIdentityOptions>` when the
   identity package is present).
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### F11 — `UseSqliteSessions` performs a file-system mutation during registration
 

@@ -24,7 +24,8 @@ public static class ServiceExtensions
             var options = services.AddOptions<AgentIdentityOptions>()
                 .Validate(static value => value.MaximumDelegationDepth > 0, "MaximumDelegationDepth must be positive.")
                 .Validate(static value => value.MaximumClockSkew >= TimeSpan.Zero, "MaximumClockSkew must not be negative.")
-                .Validate(static value => value.MaximumEvidenceLifetime > TimeSpan.Zero, "MaximumEvidenceLifetime must be positive.");
+                .Validate(static value => value.MaximumEvidenceLifetime > TimeSpan.Zero, "MaximumEvidenceLifetime must be positive.")
+                .ValidateOnStart();
             if (configure is not null)
             {
                 _ = options.Configure(configure);

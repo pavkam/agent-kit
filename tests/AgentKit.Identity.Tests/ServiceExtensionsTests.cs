@@ -94,4 +94,20 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IDelegatedIdentityDeriver>);
     }
+
+    [Fact]
+    public void AddAgentIdentity_WhenOptionsAreInvalid_FailsStartupValidationBeforeFirstUse()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentIdentity(options => options.MaximumDelegationDepth = 0);
+        using var provider = services.BuildServiceProvider();
+
+        // IStartupValidator is what a generic-host application resolves and invokes automatically
+        // during IHost.StartAsync() for every option type registered with ValidateOnStart(); calling
+        // it directly here reproduces that host behavior without depending on the hosting package.
+        // Without ValidateOnStart(), AgentIdentityOptions would not be registered against it at all,
+        // so misconfiguration would only surface much later, on first identity use.
+        var startupValidator = provider.GetRequiredService<IStartupValidator>();
+        _ = Should.Throw<OptionsValidationException>(startupValidator.Validate);
+    }
 }
