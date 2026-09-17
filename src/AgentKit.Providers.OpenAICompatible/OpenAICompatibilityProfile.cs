@@ -113,6 +113,7 @@ public sealed record OpenAICompatibilityProfile
         string? embeddingsPath,
         bool supportsEmbeddingPurpose)
     {
+        ArgumentNullException.ThrowIfNull(baseAddress);
         ArgumentException.ThrowIfNotAbsoluteUri(baseAddress);
         ArgumentException.ThrowIfNotRelativeUriPath(chatCompletionsPath);
         ArgumentNullException.ThrowIfNull(defaultRequestHeaders);
@@ -121,7 +122,13 @@ public sealed record OpenAICompatibilityProfile
             ArgumentException.ThrowIfNotRelativeUriPath(embeddingsPath);
         }
 
-        BaseAddress = baseAddress;
+        // new Uri(BaseAddress, operationPath) uses RFC 3986 relative resolution: a base address without
+        // a trailing slash treats its last path segment as a "file" that a relative path replaces rather
+        // than extends, silently discarding it (e.g. "https://host/openai/v1" + "chat/completions"
+        // resolves to "https://host/openai/chat/completions", dropping "v1"). Every default base address
+        // already ends in '/'; this only affects a caller-supplied one, which is extremely common when
+        // binding from configuration.
+        BaseAddress = baseAddress.AbsoluteUri.EndsWith('/') ? baseAddress : new Uri(baseAddress.AbsoluteUri + "/");
         ChatCompletionsPath = chatCompletionsPath;
         SendDeveloperRoleAsSystem = sendDeveloperRoleAsSystem;
         PreferStreaming = preferStreaming;

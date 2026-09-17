@@ -214,6 +214,58 @@ public sealed class OpenAICompatibilityProfileTests
         exception.ParamName.ShouldBe("embeddingsPath");
     }
 
+    [Fact]
+    public void ChatCompletionsUri_WhenBaseAddressHasNoTrailingSlash_StillIncludesTheFullBasePath()
+    {
+        // new Uri(BaseAddress, ChatCompletionsPath) uses RFC 3986 relative resolution: without a
+        // trailing slash, "https://host/openai/v1" + "chat/completions" resolves to
+        // "https://host/openai/chat/completions", silently dropping "v1" - extremely common when a
+        // caller binds a base address from configuration without a trailing slash.
+        var profile = new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/openai/v1"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            []);
+
+        profile.ChatCompletionsUri.ShouldBe(new Uri("https://api.example.test/openai/v1/chat/completions"));
+    }
+
+    [Fact]
+    public void EmbeddingsUri_WhenBaseAddressHasNoTrailingSlash_StillIncludesTheFullBasePath()
+    {
+        var profile = new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/openai/v1"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            [],
+            embeddingsPath: "embeddings",
+            supportsEmbeddingPurpose: false);
+
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://api.example.test/openai/v1/embeddings"));
+    }
+
+    [Fact]
+    public void BaseAddress_WhenAlreadyEndsWithSlash_IsUnchanged()
+    {
+        var address = new Uri("https://api.example.test/openai/v1/");
+        var profile = new OpenAICompatibilityProfile(
+            address,
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            []);
+
+        profile.BaseAddress.ShouldBe(address);
+    }
+
     private static OpenAICompatibilityProfile CreateProfile(string chatCompletionsPath) =>
         new(
             new Uri("https://api.example.test/v1/"),

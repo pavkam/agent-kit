@@ -1870,6 +1870,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   non-slash-terminated path in `OpenAICompatibleEndpointOptionsValidation` with
   an explicit message.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ---
 
