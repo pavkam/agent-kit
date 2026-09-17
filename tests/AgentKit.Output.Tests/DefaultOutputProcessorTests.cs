@@ -5,6 +5,10 @@ namespace AgentKit.Output.Tests;
 
 using System.Diagnostics.Metrics;
 
+using AgentKit.TestSupport;
+
+using Microsoft.Extensions.Logging;
+
 /// <summary>Verifies DefaultOutputProcessor behavior and contracts.</summary>
 [Collection(OutputObservabilityGroup.Name)]
 public sealed class DefaultOutputProcessorTests
@@ -43,25 +47,34 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
-    public async Task ProcessAsync_WhenCancelledBeforeProcessing_ThrowsOperationCanceledException()
+    public async Task ProcessAsync_WhenCancelledBeforeProcessing_ThrowsOperationCanceledExceptionAndLogsCancellation()
     {
-        var processor = CreateProcessor();
+        var logger = new RecordingLogger<DefaultOutputProcessor>();
+        var processor = CreateProcessor(logger: logger);
         var definition = TestFactory.Definition();
         var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("hi"));
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
         _ = await Should.ThrowAsync<OperationCanceledException>(() => processor.ProcessAsync(request, cancellation.Token).AsTask());
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10001).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.State["OutputDefinitionId"].ShouldBe(definition.Id);
     }
 
     [Fact]
-    public async Task ProcessAsync_WhenAValidatorThrowsUnexpectedly_PropagatesAfterObservingFailure()
+    public async Task ProcessAsync_WhenAValidatorThrowsUnexpectedly_PropagatesAfterObservingFailureAndLogsIt()
     {
         var validator = new FakeOutputValidator("boom", static _ => throw new InvalidOperationException("validator failure"));
-        var processor = CreateProcessor(validators: [validator]);
+        var logger = new RecordingLogger<DefaultOutputProcessor>();
+        var processor = CreateProcessor(validators: [validator], logger: logger);
         var definition = TestFactory.Definition(validators: [new OutputValidatorReference("boom")]);
         var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("hi"));
         var exception = await Should.ThrowAsync<InvalidOperationException>(() => processor.ProcessAsync(request, TestContext.Current.CancellationToken).AsTask());
         exception.Message.ShouldBe("validator failure");
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10002).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Error);
+        entry.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        entry.Message.ShouldNotContain("validator failure");
     }
 
     [Theory]
@@ -95,15 +108,20 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
-    public async Task ProcessAsync_TextMode_ReturnsAcceptedWithConcatenatedText()
+    public async Task ProcessAsync_TextMode_ReturnsAcceptedWithConcatenatedTextAndLogsCompletion()
     {
-        var processor = CreateProcessor();
+        var logger = new RecordingLogger<DefaultOutputProcessor>();
+        var processor = CreateProcessor(logger: logger);
         var definition = TestFactory.Definition(OutputMode.Text);
         var response = TestFactory.Response([new TextPart("hello ", TextSemantics.Plain, ExtensionData.Empty), new TextPart("world", TextSemantics.Plain, ExtensionData.Empty),]);
         var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
         var accepted = result.ShouldBeOfType<OutputAccepted>();
         accepted.Output.Mode.ShouldBe(OutputMode.Text);
         accepted.Output.Text.ShouldBe("hello world");
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10000).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.State["Outcome"].ShouldBe("accepted");
+        entry.Message.ShouldNotContain("hello world");
     }
 
     [Fact]
@@ -584,7 +602,7 @@ public sealed class DefaultOutputProcessorTests
         return new AgentOutputOptionsSnapshot(options.MaximumCandidateBytes, options.MaximumSchemaBytes, options.MaximumSchemaDepth, options.MaximumSchemaNodes, options.MaximumCandidateDepth, options.MaximumCandidateNodes, options.MaximumValidationIssues, options.MaximumRepairAttempts, options.RequireSchemaForStructuredModes, options.AllowProviderModeDowngrade);
     }
 
-    private static DefaultOutputProcessor CreateProcessor(Action<AgentOutputOptions>? configure = null, IEnumerable<IOutputValidator>? validators = null) => new(validators ?? [], new StructuralOutputSchemaEngine(), DefaultOptions(configure));
+    private static DefaultOutputProcessor CreateProcessor(Action<AgentOutputOptions>? configure = null, IEnumerable<IOutputValidator>? validators = null, ILogger<DefaultOutputProcessor>? logger = null) => new(validators ?? [], new StructuralOutputSchemaEngine(), DefaultOptions(configure), logger);
     /// <summary>Represents the runtime value used to verify bounded structured-output deserialization.</summary>
     private sealed class WhitespaceRuntimeValue
     {

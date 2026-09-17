@@ -4,6 +4,7 @@
 namespace AgentKit.Output.Tests;
 
 using AgentKit.Conformance;
+using AgentKit.TestSupport;
 
 using Microsoft.Extensions.Logging;
 
@@ -287,11 +288,18 @@ public sealed class StructuralOutputSchemaEngineTests: OutputSchemaEngineConform
     }
 
     [Fact]
-    public void Preflight_WhenCancellationIsRequested_ThrowsOperationCanceledException()
+    public void Preflight_WhenCancellationIsRequested_ThrowsOperationCanceledExceptionAndLogsCancellation()
     {
+        var logger = new RecordingLogger<StructuralOutputSchemaEngine>();
+        var engine = new StructuralOutputSchemaEngine(logger);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        _ = Should.Throw<OperationCanceledException>(() => _engine.Preflight(Request("true"), cancellation.Token));
+
+        _ = Should.Throw<OperationCanceledException>(() => engine.Preflight(Request("true"), cancellation.Token));
+
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10021).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.State["Operation"].ShouldBe("preflight");
     }
 
     [Fact]

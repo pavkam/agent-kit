@@ -32,4 +32,15 @@ public sealed class ConversationToolResultEventTests
         toolResultEvent.Succeeded.ShouldBeFalse();
         toolResultEvent.Summary.ShouldBe("denied");
     }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationToolResultEvent(new ToolCallId(Guid.NewGuid()), "tool", true, "ok");
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }

@@ -109,6 +109,35 @@ public sealed class AsyncOwnedConversationSessionTests
     }
 
     [Fact]
+    public async Task PresentToolAsync_WhenInnerDoesNotOverrideItAndPartIsAToolResult_ReturnsNullFromTheCompatibleDefault()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+        var result = FakeMessages.ToolSuccess(FakeMessages.ToolCall("search", "{}"), "found it");
+
+        var presentation = await sut.PresentToolAsync(result, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenInnerDoesNotOverrideItAndPartIsNeitherACallNorAResult_ThrowsArgumentException()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+        var part = new TextPart("not a tool part", TextSemantics.Plain, ExtensionData.Empty);
+
+        var exception = await Should.ThrowAsync<ArgumentException>(
+            async () => await sut.PresentToolAsync(part, TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("part");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
     public async Task SendAsync_WithObserver_WhenInnerDoesNotOverrideIt_DeliversFallbackEventsThenSettledTerminal()
     {
         var owner = new RecordingAsyncDisposable();

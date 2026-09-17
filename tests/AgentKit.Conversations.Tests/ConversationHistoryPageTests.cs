@@ -48,4 +48,64 @@ public sealed class ConversationHistoryPageTests
         second.ShouldBe(first);
         second.GetHashCode().ShouldBe(first.GetHashCode());
     }
+
+    [Fact]
+    public void Equals_WhenOtherIsNull_ReturnsFalse()
+    {
+        var page = new ConversationHistoryPage([], new SessionSequence(4), complete: false);
+
+        page.Equals(null).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenMessagesDiffer_ReturnsFalse()
+    {
+        var message = new UserMessage(
+            new MessageId(Guid.NewGuid()),
+            new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()),
+            null,
+            new BranchId(Guid.NewGuid()),
+            null,
+            null,
+            DateTimeOffset.UnixEpoch,
+            MessageState.Complete,
+            [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var first = new ConversationHistoryPage([], new SessionSequence(4), complete: false);
+        var second = new ConversationHistoryPage([message], new SessionSequence(4), complete: false);
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenNextCursorDiffers_ReturnsFalse()
+    {
+        var messages = ImmutableArray<AgentMessage>.Empty;
+        var first = new ConversationHistoryPage(messages, new SessionSequence(4), complete: false);
+        var second = new ConversationHistoryPage(messages, new SessionSequence(5), complete: false);
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenCompleteDiffers_ReturnsFalse()
+    {
+        var messages = ImmutableArray<AgentMessage>.Empty;
+        var first = new ConversationHistoryPage(messages, new SessionSequence(4), complete: false);
+        var second = new ConversationHistoryPage(messages, new SessionSequence(4), complete: true);
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationHistoryPage([], new SessionSequence(4), complete: false);
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }

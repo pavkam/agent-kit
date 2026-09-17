@@ -31,4 +31,16 @@ public sealed class ConversationToolCallEventTests
         toolCallEvent.ToolName.ShouldBe("tool");
         toolCallEvent.ArgumentsJson.ShouldBe(/*lang=json,strict*/ "{\"a\":1}");
     }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationToolCallEvent(
+            new ToolCallId(Guid.NewGuid()), "tool", /*lang=json,strict*/ "{\"a\":1}");
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }
