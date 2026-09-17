@@ -2136,6 +2136,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   shapes (`error` object vs. `error` string + top-level `code`), or let the
   branded leaf supply an error-body reader; add an xAI error fixture.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

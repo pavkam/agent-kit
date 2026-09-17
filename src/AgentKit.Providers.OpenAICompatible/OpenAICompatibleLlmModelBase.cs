@@ -454,7 +454,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                     .DeserializeAsync<OpenAIErrorResponse>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 providerMessage = error?.Error?.Message;
-                providerCode = error?.Error?.Code ?? error?.Error?.Type;
+                providerCode = error?.Error?.Code ?? error?.Error?.Type ?? error?.TopLevelCode;
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

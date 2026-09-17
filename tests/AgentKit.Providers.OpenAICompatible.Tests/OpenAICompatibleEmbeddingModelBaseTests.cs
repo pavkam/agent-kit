@@ -212,6 +212,26 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenErrorBodyUsesTheXaiStringShape_ParsesTheMessageAndTopLevelCode()
+    {
+        // xAI's chat/embeddings endpoints return errors as {"code":"<status text>","error":"<message>"}: `error`
+        // is a bare string and `code` is a top-level sibling instead of the common nested error object shape.
+        // Deserializing that into OpenAIErrorResponse previously threw JsonException, dropping the provider's
+        // code and message and falling back to a status-only failure.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.BadRequest, "responses/error_xai_string.json");
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-bad")));
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.StatusCode.ShouldBe(400);
+        failed.Failure.ProviderCode.ShouldBe("Bad Request");
+        failed.Failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("grok-9000 is not a supported model.");
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenErrorBodyIsNotJson_LeavesNoProviderMessageEvidence()
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)

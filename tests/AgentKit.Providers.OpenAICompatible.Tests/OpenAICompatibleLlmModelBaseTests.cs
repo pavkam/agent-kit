@@ -208,6 +208,28 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyUsesTheXaiStringShape_ParsesTheMessageAndTopLevelCode()
+    {
+        // xAI's chat/embeddings endpoints return errors as {"code":"<status text>","error":"<message>"}: `error`
+        // is a bare string and `code` is a top-level sibling instead of the common nested error object shape.
+        // Deserializing that into OpenAIErrorResponse previously threw JsonException, dropping the provider's
+        // code and message and falling back to a status-only failure.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.BadRequest, "responses/error_xai_string.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-bad")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.StatusCode.ShouldBe(400);
+        failed.Failure.ProviderCode.ShouldBe("Bad Request");
+        failed.Failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("grok-9000 is not a supported model.");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_hostile.json");
