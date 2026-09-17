@@ -62,6 +62,23 @@ internal static class CompactionPromptResources
                 $"The embedded resource '{resourceName}' is missing from the {assembly.GetName().Name} assembly; "
                 + "the package build is incomplete.");
 
+        return DecodeAndValidate(stream, resourceName);
+    }
+
+    /// <summary>Bounds, decodes, and trims one already-opened resource stream.</summary>
+    /// <param name="stream">The opened, readable resource stream, positioned at its start.</param>
+    /// <param name="resourceName">The logical resource name attributed by any thrown exception.</param>
+    /// <returns>Non-empty prompt text with no leading byte-order mark and no trailing whitespace.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="stream"/> exceeds the size bound, or contains no non-whitespace text.
+    /// </exception>
+    /// <remarks>Split from <see cref="LoadText"/> so the size and emptiness guards are exercisable against a
+    /// synthetic stream without shipping an oversized or blank resource in the package build.</remarks>
+    internal static string DecodeAndValidate(Stream stream, string resourceName)
+    {
+        Debug.Assert(stream is not null, "Callers supply an opened resource stream.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(resourceName), "Callers pass a stable resource name for diagnostics.");
+
         if (stream.Length > _maximumResourceBytes)
         {
             throw new InvalidOperationException(
