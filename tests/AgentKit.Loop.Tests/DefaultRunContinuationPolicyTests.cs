@@ -159,6 +159,74 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
             .SafeMessage.ShouldContain("deferred boundary");
     }
 
+    [Fact]
+    public async Task DecideAsync_WhenOnlyADeferredCompletionCauseExists_SelectsItByItsPriority()
+    {
+        var fixture = CreateFixture();
+        var deferredOperationId = new OperationId(Guid.NewGuid());
+        var boundary = new DeferredContinuationBoundary(
+            new TurnId(Guid.NewGuid()), new ModelRequestId(Guid.NewGuid()), deferredOperationId);
+        var cause = new DeferredCompletionContinuationCause(deferredOperationId);
+
+        var decision = await fixture.Policy.DecideAsync(
+            fixture.CreateContext(boundary, [cause], state: AgentRunState.SuspendedDeferred), TestContext.Current.CancellationToken);
+
+        var reason = decision.ShouldBeOfType<ContinueRun>().Reason;
+        reason.SelectedCause.ShouldBeSameAs(cause);
+        reason.OtherPendingCauses.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DecideAsync_WhenOnlyACompactionRetryCauseExists_SelectsItByItsPriority()
+    {
+        var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var sessionId = new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        var operationId = new OperationId(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+        var runId = new RunId(Guid.Parse("44444444-4444-4444-4444-444444444444"));
+        var branchId = new BranchId(Guid.Parse("55555555-5555-5555-5555-555555555555"));
+        var turnId = new TurnId(Guid.NewGuid());
+        var modelRequestId = new ModelRequestId(Guid.NewGuid());
+        var fixture = CreateFixture();
+        var boundary = new RetryContinuationBoundary(turnId, modelRequestId);
+
+        var compactionId = new CompactionId(Guid.NewGuid());
+        var correlation = new InRunOperationCorrelation(operationId, runId, turnId);
+        var identity = TestFactory.Identity();
+        var operationContext = TestSupport.TestSecurityEvidence.CompactionContext(compactionId, agentId, sessionId, correlation, identity);
+        var manifest = new CompactionManifest(
+            new CompactionManifestId(Guid.NewGuid()),
+            operationContext,
+            branchId,
+            new SessionVersion(1),
+            new CompactionSourceRange(new SessionSequence(1), new SessionSequence(2)),
+            new SessionSequence(3),
+            new CompactionProducer(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty),
+            new ContextEpoch(0),
+            new CompactionSizeEstimate(10, 100, 2),
+            new CompactionSizeEstimate(1, 10, 1),
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        var record = new CompactionRecord(
+            operationContext,
+            new SessionVersion(1),
+            new SessionVersion(2),
+            CompactionRecordStatus.Active,
+            manifest,
+            new CompactionCheckpoint([new TextPart("summary", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty),
+            supersedes: null,
+            rejection: null,
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        var cause = new CompactionRetryContinuationCause(modelRequestId, new CompactionSucceeded(operationContext, record));
+
+        var decision = await fixture.Policy.DecideAsync(
+            fixture.CreateContext(boundary, [cause], state: AgentRunState.WaitingRetry), TestContext.Current.CancellationToken);
+
+        var reason = decision.ShouldBeOfType<ContinueRun>().Reason;
+        reason.SelectedCause.ShouldBeSameAs(cause);
+        reason.OtherPendingCauses.ShouldBeEmpty();
+    }
+
     private static OutputRetryRequired CreateRetry() => new(new OutputRepairInstruction("Repair output."), new OutputValidationFailure(OutputValidationFailureKind.ValidatorFailed, "Rejected.", []));
     private static ActivityListener CreateThrowingListener(bool throwOnStart) => new()
     {
