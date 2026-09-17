@@ -24,10 +24,15 @@ namespace AgentKit.Providers.GoogleGemini
         public GoogleGeminiEmbeddingRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
     }
+    public sealed class GoogleGeminiEmbeddingResponseParseContext : AgentKit.Providers.EmbeddingResponseParseContext, System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext>
+    {
+        public GoogleGeminiEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.EmbeddingPurpose requestedPurpose, AgentKit.ProviderRequestId? providerRequestId = default) { }
+        public AgentKit.EmbeddingPurpose RequestedPurpose { get; init; }
+    }
     public sealed class GoogleGeminiEmbeddingResponseParser : AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser
     {
         public GoogleGeminiEmbeddingResponseParser() { }
-        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class GoogleGeminiErrorMapping
     {
@@ -92,7 +97,7 @@ namespace AgentKit.Providers.GoogleGemini
     }
     public interface IGoogleGeminiEmbeddingResponseParser
     {
-        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IGoogleGeminiResponseParser
     {

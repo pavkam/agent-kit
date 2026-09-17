@@ -19,7 +19,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
     /// <inheritdoc/>
     public async Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        EmbeddingResponseParseContext context,
+        GoogleGeminiEmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default)
     {
@@ -76,7 +76,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
                 identity,
                 vector.Values.Length,
                 EmbeddingElementType.Float32,
-                EmbeddingPurpose.Unspecified,
+                context.RequestedPurpose,
                 ExtensionData.Empty);
 
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));

@@ -2347,6 +2347,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   context or an added field on `EmbeddingResponseParseContext`) and record it in
   the `EmbeddingSpaceIdentity`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N04 — Vertex AI embedding space identity discards the requested `task_type`
 

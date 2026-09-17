@@ -9,13 +9,14 @@ namespace AgentKit.Providers.GoogleGemini.Tests.Parsing;
 /// </summary>
 public sealed class GoogleGeminiEmbeddingResponseParserTests
 {
-    private static EmbeddingResponseParseContext CreateContext(EmbeddingRequestId requestId, ProviderRequestId? providerRequestId = null) =>
+    private static GoogleGeminiEmbeddingResponseParseContext CreateContext(
+        EmbeddingRequestId requestId, ProviderRequestId? providerRequestId = null, EmbeddingPurpose purpose = EmbeddingPurpose.Unspecified) =>
         new(
             requestId,
             GoogleGeminiProviderDefaults.ProviderId,
             GoogleGeminiProviderDefaults.EmbeddingApiFamily,
             new ModelId("text-embedding-004"),
-            deploymentId: null,
+            purpose,
             providerRequestId);
 
     [Fact]
@@ -101,6 +102,26 @@ public sealed class GoogleGeminiEmbeddingResponseParserTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Theory]
+    [InlineData(EmbeddingPurpose.Query)]
+    [InlineData(EmbeddingPurpose.Document)]
+    [InlineData(EmbeddingPurpose.Unspecified)]
+    public async Task ParseAsync_WhenRequestDeclaresAPurpose_StampsItOntoTheEmbeddingSpaceIdentity(EmbeddingPurpose purpose)
+    {
+        // Gemini uses asymmetric transforms per taskType (RETRIEVAL_QUERY vs. RETRIEVAL_DOCUMENT, ...),
+        // so vectors computed for different purposes must carry distinct EmbeddingSpaceIdentity values;
+        // stamping every vector as Unspecified would let a vector store wrongly treat them as comparable.
+        var parser = new GoogleGeminiEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/embedding_response.json"));
+        var result = await parser.ParseAsync(
+            body, CreateContext(new EmbeddingRequestId(Guid.NewGuid()), purpose: purpose), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Space.Purpose.ShouldBe(purpose);
     }
 
     [Fact]
