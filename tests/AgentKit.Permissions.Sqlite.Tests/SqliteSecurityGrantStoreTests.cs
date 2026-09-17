@@ -921,6 +921,61 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         }
     }
 
+    /// <summary>Verifies a target path occupied by a directory maps the provider's cannot-open failure to a typed result.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenTargetPathIsADirectory_RejectsAsOpenFailed()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            _ = Directory.CreateDirectory(path);
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
+            var inner = exception.InnerException.ShouldBeOfType<SqliteException>();
+            inner.SqliteErrorCode.ShouldBe(14);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies quick-check corruption invisible to ordinary reads still fails bootstrap integrity validation.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenFreelistAccountingIsInconsistent_RejectsAsCorruptEvidence()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
+            var store = CreateStore(path, instanceId, TimeProvider.System, create: true);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+            // Claim one freelist page exists (bytes 36-39) without a freelist trunk pointer (bytes 32-35), which
+            // ordinary table scans and our own bootstrap pragmas never traverse but PRAGMA quick_check validates.
+            var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(36, 4), 1);
+            await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+            var reopened = CreateStore(path, instanceId, TimeProvider.System, create: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await reopened.InitializeAsync(TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
+            exception.SafeMessage.ShouldBe("The SQLite grant-store integrity check failed during bootstrap validation.");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     /// <summary>Verifies a persisted payload whose digest no longer matches its bytes is rejected as corrupt evidence.</summary>
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenPersistedDigestDoesNotMatchPayload_RejectsAsCorruptEvidence()

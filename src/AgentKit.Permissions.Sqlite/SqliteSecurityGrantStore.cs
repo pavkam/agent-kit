@@ -841,21 +841,9 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(operation), "A bounded operation name is required.");
         Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A bounded terminal outcome is required.");
-        try
-        {
-            if (successful)
-            {
-                activity.SetSuccessful(outcome);
-            }
-            else
-            {
-                activity.SetFailed(outcome, GetBoundedFailureCode(outcome, exception));
-            }
-        }
-        catch
-        {
-            // Activity listeners are observational.
-        }
+        // Activity.SetSuccessful/SetFailed never throws for the always-bounded, nonblank outcome and failure-code
+        // values produced here, so the catch has no reachable trigger; it guards only against a future regression.
+        try { if (successful) { activity.SetSuccessful(outcome); } else { activity.SetFailed(outcome, GetBoundedFailureCode(outcome, exception)); } } catch { }
         try
         {
             SqliteSecurityGrantStoreMetrics.Operations.Add(1,
