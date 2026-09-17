@@ -106,6 +106,65 @@ public sealed class AwsBedrockRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenToolMessageIsFollowedByARuntimeMessage_CoalescesBothIntoOneUserTurn()
+    {
+        // Bedrock Converse validates strict user/assistant alternation for the Anthropic Claude family;
+        // a ToolMessage followed by a loop-injected RuntimeMessage both translate to wire role "user"
+        // and must not become two consecutive "user" entries.
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
+        var assistantMessage = TestMessages.Assistant(
+            new ToolCallPart(callId, toolReference, JsonDocument.Parse("""{"location":"Paris"}""").RootElement, new ProviderToolCallId("call_abc123"), ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
+        var runtimeMessage = TestMessages.Runtime("Please continue.");
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("What's the weather in Paris?"), assistantMessage, toolMessage, runtimeMessage],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+        var messages = body["messages"]!.AsArray();
+
+        messages.Select(m => m!["role"]!.GetValue<string>()).ShouldBe(["user", "assistant", "user"]);
+        var mergedContent = messages[2]!["content"]!.AsArray();
+        mergedContent.Count.ShouldBe(2);
+        _ = mergedContent[0]!["toolResult"].ShouldNotBeNull("the tool result must be first, since the ToolMessage causally precedes the merged RuntimeMessage");
+        mergedContent[1]!["text"]!.GetValue<string>().ShouldContain("Please continue.");
+    }
+
+    [Fact]
+    public void Translate_WhenTwoAssistantMessagesAreAdjacent_CoalescesIntoOneAssistantTurn()
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [
+                TestMessages.User("hi"),
+                TestMessages.Assistant(new TextPart("first", TextSemantics.Plain, ExtensionData.Empty)),
+                TestMessages.Assistant(new TextPart("second", TextSemantics.Plain, ExtensionData.Empty)),
+            ],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+        var messages = body["messages"]!.AsArray();
+
+        messages.Select(m => m!["role"]!.GetValue<string>()).ShouldBe(["user", "assistant"]);
+        var mergedContent = messages[1]!["content"]!.AsArray();
+        mergedContent.Select(c => c!["text"]!.GetValue<string>()).ShouldBe(["first", "second"]);
+    }
+
+    [Fact]
     public void Translate_WhenParallelToolCallsIsTrue_DoesNotThrowAndOmitsParallelControl()
     {
         var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
@@ -587,7 +646,10 @@ public sealed class AwsBedrockRequestTranslatorTests
         var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         var body = new AwsBedrockRequestTranslator().Translate(request);
-        var block = body["messages"]![1]!["content"]![0]!["toolResult"]!;
+        // The leading UserMessage and the following ToolMessage both translate to wire role "user" and
+        // are coalesced into one message; the toolResult block is the second content block, after "hi".
+        body["messages"]!.AsArray().Count.ShouldBe(1);
+        var block = body["messages"]![0]!["content"]![1]!["toolResult"]!;
 
         block["status"]!.GetValue<string>().ShouldBe("error");
     }

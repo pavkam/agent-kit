@@ -2446,6 +2446,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   message by concatenating their `content` arrays (keeping `toolResult` blocks
   first for the merged user turn), preserving order and losing nothing.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### N07 — Bedrock event-stream `:message-type: error` frames are misreported as malformed JSON
 

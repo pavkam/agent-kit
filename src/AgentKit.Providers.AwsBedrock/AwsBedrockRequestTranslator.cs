@@ -144,19 +144,19 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
                     break;
 
                 case UserMessage:
-                    result.Add(CreateMessage("user", TranslateUserContent(message.Parts)));
+                    AppendOrMergeMessage(result, "user", TranslateUserContent(message.Parts));
                     break;
 
                 case RuntimeMessage:
-                    result.Add(CreateMessage("user", TranslateRuntimeContent(message.Parts)));
+                    AppendOrMergeMessage(result, "user", TranslateRuntimeContent(message.Parts));
                     break;
 
                 case AssistantMessage:
-                    result.Add(CreateMessage("assistant", TranslateAssistantContent(message.Parts, providerCallIds)));
+                    AppendOrMergeMessage(result, "assistant", TranslateAssistantContent(message.Parts, providerCallIds));
                     break;
 
                 case ToolMessage:
-                    result.Add(CreateMessage("user", TranslateToolResultContent(message.Parts, providerCallIds)));
+                    AppendOrMergeMessage(result, "user", TranslateToolResultContent(message.Parts, providerCallIds));
                     break;
 
                 default:
@@ -190,6 +190,41 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
             ["role"] = role,
             ["content"] = content,
         };
+
+    /// <summary>
+    /// Appends a translated message, coalescing it into the immediately preceding message when both
+    /// carry the same wire role instead of adding a second consecutive entry of that role.
+    /// </summary>
+    /// <remarks>
+    /// Bedrock Converse validates strict user/assistant alternation for the Anthropic Claude family (a
+    /// <c>ValidationException</c> stating that a conversation must alternate between user and assistant
+    /// roles). UserMessage, RuntimeMessage, and ToolMessage are all translated to the wire role "user"
+    /// with no merging, so a ToolMessage followed by a steering UserMessage or a loop-injected
+    /// RuntimeMessage (both common in this framework's turn model) would otherwise yield two consecutive
+    /// "user" entries; likewise two adjacent AssistantMessages would yield consecutive "assistant"
+    /// entries. Concatenating content arrays in the order messages already arrive preserves any
+    /// toolResult block's required position at the start of the user turn that answers it, since a
+    /// ToolMessage causally precedes the steering message it is merged with.
+    /// </remarks>
+    private static void AppendOrMergeMessage(JsonArray result, string role, JsonArray content)
+    {
+        if (result.Count > 0
+            && result[^1] is JsonObject previous
+            && previous["role"]?.GetValue<string>() == role
+            && previous["content"] is JsonArray previousContent)
+        {
+            while (content.Count > 0)
+            {
+                var block = content[0];
+                content.RemoveAt(0);
+                previousContent.Add(block);
+            }
+
+            return;
+        }
+
+        result.Add(CreateMessage(role, content));
+    }
 
     private static JsonArray TranslateUserContent(ImmutableArray<ContentPart> parts)
     {
