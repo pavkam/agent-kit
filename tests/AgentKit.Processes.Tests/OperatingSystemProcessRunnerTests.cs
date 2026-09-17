@@ -297,6 +297,28 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenTerminationGracePeriodIsZeroAndProcessExitsCleanly_ReportsExitedNotFailed()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        for (var attempt = 0; attempt < 25; attempt++)
+        {
+            var intent = (await resolver.ResolveAsync(
+                Request("/bin/sh", ["-c", "echo hello"], timeout: TimeSpan.FromSeconds(2), grace: TimeSpan.Zero),
+                TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+            using var runner = CreateRunner(resolver, new TestGrantStore());
+            var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(ProcessRunStatus.Exited, result.SafeMessage);
+            result.ExitCode.ShouldBe(0);
+            Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("hello\n");
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WhenChildNeverReadsLargeStandardInput_TimesOutInsteadOfBlockingIndefinitely()
     {
         if (!IsSupported() || !SandboxAvailable())

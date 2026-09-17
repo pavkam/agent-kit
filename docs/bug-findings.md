@@ -3253,6 +3253,7 @@ if (await Task.WhenAny(both, delay).ConfigureAwait(false) == both)
   `ForcedTerminationWait`) for the post-exit drain, or require
   `TerminationGracePeriod > 0` at the resolver boundary.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### H10 — Raw `kill(pid, SIGKILL)` after the tree kill can target a reused PID once the child has been reaped
 

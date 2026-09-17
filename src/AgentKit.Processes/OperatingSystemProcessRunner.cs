@@ -383,7 +383,16 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
             return completed.All(static succeeded => succeeded);
         }
 
-        var delay = Task.Delay(drainBound, _timeProvider, CancellationToken.None);
+        // TerminationGracePeriod == TimeSpan.Zero is a valid request to skip the graceful-SIGTERM
+        // wait, but reusing it verbatim as the post-exit drain bound would race pipe-reader EOF
+        // detection against process reaping: Task.Delay(TimeSpan.Zero) is already complete, and
+        // SIGCHLD reaping typically precedes the reader continuation being scheduled, so a zero
+        // bound would deterministically report a clean exit as a drain failure. Floor only the
+        // exactly-zero case at ForcedTerminationWait - the same "let things settle" budget already
+        // used after a forced kill - without inflating any caller-configured non-zero drain bound
+        // (which callers may deliberately keep tight, e.g. to bound an orphaned child's open pipes).
+        var effectiveDrainBound = drainBound == TimeSpan.Zero ? _forcedTerminationWait : drainBound;
+        var delay = Task.Delay(effectiveDrainBound, _timeProvider, CancellationToken.None);
         if (await Task.WhenAny(both, delay).ConfigureAwait(false) == both)
         {
             var completed = await both.ConfigureAwait(false);
