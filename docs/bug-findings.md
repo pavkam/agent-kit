@@ -3224,6 +3224,7 @@ var retained = childPaths.Skip(start).Take(request.MaximumEntries)
   "cannot be represented by this path profile" failure (or skip in glob/search)
   before constructing the value.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H09 — A zero `TerminationGracePeriod` makes the post-exit output drain race with EOF and report a clean exit as `Failed`
 

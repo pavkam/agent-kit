@@ -592,7 +592,7 @@ public sealed partial class SandboxedFileSystem:
                             $"The directory exceeds the configured snapshot limit of {_maximumDirectorySnapshotEntries} entries.");
                     }
 
-                    if (name.Contains('\\', StringComparison.Ordinal))
+                    if (NameIsUnrepresentable(name))
                     {
                         return DirectoryFailure(
                             DirectoryEnumerationStatus.Failed,
@@ -728,6 +728,12 @@ public sealed partial class SandboxedFileSystem:
             if (!state.Request.IncludeHidden && name.StartsWith('.'))
             {
                 continue;
+            }
+
+            if (NameIsUnrepresentable(name))
+            {
+                state.Fail(GlobStatus.Failed, "The glob visited a name that cannot be represented by this path profile.");
+                return;
             }
 
             var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
@@ -985,6 +991,18 @@ public sealed partial class SandboxedFileSystem:
     private static bool IsBoundaryViolation(int error) =>
         error is _errorAccessDenied or _errorNotDirectory
         || error == (OperatingSystem.IsMacOS() ? _macOsErrorTooManyLinks : _linuxErrorTooManyLinks);
+
+    /// <summary>
+    /// Determines whether a host-reported directory entry name cannot be represented as a
+    /// <see cref="FileSystemPath"/> segment: a backslash would be silently reinterpreted as a path
+    /// separator by <see cref="FileSystemPath"/>'s constructor, and a whitespace-only name fails that
+    /// constructor's non-whitespace invariant. Any sandboxed process can create such a name on a
+    /// case-sensitive, otherwise-permissive host file system, so callers must treat it as a typed
+    /// enumeration/traversal failure instead of letting the resulting <see cref="ArgumentException"/>
+    /// escape after the security grant has already been consumed.
+    /// </summary>
+    private static bool NameIsUnrepresentable(string name) =>
+        name.Contains('\\', StringComparison.Ordinal) || string.IsNullOrWhiteSpace(name);
 
     private static FileReadResult BoundaryReadFailure(FileSystemPath path, int error) =>
         IsBoundaryViolation(error)

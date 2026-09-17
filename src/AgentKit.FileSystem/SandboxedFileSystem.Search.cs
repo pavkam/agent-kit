@@ -137,6 +137,12 @@ public sealed partial class SandboxedFileSystem
                 continue;
             }
 
+            if (NameIsUnrepresentable(name))
+            {
+                state.Fail(FileSearchStatus.Failed, "The search visited a name that cannot be represented by this path profile.");
+                return;
+            }
+
             var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
             if (IsExcludedPath(relative, state.Request.ExcludedPathPatterns, caseSensitive: true))
             {

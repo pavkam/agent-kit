@@ -781,6 +781,15 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task GlobAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
+    {
+        var fs = CreateFileSystem();
+        File.WriteAllText(Path.Combine(_root, " "), "content");
+        var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("**/*"), true, false, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.Failed);
+    }
+
+    [Fact]
     public async Task GlobAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -883,6 +892,15 @@ public sealed class SandboxedFileSystemTests: IDisposable
     {
         var fs = CreateFileSystem();
         File.WriteAllText(Path.Combine(_root, "a\\b.txt"), "content");
+        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(DirectoryEnumerationStatus.Failed);
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
+    {
+        var fs = CreateFileSystem();
+        File.WriteAllText(Path.Combine(_root, " "), "content");
         var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(DirectoryEnumerationStatus.Failed);
     }
@@ -1185,6 +1203,15 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var result = await fileSystem.SearchAsync(Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal), maximumDuration: TimeSpan.FromSeconds(1)), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(FileSearchStatus.TimedOut);
         result.Complete.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
+    {
+        File.WriteAllText(Path.Combine(_rootSandboxedFileSystemSearch, " "), "needle");
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var result = await fileSystem.SearchAsync(Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.Failed);
     }
 
     [Fact]
