@@ -44,6 +44,15 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// <summary>The response header OpenAI-compatible endpoints use to return their request identifier.</summary>
     private const string _requestIdHeaderName = "x-request-id";
 
+    /// <summary>
+    /// The largest delay <see cref="CancellationTokenSource(TimeSpan, TimeProvider)"/> accepts
+    /// (<see cref="uint.MaxValue"/> - 1 milliseconds, ~49.7 days). A caller expressing "no practical
+    /// deadline" (a far-future deadline) must not turn every attempt into an unhandled
+    /// <see cref="ArgumentOutOfRangeException"/> after credential resolution and translation have
+    /// already run.
+    /// </summary>
+    private static readonly TimeSpan _maximumDeadlineDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIEmbeddingRequestTranslator _translator;
     private readonly IOpenAIEmbeddingResponseParser _responseParser;
@@ -242,7 +251,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         AdjustRequestPayload(payload, request);
 
         using var httpRequest = CreateHttpRequest(payload, granted);
-        using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
+        using var deadlineSource = new CancellationTokenSource(
+            remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
         HttpResponseMessage response;

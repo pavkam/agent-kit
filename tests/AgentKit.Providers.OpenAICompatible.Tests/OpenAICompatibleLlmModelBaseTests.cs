@@ -409,6 +409,23 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenDeadlineIsMoreThanFortyNineDaysAway_SucceedsInsteadOfThrowing()
+    {
+        // CancellationTokenSource(TimeSpan, TimeProvider) rejects any delay beyond ~49.7 days
+        // (uint.MaxValue - 1 ms) with an unhandled ArgumentOutOfRangeException. A caller expressing "no
+        // practical deadline" via a far-future LlmModelRequest.Deadline must not crash the attempt.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddDays(365));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello! How can I help you today?");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenCallerCancelsBeforeCredentialResolution_ReturnsCancelledResult()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");

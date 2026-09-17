@@ -112,6 +112,22 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenDeadlineIsMoreThanFortyNineDaysAway_SucceedsInsteadOfThrowing()
+    {
+        // CancellationTokenSource(TimeSpan, TimeProvider) rejects any delay beyond ~49.7 days
+        // (uint.MaxValue - 1 ms) with an unhandled ArgumentOutOfRangeException. A caller expressing "no
+        // practical deadline" via a far-future EmbeddingModelRequest deadline must not crash the attempt.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.TextEmbedding3Small, Now.AddDays(365));
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        _ = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
