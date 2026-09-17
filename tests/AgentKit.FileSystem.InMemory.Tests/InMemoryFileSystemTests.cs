@@ -455,6 +455,22 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task GlobAsync_WhenBasePathIsSet_MatchesPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("src/nested"));
+        fs.Seed(new FileSystemPath("src/a.cs"), "a");
+        fs.Seed(new FileSystemPath("src/nested/b.cs"), "b");
+        fs.Seed(new FileSystemPath("src/note.txt"), "text");
+        var result = await fs.GlobAsync(
+            new GlobRequest(new FileSystemPath("src"), new GlobPattern("**/*.cs"), true, false, 10, 100, 20, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.Matches.Select(static path => path.Value).ShouldBe(["src/a.cs", "src/nested/b.cs"]);
+    }
+
+    [Fact]
     public async Task GlobAsync_WhenHiddenExcluded_DoesNotVisitDotPrefixedSubtrees()
     {
         var fs = CreateFileSystem();
@@ -723,6 +739,21 @@ public sealed class InMemoryFileSystemTests
         result.Complete.ShouldBeTrue();
         result.VisitedFiles.ShouldBe(1);
         result.Matches.ShouldHaveSingleItem().Path.Value.ShouldBe("src/target.cs");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenBasePathIsSet_MatchesPathPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("src/nested"));
+        fs.Seed(new FileSystemPath("src/a.cs"), "needle");
+        fs.Seed(new FileSystemPath("src/nested/b.cs"), "needle");
+        var result = await fs.SearchAsync(
+            SearchRequest(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("src"), pathPattern: new GlobPattern("**/*.cs")),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.Matches.Select(static match => match.Path.Value).ShouldBe(["src/a.cs", "src/nested/b.cs"]);
     }
 
     [Fact]

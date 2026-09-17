@@ -74,7 +74,7 @@ public sealed partial class InMemoryFileSystem
             }
 
             var state = new SearchTraversalState(request, _timeProvider);
-            TraverseSearchDirectory(basePath, 1, state, cancellationToken);
+            TraverseSearchDirectory(basePath, "", 1, state, cancellationToken);
             var matches = state.Matches.ToImmutableArray();
             return state.TerminalStatus is { } terminal
                 ? new FileSearchResult(terminal, matches, state.VisitedFiles, state.VisitedBytes, false, state.SafeMessage)
@@ -89,6 +89,7 @@ public sealed partial class InMemoryFileSystem
 
     private void TraverseSearchDirectory(
         string? directoryPath,
+        string relativeParent,
         int depth,
         SearchTraversalState state,
         CancellationToken cancellationToken)
@@ -111,17 +112,22 @@ public sealed partial class InMemoryFileSystem
                 continue;
             }
 
-            var relative = directoryPath is null ? name : $"{directoryPath}/{name}";
+            // `backingPath` is the key used against the in-memory `_directories`/`_files` stores,
+            // which are always keyed by the full workspace path (including BasePath, when set).
+            // `relative` is the path relative to BasePath, mirroring the sandboxed adapter's
+            // `relativeParent`-threaded traversal: PathPattern and exclusions match against it.
+            var backingPath = directoryPath is null ? name : $"{directoryPath}/{name}";
+            var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
             if (IsExcludedPath(relative, state.Request.ExcludedPathPatterns, caseSensitive: true))
             {
                 continue;
             }
 
-            if (_directories.Contains(relative))
+            if (_directories.Contains(backingPath))
             {
                 if (depth < state.Request.MaximumDepth)
                 {
-                    TraverseSearchDirectory(relative, depth + 1, state, cancellationToken);
+                    TraverseSearchDirectory(backingPath, relative, depth + 1, state, cancellationToken);
                 }
 
                 continue;
@@ -132,7 +138,7 @@ public sealed partial class InMemoryFileSystem
                 continue;
             }
 
-            SearchFile(relative, state);
+            SearchFile(backingPath, relative, state);
             if (state.TerminalStatus is not null)
             {
                 return;
@@ -140,9 +146,9 @@ public sealed partial class InMemoryFileSystem
         }
     }
 
-    private void SearchFile(string relative, SearchTraversalState state)
+    private void SearchFile(string backingPath, string relative, SearchTraversalState state)
     {
-        if (!_files.TryGetValue(relative, out var content))
+        if (!_files.TryGetValue(backingPath, out var content))
         {
             return;
         }

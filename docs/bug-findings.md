@@ -3193,6 +3193,7 @@ if (GlobMatches(state.Request.Pattern.Value, relative, state.Request.CaseSensiti
   patterns/exclusions on it, and use the existing full path as the result; add
   shared conformance tests with a non-null `BasePath` run against both adapters.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H08 — Whitespace-only entry names make Enumerate/Glob/Search throw `ArgumentException` instead of returning a typed failure
 

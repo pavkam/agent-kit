@@ -51,7 +51,7 @@ public sealed partial class InMemoryFileSystem
             }
 
             var state = new GlobTraversalState(request);
-            TraverseGlobDirectory(basePath, 1, state, cancellationToken);
+            TraverseGlobDirectory(basePath, "", 1, state, cancellationToken);
             state.Matches.Sort(StringComparer.Ordinal);
             var matches = state.Matches.Select(static value => new FileSystemPath(value)).ToImmutableArray();
             return state.TerminalStatus is { } terminal
@@ -64,6 +64,7 @@ public sealed partial class InMemoryFileSystem
 
     private void TraverseGlobDirectory(
         string? directoryPath,
+        string relativeParent,
         int depth,
         GlobTraversalState state,
         CancellationToken cancellationToken)
@@ -81,7 +82,13 @@ public sealed partial class InMemoryFileSystem
                 continue;
             }
 
-            var relative = directoryPath is null ? name : $"{directoryPath}/{name}";
+            // `backingPath` is the key used against the in-memory `_directories`/`_files` stores,
+            // which are always keyed by the full workspace path (including BasePath, when set).
+            // `relative` is the path relative to BasePath, mirroring the sandboxed adapter's
+            // `relativeParent`-threaded traversal: patterns and exclusions match against it, and
+            // BasePath is prefixed onto it exactly once to produce the reported workspace path.
+            var backingPath = directoryPath is null ? name : $"{directoryPath}/{name}";
+            var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
             state.VisitedEntries++;
             if (state.VisitedEntries > state.Request.MaximumVisitedEntries)
             {
@@ -106,9 +113,9 @@ public sealed partial class InMemoryFileSystem
                 state.Matches.Add(workspacePath);
             }
 
-            if (_directories.Contains(relative) && depth < state.Request.MaximumDepth)
+            if (_directories.Contains(backingPath) && depth < state.Request.MaximumDepth)
             {
-                TraverseGlobDirectory(relative, depth + 1, state, cancellationToken);
+                TraverseGlobDirectory(backingPath, relative, depth + 1, state, cancellationToken);
                 if (state.TerminalStatus is not null)
                 {
                     return;
