@@ -2375,6 +2375,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
 - **Suggested fix:** Thread the requested purpose into the parse context and use
   it when building the space identity.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N05 — Bedrock model-ID path escaping leaves `/` unescaped, breaking ARN model IDs
 

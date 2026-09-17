@@ -20,7 +20,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
     /// <inheritdoc/>
     public async Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        EmbeddingResponseParseContext context,
+        GoogleVertexAIEmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default)
     {
@@ -79,7 +79,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
                 identity,
                 vector.Values.Length,
                 EmbeddingElementType.Float32,
-                EmbeddingPurpose.Unspecified,
+                context.RequestedPurpose,
                 ExtensionData.Empty);
 
             var extensions = ExtensionData.Empty;

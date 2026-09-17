@@ -11,14 +11,35 @@ using System.Text;
 /// </summary>
 public sealed class GoogleVertexAIEmbeddingResponseParserTests
 {
-    private static EmbeddingResponseParseContext CreateContext(ProviderRequestId? providerRequestId = null) =>
+    private static GoogleVertexAIEmbeddingResponseParseContext CreateContext(
+        ProviderRequestId? providerRequestId = null, EmbeddingPurpose purpose = EmbeddingPurpose.Unspecified) =>
         new(
             new EmbeddingRequestId(Guid.NewGuid()),
             GoogleVertexAIProviderDefaults.ProviderId,
             GoogleVertexAIProviderDefaults.EmbeddingApiFamily,
             new ModelId("text-embedding-005"),
             deploymentId: null,
+            purpose,
             providerRequestId);
+
+    [Theory]
+    [InlineData(EmbeddingPurpose.Query)]
+    [InlineData(EmbeddingPurpose.Document)]
+    [InlineData(EmbeddingPurpose.Unspecified)]
+    public async Task ParseAsync_WhenRequestDeclaresAPurpose_StampsItOntoTheEmbeddingSpaceIdentity(EmbeddingPurpose purpose)
+    {
+        // Vertex uses asymmetric transforms per task_type (RETRIEVAL_QUERY vs. RETRIEVAL_DOCUMENT, ...),
+        // so vectors computed for different purposes must carry distinct EmbeddingSpaceIdentity values;
+        // stamping every vector as Unspecified would let a vector store wrongly treat them as comparable.
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/embedding_response.json"));
+        var result = await parser.ParseAsync(body, CreateContext(purpose: purpose), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Space.Purpose.ShouldBe(purpose);
+    }
 
     [Fact]
     public async Task ParseAsync_WhenSinglePrediction_DecodesVectorAndUsage()

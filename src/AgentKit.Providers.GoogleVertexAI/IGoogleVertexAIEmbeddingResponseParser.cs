@@ -23,7 +23,7 @@ public interface IGoogleVertexAIEmbeddingResponseParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        EmbeddingResponseParseContext context,
+        GoogleVertexAIEmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default);
 }
