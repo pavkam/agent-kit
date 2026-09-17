@@ -372,6 +372,18 @@ public sealed class McpToolClientTests
         policy.MinimumVersion.ShouldBe(version);
     }
 
+    [Fact]
+    public void With_WhenNoMemberIsChanged_ProducesAnEqualDistinctCopy()
+    {
+        var policy = McpClientVersionPolicy.RequireAtLeast(McpProtocolVersions.July2026);
+
+        var copy = policy with { };
+
+        copy.ShouldNotBeSameAs(policy);
+        copy.ShouldBe(policy);
+        copy.MinimumVersion.ShouldBe(policy.MinimumVersion);
+    }
+
     private static FakeToolCaller CreateCaller(IReadOnlyList<McpRemoteTool> tools) => new(McpProtocolVersions.July2026, tools, JsonSerializer.SerializeToElement(new WeatherResponse("sunny")));
     private static McpRemoteTool WeatherRemoteTool() => new(new McpToolName("weather.get"), new ToolVersion("2.1"));
     private static Task<WeatherResponse> Forward(WeatherTools tools, WeatherRequest request) => tools.GetAsync(request);
