@@ -173,7 +173,7 @@ public sealed partial class SandboxedFileSystem:
                 var descriptor = OpenAt(
                     parent.DangerousGetHandle().ToInt32(),
                     fileName,
-                    _openReadOnly | NoFollowFlag | CloseOnExecFlag,
+                    _openReadOnly | NoFollowFlag | CloseOnExecFlag | NonBlockingFlag,
                     0);
                 if (descriptor < 0)
                 {
@@ -185,6 +185,15 @@ public sealed partial class SandboxedFileSystem:
 
                 using var handle = new SafeFileHandle(new IntPtr(descriptor), ownsHandle: true);
                 await using var stream = new FileStream(handle, FileAccess.Read, bufferSize: 81920, isAsync: false);
+                if (!stream.CanSeek)
+                {
+                    // Opened with O_NONBLOCK precisely so a special file (a FIFO the sandboxed process
+                    // created, a character device, ...) cannot hang the open itself; a non-seekable
+                    // stream is this adapter's established signal (see ReadSnapshotFromHandleAsync) for
+                    // "not a regular file", refused here before any read ever touches the descriptor.
+                    return new FileReadFailed("The target is not a regular seekable file.");
+                }
+
                 using var content = new MemoryStream();
                 var buffer = new byte[81920];
                 long totalBytes = 0;
@@ -311,6 +320,15 @@ public sealed partial class SandboxedFileSystem:
                 }
 
                 await using var stream = new FileStream(handle, FileAccess.Write, bufferSize: 81920, isAsync: false);
+                if (!stream.CanSeek)
+                {
+                    // Append's target open (the only mode here that can name an existing special file;
+                    // CreateNew's O_CREAT | O_EXCL can never collide with one) carries O_NONBLOCK
+                    // precisely so opening a FIFO cannot hang; a non-seekable stream is this adapter's
+                    // established signal for "not a regular file" (see ReadSnapshotFromHandleAsync).
+                    return new FileWriteFailed("The target is not a regular seekable file.");
+                }
+
                 if (request.Mode == FileWriteMode.Append)
                 {
                     _ = stream.Seek(0, SeekOrigin.End);
@@ -1071,7 +1089,10 @@ public sealed partial class SandboxedFileSystem:
         FileWriteMode.CreateOrOverwrite or FileWriteMode.ReplaceExisting => throw new UnreachableException(),
         // Append never creates: the disposition table requires "not found, no mutation" for a missing target,
         // so the new-file open is attempted without O_CREAT and fails with ENOENT when the target is absent.
-        FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
+        // Unlike CreateNew's O_CREAT | O_EXCL, this open can name an existing special file (a FIFO the
+        // sandboxed process created), so it carries O_NONBLOCK to keep the open itself from hanging;
+        // the caller rejects a resulting non-seekable stream before ever reading or writing through it.
+        FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag | NonBlockingFlag,
         _ => throw new UnreachableException()
     };
 

@@ -3058,6 +3058,7 @@ var descriptor = OpenAt(
   other paths already do), then `fstat` the descriptor and refuse anything that
   is not `S_IFREG` with a typed failure before reading or writing.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H04 — Standard-input delivery is not covered by the operation timeout; a child that never reads stdin hangs the run indefinitely
 

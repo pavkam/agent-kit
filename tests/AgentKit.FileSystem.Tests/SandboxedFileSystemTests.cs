@@ -81,6 +81,50 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task ReadAsync_WhenTargetIsANamedPipe_FailsWithoutHanging()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        var fifoPath = Path.Combine(_root, "fifo.txt");
+        var mkfifo = Process.Start("mkfifo", fifoPath);
+        await mkfifo.WaitForExitAsync(TestContext.Current.CancellationToken);
+        mkfifo.ExitCode.ShouldBe(0);
+
+        var task = fs.ReadAsync(new FileReadRequest(new FileSystemPath("fifo.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        completed.ShouldBeSameAs(task, "ReadAsync must not block indefinitely on a named pipe with no writer");
+        _ = (await task).ShouldBeOfType<FileReadFailed>();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenModeAppendTargetsANamedPipe_FailsWithoutHanging()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        var fifoPath = Path.Combine(_root, "fifo.txt");
+        var mkfifo = Process.Start("mkfifo", fifoPath);
+        await mkfifo.WaitForExitAsync(TestContext.Current.CancellationToken);
+        mkfifo.ExitCode.ShouldBe(0);
+
+        var task = fs.WriteAsync(
+            new FileWriteRequest(new FileSystemPath("fifo.txt"), "data", FileWriteMode.Append, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        completed.ShouldBeSameAs(task, "WriteAsync must not block indefinitely opening a named pipe with no reader");
+        _ = (await task).ShouldBeOfType<FileWriteFailed>();
+    }
+
+    [Fact]
     public async Task WriteAsync_WhenModeCreateOrOverwriteTargetsAnExistingFile_ReplacesAtomicallyAndPreservesMode()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
