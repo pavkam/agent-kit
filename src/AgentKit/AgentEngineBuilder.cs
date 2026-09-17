@@ -89,6 +89,28 @@ public sealed class AgentEngineBuilder
 
         try
         {
+            // AddAgentKit() registered an AgentEngine singleton factory shaped for a host-managed
+            // composition (ownedProvider: null). Replace it with one bound to the exact standalone
+            // instance this call constructs and owns: resolving AgentEngine from Services later - an
+            // application composition-root pattern the engine explicitly supports via its Services
+            // property - must return this same owning engine, not run composition validation a
+            // second time and mint a second, differently-owned AgentEngine over the same container.
+            // Only rebind an existing descriptor: composition validation itself proves the exact
+            // count of AgentEngine descriptors, so a test or caller that deliberately removed or
+            // duplicated it must still see that metadata-only check (via the explicit Validate call
+            // below) rather than a descriptor this call silently restored.
+            var hasFacadeDescriptor = Services.Any(
+                static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(AgentEngine));
+            if (hasFacadeDescriptor)
+            {
+                _ = Services.Replace(ServiceDescriptor.Singleton(
+                    static serviceProvider =>
+                    {
+                        var composition = AgentCompositionValidator.Validate(serviceProvider);
+                        return new AgentEngine(serviceProvider, (IAsyncDisposable) serviceProvider, composition);
+                    }));
+            }
+
             var factory = new AgentKitServiceProviderFactory(
                 CompositionOptions,
                 new ServiceProviderOptions
@@ -98,8 +120,12 @@ public sealed class AgentEngineBuilder
                 });
             provider = (ServiceProvider) factory.CreateServiceProvider(factory.CreateBuilder(Services));
 
-            var composition = AgentCompositionValidator.Validate(provider);
-            return new AgentEngine(provider, provider, composition);
+            // When no facade descriptor was ever present, AgentCompositionValidator.Validate itself
+            // throws (requiresFacade: true), reproducing the exact "agentkit.engine.missing"
+            // diagnostic the metadata-only registration count check would have reported.
+            return hasFacadeDescriptor
+                ? provider.GetRequiredService<AgentEngine>()
+                : new AgentEngine(provider, provider, AgentCompositionValidator.Validate(provider));
         }
         catch (Exception original)
         {

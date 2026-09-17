@@ -3645,6 +3645,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   instance registration bound to the engine being constructed (or a factory that
   returns it), so the container resolves the same owning engine.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F09 — Instructions bypass state and tool-part validation in `DefaultContextAssembler`
 

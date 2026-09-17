@@ -291,6 +291,21 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public async Task Build_WhenAgentEngineIsResolvedFromItsOwnServices_ReturnsTheSameOwningEngine()
+    {
+        // AgentEngine.Services is a documented composition-root surface for the application that
+        // built it. Resolving AgentEngine from that same provider must yield this exact owning
+        // engine, not a second engine minted by AddAgentKit()'s host-managed factory
+        // (ownedProvider: null) over the same container.
+        var builder = CompositionTestData.RunnableBuilder();
+        await using var engine = builder.Build();
+
+        var resolved = engine.Services.GetRequiredService<AgentEngine>();
+
+        resolved.ShouldBeSameAs(engine);
+    }
+
+    [Fact]
     public void Build_WhenSeveralProblemsExist_ReportsAllOfThem()
     {
         var builder = AgentEngine.CreateBuilder();
