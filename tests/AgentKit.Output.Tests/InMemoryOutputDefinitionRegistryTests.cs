@@ -3,8 +3,28 @@
 
 namespace AgentKit.Output.Tests;
 
+using AgentKit.TestSupport;
+
+using Microsoft.Extensions.Logging;
+
 public sealed class InMemoryOutputDefinitionRegistryTests
 {
+    [Fact]
+    public void Constructor_WhenComposed_LogsRegistryComposition()
+    {
+        var id = "definition";
+        var v1 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("1.0") };
+        var v2 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("2.0") };
+        var logger = new RecordingLogger<InMemoryOutputDefinitionRegistry>();
+
+        _ = CreateRegistry([v1, v2], logger);
+
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10010).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Information);
+        entry.State["DefinitionCount"].ShouldBe(1);
+        entry.State["VersionCount"].ShouldBe(2);
+    }
+
     [Fact]
     public void Constructor_WhenDefinitionsIsNull_ThrowsArgumentNullException()
     {
@@ -34,14 +54,18 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     }
 
     [Fact]
-    public async Task ResolveAsync_WhenIdIsUnregistered_ReturnsNotFound()
+    public async Task ResolveAsync_WhenIdIsUnregistered_ReturnsNotFoundAndLogsLookup()
     {
-        var registry = CreateRegistry([]);
+        var logger = new RecordingLogger<InMemoryOutputDefinitionRegistry>();
+        var registry = CreateRegistry([], logger);
 
         var result = await registry.ResolveAsync(
             new OutputDefinitionRequest(new OutputDefinitionId("missing"), null), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<OutputDefinitionNotFound>();
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 10011).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.State["Outcome"].ShouldBe("not_found");
     }
 
     [Fact]
@@ -171,8 +195,9 @@ public sealed class InMemoryOutputDefinitionRegistryTests
         exception.Failure.SafeMessage.ShouldBe("A JSON schema cannot be applied to plain-text output.");
     }
 
-    private static InMemoryOutputDefinitionRegistry CreateRegistry(IEnumerable<OutputDefinition> definitions) =>
-        new(definitions, new StructuralOutputSchemaEngine(), DefaultOptions());
+    private static InMemoryOutputDefinitionRegistry CreateRegistry(
+        IEnumerable<OutputDefinition> definitions, ILogger<InMemoryOutputDefinitionRegistry>? logger = null) =>
+        new(definitions, new StructuralOutputSchemaEngine(), DefaultOptions(), logger);
 
     private static AgentOutputOptionsSnapshot DefaultOptions() =>
         new(1_048_576, 262_144, 64, 4_096, 64, 65_536, 64, 2, true, false);
