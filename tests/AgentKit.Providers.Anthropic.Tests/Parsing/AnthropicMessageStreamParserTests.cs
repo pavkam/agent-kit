@@ -261,6 +261,40 @@ public sealed class AnthropicMessageStreamParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenInputJsonDeltaArrivesForATextBlock_ReturnsProtocolFailureWithPartialContent()
+    {
+        // A proxy or a nonconforming provider could send an input_json_delta for a block that
+        // content_block_start opened as "text" rather than "tool_use"; ToolCallId is unset for that
+        // accumulator, so this must fail closed with a typed result instead of throwing when the delta
+        // handler unconditionally dereferences it.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Partial"}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldContain("input_json_delta");
+        failed.Failure.SafeMessage.ShouldContain("not tool_use");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenUnclosedContentBlockCoincidesWithInvalidUsage_RetainsNoUsageOnFailure()
     {
         // Invalid usage evidence must never mask the unclosed-block cause reported first; TryBuildRetainedUsage

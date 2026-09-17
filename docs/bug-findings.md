@@ -2508,6 +2508,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `ToolCallId is { } id`) and return a `ProtocolViolation` failure via
   `FailAsync` when a delta kind does not match the opened block kind.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N09 — Bedrock streaming: `toolUse` delta on a text accumulator throws instead of failing typed
 

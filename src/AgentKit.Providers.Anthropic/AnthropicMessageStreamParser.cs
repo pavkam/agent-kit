@@ -211,8 +211,21 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                             TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
                     }
 
-                    await HandleContentBlockDeltaAsync(observer, requestId, context, deltaIndex, delta, deltaAccumulator, () => sequence++, cancellationToken)
+                    var deltaMismatch = await HandleContentBlockDeltaAsync(observer, requestId, context, deltaIndex, delta, deltaAccumulator, () => sequence++, cancellationToken)
                         .ConfigureAwait(false);
+                    if (deltaMismatch is not null)
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            deltaMismatch,
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
+                    }
+
                     break;
 
                 case "content_block_stop" when streamEvent is { Index: { } stopIndex }:
@@ -453,7 +466,15 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         }
     }
 
-    private static async Task HandleContentBlockDeltaAsync(
+    /// <summary>
+    /// Applies one <c>content_block_delta</c> to its opened block accumulator.
+    /// </summary>
+    /// <returns>
+    /// <see langword="null"/> on success, or a safe description of a delta kind that does not match the
+    /// kind the block was opened with (for example an <c>input_json_delta</c> for a block that is not
+    /// <c>tool_use</c>), for the caller to fail the attempt with.
+    /// </returns>
+    private static async Task<string?> HandleContentBlockDeltaAsync(
         IModelResponseObserver observer,
         ModelRequestId requestId,
         ProviderResponseParseContext context,
@@ -481,6 +502,15 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 break;
 
             case "input_json_delta":
+                if (accumulator.ToolCallId is not { } toolCallId)
+                {
+                    // input_json_delta only makes sense for a block content_block_start opened as tool_use;
+                    // ToolCallId is unset for any other block kind (text, thinking, unknown), so there is no
+                    // identity to attribute the fragment to.
+                    return $"The provider sent an input_json_delta for content block {index}, whose " +
+                        $"content_block_start was not tool_use.";
+                }
+
                 if (delta.PartialJson is { Length: > 0 } jsonFragment)
                 {
                     _ = accumulator.Json.Append(jsonFragment);
@@ -489,7 +519,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                                 requestId,
                                 nextSequence(),
                                 index,
-                                new ToolArgumentsContentDelta(accumulator.ToolCallId!.Value, jsonFragment)),
+                                new ToolArgumentsContentDelta(toolCallId, jsonFragment)),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -533,6 +563,8 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     .ConfigureAwait(false);
                 break;
         }
+
+        return null;
     }
 
     /// <summary>
