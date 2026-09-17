@@ -3675,6 +3675,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   combined `messages`), returning a typed `ContextPreparationFailed` on
   violation.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F10 — `AddAgentIdentity` options validation is not run at startup; invalid values surface as `ArgumentOutOfRangeException` on first identity use
 

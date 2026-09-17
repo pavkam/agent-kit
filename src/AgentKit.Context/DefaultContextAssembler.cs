@@ -111,6 +111,16 @@ public sealed class DefaultContextAssembler: IContextAssembler
                 _logger, request.ModelRequestId, repairs.Length, excludedIncompleteMessages, excludedInstructionMessages));
         }
 
+        var instructionFailure = ValidateInstructions(instructions);
+        if (instructionFailure is not null)
+        {
+            const string outcome = "invalid_instruction_message";
+            SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.InvalidInstructionMessage)));
+            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.InvalidInstructionMessage));
+            return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(instructionFailure));
+        }
+
         if (repairedHistory.IsEmpty)
         {
             const string outcome = "empty_history";
@@ -125,7 +135,12 @@ public sealed class DefaultContextAssembler: IContextAssembler
                         ExtensionData.Empty)));
         }
 
-        var structuralFailure = ValidateRolePartCombinations(repairedHistory) ?? ValidateToolCallCausality(repairedHistory);
+        var messages = instructions.AddRange(repairedHistory);
+
+        // Validated over the combined messages, not just history: an instruction message could
+        // itself carry a ToolCallPart/ToolResultPart, or reference/duplicate a call identity that
+        // also appears in history, and neither half alone proves the composed request is coherent.
+        var structuralFailure = ValidateRolePartCombinations(messages) ?? ValidateToolCallCausality(messages);
         if (structuralFailure is not null)
         {
             var outcome = structuralFailure.Kind == ContextPreparationFailureKind.InvalidRolePartCombination
@@ -136,8 +151,6 @@ public sealed class DefaultContextAssembler: IContextAssembler
             SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind));
             return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(structuralFailure));
         }
-
-        var messages = instructions.AddRange(repairedHistory);
 
         var context = new LlmRequestContext(
             request.ModelRequestId,
@@ -241,6 +254,38 @@ public sealed class DefaultContextAssembler: IContextAssembler
 
         repairs = repairBuilder.ToImmutable();
         return builder.ToImmutable();
+    }
+
+    /// <summary>
+    /// Validates that every instruction message is complete and carries system or developer
+    /// authority. Unlike history, an instruction message is never repaired or silently excluded:
+    /// instructions enter a request exclusively through this explicit set, so a caller that places an
+    /// incomplete, user, assistant, or tool message in it has produced an incoherent request that
+    /// assembly must reject rather than send unrepaired and unvalidated.
+    /// </summary>
+    private static ContextPreparationFailure? ValidateInstructions(ImmutableArray<AgentMessage> instructions)
+    {
+        Debug.Assert(!instructions.IsDefault, "The request and evidence contracts guarantee an initialized instruction set.");
+        foreach (var message in instructions)
+        {
+            if (message.State != MessageState.Complete)
+            {
+                return new ContextPreparationFailure(
+                    ContextPreparationFailureKind.InvalidInstructionMessage,
+                    $"An instruction message's state is {message.State}, but only complete messages may be sent to a provider.",
+                    ExtensionData.Empty);
+            }
+
+            if (message is not (SystemMessage or DeveloperMessage))
+            {
+                return new ContextPreparationFailure(
+                    ContextPreparationFailureKind.InvalidInstructionMessage,
+                    "An instruction message is not a system or developer message; only those roles may carry instruction authority.",
+                    ExtensionData.Empty);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

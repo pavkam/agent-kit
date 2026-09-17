@@ -2468,6 +2468,7 @@ namespace AgentKit
         BrokenToolCallCausality = 1,
         Unknown = 2,
         InvalidRolePartCombination = 3,
+        InvalidInstructionMessage = 4,
     }
     public sealed class ContextReady : AgentKit.ContextAssemblyResult, System.IEquatable<AgentKit.ContextReady>
     {

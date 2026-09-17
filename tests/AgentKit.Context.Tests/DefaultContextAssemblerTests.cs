@@ -356,7 +356,7 @@ public sealed class DefaultContextAssemblerTests
     [Fact]
     public async Task AssembleAsync_WhenHistoryIsValid_ReturnsContextReadyWithInstructionsFirst()
     {
-        var instruction = TestFactory.UserMessage("system prompt");
+        var instruction = TestFactory.SystemMessage("system prompt");
         var userMessage = TestFactory.UserMessage("hello");
         var request = TestFactory.AssemblyRequest([userMessage], [instruction]);
 
@@ -370,6 +370,46 @@ public sealed class DefaultContextAssemblerTests
         ready.Context.ToolChoice.ShouldBe(request.ToolChoice);
         ready.Context.Settings.ShouldBe(request.Settings);
         ready.Context.Extensions.ShouldBe(request.Extensions);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenAnInstructionMessageIsIncomplete_ReturnsInvalidInstructionMessageInsteadOfSendingItUnrepaired()
+    {
+        var incompleteInstruction = TestFactory.SystemMessage("partial", MessageState.Interrupted);
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()], [incompleteInstruction]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ContextPreparationFailed>();
+        failed.Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidInstructionMessage);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenAnInstructionMessageIsNotSystemOrDeveloper_ReturnsInvalidInstructionMessageInsteadOfSendingItUnvalidated()
+    {
+        var userInstruction = TestFactory.UserMessage("not a real instruction");
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()], [userInstruction]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ContextPreparationFailed>();
+        failed.Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidInstructionMessage);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenAnInstructionMessageCarriesAToolCallPart_ReturnsInvalidRolePartCombination()
+    {
+        // A SystemMessage passes the system/developer instruction-role check, but a ToolCallPart may
+        // only appear in an AssistantMessage; the combined-messages structural validation must still
+        // catch it even though it lives in the instruction slot rather than history.
+        var callId = new ToolCallId(Guid.NewGuid());
+        var instructionWithToolCall = TestFactory.SystemMessageWithParts([TestFactory.ToolCall(callId)]);
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()], [instructionWithToolCall]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ContextPreparationFailed>();
+        failed.Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
     }
 
     [Fact]

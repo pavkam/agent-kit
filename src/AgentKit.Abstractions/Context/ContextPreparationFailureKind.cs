@@ -27,5 +27,13 @@ public enum ContextPreparationFailureKind
     /// Because each half of a call is confined to its own role, this also
     /// rejects a call and its result sharing one message.
     /// </summary>
-    InvalidRolePartCombination
+    InvalidRolePartCombination,
+
+    /// <summary>
+    /// An instruction message is not <see cref="MessageState.Complete"/>, or is not a
+    /// <see cref="SystemMessage"/> or <see cref="DeveloperMessage"/>. Instructions enter a request
+    /// exclusively through the explicit instruction set and are never repaired or silently excluded
+    /// the way history is, so a violation fails assembly instead.
+    /// </summary>
+    InvalidInstructionMessage
 }
