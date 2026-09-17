@@ -3734,6 +3734,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   `CreateIfMissing` open mode create the parent, or defer it to the store's
   first open.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

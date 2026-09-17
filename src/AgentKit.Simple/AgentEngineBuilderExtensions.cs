@@ -103,6 +103,7 @@ public static class AgentEngineBuilderExtensions
         /// <returns>The same builder.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="databasePath"/> is blank or not an absolute path.</exception>
+        /// <exception cref="InvalidOperationException">The database file's directory does not exist and could not be created.</exception>
         /// <remarks>
         /// Sessions, and only sessions, become durable. Security grants stay in memory unless you register
         /// <c>AddSqliteSecurityGrantStore</c> yourself. Pin the agent with <see cref="WithAgentId"/> so resumed
@@ -120,7 +121,24 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             var fullPath = Path.GetFullPath(databasePath);
-            _ = Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var parentDirectory = Path.GetDirectoryName(fullPath)!;
+            // AgentKit.Session.Sqlite's own database classes require this directory to already exist
+            // - even under SqliteDatabaseOpenMode.CreateIfMissing, which only covers the database file
+            // itself - and construct lazily through DI on first actual session use, well after this
+            // registration call and any later Build() failure. Creating it here, eagerly, is therefore
+            // still necessary for a fresh path to work at all; attribute a failure to this call
+            // explicitly instead of letting a raw filesystem exception look unrelated to configuring
+            // SQLite sessions.
+            try
+            {
+                _ = Directory.CreateDirectory(parentDirectory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                throw new InvalidOperationException(
+                    $"The SQLite session database directory '{parentDirectory}' could not be created.", exception);
+            }
+
             var target = new SqliteSessionStoreTarget(
                 fullPath,
                 instanceId ?? DefaultSqliteInstanceId,

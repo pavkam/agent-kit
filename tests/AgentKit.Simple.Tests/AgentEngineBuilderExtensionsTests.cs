@@ -219,6 +219,24 @@ public sealed class AgentEngineBuilderExtensionsTests
         Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseSqliteSessions(path!)).ParamName.ShouldBe("databasePath");
 
     [Fact]
+    public void UseSqliteSessions_WhenTheDirectoryCannotBeCreated_ThrowsInvalidOperationExceptionAttributedToThisCall()
+    {
+        // An ancestor path segment that is actually a file makes Directory.CreateDirectory fail with a
+        // raw IOException; UseSqliteSessions must translate that into an exception that clearly names
+        // this call as the cause, not an unrelated filesystem failure.
+        using var directory = new TempDirectory();
+        var blockingFile = Path.Combine(directory.Path, "not-a-directory");
+        File.WriteAllText(blockingFile, "blocking");
+        var databasePath = Path.Combine(blockingFile, "nested", "sessions.db");
+
+        var exception = Should.Throw<InvalidOperationException>(
+            () => AgentEngine.CreateBuilder().UseSqliteSessions(databasePath));
+
+        exception.Message.ShouldContain("could not be created");
+        _ = exception.InnerException.ShouldNotBeNull();
+    }
+
+    [Fact]
     public async Task UseSqliteSessions_WhenTheProcessRestarts_ResumesTheConversationFromDisk()
     {
         using var directory = new TempDirectory();
