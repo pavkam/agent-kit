@@ -342,6 +342,23 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         ((LegacyOnlyGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
     }
 
+    /// <summary>Verifies a caller that still targets the legacy three-argument overload directly reaches the legacy effect unchanged.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenCalledThroughTheLegacyOverloadDirectly_InvokesLegacyConsumption()
+    {
+        var legacy = new LegacyOnlyGrantStore();
+        ISecurityGrantStore store = legacy;
+        var grant = CreateGrant(DateTimeOffset.UnixEpoch);
+
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var revoked = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        legacy.LegacyConsumptionCalls.ShouldBe(1);
+        revoked.ShouldBeFalse();
+    }
+
     /// <summary>Verifies revocation is idempotent and prevents every later grant consumption.</summary>
     [Fact]
     public async Task RevokeAsync_WhenGrantIsKnown_PreventsFutureConsumption()
