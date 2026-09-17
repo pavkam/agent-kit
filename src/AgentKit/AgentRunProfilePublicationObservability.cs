@@ -6,8 +6,7 @@ namespace AgentKit;
 /// <summary>Records failure-isolated logs and bounded metrics for exact run-profile publication reads.</summary>
 internal static class AgentRunProfilePublicationObservability
 {
-    private static readonly Lock _counterLock = new();
-    private static Counter<long>? _reads;
+    private static readonly NonBlockingInstrument<Counter<long>> _reads = new();
 
     /// <summary>Records one terminal read without allowing diagnostics to alter the semantic outcome.</summary>
     /// <param name="logger">The configured logger.</param>
@@ -29,18 +28,6 @@ internal static class AgentRunProfilePublicationObservability
     }
 
     private static Counter<long>? GetCounter()
-    {
-        lock (_counterLock)
-        {
-            try
-            {
-                return _reads ??= AgentKitDiagnostics.Metrics.CreateCounter<long>(
-                    AgentKitMetricNames.AgentRunProfilePublicationReadCount);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-    }
+        => _reads.GetOrCreate(static () => AgentKitDiagnostics.Metrics.CreateCounter<long>(
+            AgentKitMetricNames.AgentRunProfilePublicationReadCount));
 }
