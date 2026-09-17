@@ -171,6 +171,33 @@ public sealed class AgentTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAdmissionFailsUnexpectedlyWithAnEnabledLogger_LogsFailedEventWithSafeFields()
+    {
+        var definition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()));
+        var catalog = new MutableAgentDefinitionCatalog(definition);
+        var runIds = new CountingRunIdGenerator();
+        var logger = new RecordingLogger<AgentEngine>();
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(new AdmissionRunEffects()));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddSingleton<ILogger<AgentEngine>>(logger);
+        await using var successfullyBuilt = builder.Build();
+        await using var provider = builder.Services.BuildServiceProvider();
+        await using var engine = new AgentEngine(new ThrowingScopeServiceProvider(provider), ownedProvider: null, new AgentCompositionSnapshot(new AgentRunProfilePublicationSnapshot([CompositionTestData.RunProfile(definition)]), successfullyBuilt.ComponentRegistrations));
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+
+        var failedEntry = logger.Snapshot().Where(entry => entry.EventId.Id == 18002).ShouldHaveSingleItem();
+        failedEntry.Level.ShouldBe(LogLevel.Error);
+        failedEntry.Message.ShouldContain(nameof(InvalidOperationException));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAmbientActivityExists_PreservesItAsAdmissionParent()
     {
         using var parentSource = new ActivitySource("admission-parent-test");
