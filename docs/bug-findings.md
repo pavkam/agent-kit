@@ -2537,6 +2537,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
 - **Suggested fix:** Check `accumulator.Kind == BlockKind.ToolUse` before
   appending and surface a `ProtocolViolation` failure otherwise.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N10 — Cohere `message-end` error text is parsed but discarded; stream errors surface as completed responses
 

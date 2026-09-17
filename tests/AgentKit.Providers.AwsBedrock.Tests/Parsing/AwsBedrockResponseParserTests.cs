@@ -258,6 +258,32 @@ public sealed class AwsBedrockResponseParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenToolUseDeltaArrivesForATextAccumulator_FailsWithProtocolViolation()
+    {
+        // Converse emits contentBlockStart only for toolUse blocks; a text block's accumulator opens
+        // directly from its first contentBlockDelta with Kind == Text. A later toolUse delta at the same
+        // index has no tool identity to attribute arguments to and must fail closed instead of
+        // dereferencing a null ToolCallId.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Partial"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{}"}}}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldContain("not started as a tool-use block");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenUntranslatedBlockIsStoppedWithoutAccumulator_IgnoresItAndCompletes()
     {
         // A reasoningContent block opens no accumulator; its deltas and stop must not fail the stream.

@@ -288,8 +288,21 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                             .ConfigureAwait(false);
                     }
 
-                    await HandleContentBlockDeltaAsync(observer, requestId, deltaIndex, payload.Delta, deltaAccumulator, () => sequence++, cancellationToken)
+                    var deltaMismatch = await HandleContentBlockDeltaAsync(observer, requestId, deltaIndex, payload.Delta, deltaAccumulator, () => sequence++, cancellationToken)
                         .ConfigureAwait(false);
+                    if (deltaMismatch is not null)
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            deltaMismatch,
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
+                    }
+
                     break;
 
                 case "contentBlockStop" when payload.ContentBlockIndex is { } stopIndex
@@ -435,7 +448,15 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
             .ConfigureAwait(false);
     }
 
-    private static async Task HandleContentBlockDeltaAsync(
+    /// <summary>
+    /// Applies one <c>contentBlockDelta</c> to its opened block accumulator.
+    /// </summary>
+    /// <returns>
+    /// <see langword="null"/> on success, or a safe description when the delta carries
+    /// <c>toolUse.input</c> for an accumulator that was not opened as <c>toolUse</c>, for the caller to
+    /// fail the attempt with.
+    /// </returns>
+    private static async Task<string?> HandleContentBlockDeltaAsync(
         IModelResponseObserver observer,
         ModelRequestId requestId,
         int index,
@@ -454,16 +475,27 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         }
         else if (delta?.ToolUse?.Input is { Length: > 0 } jsonFragment)
         {
+            if (accumulator.Kind != BlockKind.ToolUse || accumulator.ToolCallId is not { } toolCallId)
+            {
+                // A never-started accumulator for a toolUse delta is handled by the caller before this
+                // method is reached; this covers an accumulator opened by a text delta (or by a
+                // contentBlockStart without toolUse) that later receives a toolUse delta instead.
+                return $"The provider sent a toolUse delta for content block {index}, which was not " +
+                    "started as a tool-use block.";
+            }
+
             _ = accumulator.Json.Append(jsonFragment);
             await observer.OnEventAsync(
                     new ModelPartDelta(
                         requestId,
                         nextSequence(),
                         index,
-                        new ToolArgumentsContentDelta(accumulator.ToolCallId!.Value, jsonFragment)),
+                        new ToolArgumentsContentDelta(toolCallId, jsonFragment)),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
+
+        return null;
     }
 
     /// <summary>
