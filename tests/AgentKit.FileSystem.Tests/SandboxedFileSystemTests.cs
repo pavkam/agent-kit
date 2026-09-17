@@ -862,6 +862,36 @@ public sealed class SandboxedFileSystemTests: IDisposable
         _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken).AsTask());
     }
 
+    [Fact]
+    public async Task ReadAsync_WhenLoggerIsEnabledAndReadSucceeds_EmitsCompletedStructuredEvent()
+    {
+        var logger = new RecordingLogger<SandboxedFileSystem>();
+        var fs = CreateFileSystem(logger: logger);
+        File.WriteAllText(Path.Combine(_root, "notes.txt"), "content");
+        var grant = TestSecurity.Grant();
+        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("notes.txt"), grant), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<FileRead>();
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(11000);
+        completed.State["Operation"].ShouldBe("read");
+        completed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        completed.State["Outcome"].ShouldBe("read");
+        completed.Message.ShouldNotContain("notes.txt");
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<SandboxedFileSystem>();
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore(), logger: logger);
+        var grant = TestSecurity.Grant();
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, grant), TestContext.Current.CancellationToken).AsTask());
+        var failed = logger.Snapshot().Single(static entry => entry.EventId.Id == 11001);
+        failed.State["Operation"].ShouldBe("enumerate");
+        failed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
     private sealed class ThrowingGrantStore: ISecurityGrantStore
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
@@ -875,7 +905,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
     }
 
-    private SandboxedFileSystem CreateFileSystem(Action<SandboxedFileSystemOptions>? configure = null, ISecurityGrantStore? grantStore = null)
+    private SandboxedFileSystem CreateFileSystem(Action<SandboxedFileSystemOptions>? configure = null, ISecurityGrantStore? grantStore = null, ILogger<SandboxedFileSystem>? logger = null)
     {
         _ = Directory.CreateDirectory(_root);
         var options = new SandboxedFileSystemOptions
@@ -883,7 +913,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
             RootDirectory = _root
         };
         configure?.Invoke(options);
-        return new SandboxedFileSystem(Options.Create(options), grantStore ?? TestSecurity.GrantStore(), TimeProvider.System);
+        return new SandboxedFileSystem(Options.Create(options), grantStore ?? TestSecurity.GrantStore(), TimeProvider.System, logger);
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;

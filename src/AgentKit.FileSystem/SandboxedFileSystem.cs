@@ -42,7 +42,6 @@ public sealed partial class SandboxedFileSystem:
     private const int _openReadOnly = 0;
     private const int _openWriteOnly = 0x0001;
     private const int _ownerReadWritePermissions = 0x0180;
-    private const int _unixDirectoryPermissions = 0x01FF;
     private const int _unixFilePermissions = 0x01B6;
     private const int _writeOpenAttempts = 4;
 
@@ -156,7 +155,6 @@ public sealed partial class SandboxedFileSystem:
 
         if (!TryOpenParentDirectory(
                 request.Path,
-                createMissingDirectories: false,
                 cancellationToken,
                 out var parent,
                 out var fileName,
@@ -259,7 +257,6 @@ public sealed partial class SandboxedFileSystem:
             cancellationToken.ThrowIfCancellationRequested();
             if (!TryOpenParentDirectory(
                     request.Path,
-                    createMissingDirectories: false,
                     cancellationToken,
                     out var parent,
                     out var fileName,
@@ -831,7 +828,7 @@ public sealed partial class SandboxedFileSystem:
             return rootDescriptor >= 0;
         }
 
-        if (!TryOpenParentDirectory(path.Value, false, cancellationToken, out var parent, out var name, out error))
+        if (!TryOpenParentDirectory(path.Value, cancellationToken, out var parent, out var name, out error))
         {
             directory = new SafeFileHandle(IntPtr.Zero, ownsHandle: false);
             return false;
@@ -882,7 +879,6 @@ public sealed partial class SandboxedFileSystem:
 
     private bool TryOpenParentDirectory(
         FileSystemPath path,
-        bool createMissingDirectories,
         CancellationToken cancellationToken,
         out SafeFileHandle parent,
         out string fileName,
@@ -919,31 +915,6 @@ public sealed partial class SandboxedFileSystem:
                 segments[index],
                 _openReadOnly | DirectoryFlag | NoFollowFlag | CloseOnExecFlag,
                 0);
-
-            if (descriptor < 0 && createMissingDirectories && Marshal.GetLastPInvokeError() == _errorNotFound)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var createResult = MakeDirectoryAt(
-                    current.DangerousGetHandle().ToInt32(),
-                    segments[index],
-                    _unixDirectoryPermissions);
-                var createError = createResult < 0 ? Marshal.GetLastPInvokeError() : 0;
-                if (createResult < 0 && createError != _errorAlreadyExists)
-                {
-                    current.Dispose();
-                    parent = new SafeFileHandle(IntPtr.Zero, ownsHandle: false);
-                    fileName = "";
-                    error = createError;
-                    return false;
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                descriptor = OpenAt(
-                    current.DangerousGetHandle().ToInt32(),
-                    segments[index],
-                    _openReadOnly | DirectoryFlag | NoFollowFlag | CloseOnExecFlag,
-                    0);
-            }
 
             if (descriptor < 0)
             {
@@ -1029,15 +1000,13 @@ public sealed partial class SandboxedFileSystem:
         _ => throw new UnreachableException()
     };
 
-    private static int ExistingFileOpenFlags(FileWriteMode mode) => mode switch
-    {
-        FileWriteMode.CreateOrOverwrite => _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
-        FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
-        FileWriteMode.ReplaceExisting => throw new UnreachableException(),
-        // TryOpenWriteTarget returns the already-exists failure for CreateNew before reopening an existing file.
-        FileWriteMode.CreateNew => throw new UnreachableException(),
-        _ => throw new UnreachableException()
-    };
+    // TryOpenWriteTarget only reopens an existing target after its first attempt fails with "already exists", which
+    // NewFileOpenFlags can only produce for CreateOrOverwrite (the only mode that opens with O_CREAT | O_EXCL here):
+    // CreateNew returns its own failure before reopening, ReplaceExisting never reaches TryOpenWriteTarget, and
+    // Append never passes O_CREAT so it can fail only with "not found", never "already exists".
+    private static int ExistingFileOpenFlags(FileWriteMode mode) => mode == FileWriteMode.CreateOrOverwrite
+        ? _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag
+        : throw new UnreachableException();
 
     [LibraryImport("libc", EntryPoint = "fchmod", SetLastError = true)]
     private static partial int ChangeMode(int descriptor, int mode);
@@ -1062,7 +1031,4 @@ public sealed partial class SandboxedFileSystem:
 
     [LibraryImport("libc", EntryPoint = "readdir", SetLastError = true)]
     private static partial IntPtr ReadDirectoryEntry(IntPtr stream);
-
-    [LibraryImport("libc", EntryPoint = "mkdirat", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int MakeDirectoryAt(int directoryDescriptor, string path, int mode);
 }

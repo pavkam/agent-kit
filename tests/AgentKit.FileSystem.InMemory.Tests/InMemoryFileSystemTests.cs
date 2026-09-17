@@ -593,6 +593,35 @@ public sealed class InMemoryFileSystemTests
         _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken).AsTask());
     }
 
+    [Fact]
+    public async Task WriteAsync_WhenLoggerIsEnabledAndWriteSucceeds_EmitsCompletedStructuredEvent()
+    {
+        var logger = new RecordingLogger<InMemoryFileSystem>();
+        var fs = CreateFileSystem(logger: logger);
+        var grant = TestSecurity.Grant();
+        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "hello", FileWriteMode.CreateOrOverwrite, grant), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<FileWritten>();
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(11100);
+        completed.State["Operation"].ShouldBe("write");
+        completed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        completed.State["Outcome"].ShouldBe("written");
+        completed.Message.ShouldNotContain("notes.txt");
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<InMemoryFileSystem>();
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore(), logger: logger);
+        var grant = TestSecurity.Grant();
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, grant), TestContext.Current.CancellationToken).AsTask());
+        var failed = logger.Snapshot().Single(static entry => entry.EventId.Id == 11101);
+        failed.State["Operation"].ShouldBe("enumerate");
+        failed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
     private sealed class ThrowingGrantStore: ISecurityGrantStore
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
@@ -1168,11 +1197,12 @@ public sealed class InMemoryFileSystemTests
     private static InMemoryFileSystem CreateFileSystem(
         Action<InMemoryFileSystemOptions>? configure = null,
         ISecurityGrantStore? grantStore = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ILogger<InMemoryFileSystem>? logger = null)
     {
         var options = new InMemoryFileSystemOptions();
         configure?.Invoke(options);
-        return new InMemoryFileSystem(Options.Create(options), grantStore ?? TestSecurity.GrantStore(), timeProvider ?? TimeProvider.System);
+        return new InMemoryFileSystem(Options.Create(options), grantStore ?? TestSecurity.GrantStore(), timeProvider ?? TimeProvider.System, logger);
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;

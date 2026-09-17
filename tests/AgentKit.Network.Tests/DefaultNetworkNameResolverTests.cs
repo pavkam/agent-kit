@@ -165,6 +165,52 @@ public sealed class DefaultNetworkNameResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_WhenLoggerIsEnabledAndIpLiteralAuthorized_EmitsCompletedStructuredEvent()
+    {
+        var logger = new RecordingLogger<DefaultNetworkNameResolver>();
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
+        var request = ResolutionRequest(Destination(443));
+        var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<NetworkResolved>();
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(14000);
+        completed.State["Stage"].ShouldBe("resolve");
+        completed.State["NetworkOperationId"].ShouldBe(request.Id);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenLoggerIsEnabledAndActionThrowsUnexpectedException_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<DefaultNetworkNameResolver>();
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        var resolver = new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
+        var request = ResolutionRequest(Destination(443));
+        var action = async () => await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
+        _ = await action.ShouldThrowAsync<InvalidOperationException>();
+        var failed = logger.Snapshot().ShouldHaveSingleItem();
+        failed.EventId.Id.ShouldBe(14001);
+        failed.State["Stage"].ShouldBe("resolve");
+        failed.State["NetworkOperationId"].ShouldBe(request.Id);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenLoggerIsEnabledAndAllResolvedAddressesAreExcludedByPolicy_LogsNoEligibleAddressesWarning()
+    {
+        var logger = new RecordingLogger<DefaultNetworkNameResolver>();
+        var options = new AgentNetworkOptions
+        {
+            DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: false),
+            AddressResolutionLifetime = TimeSpan.FromMinutes(1),
+        };
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(options), logger);
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("No resolved address is permitted");
+        var warning = logger.Snapshot().Single(static entry => entry.EventId.Id == 14002);
+        warning.Level.ShouldBe(LogLevel.Warning);
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         var clock = new FixedTimeProvider();

@@ -50,7 +50,6 @@ public sealed partial class SandboxedFileSystem
 
         if (!TryOpenParentDirectory(
                 request.Path,
-                createMissingDirectories: false,
                 cancellationToken,
                 out var parent,
                 out var fileName,
@@ -123,7 +122,6 @@ public sealed partial class SandboxedFileSystem
 
             if (!TryOpenParentDirectory(
                     request.Path,
-                    createMissingDirectories: false,
                     cancellationToken,
                     out var parent,
                     out var fileName,
