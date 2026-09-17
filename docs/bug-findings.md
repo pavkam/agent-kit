@@ -283,6 +283,7 @@ findings).
   `NetworkDestination`), and add a test with an IPv6 literal destination
   covering resolution, send-without-query, and send-with-query.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A05 — `NetworkRequest` documents structural equality but compares `ResolvedAddresses` by reference
 

@@ -59,6 +59,31 @@ public sealed class NetworkSecurityBindingTests
         resources[0].Identifier.ShouldBe(destination.ToString());
     }
 
+    [Fact]
+    public void ResolutionResource_WhenHostIsIPv6Literal_BracketsTheHost()
+    {
+        var destination = new NetworkDestination("https", new NormalizedHost("::1"), 443, new NetworkRoute("/path"));
+
+        var resource = NetworkSecurityBinding.ResolutionResource(destination);
+
+        resource.Identifier.ShouldBe("https://[::1]:443");
+    }
+
+    [Fact]
+    public void RequestResourceIdentifier_WhenHostIsIPv6LiteralAndRouteHasAQuery_UsesTheSameBracketedAuthorityAsResolutionResource()
+    {
+        var destination = new NetworkDestination("https", new NormalizedHost("::1"), 443, new NetworkRoute("/path?q=1"));
+
+        var resolution = NetworkSecurityBinding.ResolutionResource(destination);
+        var request = NetworkSecurityBinding.RequestResources(destination, [Address()]);
+
+        request[0].Identifier.ShouldStartWith("https://[::1]:443/path?query=");
+        // Every identifier for the same IPv6 destination must agree on the bracketed authority form,
+        // regardless of which operation or route shape produced it.
+        resolution.Identifier.ShouldBe("https://[::1]:443");
+        request[0].Identifier.ShouldStartWith(resolution.Identifier);
+    }
+
     private static NetworkOperationId Id() => new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
     private static NetworkDestination Destination() => new("https", new NormalizedHost("example.test"), 443, new NetworkRoute("/path?q=1"));
     private static NetworkBounds Bounds() => new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), 4_096, 3);

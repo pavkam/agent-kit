@@ -54,10 +54,23 @@ public sealed record NetworkDestination
     public NetworkRoute Route { get; init; }
 
     /// <summary>
+    /// Gets the canonical <c>scheme://host:port</c> authority text, with an IPv6 literal host
+    /// bracketed as RFC 3986 requires (for example <c>https://[::1]:443</c>).
+    /// </summary>
+    /// <remarks>
+    /// Every identifier derived from this destination (resolution/request resources, resource
+    /// fingerprints) must compose from this one property rather than interpolating
+    /// <see cref="Host"/> directly, so an IPv6 literal destination is identified identically
+    /// everywhere instead of differing by call site and colliding with a longer address that
+    /// happens to share the same unbracketed prefix.
+    /// </remarks>
+    public string Authority => $"{Scheme}://{AuthorityHost(Host)}:{Port}";
+
+    /// <summary>
     /// Returns the canonical absolute URI text for this destination,
     /// suitable for logging and diagnostic messages.
     /// </summary>
-    public override string ToString() => $"{Scheme}://{AuthorityHost(Host)}:{Port}{Route}";
+    public override string ToString() => $"{Authority}{Route}";
 
     private static string AuthorityHost(NormalizedHost host) =>
         IPAddress.TryParse(host.Value, out var address) && address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6

@@ -5187,6 +5187,7 @@ namespace AgentKit
     public sealed class NetworkDestination : System.IEquatable<AgentKit.NetworkDestination>
     {
         public NetworkDestination(string scheme, AgentKit.NormalizedHost host, int port, AgentKit.NetworkRoute route) { }
+        public string Authority { get; }
         public AgentKit.NormalizedHost Host { get; init; }
         public int Port { get; init; }
         public AgentKit.NetworkRoute Route { get; init; }

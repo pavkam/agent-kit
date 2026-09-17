@@ -15,9 +15,7 @@ public static class NetworkSecurityBinding
     public static ProtectedResource ResolutionResource(NetworkDestination destination)
     {
         ArgumentNullException.ThrowIfNull(destination);
-        return new ProtectedResource(
-            ProtectedResourceKind.NetworkEndpoint,
-            $"{destination.Scheme}://{destination.Host}:{destination.Port}");
+        return new ProtectedResource(ProtectedResourceKind.NetworkEndpoint, destination.Authority);
     }
 
     /// <summary>Creates destination and resolved-address resources for a connection.</summary>
@@ -178,7 +176,7 @@ public static class NetworkSecurityBinding
 
         var path = route[..queryStart];
         var queryFingerprint = ProcessSecurityBinding.FingerprintText(route[(queryStart + 1)..]);
-        return $"{destination.Scheme}://{destination.Host}:{destination.Port}{path}?query={queryFingerprint}";
+        return $"{destination.Authority}{path}?query={queryFingerprint}";
     }
 
     private static string AddressHost(IPAddress address) =>
