@@ -69,14 +69,9 @@ public sealed class SequencingModelResponseObserver: IModelResponseObserver
             return;
         }
 
-        if (responseEvent is ModelResponseStarted)
+        if (responseEvent is ModelResponseStarted && HasStarted)
         {
-            if (HasStarted)
-            {
-                return;
-            }
-
-            HasStarted = true;
+            return;
         }
 
         var renumbered = responseEvent with { Sequence = NextSequence };
@@ -85,6 +80,12 @@ public sealed class SequencingModelResponseObserver: IModelResponseObserver
 
         switch (renumbered)
         {
+            case ModelResponseStarted:
+                // Set only after delivery succeeds: if the inner observer throws or the token is
+                // cancelled during the first start, HasStarted must stay false so a retried
+                // ModelResponseStarted is delivered rather than silently suppressed.
+                HasStarted = true;
+                break;
             case ModelPartCompleted partCompleted:
                 _completedParts.Add(partCompleted.Part);
                 break;

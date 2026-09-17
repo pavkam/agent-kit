@@ -51,12 +51,39 @@ public sealed class SequencingModelResponseObserverTests
         observer.Usage.ShouldBe(usage);
     }
 
+    [Fact]
+    public async Task OnEventAsync_WhenInnerThrowsOnTheFirstStart_LeavesHasStartedFalseSoARetriedStartIsDelivered()
+    {
+        var inner = new FakeObserver { ThrowOnNextDelivery = true };
+        var observer = new SequencingModelResponseObserver(inner);
+        var token = TestContext.Current.CancellationToken;
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            () => observer.OnEventAsync(new ModelResponseStarted(_requestId, 1), token).AsTask());
+
+        observer.HasStarted.ShouldBeFalse();
+        observer.NextSequence.ShouldBe(0);
+
+        await observer.OnEventAsync(new ModelResponseStarted(_requestId, 2), token);
+
+        observer.HasStarted.ShouldBeTrue();
+        inner.Delivered.ShouldHaveSingleItem().Sequence.ShouldBe(0);
+    }
+
     private sealed class FakeObserver: IModelResponseObserver
     {
         public List<ModelResponseEvent> Delivered { get; } = [];
 
+        public bool ThrowOnNextDelivery { get; set; }
+
         public ValueTask OnEventAsync(ModelResponseEvent responseEvent, CancellationToken cancellationToken = default)
         {
+            if (ThrowOnNextDelivery)
+            {
+                ThrowOnNextDelivery = false;
+                throw new InvalidOperationException("Simulated inner observer failure.");
+            }
+
             Delivered.Add(responseEvent);
             return ValueTask.CompletedTask;
         }

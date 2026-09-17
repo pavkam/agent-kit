@@ -354,6 +354,7 @@ findings).
   where the inner observer throws on the first start and a retried start is then
   delivered.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A07 — `JsonDurableOperationCodec.Decode` can throw for unreadable payloads despite the non-throwing contract
 
