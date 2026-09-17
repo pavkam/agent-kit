@@ -106,8 +106,12 @@ public sealed class DefaultTaskDelegationBroker: ITaskDelegationBroker
                     started, TaskDelegationEnforcementReceipt.DenialMessage(consumption));
             }
 
+            // No cancellation check follows DelegateAsync: once it returns, the child has already been
+            // dispatched (an external, non-reversible effect) and the single-use grant has been
+            // consumed, so a caller-token cancellation observed only now must not discard the result -
+            // that would conflate caller-wait cancellation with abort and leave the dispatched child
+            // untracked, since a retry would be denied by the already-consumed grant.
             var result = await _channel.DelegateAsync(request.Prompt, cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
             var outcome = result.Id == request.Prompt.Id
                 ? result switch
                 {

@@ -3471,6 +3471,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   and always return the channel's result once `DelegateAsync` has completed; let
   the channel honour the token during dispatch.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### F04 — `SimpleAgentPlan` mints instruction messages and the local identity from ambient clock/GUIDs, so the catalog definition and conversation options disagree
 

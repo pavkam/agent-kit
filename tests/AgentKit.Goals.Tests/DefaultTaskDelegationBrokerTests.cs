@@ -449,8 +449,13 @@ public sealed class DefaultTaskDelegationBrokerTests
     }
 
     [Fact]
-    public async Task DelegateAsync_WhenCallerCancelsAfterNonCooperativeChannel_ReturnsCancellationAfterDispatch()
+    public async Task DelegateAsync_WhenCallerCancelsAfterNonCooperativeChannel_StillReturnsTheDispatchedResult()
     {
+        // Once DelegateAsync returns, the child has already been dispatched (an external,
+        // non-reversible effect) and the single-use grant has been consumed. A caller-token
+        // cancellation observed only now must not discard that result: doing so would conflate
+        // caller-wait cancellation with abort and leave the dispatched child untracked, since a
+        // retry would be denied by the already-consumed grant.
         Activity? stopped = null;
         using var parent = new Activity("task-delegation-post-channel-cancellation-test").Start();
         using var listener = new ActivityListener
@@ -472,11 +477,12 @@ public sealed class DefaultTaskDelegationBrokerTests
             OnDelegate = cancellation.Cancel
         };
         var broker = new DefaultTaskDelegationBroker(new RecordingGrantStore(), channel, new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.Parse("e0000000-0000-0000-0000-000000000028"))), new FixedTimeProvider(), new RecordingDelegationLogger());
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await broker.DelegateAsync(Request(broker.SecurityAudience), cancellation.Token));
+        var result = await broker.DelegateAsync(Request(broker.SecurityAudience), cancellation.Token);
+        _ = result.ShouldBeOfType<TaskDelegationChildResult>();
         _ = channel.Prompts.ShouldHaveSingleItem();
         var activity = stopped.ShouldNotBeNull();
-        activity.Status.ShouldBe(ActivityStatusCode.Error);
-        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("dispatched");
     }
 
     [Fact]
