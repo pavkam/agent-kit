@@ -12,6 +12,24 @@ using Microsoft.Extensions.Options;
 public sealed class DefaultConversationSessionTests
 {
     [Fact]
+    public async Task UnsupportedContextAssembler_WhenInvokedDirectly_ThrowsBecauseTheScriptedLoopNeverReachesContextAssembly()
+    {
+        var assembler = new UnsupportedContextAssembler();
+
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await assembler.AssembleAsync(null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task UnsupportedRunContinuationPolicy_WhenInvokedDirectly_ThrowsBecauseTheScriptedLoopNeverReachesContinuationEvaluation()
+    {
+        var policy = new UnsupportedRunContinuationPolicy();
+
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await policy.DecideAsync(null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenSnapshotVersionDiffersFromUpperSequence_UsesEachExactCoordinate()
     {
         var coordinator = new FakeSessionCoordinator
