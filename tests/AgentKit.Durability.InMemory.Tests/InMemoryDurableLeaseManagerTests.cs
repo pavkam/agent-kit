@@ -363,6 +363,47 @@ public sealed class InMemoryDurableLeaseManagerTests
     }
 
     [Fact]
+    public async Task AcquireAsync_WhenElapsedTimeIsNegative_StillGrantsOwnershipDespiteMetricsFailure()
+    {
+        // DurableLeaseMetrics.RecordAcquisition rejects a negative elapsed duration. Producing one from a
+        // clock that never throws exercises FinishAcquisition's own metrics-recording catch, distinct from
+        // TryGetElapsedTime's catch around the clock call itself (covered above via ThrowingElapsedTimeProvider).
+        var manager = Manager(new NegativeElapsedTimeProvider());
+
+        var result = await manager.AcquireAsync(
+            new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+
+        await result.ShouldBeOfType<ExecutionLeaseAcquired>().Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task RenewAsync_WhenElapsedTimeIsNegative_StillReportsRenewalDespiteMetricsFailure()
+    {
+        // Mirrors the acquisition case above for FinishRenewal's own metrics-recording catch.
+        var clock = new NegativeElapsedTimeProvider();
+        var manager = Manager(clock);
+        var acquired = await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+        await using var lease = acquired.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+
+        var renewal = await lease.RenewAsync(TestContext.Current.CancellationToken);
+
+        _ = renewal.ShouldBeOfType<LeaseRenewed>();
+    }
+
+    [Fact]
+    public async Task Duration_WhenALeaseIsAcquired_ReportsTheRequestedDurationUnchanged()
+    {
+        var manager = Manager();
+
+        var result = await manager.AcquireAsync(
+            new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(7)), TestContext.Current.CancellationToken);
+
+        var lease = (InMemoryExecutionLease) result.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+        lease.Duration.ShouldBe(TimeSpan.FromMinutes(7));
+        await lease.DisposeAsync();
+    }
+
+    [Fact]
     public async Task DisposeAsync_WhenStillTheCurrentGeneration_ReleasesItImmediately()
     {
         var manager = Manager();
@@ -444,6 +485,21 @@ public sealed class InMemoryDurableLeaseManagerTests
         public override DateTimeOffset GetUtcNow() => Epoch;
 
         public override long GetTimestamp() => ++_calls == 1 ? 1 : throw new InvalidTimeZoneException("elapsed-time failure");
+    }
+
+    /// <summary>A clock that never throws but reports a negative elapsed duration, which the bounded metrics
+    /// recorders reject; this exercises the manager's own metrics-recording catch rather than its clock-failure catch.
+    /// Each operation calls <see cref="GetTimestamp"/> once at its start and once more internally through the
+    /// default <see cref="TimeProvider.GetElapsedTime(long)"/> at its finish; alternating a later raw value on the
+    /// first call of each pair with an earlier one on the second makes every operation's derived elapsed duration
+    /// negative, without either call ever throwing.</summary>
+    private sealed class NegativeElapsedTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => Epoch;
+
+        public override long GetTimestamp() => ++_calls % 2 == 1 ? 1000 : 0;
     }
 
     private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>
