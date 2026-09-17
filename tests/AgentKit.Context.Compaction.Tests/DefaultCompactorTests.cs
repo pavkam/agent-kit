@@ -569,7 +569,7 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
-    public async Task CompactAsync_WhenCancelledBeforeActivation_ReturnsCancelledNotAttempted()
+    public async Task CompactAsync_WhenCancelledBeforeActivation_ReturnsCancelledNotAttemptedAndLogsCancellation()
     {
         var address = Address();
         using var cts = new CancellationTokenSource();
@@ -582,7 +582,8 @@ public sealed class DefaultCompactorTests
                 return null!;
             }
         };
-        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        var logger = new RecordingLogger<DefaultCompactor>();
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy, logger: logger);
         coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
         var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
 
@@ -592,6 +593,9 @@ public sealed class DefaultCompactorTests
         cancelled.CommitState.ShouldBe(CompactionCommitState.NotAttempted);
         cancelled.CommittedRecord.ShouldBeNull();
         coordinator.ReceivedAppends.ShouldBeEmpty();
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 9002).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.State["CommitState"].ShouldBe(CompactionCommitState.NotAttempted);
     }
 
     [Fact]
@@ -759,7 +763,7 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
-    public async Task CompactAsync_WhenStrategyThrowsUnexpectedly_PropagatesTheException()
+    public async Task CompactAsync_WhenStrategyThrowsUnexpectedly_PropagatesTheExceptionAndLogsFailure()
     {
         var address = Address();
         var entries = new[]
@@ -770,7 +774,8 @@ public sealed class DefaultCompactorTests
         {
             OnProduce = static _ => throw new InvalidOperationException("unexpected strategy failure"),
         };
-        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        var logger = new RecordingLogger<DefaultCompactor>();
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy, logger: logger);
         coordinator.Seed(entries);
         var context = TestFactory.CompactionContext(_agentId, _sessionId);
         var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
@@ -779,6 +784,10 @@ public sealed class DefaultCompactorTests
             async () => await compactor.CompactAsync(request, TestContext.Current.CancellationToken));
 
         exception.Message.ShouldBe("unexpected strategy failure");
+        var entry = logger.Snapshot().Where(static e => e.EventId.Id == 9003).ShouldHaveSingleItem();
+        entry.Level.ShouldBe(LogLevel.Error);
+        entry.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        entry.Message.ShouldNotContain("unexpected strategy failure");
     }
 
     [Fact]
@@ -993,12 +1002,12 @@ public sealed class DefaultCompactorTests
         return (compactor, coordinator);
     }
 
-    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithFakes(ICompactionCutSelector? cutSelector = null, ICompactionStrategy? strategy = null, ICompactionValidator? validator = null)
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithFakes(ICompactionCutSelector? cutSelector = null, ICompactionStrategy? strategy = null, ICompactionValidator? validator = null, ILogger<DefaultCompactor>? logger = null)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
         var options = Options.Create(new CompactionOptions());
         var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, cutSelector ?? new StructuralCompactionCutSelector(options), strategy ?? new ExtractiveCompactionStrategy(estimator, options), validator ?? new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options);
+        var compactor = new DefaultCompactor(coordinator, cutSelector ?? new StructuralCompactionCutSelector(options), strategy ?? new ExtractiveCompactionStrategy(estimator, options), validator ?? new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options, logger);
         return (compactor, coordinator);
     }
 
