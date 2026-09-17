@@ -3092,6 +3092,7 @@ using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellati
   to `TimedOut`), or run the stdin write concurrently with `WaitForExitAsync`
   under the same linked token.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H05 — Pooled HTTP connections are keyed by host:port, so a later request can be served over a connection to an address that is not the request's pinned, still-valid resolved address
 

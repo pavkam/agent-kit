@@ -217,32 +217,44 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
         var errorCapture = CreateCapture();
         var outputTask = ReadOutputAsync(process.StandardOutput.BaseStream, standardOutput, outputCapture);
         var errorTask = ReadOutputAsync(process.StandardError.BaseStream, standardError, errorCapture);
+
+        // The timeout/linked token is created before writing standard input, and standard-input
+        // delivery is bound by it too: a child that never reads stdin (MaximumInputBytes defaults to
+        // 1 MiB while a Unix pipe buffer is typically 64 KiB) must not block the write past the
+        // declared operation timeout, defeating the bounded-execution guarantee the timeout exists for.
+        using var timeout = new CancellationTokenSource(intent.Request.Limits.Timeout, _timeProvider);
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         try
         {
-            await WriteInputAsync(process, intent.Request.StandardInput, cancellationToken).ConfigureAwait(false);
+            await WriteInputAsync(process, intent.Request.StandardInput, operation.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException or OperationCanceledException)
         {
+            var status = cancellationToken.IsCancellationRequested
+                ? ProcessRunStatus.Cancelled
+                : timeout.IsCancellationRequested
+                    ? ProcessRunStatus.TimedOut
+                    : ProcessRunStatus.Failed;
             var terminated = await TerminateAsync(process, intent.Request.Limits.TerminationGracePeriod)
                 .ConfigureAwait(false);
             _ = await DrainOutputAsync(process, outputTask, errorTask, intent.Request.Limits.TerminationGracePeriod)
                 .ConfigureAwait(false);
             return await SettledAsync(
-                cancellationToken.IsCancellationRequested ? ProcessRunStatus.Cancelled : ProcessRunStatus.Failed,
+                status,
                 standardOutput,
                 standardError,
                 outputCapture,
                 errorCapture,
                 intent,
                 processGrant,
-                terminated
-                    ? "Standard input could not be delivered completely."
-                    : "Standard input failed and process termination could not be confirmed; effects may continue.",
+                !terminated
+                    ? "Standard input failed and process termination could not be confirmed; effects may continue."
+                    : status == ProcessRunStatus.TimedOut
+                        ? "The process exceeded its operation timeout while standard input was being delivered."
+                        : "Standard input could not be delivered completely.",
                 CancellationToken.None).ConfigureAwait(false);
         }
 
-        using var timeout = new CancellationTokenSource(intent.Request.Limits.Timeout, _timeProvider);
-        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         try
         {
             await process.WaitForExitAsync(operation.Token).ConfigureAwait(false);

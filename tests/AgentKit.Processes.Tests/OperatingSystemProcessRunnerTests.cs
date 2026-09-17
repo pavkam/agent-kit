@@ -297,6 +297,41 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenChildNeverReadsLargeStandardInput_TimesOutInsteadOfBlockingIndefinitely()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.MaximumInputBytes = 4 * 1024 * 1024;
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var input = new byte[2 * 1024 * 1024];
+        var request = new ProcessResolveRequest(
+            new ProcessOperationId(Guid.NewGuid()),
+            "/bin/sh",
+            ["-c", "trap '' TERM; sleep 5"],
+            null,
+            [],
+            [.. input],
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            ProcessWorkspaceAccess.ReadWrite,
+            ProcessSideEffectClass.WorkspaceMutation,
+            ProcessChildPolicy.AllowSandboxed,
+            new ProcessResourceLimits(TimeSpan.FromMilliseconds(200), 1024, TimeSpan.FromMilliseconds(100)));
+        var intent = (await resolver.ResolveAsync(request, TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var stopwatch = Stopwatch.StartNew();
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        stopwatch.Stop();
+
+        result.Status.ShouldBe(ProcessRunStatus.TimedOut);
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(4), "a child that never reads standard input must not stall delivery past the operation timeout");
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOrphanedChildKeepsOutputStreamsOpenAfterExit_ForciblyClosesThemWithinTheDrainBound()
     {
         if (!IsSupported() || !SandboxAvailable())
