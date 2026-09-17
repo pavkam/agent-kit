@@ -2567,6 +2567,7 @@ Totals: **0 High, 6 Medium, 6 Low**.
   `ERROR`/`TIMEOUT`), return a `ModelAttemptFailed` via `FailAsync` carrying the
   error text as `ProviderErrorMessageEvidence` and the partial parts/usage.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### N11 — Gemini 429 `RESOURCE_EXHAUSTED` retry hint (`RetryInfo.retryDelay`) is not parsed
 

@@ -381,6 +381,61 @@ public sealed class CohereResponseParserTests
         completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageEndCarriesAnErrorText_FailsInsteadOfCompleting()
+    {
+        // CohereStreamEventDeltaDto.Error is present only on message-end and reports why generation
+        // failed; dropping it and completing normally would lose the only evidence of what went wrong.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-error", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Partial"}}}}
+
+            data: {"type": "content-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "ERROR", "error": "internal model error", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.SafeMessage.ShouldBe("internal model error");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFinishReasonIsTimeoutWithoutErrorText_FailsWithTimeoutKind()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-timeout", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TIMEOUT", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 0}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+    }
+
     /// <summary>Verifies a content-delta arriving without a preceding content-start still infers its slot kind and materializes it.</summary>
     [Fact]
     public async Task ParseStreamingAsync_WhenContentDeltaArrivesWithoutContentStart_InfersTextSlotAndMaterializesIt()

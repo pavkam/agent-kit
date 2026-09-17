@@ -290,6 +290,42 @@ public sealed class CohereResponseParser: ICohereResponseParser
                     finishReason = streamEvent.Delta?.FinishReason;
                     usage = streamEvent.Delta?.Usage ?? usage;
                     sawMessageEnd = true;
+
+                    // CohereStreamEventDeltaDto.Error is present only on message-end and reports why
+                    // generation failed; finish_reason ERROR/TIMEOUT can also signal a failure with no
+                    // accompanying error text. The Anthropic and Bedrock adapters map an in-stream
+                    // provider error to ModelAttemptFailed with the provider message; without this check
+                    // the attempt was reported as ModelAttemptCompleted with NormalizedStopReason.Error
+                    // and the provider's error text was dropped entirely, leaving no diagnostic evidence
+                    // of what went wrong.
+                    if (streamEvent.Delta?.Error is { Length: > 0 } errorText)
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            finishReason == "TIMEOUT" ? ProviderFailureKind.Timeout : ProviderFailureKind.Unknown,
+                            errorText,
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(state),
+                            TryBuildRetainedUsage(usage)).ConfigureAwait(false);
+                    }
+
+                    if (finishReason is "ERROR" or "TIMEOUT")
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            finishReason == "TIMEOUT" ? ProviderFailureKind.Timeout : ProviderFailureKind.Unknown,
+                            $"The provider ended the stream with finish_reason '{finishReason}'.",
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(state),
+                            TryBuildRetainedUsage(usage)).ConfigureAwait(false);
+                    }
+
                     break;
 
                 default:
@@ -830,6 +866,24 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 estimatedCost: null,
                 costCurrency: null,
                 ExtensionData.Empty);
+
+    /// <summary>Builds retained usage for a failure result, swallowing invalid usage evidence rather than masking the real failure cause.</summary>
+    private static ModelUsage? TryBuildRetainedUsage(CohereUsageDto? usage)
+    {
+        if (usage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return BuildUsage(usage);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Validates an optional raw Cohere token count before portable integer projection.
