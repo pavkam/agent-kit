@@ -221,6 +221,50 @@ public sealed class BudgetAuthorityTests
         snapshot.Usages.Single(usage => usage.Dimension == request.Dimension).Reserved.ShouldBe(BudgetQuantity.FromDecimal(request.Amount));
     }
 
+    /// <summary>Verifies session, run, and operation correlation tags are attached when the address carries all three.</summary>
+    [Fact]
+    public async Task CreateChildScopeAsync_WhenAddressHasSessionRunAndOperation_TagsFullCorrelation()
+    {
+        using var parent = new Activity("budget-scope-create-correlation-test").Start();
+        var parentSpanId = parent.SpanId;
+        var traceId = parent.TraceId;
+        var observed = new System.Collections.Concurrent.ConcurrentQueue<(string? SessionId, string? RunId, string? OperationId)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == traceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.ParentSpanId == parentSpanId && activity.TraceId == traceId && activity.OperationName == AgentKitActivityNames.BudgetScopeCreate)
+                {
+                    observed.Enqueue((
+                        activity.GetTagItem(AgentKitTagNames.SessionId)?.ToString(),
+                        activity.GetTagItem(AgentKitTagNames.RunId)?.ToString(),
+                        activity.GetTagItem(AgentKitTagNames.OperationId)?.ToString()));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var address = new BudgetScopeAddress(
+            new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new OperationId(Guid.NewGuid()));
+        var request = new BudgetScopeRequest(null, address, [], new IdempotencyKey(Guid.NewGuid().ToString()));
+        var reference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), address);
+        var ledger = new RecordingBudgetLedger
+        {
+            CreateResult = new BudgetLedgerScopeCreated(reference)
+        };
+        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+
+        var result = await authority.CreateChildScopeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<BudgetScopeCreated>();
+        var recorded = observed.ShouldHaveSingleItem();
+        recorded.SessionId.ShouldBe(address.SessionId!.Value.ToString());
+        recorded.RunId.ShouldBe(address.RunId!.Value.ToString());
+        recorded.OperationId.ShouldBe(address.OperationId!.Value.ToString());
+    }
+
     [Fact]
     public async Task CreateChildScopeAsync_WhenLedgerRejects_ReturnsExactFailure()
     {
