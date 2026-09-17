@@ -48,19 +48,12 @@ public sealed class ArgumentExceptionExtensionsTests
         ArgumentException.ThrowIfNotPersistable(enforcement, settings);
         ArgumentException.ThrowIfNotPersistable(capturedGrant, settings);
         ArgumentException.ThrowIfNotPersistable(capturedEnforcement, settings);
+        // SecurityGrant's own init accessors now reject Id/RequestId/Audience/InputFingerprint
+        // default values, undefined Kind/Effect, a default/empty Resources array,
+        // AllowedUses <= 0, and ExpiresAt <= NotBefore directly (see SecurityGrantTests), so those
+        // states can no longer be produced by `with` at all; only the remaining entries below still
+        // reach ThrowIfNotPersistable's own copied-evidence checks.
         SecurityGrant[] invalidGrants = [grant with
-        {
-            Id = default
-        }, grant with
-        {
-            RequestId = default
-        }, grant with
-        {
-            Audience = default
-        }, grant with
-        {
-            InputFingerprint = default
-        }, grant with
         {
             PolicyVersion = default
         }, grant with
@@ -68,22 +61,7 @@ public sealed class ArgumentExceptionExtensionsTests
             RevocationVersion = default
         }, grant with
         {
-            Kind = (SecurityOperationKind)999
-        }, grant with
-        {
-            Effect = (SecurityEffect)999
-        }, grant with
-        {
-            Resources = default
-        }, grant with
-        {
             Resources = [null!]
-        }, grant with
-        {
-            AllowedUses = 0
-        }, grant with
-        {
-            ExpiresAt = grant.NotBefore
         }, ];
         foreach (var invalid in invalidGrants)
         {

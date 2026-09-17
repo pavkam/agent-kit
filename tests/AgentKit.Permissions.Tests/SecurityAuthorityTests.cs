@@ -430,6 +430,56 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
+    public async Task AuthorizeAsync_WhenOrdinaryAllowRegistersAGrantAndAnAuditDispatcherIsConfigured_DispatchesGrantIssued()
+    {
+        // Every registered grant must be audited when a dispatcher is configured, not only the ones
+        // a human approved: the ordinary allow path (no approval involved at all) previously
+        // registered a grant with no audit record whatsoever.
+        var clock = new FakeTimeProvider(_now);
+        var dispatcher = new RecordingAuditDispatcher();
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Allow)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new FaultingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            dispatcher);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var allowed = decision.ShouldBeOfType<SecurityAllowed>();
+        var audit = dispatcher.Dispatched.ShouldHaveSingleItem();
+        audit.EventKind.ShouldBe(SecurityAuditEventKind.GrantIssued);
+        audit.Outcome.ShouldBe(SecurityAuditOutcome.Accepted);
+        audit.GrantId.ShouldBe(allowed.Grant.Id);
+        audit.ApprovalRequestId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenOrdinaryAllowAuditIsNotAccepted_DeniesAsAuditUnavailableWithoutRegisteringTheGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Allow)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new FaultingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new RejectingAuditDispatcher());
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var denied = decision.ShouldBeOfType<SecurityDenied>();
+        denied.Denial.Code.ShouldBe("security.audit_unavailable");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenCallerTokenCancelsDuringPolicyEvaluation_PropagatesCancellation()
     {
         using var cts = new CancellationTokenSource();
@@ -660,6 +710,20 @@ public sealed class SecurityAuthorityTests
                 request.Binding.Request.Identity,
                 request.CreatedAt.AddSeconds(1));
             return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerDenied(response));
+        }
+    }
+
+    private sealed class RecordingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public List<SecurityAuditRecord> Dispatched { get; } = [];
+
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Dispatched.Add(record);
+            return ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
         }
     }
 

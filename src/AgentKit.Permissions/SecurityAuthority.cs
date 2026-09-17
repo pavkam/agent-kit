@@ -314,14 +314,17 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 request.Effect, request.Resources, request.InputFingerprint, policyVersion,
                 revocationVersion, now, expiresAt, allowedUses);
 
-        if (approvalRequestId is { } approvedRequestId)
+        // Every registered grant is audited when a dispatcher is configured, not only the ones a human
+        // approved: the ordinary allow path (AllowAllSecurityPolicy, a workspace-scoped policy, ...)
+        // issues a grant just as authoritatively and must be equally visible to required audit.
+        if (_auditDispatcher is not null)
         {
             var audit = new SecurityAuditRecord(
-                new SecurityAuditRecordId(approvedRequestId.Value),
+                new SecurityAuditRecordId(grant.Id.Value),
                 request.Scope,
                 request.Id,
                 grant.Id,
-                approvedRequestId,
+                approvalRequestId,
                 SecurityAuditEventKind.GrantIssued,
                 SecurityAuditOutcome.Accepted,
                 policyVersion,
@@ -330,7 +333,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
             SecurityAuditDispatchResult auditResult;
             try
             {
-                auditResult = await _auditDispatcher!.DispatchAsync(audit, cancellationToken).ConfigureAwait(false);
+                auditResult = await _auditDispatcher.DispatchAsync(audit, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

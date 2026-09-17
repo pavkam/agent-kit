@@ -2748,6 +2748,7 @@ retained capacity and can leave a scope stuck in `Held`.
   required delivery is not accepted; have the grant stores (or the authority on
   their behalf) emit `GrantLifecycle` on revoke.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### B02 — In-memory hold clearance and hard-failure checks count expired-but-unswept unstarted reservations as retained capacity
 

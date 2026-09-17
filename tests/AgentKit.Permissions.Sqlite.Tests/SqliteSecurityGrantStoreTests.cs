@@ -714,7 +714,10 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
             await store.InitializeAsync(TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch);
-            var exception = await Should.ThrowAsync<ArgumentException>(async () => await store.RegisterAsync(grant with { Audience = default }, TestContext.Current.CancellationToken));
+            // SecurityGrant's own init accessors now reject a default Audience directly, so this
+            // probes RegisterAsync's own codec round-trip rejection with a mutation SecurityGrant
+            // still allows to construct: a null element inside a non-default, non-empty Resources array.
+            var exception = await Should.ThrowAsync<ArgumentException>(async () => await store.RegisterAsync(grant with { Resources = [null!] }, TestContext.Current.CancellationToken));
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
             exception.GetType().ShouldBe(typeof(ArgumentException));
