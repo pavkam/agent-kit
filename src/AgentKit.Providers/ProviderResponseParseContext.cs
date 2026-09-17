@@ -101,8 +101,10 @@ public sealed record ProviderResponseParseContext
             upstreamProviderId: null,
             ApiFamily,
             RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : RequestedModelId,
+            // ModelId/ProviderResponseId reject a whitespace-only value; "reported none" must include a
+            // provider that reported an all-whitespace string, not only a null or literally empty one.
+            !string.IsNullOrWhiteSpace(resolvedModel) ? new ModelId(resolvedModel) : RequestedModelId,
             DeploymentId,
             ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
+            !string.IsNullOrWhiteSpace(responseId) ? new ProviderResponseId(responseId) : null);
 }

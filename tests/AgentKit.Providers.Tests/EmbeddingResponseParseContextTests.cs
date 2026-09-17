@@ -85,8 +85,11 @@ public sealed class EmbeddingResponseParseContextTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
     public void CreateResponseIdentity_WhenBodyReportsNoModel_FallsBackToRequestedModel(string? resolvedModel)
     {
+        // ModelId rejects a whitespace-only value; a provider that reports one must be treated the same
+        // as reporting none instead of letting ModelId's constructor throw.
         var identity = CreateContext().CreateResponseIdentity(resolvedModel);
 
         identity.ResolvedModelId.ShouldBe(RequestedModel);

@@ -68,8 +68,11 @@ public sealed class ProviderResponseParseContextTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
     public void CreateResponseIdentity_WhenBodyReportsNoModel_FallsBackToRequestedModel(string? resolvedModel)
     {
+        // ModelId rejects a whitespace-only value; a provider that reports one must be treated the same
+        // as reporting none instead of letting ModelId's constructor throw.
         var identity = CreateContext().CreateResponseIdentity(resolvedModel, "resp_1");
 
         identity.ResolvedModelId.ShouldBe(RequestedModel);
@@ -78,8 +81,11 @@ public sealed class ProviderResponseParseContextTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
     public void CreateResponseIdentity_WhenBodyReportsNoResponseId_LeavesResponseIdNull(string? responseId)
     {
+        // ProviderResponseId rejects a whitespace-only value; a provider that reports one must be
+        // treated the same as reporting none instead of letting ProviderResponseId's constructor throw.
         var identity = CreateContext().CreateResponseIdentity("resolved-model", responseId);
 
         identity.ResponseId.ShouldBeNull();

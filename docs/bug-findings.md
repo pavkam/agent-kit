@@ -1791,6 +1791,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   missing), and consider a last-resort `catch (ArgumentException)` in the parser
   that converts to `FailAsync`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ---
 

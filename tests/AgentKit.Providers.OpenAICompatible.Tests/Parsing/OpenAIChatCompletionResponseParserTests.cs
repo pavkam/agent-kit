@@ -63,6 +63,45 @@ public sealed class OpenAIChatCompletionResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallNameIsWhitespace_FailsWithProtocolViolationInsteadOfThrowing()
+    {
+        // An empty/whitespace name passes "required string" deserialization but reaches
+        // new ToolAlias(...), whose ThrowIfNullOrWhiteSpace guard would otherwise escape the parser
+        // uncaught after ModelResponseStarted was already delivered, matching the streaming path's
+        // existing fail-closed behavior for a nameless tool call.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_tool_call_whitespace_name.json"));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a tool call without a function name.");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallIdIsEmpty_TreatsProviderCallIdAsAbsentInsteadOfThrowing()
+    {
+        // An empty id passes "required string" deserialization but reaches
+        // new ProviderToolCallId(""), whose ThrowIfNullOrWhiteSpace guard would otherwise throw; the
+        // streaming path already treats a missing provider call id as optional rather than fatal.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_tool_call_blank_id.json"));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.ProviderCallId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenParallelToolCalls_EmitsOneToolCallPartPerCallInOrder()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

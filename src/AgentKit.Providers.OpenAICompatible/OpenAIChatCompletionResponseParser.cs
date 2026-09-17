@@ -159,6 +159,24 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             for (var wireIndex = 0; wireIndex < toolCalls.Count; wireIndex++)
             {
                 var toolCall = toolCalls[wireIndex];
+
+                // A tool name is the only identity the model actually requested; empty/whitespace passes
+                // "required string" deserialization but is not a name a caller can dispatch. The streaming
+                // path already fails closed on a nameless slot instead of fabricating one; the buffered
+                // path must not construct a ToolAlias/ToolCallPart from one either.
+                if (string.IsNullOrWhiteSpace(toolCall.Function.Name))
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        "The provider returned a tool call without a function name.",
+                        diagnosticCause: null,
+                        cancellationToken,
+                        parts.ToImmutable(),
+                        dto.Usage is null ? null : usage).ConfigureAwait(false);
+                }
+
                 var partIndex = ToolCallPartIndex(wireIndex);
                 var callId = _toolCallIdGenerator.Create();
 
@@ -195,7 +213,9 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                     callId,
                     new ToolReference(new ToolAlias(toolCall.Function.Name), null, null),
                     arguments,
-                    new ProviderToolCallId(toolCall.Id),
+                    toolCall.Id is { Length: > 0 } providerCallId && !string.IsNullOrWhiteSpace(providerCallId)
+                        ? new ProviderToolCallId(providerCallId)
+                        : null,
                     ExtensionData.Empty);
 
                 await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, partIndex, toolCallPart), cancellationToken)
