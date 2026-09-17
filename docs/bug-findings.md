@@ -2981,6 +2981,7 @@ var name = Marshal.PtrToStringUTF8(IntPtr.Add(entry, nameOffset));
   entry points explicitly, and add
   `RuntimeInformation.ProcessArchitecture`-gated tests for the offsets.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### H02 — `CreateOrOverwrite` on an existing file truncates in place; not atomic and leaves an empty/partial target on failure or cancellation
 

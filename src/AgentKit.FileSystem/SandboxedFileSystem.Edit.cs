@@ -288,25 +288,33 @@ public sealed partial class SandboxedFileSystem
         }
     }
 
+    /// <summary>Reads the POSIX permission and set-user/set-group/sticky bits of an open descriptor.</summary>
+    /// <param name="descriptor">The non-owned native file descriptor to inspect.</param>
+    /// <param name="mode">The mode bits (equivalent to the traditional <c>st_mode</c> permission nibbles) on success; zero otherwise.</param>
+    /// <returns><see langword="true"/> when the mode was read successfully.</returns>
+    /// <remarks>
+    /// Delegates to <see cref="File.GetUnixFileMode(SafeFileHandle)"/> instead of reading raw
+    /// <c>struct stat</c> offsets by hand: those offsets differ across architecture/OS
+    /// combinations (for example <c>st_mode</c> sits at a different offset on x86_64 macOS than on
+    /// arm64 macOS, and differently again on aarch64 Linux than on x86_64 Linux), so a hard-coded
+    /// offset silently reads the wrong field on some of them. <see cref="UnixFileMode"/>'s flag
+    /// values are numerically identical to the traditional octal permission bits, so casting it to
+    /// <see langword="int"/> reproduces the value this method previously read directly.
+    /// </remarks>
     private static bool TryGetFileMode(int descriptor, out int mode)
     {
-        var buffer = Marshal.AllocHGlobal(256);
         try
         {
-            if (FileStatus(descriptor, buffer) < 0)
-            {
-                mode = 0;
-                return false;
-            }
-
-            mode = OperatingSystem.IsMacOS()
-                ? Marshal.ReadInt16(buffer, 4) & 0xFFFF
-                : Marshal.ReadInt32(buffer, 24);
+            using var handle = new SafeFileHandle(descriptor, ownsHandle: false);
+#pragma warning disable CA1416 // This whole type is Unix-only (every sibling member here is a raw libc P/Invoke without separate platform attribution).
+            mode = (int) File.GetUnixFileMode(handle);
+#pragma warning restore CA1416
             return true;
         }
-        finally
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            Marshal.FreeHGlobal(buffer);
+            mode = 0;
+            return false;
         }
     }
 
@@ -398,9 +406,6 @@ public sealed partial class SandboxedFileSystem
             owner.ReleaseMutationLockReference(path, entry, releaseSemaphore: true);
         }
     }
-
-    [LibraryImport("libc", EntryPoint = "fstat", SetLastError = true)]
-    private static partial int FileStatus(int descriptor, IntPtr buffer);
 
     [LibraryImport("libc", EntryPoint = "fsync", SetLastError = true)]
     private static partial int Synchronize(int descriptor);

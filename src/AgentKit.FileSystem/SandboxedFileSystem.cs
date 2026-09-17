@@ -1020,8 +1020,36 @@ public sealed partial class SandboxedFileSystem:
     [LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
     private static partial int DuplicateDescriptor(int descriptor);
 
+    /// <summary>
+    /// Whether the process must bind libc's <c>$INODE64</c>-suffixed <c>fdopendir</c>/<c>readdir</c>
+    /// symbols directly.
+    /// </summary>
+    /// <remarks>
+    /// On x86_64 macOS, the plain <c>fdopendir</c>/<c>readdir</c> dynamic symbols are the legacy
+    /// 32-bit-inode entry points kept for binary compatibility; a C compiler silently redirects
+    /// source-level calls to the <c>$INODE64</c> symbols via a header macro, but a raw
+    /// <c>dlsym</c>-style P/Invoke lookup (what <see cref="LibraryImportAttribute"/> performs) binds
+    /// the literal, legacy symbol and returns a <c>struct dirent</c> whose <c>d_name</c> offset does
+    /// not match the one <see cref="TryReadDirectoryNames"/> uses. Arm64 macOS has only one struct
+    /// layout and exposes no <c>$INODE64</c>-suffixed symbols, and Linux has no such symbol pair at
+    /// all, so the explicit binding is required only for this one combination.
+    /// </remarks>
+    private static readonly bool _requiresMacOsInode64DirectorySymbols =
+        OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+
+    private static IntPtr OpenDirectoryStream(int descriptor) => _requiresMacOsInode64DirectorySymbols
+        ? OpenDirectoryStreamInode64(descriptor)
+        : OpenDirectoryStreamDefault(descriptor);
+
+    private static IntPtr ReadDirectoryEntry(IntPtr stream) => _requiresMacOsInode64DirectorySymbols
+        ? ReadDirectoryEntryInode64(stream)
+        : ReadDirectoryEntryDefault(stream);
+
     [LibraryImport("libc", EntryPoint = "fdopendir", SetLastError = true)]
-    private static partial IntPtr OpenDirectoryStream(int descriptor);
+    private static partial IntPtr OpenDirectoryStreamDefault(int descriptor);
+
+    [LibraryImport("libc", EntryPoint = "fdopendir$INODE64", SetLastError = true)]
+    private static partial IntPtr OpenDirectoryStreamInode64(int descriptor);
 
     [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int Open(string path, int flags, int mode);
@@ -1030,5 +1058,8 @@ public sealed partial class SandboxedFileSystem:
     private static partial int OpenAt(int directoryDescriptor, string path, int flags, int mode);
 
     [LibraryImport("libc", EntryPoint = "readdir", SetLastError = true)]
-    private static partial IntPtr ReadDirectoryEntry(IntPtr stream);
+    private static partial IntPtr ReadDirectoryEntryDefault(IntPtr stream);
+
+    [LibraryImport("libc", EntryPoint = "readdir$INODE64", SetLastError = true)]
+    private static partial IntPtr ReadDirectoryEntryInode64(IntPtr stream);
 }
