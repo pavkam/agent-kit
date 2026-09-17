@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI.Tests.Parsing;
 
+using System.Diagnostics;
+
 /// <summary>
 /// Verifies <see cref="MistralAIEmbeddingResponseParser.ParseAsync"/>
 /// against fixture Mistral AI embeddings response bodies, across every
@@ -122,6 +124,22 @@ public sealed class MistralAIEmbeddingResponseParserTests
         vector.Values.ShouldBe([170, 5]);
         succeeded.Space.Dimensions.ShouldBe(16);
         succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.Binary);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenRequestedEncodingIsUndefined_ThrowsUnreachableException()
+    {
+        // EmbeddingEncoding's members are all enumerated by ElementTypeOf's switch, which runs before any
+        // item is decoded; an undefined value can only be produced by an unsafe cast, and the parser fails
+        // closed rather than guessing an element type.
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"mistral-embed"}"""u8.ToArray());
+
+        _ = await Should.ThrowAsync<UnreachableException>(
+            () => parser.ParseAsync(body, CreateContext((EmbeddingEncoding) 999), inputs, TestContext.Current.CancellationToken));
     }
 
     [Fact]
