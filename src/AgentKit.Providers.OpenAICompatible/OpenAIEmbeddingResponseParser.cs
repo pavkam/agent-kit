@@ -188,7 +188,18 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
             var values = ImmutableArray.CreateBuilder<float>(embedding.GetArrayLength());
             foreach (var element in embedding.EnumerateArray())
             {
-                values.Add(element.GetSingle());
+                // JsonElement.GetSingle()/TryGetSingle() both throw InvalidOperationException (not
+                // JsonException) when ValueKind is not Number; a misbehaving compatible server sending
+                // null, a string, or a nested array for a vector element must fail as the same typed
+                // protocol violation as every other malformed-vector case, not escape uncaught. The
+                // ValueKind check must happen before TryGetSingle is ever called.
+                if (element.ValueKind != JsonValueKind.Number || !element.TryGetSingle(out var value))
+                {
+                    throw new JsonException(
+                        $"An embedding vector element has kind '{element.ValueKind}' instead of a valid number.");
+                }
+
+                values.Add(value);
             }
 
             return new DenseFloatVector(values.ToImmutable());

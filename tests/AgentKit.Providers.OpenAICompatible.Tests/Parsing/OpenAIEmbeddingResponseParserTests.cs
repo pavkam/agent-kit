@@ -141,6 +141,25 @@ public sealed class OpenAIEmbeddingResponseParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenAVectorElementIsNotANumber_ReturnsProtocolFailureInsteadOfThrowing()
+    {
+        // JsonElement.GetSingle() throws InvalidOperationException (not JsonException) for a non-Number
+        // element; that must not escape the parser uncaught for a misbehaving compatible server that
+        // sends null, a string, or a nested array for a vector element.
+        var requestId = new EmbeddingRequestId(Guid.NewGuid());
+        var parser = new OpenAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("only", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,"not-a-number",0.3]}],"model":"text-embedding-3-small"}"""u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(requestId), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
     public async Task ParseAsync_WhenAnItemIndexIsOutOfRange_ReturnsProtocolFailure()
     {
         var requestId = new EmbeddingRequestId(Guid.NewGuid());

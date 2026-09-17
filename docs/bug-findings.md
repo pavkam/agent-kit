@@ -1988,6 +1988,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   `TryGetSingle` and throw `JsonException` on mismatch, or widen the filter to
   include `InvalidOperationException`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ---
 
