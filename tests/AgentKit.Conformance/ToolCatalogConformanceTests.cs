@@ -40,6 +40,16 @@ public abstract class ToolCatalogConformanceTests<TFixture>
         descriptor.ShouldBeNull();
     }
 
+    /// <summary>Verifies the resolution fixture never actually executes the tool it captures.</summary>
+    [Fact]
+    public async Task InvokeAsync_WhenCalledDirectly_ThrowsBecauseResolutionMustNeverInvokeATool()
+    {
+        var tool = new ChangingTool(Descriptor("captured"));
+
+        _ = await Should.ThrowAsync<NotSupportedException>(
+            async () => await tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
+    }
+
     private static ToolDescriptor Descriptor(string id)
     {
         using var document = JsonDocument.Parse("{}");
