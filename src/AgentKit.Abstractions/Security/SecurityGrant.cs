@@ -42,10 +42,14 @@ public sealed record SecurityGrant
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(requestId, default);
+        ArgumentException.ThrowIfNullOrWhiteSpace(audience.Value, nameof(audience));
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentOutOfRangeException.ThrowIfUndefined(effect);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(allowedUses);
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputFingerprint.Value, nameof(inputFingerprint));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(expiresAt, notBefore);
 
         Id = id;
@@ -59,8 +63,10 @@ public sealed record SecurityGrant
         InputFingerprint = inputFingerprint;
         PolicyVersion = policyVersion;
         RevocationVersion = revocationVersion;
-        NotBefore = notBefore;
+        // ExpiresAt is assigned before NotBefore so each property's own init accessor (which
+        // cross-checks the other) sees the other's real value rather than DateTimeOffset's default.
         ExpiresAt = expiresAt;
+        NotBefore = notBefore;
         AllowedUses = allowedUses;
     }
 
@@ -85,9 +91,27 @@ public sealed record SecurityGrant
     }
 
     /// <summary>Gets the grant identity.</summary>
-    public GrantId Id { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is <see langword="default"/>.</exception>
+    public GrantId Id
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Id));
+            field = value;
+        }
+    }
     /// <summary>Gets the originating request identity.</summary>
-    public SecurityRequestId RequestId { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is <see langword="default"/>.</exception>
+    public SecurityRequestId RequestId
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(RequestId));
+            field = value;
+        }
+    }
     /// <summary>Gets or initializes the exact authorized scope.</summary>
     /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
@@ -127,15 +151,60 @@ public sealed record SecurityGrant
     /// <summary>Gets the captured authorization context evaluated for this grant.</summary><value>The immutable captured selection, or null only for grants issued through the legacy unpinned path.</value>
     public SecurityAuthorizationContext? Authorization { get; }
     /// <summary>Gets the sole consuming component.</summary>
-    public ComponentId Audience { get; init; }
+    /// <exception cref="ArgumentException">The initialized value's <see cref="ComponentId.Value"/> is blank.</exception>
+    public ComponentId Audience
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(Audience));
+            field = value;
+        }
+    }
     /// <summary>Gets the operation kind.</summary>
-    public SecurityOperationKind Kind { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is undefined.</exception>
+    public SecurityOperationKind Kind
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Kind));
+            field = value;
+        }
+    }
     /// <summary>Gets the effect.</summary>
-    public SecurityEffect Effect { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is undefined.</exception>
+    public SecurityEffect Effect
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Effect));
+            field = value;
+        }
+    }
     /// <summary>Gets the ordered canonical resources.</summary>
-    public ImmutableArray<ProtectedResource> Resources { get; init; }
+    /// <exception cref="ArgumentException">The initialized array is default or empty.</exception>
+    public ImmutableArray<ProtectedResource> Resources
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefaultOrEmpty(value, nameof(Resources));
+            field = value;
+        }
+    }
     /// <summary>Gets the normalized input fingerprint.</summary>
-    public InputFingerprint InputFingerprint { get; init; }
+    /// <exception cref="ArgumentException">The initialized value's <see cref="AgentKit.InputFingerprint.Value"/> is blank.</exception>
+    public InputFingerprint InputFingerprint
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(InputFingerprint));
+            field = value;
+        }
+    }
     /// <summary>Gets or initializes the issuing policy version.</summary>
     /// <value>The issuing version, which must equal the captured policy-snapshot version when <see cref="Authorization"/> is present.</value>
     /// <exception cref="ArgumentException">A record copy assigns a version different from the captured policy snapshot.</exception>
@@ -156,11 +225,38 @@ public sealed record SecurityGrant
     /// <summary>Gets the captured revocation epoch.</summary>
     public SecurityRevocationVersion RevocationVersion { get; init; }
     /// <summary>Gets the earliest valid instant.</summary>
-    public DateTimeOffset NotBefore { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not earlier than <see cref="ExpiresAt"/>.</exception>
+    public DateTimeOffset NotBefore
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(value, ExpiresAt, nameof(NotBefore));
+            field = value;
+        }
+    }
     /// <summary>Gets the exclusive expiry instant.</summary>
-    public DateTimeOffset ExpiresAt { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not later than <see cref="NotBefore"/>.</exception>
+    public DateTimeOffset ExpiresAt
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, NotBefore, nameof(ExpiresAt));
+            field = value;
+        }
+    }
     /// <summary>Gets the maximum successful consumption count.</summary>
-    public int AllowedUses { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not positive.</exception>
+    public int AllowedUses
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(AllowedUses));
+            field = value;
+        }
+    }
 
     /// <inheritdoc/>
     public bool Equals(SecurityGrant? other) =>

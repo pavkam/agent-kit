@@ -210,6 +210,7 @@ findings).
   `Scope`/`Identity`/`PolicyVersion`; cross-field checks
   (`ExpiresAt > NotBefore`) need a validating factory instead of `with`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A03 — `SecurityGrant`/`SecurityRequest` accept default identities, audience, and fingerprint
 
@@ -249,6 +250,7 @@ findings).
   `ThrowIfNullOrWhiteSpace(inputFingerprint.Value, nameof(inputFingerprint))` in
   both records and document the exceptions.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A04 — IPv6 literal hosts produce inconsistent `ProtectedResource` identifiers across network binding paths
 

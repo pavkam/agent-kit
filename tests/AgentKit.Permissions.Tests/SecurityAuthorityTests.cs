@@ -303,17 +303,16 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_WhenRequestWasMutatedToUndefinedEffect_ThrowsBeforePolicy()
+    public void SecurityRequest_WhenMutatedToUndefinedEffect_ThrowsBeforeAuthorization()
     {
-        var policy = new StubPolicy(SecurityPolicyResultKind.Allow);
-        var authority = CreateAuthority([policy]);
-        var request = CreateRequest() with { Effect = (SecurityEffect) int.MaxValue };
+        // SecurityRequest.Effect now validates in its own init accessor (closing the with-expression
+        // gap the type used to have), so an undefined value can no longer reach AuthorizeAsync at
+        // all; SecurityAuthority.AuthorizeAsync's own ThrowIfUndefined(request.Effect) guard remains
+        // as defense in depth but is no longer reachable through this exact mutation path.
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => CreateRequest() with { Effect = (SecurityEffect) int.MaxValue });
 
-        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
-            async () => await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken));
-
-        exception.ParamName.ShouldBe("request.Effect");
-        policy.CallCount.ShouldBe(0);
+        exception.ParamName.ShouldBe("Effect");
     }
 
     [Fact]

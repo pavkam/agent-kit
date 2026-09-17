@@ -36,10 +36,13 @@ public sealed record SecurityRequest
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default);
+        ArgumentException.ThrowIfNullOrWhiteSpace(audience.Value, nameof(audience));
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentOutOfRangeException.ThrowIfUndefined(effect);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestedUses);
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputFingerprint.Value, nameof(inputFingerprint));
 
         Id = id;
         Scope = scope;
@@ -70,7 +73,16 @@ public sealed record SecurityRequest
     }
 
     /// <summary>Gets the request identity.</summary>
-    public SecurityRequestId Id { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is <see langword="default"/>.</exception>
+    public SecurityRequestId Id
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Id));
+            field = value;
+        }
+    }
     /// <summary>Gets or initializes the exact authorization scope.</summary>
     /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
@@ -112,19 +124,73 @@ public sealed record SecurityRequest
     /// <summary>Gets complete captured authorization evidence when the caller requires snapshot-bound evaluation.</summary><value>The immutable captured selection, or null only for the legacy unpinned request path.</value>
     public SecurityAuthorizationContext? Authorization { get; }
     /// <summary>Gets the effecting component audience.</summary>
-    public ComponentId Audience { get; init; }
+    /// <exception cref="ArgumentException">The initialized value's <see cref="ComponentId.Value"/> is blank.</exception>
+    public ComponentId Audience
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(Audience));
+            field = value;
+        }
+    }
     /// <summary>Gets the operation kind.</summary>
-    public SecurityOperationKind Kind { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is undefined.</exception>
+    public SecurityOperationKind Kind
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Kind));
+            field = value;
+        }
+    }
     /// <summary>Gets the requested effect.</summary>
-    public SecurityEffect Effect { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is undefined.</exception>
+    public SecurityEffect Effect
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Effect));
+            field = value;
+        }
+    }
     /// <summary>Gets the ordered canonical resources.</summary>
-    public ImmutableArray<ProtectedResource> Resources { get; init; }
+    /// <exception cref="ArgumentException">The initialized array is default or empty.</exception>
+    public ImmutableArray<ProtectedResource> Resources
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefaultOrEmpty(value, nameof(Resources));
+            field = value;
+        }
+    }
     /// <summary>Gets the normalized input fingerprint.</summary>
-    public InputFingerprint InputFingerprint { get; init; }
+    /// <exception cref="ArgumentException">The initialized value's <see cref="AgentKit.InputFingerprint.Value"/> is blank.</exception>
+    public InputFingerprint InputFingerprint
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(InputFingerprint));
+            field = value;
+        }
+    }
     /// <summary>Gets the exclusive decision deadline.</summary>
     public DateTimeOffset Deadline { get; init; }
     /// <summary>Gets the requested maximum use count.</summary>
-    public int RequestedUses { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The initialized value is not positive.</exception>
+    public int RequestedUses
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(RequestedUses));
+            field = value;
+        }
+    }
 
     /// <summary>Compares every member structurally, including the ordered <see cref="Resources"/> sequence.</summary>
     /// <param name="other">The request to compare with.</param>
