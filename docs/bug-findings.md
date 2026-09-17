@@ -3901,6 +3901,7 @@ public static McpClientVersionPolicy RequireAtLeast(McpProtocolVersion version)
   dispose/throw a typed exception when it is lower.
 - **Confidence:** High (behavior); Medium (whether maintainers intend exact-pin
   semantics)
+- **Status:** Fixed ✅
 
 ### M03 — Compaction source ceiling and transcript are computed over the whole branch prefix, so compaction becomes permanently impossible past `MaximumSourceEntries`
 
@@ -3947,7 +3948,6 @@ var cursor = new SessionSequence(0);
   checkpoint; add a test that compacts twice on a branch longer than the
   ceiling.
 - **Confidence:** Medium
-- **Status:** Fixed ✅
 - **Status:** Fixed ✅
 
 ### M04 — `DefaultCompactor` never populates `CompactionRecord.Supersedes` even when the cut covers an earlier active record
