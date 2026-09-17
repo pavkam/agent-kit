@@ -781,6 +781,69 @@ public sealed class DefaultHookDispatcherTests
         }
     }
 
+    /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
+    /// that some third-party logging providers use instead of the generic key/value interface.</summary>
+    [Fact]
+    public async Task DispatchAsync_WhenIsolatedFailureLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    {
+        var logger = new LegacyEnumeratingLogger();
+        var dispatcher = new DefaultHookDispatcher(logger);
+        var args = new TestHookEventArgs();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom"),
+            },
+            Hook("b"),
+        };
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        logger.EnumerableCounts.ShouldContain(5);
+    }
+
+    private sealed class LegacyEnumeratingLogger: ILogger<DefaultHookDispatcher>
+    {
+        internal List<int> EnumerableCounts { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (state is not System.Collections.IEnumerable legacy)
+            {
+                return;
+            }
+
+            var count = 0;
+            foreach (var _ in legacy) { count++; }
+            EnumerableCounts.Add(count);
+
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> indexed && indexed.Count > 0)
+            {
+                for (var index = 0; index < indexed.Count; index++)
+                {
+                    _ = indexed[index];
+                }
+
+                try
+                {
+                    _ = indexed[indexed.Count];
+                }
+                catch (IndexOutOfRangeException)
+                {
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                }
+            }
+
+            _ = formatter(state, exception);
+        }
+    }
+
     [Fact]
     public async Task DispatchAsync_WhenHostEscalatesFailureMode_LogsEscalationWithoutPayload()
     {
