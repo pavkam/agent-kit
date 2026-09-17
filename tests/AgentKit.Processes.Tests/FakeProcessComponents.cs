@@ -32,3 +32,19 @@ internal sealed class ThrowingProcessOutputArtifactSink: IProcessOutputArtifactS
     public Task<ProcessOutputArtifactResult> StoreAsync(ProcessOutputArtifactRequest request, CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Storage is unavailable.");
 }
+
+/// <summary>Reports fixed operating-system and file-system probe results so every <see cref="PlatformProcessSandboxProvider"/> branch is deterministic regardless of the host running the test.</summary>
+internal sealed class FakeProcessSandboxPlatformProbe(
+    bool isMacOs = false,
+    bool isLinux = false,
+    Func<string, bool>? fileExists = null,
+    Func<string, bool>? directoryExists = null): IProcessSandboxPlatformProbe
+{
+    public bool IsMacOs { get; } = isMacOs;
+
+    public bool IsLinux { get; } = isLinux;
+
+    public bool FileExists(string path) => fileExists?.Invoke(path) ?? false;
+
+    public bool DirectoryExists(string path) => directoryExists?.Invoke(path) ?? false;
+}
