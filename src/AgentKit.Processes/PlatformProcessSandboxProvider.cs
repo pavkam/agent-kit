@@ -8,17 +8,28 @@ namespace AgentKit.Processes;
 public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProcessSandboxProvider>? logger = null): IProcessSandboxProvider
 {
     private readonly ILogger<PlatformProcessSandboxProvider> _logger = logger ?? NullLogger<PlatformProcessSandboxProvider>.Instance;
+    private readonly IProcessSandboxPlatformProbe _platformProbe = SystemProcessSandboxPlatformProbe.Instance;
     private const string _bubblewrapPath = "/usr/bin/bwrap";
     private const string _sandboxExecPath = "/usr/bin/sandbox-exec";
 
     /// <summary>The stable profile implemented by the platform adapters.</summary>
     public static readonly SandboxProfileId WorkspaceNoNetworkProfile = new("workspace-no-network-v1");
 
+    /// <summary>Initializes a provider with a substitute platform probe for deterministic testing of every platform branch.</summary>
+    /// <param name="platformProbe">The substitute operating-system and file-system probe.</param>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    internal PlatformProcessSandboxProvider(IProcessSandboxPlatformProbe platformProbe, ILogger<PlatformProcessSandboxProvider>? logger = null)
+        : this(logger)
+    {
+        ArgumentNullException.ThrowIfNull(platformProbe);
+        _platformProbe = platformProbe;
+    }
+
     /// <inheritdoc/>
     public SandboxProfileId ProfileId => WorkspaceNoNetworkProfile;
 
     /// <inheritdoc/>
-    private static ValueTask<ProcessSandboxResult> PrepareCoreAsync(
+    private ValueTask<ProcessSandboxResult> PrepareCoreAsync(
         ResolvedProcessIntent intent,
         CancellationToken cancellationToken = default)
     {
@@ -28,18 +39,18 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             ? Failure(
                 ProcessSandboxStatus.UnsupportedIntent,
                 "The platform profile requires an explicit read-only or read-write workspace projection.")
-            : OperatingSystem.IsMacOS()
+            : _platformProbe.IsMacOs
                 ? PrepareMacOs(intent)
-                : OperatingSystem.IsLinux()
+                : _platformProbe.IsLinux
                     ? PrepareLinux(intent)
                     : Failure(
                         ProcessSandboxStatus.Unavailable,
                         "No supported operating-system sandbox is available on this platform."));
     }
 
-    private static ProcessSandboxResult PrepareMacOs(ResolvedProcessIntent intent)
+    private ProcessSandboxResult PrepareMacOs(ResolvedProcessIntent intent)
     {
-        if (!File.Exists(_sandboxExecPath))
+        if (!_platformProbe.FileExists(_sandboxExecPath))
         {
             return Failure(ProcessSandboxStatus.Unavailable, "The macOS sandbox launcher is unavailable.");
         }
@@ -105,9 +116,9 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             null);
     }
 
-    private static ProcessSandboxResult PrepareLinux(ResolvedProcessIntent intent)
+    private ProcessSandboxResult PrepareLinux(ResolvedProcessIntent intent)
     {
-        if (!File.Exists(_bubblewrapPath))
+        if (!_platformProbe.FileExists(_bubblewrapPath))
         {
             return Failure(ProcessSandboxStatus.Unavailable, "The Linux bubblewrap launcher is unavailable.");
         }
@@ -162,9 +173,9 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             null);
     }
 
-    private static void AddReadOnlyBindIfPresent(List<string> arguments, string path)
+    private void AddReadOnlyBindIfPresent(List<string> arguments, string path)
     {
-        if (!Directory.Exists(path))
+        if (!_platformProbe.DirectoryExists(path))
         {
             return;
         }
