@@ -3,6 +3,9 @@
 
 namespace AgentKit.Tests;
 
+using System.Reflection;
+using System.Reflection.Emit;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -362,6 +365,34 @@ public sealed class ComponentInfrastructureGraphMaterializerTests
 
         Diagnostics.Select(static item => item.Code)
             .ShouldContain("agentkit.component-infrastructure.constructor-unresolvable");
+    }
+
+    [Fact]
+    public void Materialize_WhenImplementationTypeConstructorsCannotBeInspected_ReportsUnresolvableConstructor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(typeof(IExternal), IncompleteImplementationType());
+        var snapshot = Snapshot(services, RootRegistration(InfrastructureDependency<IExternal>()));
+
+        var (_, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        var diagnostic = Diagnostics.ShouldHaveSingleItem();
+        diagnostic.Code.ShouldBe("agentkit.component-infrastructure.constructor-unresolvable");
+        diagnostic.SafeMessage.ShouldContain("no inspectable public constructor graph");
+    }
+
+    /// <summary>Builds a never-completed <see cref="TypeBuilder"/> whose <see cref="Type.GetConstructors()"/> throws, so the materializer's defensive reflection-failure diagnostic can be exercised deterministically.</summary>
+    private static TypeBuilder IncompleteImplementationType()
+    {
+        var assemblyName = new AssemblyName("AgentKit.Tests.ComponentInfrastructureGraphMaterializerTests.Pathological");
+        var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+        var moduleBuilder = assemblyBuilder.DefineDynamicModule("MainModule");
+        var typeBuilder = moduleBuilder.DefineType(
+            "IncompleteExternal",
+            TypeAttributes.Public | TypeAttributes.Class,
+            typeof(object),
+            [typeof(IExternal)]);
+        return typeBuilder;
     }
 
     [Theory]
