@@ -13,6 +13,15 @@ public sealed class ApiKeyProviderCredentialTests: Conformance.SingleMessageLeaf
     [Fact]
     public void ApiKeyProviderCredential_Equality_WhenSameValues_InstancesAreEqual() => new ApiKeyProviderCredential("secret").ShouldBe(new ApiKeyProviderCredential("secret"));
 
+    [Fact]
+    public void ApiKeyProviderCredential_ToString_WhenCalled_RedactsTheApiKey()
+    {
+        var text = new ApiKeyProviderCredential("sk-live-super-secret").ToString();
+
+        text.ShouldNotContain("sk-live-super-secret");
+        text.ShouldContain(ApiKeyProviderCredential.RedactionMarker);
+    }
+
     /// <inheritdoc/>
     protected override ApiKeyProviderCredential Create(string message) => new(message);
 

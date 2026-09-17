@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Text;
+
 /// <summary>
 /// A provider credential consisting of one previously obtained OAuth access
 /// token, supplied by the application after it has completed whatever
@@ -15,6 +17,8 @@ namespace AgentKit;
 /// (values are compared, not logged), but callers must still take care
 /// never to place an instance where it could be serialized, logged, or
 /// otherwise made observable outside the request pipeline that consumes it.
+/// <see cref="ToString"/> and <see cref="PrintMembers"/> are overridden so
+/// the synthesized textual form never prints <see cref="AccessToken"/>.
 /// </para>
 /// <para>
 /// AgentKit does not implement an OAuth token-acquisition or refresh flow
@@ -30,6 +34,9 @@ namespace AgentKit;
 /// </remarks>
 public sealed record OAuthTokenProviderCredential: ProviderCredential
 {
+    /// <summary>The fixed text substituted for <see cref="AccessToken"/> in <see cref="ToString"/>.</summary>
+    public const string RedactionMarker = "[REDACTED]";
+
     /// <summary>Initializes a new instance of the <see cref="OAuthTokenProviderCredential"/> record.</summary>
     /// <param name="accessToken">The non-empty bearer access token text.</param>
     /// <param name="expiresAtUtc">
@@ -55,4 +62,27 @@ public sealed record OAuthTokenProviderCredential: ProviderCredential
     /// known.
     /// </summary>
     public DateTimeOffset? ExpiresAtUtc { get; init; }
+
+    /// <summary>Returns a textual form that redacts <see cref="AccessToken"/>.</summary>
+    /// <returns><c>OAuthTokenProviderCredential { AccessToken = [REDACTED], ExpiresAtUtc = ... }</c>.</returns>
+    public override string ToString()
+    {
+        var builder = new StringBuilder();
+        _ = builder.Append(nameof(OAuthTokenProviderCredential)).Append(" { ");
+        _ = PrintMembers(builder);
+        _ = builder.Append(" }");
+        return builder.ToString();
+    }
+
+    /// <summary>Appends the printable members to <paramref name="builder"/>, writing <see cref="RedactionMarker"/> in place of <see cref="AccessToken"/>.</summary>
+    /// <param name="builder">The builder receiving the member text.</param>
+    /// <returns>Always <see langword="true"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    protected override bool PrintMembers(StringBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        _ = builder.Append(nameof(AccessToken)).Append(" = ").Append(RedactionMarker);
+        _ = builder.Append(", ").Append(nameof(ExpiresAtUtc)).Append(" = ").Append(ExpiresAtUtc);
+        return true;
+    }
 }

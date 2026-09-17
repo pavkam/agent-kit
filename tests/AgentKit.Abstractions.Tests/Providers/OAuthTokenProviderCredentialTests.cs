@@ -20,4 +20,13 @@ public sealed class OAuthTokenProviderCredentialTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void OAuthTokenProviderCredential_ToString_WhenCalled_RedactsTheAccessToken()
+    {
+        var text = new OAuthTokenProviderCredential("super-secret-token", null).ToString();
+
+        text.ShouldNotContain("super-secret-token");
+        text.ShouldContain(OAuthTokenProviderCredential.RedactionMarker);
+    }
 }
