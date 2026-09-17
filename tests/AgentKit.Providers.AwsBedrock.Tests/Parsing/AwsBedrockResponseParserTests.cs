@@ -514,6 +514,76 @@ public sealed class AwsBedrockResponseParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenToolUseStartOmitsToolUseId_LeavesProviderCallIdNull()
+    {
+        // contentBlockStart's "start.toolUse" DTO declares toolUseId as nullable; when the provider omits it,
+        // the accumulated part must not fabricate a provider call identity.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStart", /*lang=json,strict*/ """{"contentBlockIndex":0,"start":{"toolUse":{"name":"get_weather"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{}"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"tool_use"}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
+        toolCall.ProviderCallId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolUseStartOmitsName_FallsBackToUnknownToolAlias()
+    {
+        // contentBlockStart's "start.toolUse" DTO declares name as nullable; when the provider omits it, the
+        // accumulated part falls back to the same "unknown" placeholder the buffered parser uses rather than
+        // failing the whole block.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStart", /*lang=json,strict*/ """{"contentBlockIndex":0,"start":{"toolUse":{"toolUseId":"tooluse_noname"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{}"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"tool_use"}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("unknown");
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("tooluse_noname"));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamFailsWithAnOpenToolUseBlockOfUnknownShape_PartialPartsOmitTheOpenToolUseBlock()
+    {
+        // TryBuildPartialPart's own JsonException catch (an incomplete tool-use accumulator) is exercised by
+        // omitting messageStop so BuildPartialParts must materialize the still-open tool-use block itself.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStart", /*lang=json,strict*/ """{"contentBlockIndex":0,"start":{"toolUse":{"toolUseId":"tooluse_open","name":"get_weather"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{\"location\":"}}}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenFrameIsCorrupted_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
