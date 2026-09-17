@@ -186,6 +186,27 @@ public sealed class InMemoryArtifactStoreTests: ArtifactStoreConformanceTests<In
     }
 
     [Fact]
+    public async Task FinalizeAsync_WhenReplayedAfterUnderlyingArtifactWasDeleted_RejectsWithNotFound()
+    {
+        var fixture = new StoreFixture();
+        var prepare = fixture.CreatePrepare("output"u8.ToArray());
+        await fixture.RegisterPrepareGrantAsync(prepare);
+        _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
+        var finalize = fixture.CreateFinalize(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterFinalizeGrantAsync(finalize);
+        var finalized = (await fixture.Store.FinalizeAsync(finalize, TestContext.Current.CancellationToken)).ShouldBeOfType<ArtifactFinalized>();
+        var delete = fixture.CreateDelete(finalized.Reference, prepare.Identity);
+        await fixture.RegisterDeleteGrantAsync(delete);
+        _ = await fixture.Store.DeleteAsync(delete, TestContext.Current.CancellationToken);
+
+        var replay = fixture.CreateFinalize(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterFinalizeGrantAsync(replay);
+        var result = await fixture.Store.FinalizeAsync(replay, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactFinalizeRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
+    }
+
+    [Fact]
     public async Task AbortAsync_WhenArtifactWasCommitted_RejectsWithoutDeletingCommit()
     {
         var fixture = new StoreFixture();
@@ -514,6 +535,47 @@ public sealed class InMemoryArtifactStoreTests: ArtifactStoreConformanceTests<In
         var secondResult = await fixture.Store.PrepareAsync(second, TestContext.Current.CancellationToken);
 
         secondResult.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenIdempotencyKeyReplaysEquivalentRequest_ReturnsPriorReceiptWithoutStagingNewState()
+    {
+        var fixture = new StoreFixture();
+        var first = fixture.CreatePrepare("replayed payload"u8.ToArray(), idempotencyKey: "shared-key");
+        await fixture.RegisterPrepareGrantAsync(first);
+        var firstResult = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
+
+        var second = fixture.CreatePrepare("replayed payload"u8.ToArray(), idempotencyKey: "shared-key");
+        await fixture.RegisterPrepareGrantAsync(second);
+        var secondResult = await fixture.Store.PrepareAsync(second, TestContext.Current.CancellationToken);
+
+        var firstPrepared = firstResult.ShouldBeOfType<ArtifactPrepared>();
+        var secondPrepared = secondResult.ShouldBeOfType<ArtifactPrepared>();
+        secondPrepared.ShouldBeSameAs(firstPrepared);
+        secondPrepared.PreparationId.ShouldBe(first.PreparationId);
+        secondPrepared.PreparationId.ShouldNotBe(second.PreparationId);
+
+        var finalize = fixture.CreateFinalize(second.PreparationId, second.Identity);
+        await fixture.RegisterFinalizeGrantAsync(finalize);
+        var rejected = await fixture.Store.FinalizeAsync(finalize, TestContext.Current.CancellationToken);
+        rejected.ShouldBeOfType<ArtifactFinalizeRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenIdempotencyKeyReplaysDifferentContent_RejectsAsConflict()
+    {
+        var fixture = new StoreFixture();
+        var first = fixture.CreatePrepare("original payload"u8.ToArray(), idempotencyKey: "conflicting-key");
+        await fixture.RegisterPrepareGrantAsync(first);
+        var firstResult = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
+
+        var second = fixture.CreatePrepare("different payload"u8.ToArray(), idempotencyKey: "conflicting-key");
+        await fixture.RegisterPrepareGrantAsync(second);
+        var secondResult = await fixture.Store.PrepareAsync(second, TestContext.Current.CancellationToken);
+
+        _ = firstResult.ShouldBeOfType<ArtifactPrepared>();
+        secondResult.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
+        secondResult.ShouldBeOfType<ArtifactPrepareRejected>().Failure.SafeMessage.ShouldContain("idempotency key was reused");
     }
 
     [Fact]
