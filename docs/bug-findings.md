@@ -3947,6 +3947,7 @@ var cursor = new SessionSequence(0);
   checkpoint; add a test that compacts twice on a branch longer than the
   ceiling.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### M04 — `DefaultCompactor` never populates `CompactionRecord.Supersedes` even when the cut covers an earlier active record
 

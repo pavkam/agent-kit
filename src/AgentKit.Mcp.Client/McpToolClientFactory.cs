@@ -44,6 +44,10 @@ public sealed class McpToolClientFactory<TTools>
     /// <returns>A connected typed tool client that owns the SDK session.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="transport"/> is null.</exception>
     /// <exception cref="McpToolContractMismatchException">The connected server cannot satisfy the reflected contract.</exception>
+    /// <exception cref="McpProtocolVersionBelowMinimumException">
+    /// <paramref name="versionPolicy"/> is <see cref="McpClientVersionPolicy.RequireAtLeast"/> and the server
+    /// negotiated a revision below that floor; the connection is disposed before this throws.
+    /// </exception>
     public async Task<McpToolClient<TTools>> ConnectAsync(
         IClientTransport transport,
         McpClientVersionPolicy? versionPolicy = null,
@@ -53,7 +57,14 @@ public sealed class McpToolClientFactory<TTools>
     {
         ArgumentNullException.ThrowIfNull(transport);
         var policy = versionPolicy ?? McpClientVersionPolicy.Automatic;
-        var options = new McpClientOptions { ProtocolVersion = policy.MinimumVersion?.ToString() };
+        // McpClientOptions.ProtocolVersion is both the requested version and the only version the SDK
+        // will accept: the client requests exactly that revision and the SDK throws if the server
+        // negotiates a different one. That is exact-pin behavior, not the documented "minimum
+        // acceptable revision" floor RequireAtLeast promises (a server that prefers a newer revision
+        // would fail the connection, and a server that only supports an older-but-still-acceptable
+        // revision could never be reached). Always negotiate automatically, then enforce the floor
+        // below by comparing the actually negotiated revision against MinimumVersion.
+        var options = new McpClientOptions { ProtocolVersion = null };
         var effectiveLoggerFactory = loggerFactory ?? _loggerFactory;
         var logger = effectiveLoggerFactory.CreateLogger<McpToolClientFactory<TTools>>();
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
@@ -75,6 +86,12 @@ public sealed class McpToolClientFactory<TTools>
                 serializerOptions,
                 effectiveLoggerFactory,
                 cancellationToken).ConfigureAwait(false);
+            if (policy.MinimumVersion is { } minimum && client.ProtocolVersion < minimum)
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw new McpProtocolVersionBelowMinimumException(client.ProtocolVersion, minimum);
+            }
+
             _ = activity?.SetTag(AgentKitTagNames.McpProtocolVersion, client.ProtocolVersion.ToString());
             activity.SetSuccessful("connected");
             McpClientLog.Connected(logger, client.ProtocolVersion);

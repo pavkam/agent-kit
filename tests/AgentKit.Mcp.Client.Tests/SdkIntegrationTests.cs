@@ -21,7 +21,7 @@ public sealed class SdkIntegrationTests
     {
         var logger = new RecordingLogger<McpToolClientFactory<EchoTools>>();
         await using var session = await IntegrationSession.CreateAsync(
-            new SingleLoggerFactory(logger), TestContext.Current.CancellationToken);
+            new SingleLoggerFactory(logger), cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await session.Client.CallAsync(
             tools => tools.RunAsync(new EchoRequest("hello"), default), TestContext.Current.CancellationToken);
@@ -42,6 +42,41 @@ public sealed class SdkIntegrationTests
 
         exception.ToolName.ShouldBe(new McpToolName("echo.run"));
         exception.Message.ShouldContain("reported a tool error");
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenServerNegotiatesAHigherRevisionThanTheRequiredMinimum_Succeeds()
+    {
+        // The server here negotiates June2025, which is above the November2024 floor; RequireAtLeast
+        // must accept a server that exceeds the floor rather than forcing an exact pin to the minimum.
+        await using var session = await IntegrationSession.CreateAsync(
+            versionPolicy: McpClientVersionPolicy.RequireAtLeast(McpProtocolVersions.November2024),
+            serverProtocolVersion: McpProtocolVersions.June2025.ToString(),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        session.Client.ProtocolVersion.ShouldBe(McpProtocolVersions.June2025);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenServerNegotiatesBelowTheRequiredMinimum_ThrowsAndDisposesTheConnection()
+    {
+        // The server here can only negotiate March2025; requiring at least June2025 must fail the
+        // connection instead of silently accepting (or, under the old exact-pin bug, silently
+        // downgrading the request to) a revision below the caller's declared floor.
+        var (clientTransport, server, provider) = await IntegrationSession.CreateTransportAsync(
+            TestContext.Current.CancellationToken, McpProtocolVersions.March2025.ToString());
+        await using var disposableServer = server;
+        await using var disposableProvider = provider;
+        var factory = new McpToolClientFactory<EchoTools>(new McpToolContract<EchoTools>());
+
+        var exception = await Should.ThrowAsync<McpProtocolVersionBelowMinimumException>(async () =>
+            await factory.ConnectAsync(
+                clientTransport,
+                McpClientVersionPolicy.RequireAtLeast(McpProtocolVersions.June2025),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        exception.NegotiatedVersion.ShouldBe(McpProtocolVersions.March2025);
+        exception.MinimumVersion.ShouldBe(McpProtocolVersions.June2025);
     }
 
     [Fact]
@@ -116,13 +151,16 @@ public sealed class SdkIntegrationTests
         internal McpToolClient<EchoTools> Client { get; }
 
         internal static async Task<IntegrationSession> CreateAsync(
-            ILoggerFactory? loggerFactory = null, CancellationToken cancellationToken = default)
+            ILoggerFactory? loggerFactory = null,
+            McpClientVersionPolicy? versionPolicy = null,
+            string? serverProtocolVersion = null,
+            CancellationToken cancellationToken = default)
         {
-            var (transport, server, provider) = await CreateTransportAsync(cancellationToken);
+            var (transport, server, provider) = await CreateTransportAsync(cancellationToken, serverProtocolVersion);
             try
             {
                 var factory = new McpToolClientFactory<EchoTools>(new McpToolContract<EchoTools>());
-                var client = await factory.ConnectAsync(transport, loggerFactory: loggerFactory, cancellationToken: cancellationToken);
+                var client = await factory.ConnectAsync(transport, versionPolicy, loggerFactory: loggerFactory, cancellationToken: cancellationToken);
                 return new IntegrationSession(client, server, provider);
             }
             catch
@@ -134,7 +172,7 @@ public sealed class SdkIntegrationTests
         }
 
         internal static Task<(StreamClientTransport Transport, McpServer Server, ServiceProvider Provider)> CreateTransportAsync(
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken, string? serverProtocolVersion = null)
         {
             var provider = new ServiceCollection().BuildServiceProvider();
             var clientToServer = new Pipe();
@@ -153,6 +191,7 @@ public sealed class SdkIntegrationTests
             {
                 ServerInfo = new Implementation { Name = "test-server", Version = "1.0" },
                 ToolCollection = new McpServerPrimitiveCollection<McpServerTool>(StringComparer.Ordinal),
+                ProtocolVersion = serverProtocolVersion,
             };
             options.ToolCollection.Add(tool);
             var server = McpServer.Create(

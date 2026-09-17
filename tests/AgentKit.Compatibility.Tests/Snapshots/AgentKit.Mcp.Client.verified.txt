@@ -16,6 +16,13 @@ namespace AgentKit.Mcp.Client
         public static AgentKit.Mcp.Client.McpClientVersionPolicy Automatic { get; }
         public static AgentKit.Mcp.Client.McpClientVersionPolicy RequireAtLeast(AgentKit.Mcp.McpProtocolVersion version) { }
     }
+    [System.Serializable]
+    public sealed class McpProtocolVersionBelowMinimumException : System.Exception
+    {
+        public McpProtocolVersionBelowMinimumException(AgentKit.Mcp.McpProtocolVersion negotiatedVersion, AgentKit.Mcp.McpProtocolVersion minimumVersion) { }
+        public AgentKit.Mcp.McpProtocolVersion MinimumVersion { get; }
+        public AgentKit.Mcp.McpProtocolVersion NegotiatedVersion { get; }
+    }
     public sealed class McpRemoteToolDescriptor : System.IEquatable<AgentKit.Mcp.Client.McpRemoteToolDescriptor>
     {
         public McpRemoteToolDescriptor(AgentKit.Mcp.McpToolName name, AgentKit.ToolVersion version) { }
