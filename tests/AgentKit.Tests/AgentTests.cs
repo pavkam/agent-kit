@@ -338,6 +338,7 @@ public sealed class AgentTests
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
         reader.Result = new AgentRunProfilePublicationFound(changed);
@@ -407,6 +408,7 @@ public sealed class AgentTests
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
         var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await agent.RunAsync(CompositionTestData.RunOptions(), cancellation.Token));

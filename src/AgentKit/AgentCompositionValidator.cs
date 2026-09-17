@@ -73,6 +73,20 @@ internal static class AgentCompositionValidator
         _ = Resolve<TimeProvider>(provider, diagnostics, "agentkit.time.missing");
         _ = Resolve<IIdentifierGenerator<RunId>>(provider, diagnostics, "agentkit.runid.missing");
         _ = Resolve<IIdentifierGenerator<OperationId>>(provider, diagnostics, "agentkit.operationid.missing");
+        // IModelCatalog is always resolved unkeyed by AgentRunServicesFactory.Compile (per-loop catalog
+        // selection is not a supported axis), so one engine-wide check covers every definition.
+        _ = Resolve<IModelCatalog>(provider, diagnostics, "agentkit.model-catalog.missing");
+        // The continuation policy is resolved from one fixed, well-known key rather than per loop, so
+        // this is a single engine-wide check rather than one per runnable definition.
+        if (!componentRegistrations.Services.Any(service =>
+            service.IsKeyedService
+            && service.ServiceType == typeof(IRunContinuationPolicy)
+            && AgentLoopComponentDefaults.ContinuationPolicyKey.Value.Equals(service.ServiceKey as string, StringComparison.Ordinal)))
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.continuation-policy.missing",
+                $"No IRunContinuationPolicy is registered under the fixed key '{AgentLoopComponentDefaults.ContinuationPolicyKey.Value}'."));
+        }
 
         AgentRunProfilePublicationSnapshot? validatedRunProfiles = null;
         if (catalog is not null)
@@ -288,9 +302,39 @@ internal static class AgentCompositionValidator
                     "agentkit.definition.loop.missing",
                     $"Agent '{definition.Id}' selects loop key '{loopKey}' but no keyed IAgentLoop is registered for it."));
             }
+
+            // AgentRunServicesFactory.Compile resolves every one of these through
+            // ResolveKeyedOrShared: a registration keyed to this exact loop key when one exists,
+            // otherwise the engine-wide unkeyed registration. Composition must fail here, not on the
+            // first RunAsync, when a definition's loop key has neither.
+            RequireKeyedOrUnkeyed<ISessionCoordinator>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<IContextAssembler>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<IToolInvoker>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);
         }
 
         return profileSnapshot;
+    }
+
+    /// <summary>Requires a registration keyed to <paramref name="loopKey"/>, or an unkeyed fallback, for one collaborator contract.</summary>
+    /// <typeparam name="TService">The collaborator contract <see cref="AgentRunServicesFactory"/> resolves through <c>ResolveKeyedOrShared</c>.</typeparam>
+    private static void RequireKeyedOrUnkeyed<TService>(
+        ComponentRegistrationSnapshot componentRegistrations,
+        string loopKey,
+        AgentId agentId,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+        where TService : class
+    {
+        var hasRegistration = componentRegistrations.Services.Any(service =>
+            service.ServiceType == typeof(TService)
+            && (!service.IsKeyedService || loopKey.Equals(service.ServiceKey as string, StringComparison.Ordinal)));
+        if (!hasRegistration)
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.definition.collaborator.missing",
+                $"Agent '{agentId}' selects loop key '{loopKey}' but no keyed or unkeyed {typeof(TService).Name} is registered."));
+        }
     }
 
     private static TService? Resolve<TService>(

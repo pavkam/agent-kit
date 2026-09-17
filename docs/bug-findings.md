@@ -3394,6 +3394,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   missing collaborator, so `Build()` fails closed instead of the first
   `RunAsync`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### F02 — Hook dispatcher lets observability failures fail the dispatch and skip isolated-hook rollback
 

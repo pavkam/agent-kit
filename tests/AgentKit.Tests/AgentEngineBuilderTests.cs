@@ -210,6 +210,7 @@ public sealed class AgentEngineBuilderTests
             factoryCalls++;
             return new RecordingAgentLoop();
         });
+        CompositionTestData.AddRunServicesFakes(services);
         await using var provider = CompositionTestData.BuildHostedProvider(services);
         _ = provider.GetRequiredService<AgentEngine>();
         factoryCalls.ShouldBe(0);
@@ -224,6 +225,7 @@ public sealed class AgentEngineBuilderTests
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, loop);
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         loop.DisposeCount.ShouldBe(0);
     }
@@ -435,6 +437,7 @@ public sealed class AgentEngineBuilderTests
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         CompositionTestData.AddRunProfiles(services, definition);
         _ = services.AddAgent(definition);
+        CompositionTestData.AddRunServicesFakes(services);
         return services;
     }
 
@@ -477,6 +480,7 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         _ = builder.Services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
         CompositionTestData.AddRunProfiles(builder.Services, definition);
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         _ = engine.ShouldNotBeNull();
         ThrowingBootstrapTestSource.Reads.ShouldBe(0);
@@ -490,6 +494,7 @@ public sealed class AgentEngineBuilderTests
         var definition = CompositionTestData.Definition();
         _ = builder.Services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(builder.Services, definition);
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         _ = engine.ShouldNotBeNull();
     }
@@ -668,6 +673,7 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
         _ = await Should.ThrowAsync<AgentAdmissionRejectedException>(async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));

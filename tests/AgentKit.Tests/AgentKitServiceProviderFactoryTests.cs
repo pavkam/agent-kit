@@ -595,6 +595,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         var definition = CompositionTestData.Definition();
         _ = services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
         CompositionTestData.AddRunProfiles(services, definition);
+        CompositionTestData.AddRunServicesFakes(services);
         await using var provider = CompositionTestData.BuildHostedProvider(services);
         var engine = provider.GetRequiredService<AgentEngine>();
         _ = engine.ShouldNotBeNull();
@@ -674,6 +675,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
+        CompositionTestData.AddRunServicesFakes(services);
     }
 
     private static ComponentRegistrationDescriptor RegistrationComponentRegistrationComposition<TContract, TImplementation>(ServiceLifetime lifetime, params ComponentContractReference[] dependencies)
