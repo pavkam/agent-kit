@@ -79,11 +79,36 @@ public sealed class DefaultSessionStoreSelectorTests
     [Fact]
     public async Task SelectForCreateAsync_WhenCancelled_ThrowsOriginalCancellation()
     {
-        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], NullLogger<DefaultSessionStoreSelector>.Instance);
+        using var parent = new Activity("session.store.routing.cancel").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var parentSpanId = parent.SpanId;
+        Activity? stopped = null;
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAll,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionStoreOperation && activity.ParentSpanId == parentSpanId)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(activityListener);
+        var logger = new TestSupport.RecordingLogger<DefaultSessionStoreSelector>();
+        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], logger);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
+
         var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await selector.SelectForCreateAsync(new SessionStoreCreateSelectionRequest(TestFactory.CreateRequest(), Profile("fake")), cancellation.Token));
+
         exception.CancellationToken.ShouldBe(cancellation.Token);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
+        var cancelled = logger.Snapshot().Single(static entry => entry.EventId.Id == 6004);
+        cancelled.State["Operation"].ShouldBe("session.store.select");
+        cancelled.Message.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]

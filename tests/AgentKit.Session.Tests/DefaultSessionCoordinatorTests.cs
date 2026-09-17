@@ -187,6 +187,7 @@ public sealed class DefaultSessionCoordinatorTests
     public async Task AppendAsync_WhenPostCommitEventSinkThrows_PreservesCommittedSuccess()
     {
         var harness = new Harness(eventSinks: [new ThrowingSessionEventSink()]);
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
         var descriptor = TestFactory.Descriptor();
         var context = TestFactory.OperationContext(descriptor.Address);
         harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
@@ -195,11 +196,16 @@ public sealed class DefaultSessionCoordinatorTests
         var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
             new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
 
-        var result = await harness.CreateCoordinator().AppendAsync(
+        var result = await harness.CreateCoordinator(logger).AppendAsync(
             request, TestFactory.Profile(), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<SessionAppended>();
         harness.Store.ReceivedAppends.ShouldHaveSingleItem().ShouldBeSameAs(request);
+        var sinkFailed = logger.Snapshot().Single(static entry => entry.EventId.Id == 6003);
+        sinkFailed.State["SinkName"].ShouldBe(nameof(ThrowingSessionEventSink));
+        sinkFailed.State["SessionId"].ShouldBe(descriptor.Address.SessionId);
+        sinkFailed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        sinkFailed.Message.ShouldNotContain("observer");
     }
 
     [Fact]
@@ -296,17 +302,22 @@ public sealed class DefaultSessionCoordinatorTests
     public async Task LoadAsync_WhenAlreadyCancelled_PreservesCancellationBeforeEffects()
     {
         var harness = new Harness();
-        var coordinator = harness.CreateCoordinator();
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
+        var coordinator = harness.CreateCoordinator(logger);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
         var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await coordinator.LoadAsync(TestFactory.OperationContext(TestFactory.Descriptor().Address),
-                TestFactory.Profile(), cancellation.Token));
+            await coordinator.LoadAsync(context, TestFactory.Profile(), cancellation.Token));
 
         exception.CancellationToken.ShouldBe(cancellation.Token);
         harness.Authority.Requests.ShouldBeEmpty();
         harness.Directory.LocateRequests.ShouldBeEmpty();
+        var cancelled = logger.Snapshot().Single(static entry => entry.EventId.Id == 6004);
+        cancelled.State["Operation"].ShouldBe(AgentKitActivityNames.SessionLoad);
+        cancelled.State["AgentId"].ShouldBe(context.AgentId);
+        cancelled.State["SessionId"].ShouldBe(context.SessionId);
     }
 
     [Fact]
@@ -530,7 +541,8 @@ public sealed class DefaultSessionCoordinatorTests
     public async Task ProvisionLaneAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
     {
         var harness = new Harness();
-        var coordinator = harness.CreateCoordinator();
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
+        var coordinator = harness.CreateCoordinator(logger);
         var runCoordinator = new DefaultSessionRunCoordinator(
             new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
             TimeProvider.System, Options.Create(new AgentSessionOptions()));
@@ -544,6 +556,12 @@ public sealed class DefaultSessionCoordinatorTests
 
         _ = result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>();
         _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+        var completed = logger.Snapshot().Single(static entry => entry.EventId.Id == 6006);
+        completed.State["Operation"].ShouldBe(AgentKitActivityNames.SessionLaneProvision);
+        completed.State["Outcome"].ShouldBe("failed");
+        completed.State["AgentId"].ShouldBe(context.AgentId);
+        completed.State["SessionId"].ShouldBe(context.SessionId);
+        completed.Message.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -894,7 +912,8 @@ public sealed class DefaultSessionCoordinatorTests
     public async Task ProvisionLaneAsync_WhenAlreadyCancelled_RecordsCorrelatedCancellationBeforeRouting()
     {
         var harness = new Harness();
-        var coordinator = harness.CreateCoordinator();
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
+        var coordinator = harness.CreateCoordinator(logger);
         var runCoordinator = new DefaultSessionRunCoordinator(
             new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
             TimeProvider.System, Options.Create(new AgentSessionOptions()));
@@ -910,6 +929,12 @@ public sealed class DefaultSessionCoordinatorTests
 
         exception.CancellationToken.ShouldBe(cancellation.Token);
         harness.Directory.LocateRequests.ShouldBeEmpty();
+        var cancelled = logger.Snapshot().Single(static entry => entry.EventId.Id == 6007);
+        cancelled.EventId.Id.ShouldBe(6007);
+        cancelled.State["Operation"].ShouldBe(AgentKitActivityNames.SessionLaneProvision);
+        cancelled.State["AgentId"].ShouldBe(context.AgentId);
+        cancelled.State["SessionId"].ShouldBe(context.SessionId);
+        cancelled.Message.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -917,7 +942,8 @@ public sealed class DefaultSessionCoordinatorTests
     {
         var harness = new Harness();
         harness.Directory.OnLocate = static _ => throw new InvalidOperationException("directory outage");
-        var coordinator = harness.CreateCoordinator();
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
+        var coordinator = harness.CreateCoordinator(logger);
         var runCoordinator = new DefaultSessionRunCoordinator(
             new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
             TimeProvider.System, Options.Create(new AgentSessionOptions()));
@@ -930,6 +956,11 @@ public sealed class DefaultSessionCoordinatorTests
                 TestContext.Current.CancellationToken));
 
         exception.Message.ShouldBe("directory outage");
+        var faulted = logger.Snapshot().Single(static entry => entry.EventId.Id == 6008);
+        faulted.EventId.Id.ShouldBe(6008);
+        faulted.State["Operation"].ShouldBe(AgentKitActivityNames.SessionLaneProvision);
+        faulted.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        faulted.Message.ShouldNotContain("directory outage");
     }
 
     [Fact]
@@ -1315,6 +1346,7 @@ public sealed class DefaultSessionCoordinatorTests
     public async Task AppendAsync_WhenStoreThrowsException_RecordsFaultAndPropagates()
     {
         var harness = new Harness();
+        var logger = new TestSupport.RecordingLogger<DefaultSessionCoordinator>();
         var descriptor = TestFactory.Descriptor();
         harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
         harness.Store.OnAppend = static _ => throw new InvalidOperationException("store faulted");
@@ -1323,10 +1355,14 @@ public sealed class DefaultSessionCoordinatorTests
             new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
 
         var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await harness.CreateCoordinator()
+            await harness.CreateCoordinator(logger)
                 .AppendAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken));
 
         exception.Message.ShouldBe("store faulted");
+        var faulted = logger.Snapshot().Single(static entry => entry.EventId.Id == 6002);
+        faulted.State["Operation"].ShouldBe(AgentKitActivityNames.SessionCommit);
+        faulted.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        faulted.Message.ShouldNotContain("store faulted");
     }
 
     [Fact]

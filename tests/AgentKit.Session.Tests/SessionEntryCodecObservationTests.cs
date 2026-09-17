@@ -117,6 +117,23 @@ public sealed class SessionEntryCodecObservationTests
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Add((eventId, formatter(state, exception)));
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> indexable)
+            {
+                // Exercises the source-generated structured state's indexer and non-generic enumerator,
+                // matching how a real structured-logging exporter (for example OpenTelemetry) walks tags.
+                for (var index = 0; index < indexable.Count; index++)
+                {
+                    _ = indexable[index];
+                }
+
+                foreach (var _ in (System.Collections.IEnumerable) indexable)
+                {
+                }
+            }
+
+            Entries.Add((eventId, formatter(state, exception)));
+        }
     }
 }

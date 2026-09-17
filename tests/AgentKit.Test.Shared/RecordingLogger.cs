@@ -37,6 +37,20 @@ public sealed class RecordingLogger<T>: ILogger<T>
         var fields = state is IEnumerable<KeyValuePair<string, object?>> values
             ? values.ToImmutableDictionary(StringComparer.Ordinal)
             : [];
+        if (state is IReadOnlyList<KeyValuePair<string, object?>> indexable)
+        {
+            // Exercises the source-generated structured state's indexer and non-generic enumerator,
+            // matching how a real structured-logging exporter (for example OpenTelemetry) walks tags.
+            for (var index = 0; index < indexable.Count; index++)
+            {
+                _ = indexable[index];
+            }
+
+            foreach (var _ in (System.Collections.IEnumerable) indexable)
+            {
+            }
+        }
+
         _entries.Enqueue(new(typeof(T).FullName!, logLevel, eventId, fields, formatter(state, exception)));
     }
 }
