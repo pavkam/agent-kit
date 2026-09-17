@@ -326,13 +326,6 @@ internal sealed class DefaultInputCoordinator: IInputCoordinator
     private static void SafeSetActivity(Action action)
     {
         Debug.Assert(action is not null, "Only package-owned activity updates are applied.");
-        try
-        {
-            action();
-        }
-        catch
-        {
-            // Activity listeners cannot alter a committed admission or promotion outcome.
-        }
+        try { action(); } catch { /* Activity listeners cannot alter a committed admission or promotion outcome. */ }
     }
 }

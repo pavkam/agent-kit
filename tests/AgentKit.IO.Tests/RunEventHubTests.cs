@@ -411,6 +411,61 @@ public sealed class RunEventHubTests
         }
     }
 
+    /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
+    /// that some third-party logging providers use instead of the generic key/value interface.</summary>
+    [Fact]
+    public async Task PublishAsync_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    {
+        var logger = new LegacyEnumeratingLogger();
+        await using var hub = CreateHub(logger, new FixedClock());
+
+        (await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
+
+        logger.Messages.ShouldHaveSingleItem().ShouldContain("Run-event hub Publish ended with Succeeded.");
+        logger.EnumerableCounts.ShouldHaveSingleItem().ShouldBe(6);
+    }
+
+    private sealed class LegacyEnumeratingLogger: ILogger<RunEventHub>
+    {
+        internal List<string> Messages { get; } = [];
+        internal List<int> EnumerableCounts { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (state is not System.Collections.IEnumerable legacy)
+            {
+                return;
+            }
+
+            var count = 0;
+            foreach (var _ in legacy) { count++; }
+            EnumerableCounts.Add(count);
+
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> indexed && indexed.Count > 0)
+            {
+                for (var index = 0; index < indexed.Count; index++)
+                {
+                    _ = indexed[index];
+                }
+
+                try
+                {
+                    _ = indexed[indexed.Count];
+                }
+                catch (IndexOutOfRangeException)
+                {
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                }
+            }
+
+            Messages.Add(formatter(state, exception));
+        }
+    }
+
     [Fact]
     public async Task Subscribe_WhenCompletionTaskIsNull_RejectsBeforeAllocatingSubscriptionCapacity()
     {

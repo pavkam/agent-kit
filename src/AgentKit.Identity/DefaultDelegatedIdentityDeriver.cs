@@ -33,12 +33,7 @@ internal sealed class DefaultDelegatedIdentityDeriver: IDelegatedIdentityDeriver
     {
         ArgumentNullException.ThrowIfNull(request);
         var activity = IdentityObservability.Start(AgentKitActivityNames.IdentityDerive);
-        try
-        {
-            _ = activity?.SetTag(AgentKitTagNames.TenantId, request.Parent.TenantId.ToString());
-            _ = activity?.SetTag(AgentKitTagNames.PrincipalId, request.Parent.PrincipalId.ToString());
-        }
-        catch (Exception) { }
+        try { _ = activity?.SetTag(AgentKitTagNames.TenantId, request.Parent.TenantId.ToString()); _ = activity?.SetTag(AgentKitTagNames.PrincipalId, request.Parent.PrincipalId.ToString()); } catch (Exception) { }
 
         try
         {

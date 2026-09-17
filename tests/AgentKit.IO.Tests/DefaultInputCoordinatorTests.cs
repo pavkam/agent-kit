@@ -213,9 +213,16 @@ public sealed class DefaultInputCoordinatorTests
     public async Task AdmitAsync_WhenTheQueueFails_PropagatesWithoutSubstitutingAnOutcome()
     {
         var queue = new RecordingInputQueue(admit: (_, _) => throw new InvalidTimeZoneException("queue failure"));
+        var logger = new CapturingLogger<DefaultInputCoordinator>();
+        var coordinator = Coordinator(queue, logger: logger);
 
-        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () => await Coordinator(queue).AdmitAsync(
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () => await coordinator.AdmitAsync(
             InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken));
+
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.EventId.ShouldBe(22006);
+        entry.Level.ShouldBe(LogLevel.Error);
+        entry.Message.ShouldContain(nameof(InvalidTimeZoneException));
     }
 
     [Fact]
@@ -398,9 +405,16 @@ public sealed class DefaultInputCoordinatorTests
     public async Task PromoteAsync_WhenTheQueueFails_PropagatesWithoutSubstitutingAnOutcome()
     {
         var queue = new RecordingInputQueue(promote: _ => throw new InvalidTimeZoneException("queue failure"));
+        var logger = new CapturingLogger<DefaultInputCoordinator>();
+        var coordinator = Coordinator(queue, logger: logger);
 
-        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () => await Coordinator(queue).PromoteAsync(
+        _ = await Should.ThrowAsync<InvalidTimeZoneException>(async () => await coordinator.PromoteAsync(
             InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken));
+
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.EventId.ShouldBe(22008);
+        entry.Level.ShouldBe(LogLevel.Error);
+        entry.Message.ShouldContain(nameof(InvalidTimeZoneException));
     }
 
     [Fact]
@@ -528,5 +542,18 @@ public sealed class DefaultInputCoordinatorTests
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
             throw new InvalidTimeZoneException("logger failure");
+    }
+
+    private sealed class CapturingLogger<TCategory>: ILogger<TCategory>
+    {
+        internal List<(int EventId, LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((eventId.Id, logLevel, formatter(state, exception)));
     }
 }

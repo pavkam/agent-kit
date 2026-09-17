@@ -16,23 +16,7 @@ internal static class IdentityObservability
     internal static IdentityResolutionResult CompleteResolution(IdentityResolutionResult result, Activity? activity, ILogger logger)
     {
         var outcome = result is IdentityResolved ? "resolved" : "rejected";
-        try
-        {
-            if (result is IdentityResolved resolved)
-            {
-                _ = activity?.SetTag(AgentKitTagNames.TenantId, resolved.Identity.TenantId.ToString());
-                _ = activity?.SetTag(AgentKitTagNames.PrincipalId, resolved.Identity.PrincipalId.ToString());
-                activity.SetSuccessful(outcome);
-            }
-            else
-            {
-                activity.SetFailed(outcome, ((IdentityRejected) result).Failure.Kind.ToString());
-            }
-            IdentityMetrics.RecordResolution(outcome);
-            try { IdentityLog.Resolved(logger, outcome); } catch (Exception) { }
-        }
-        catch (Exception) { }
-        finally { Dispose(activity); }
+        try { if (result is IdentityResolved resolved) { _ = activity?.SetTag(AgentKitTagNames.TenantId, resolved.Identity.TenantId.ToString()); _ = activity?.SetTag(AgentKitTagNames.PrincipalId, resolved.Identity.PrincipalId.ToString()); activity.SetSuccessful(outcome); } else { activity.SetFailed(outcome, ((IdentityRejected) result).Failure.Kind.ToString()); } IdentityMetrics.RecordResolution(outcome); try { IdentityLog.Resolved(logger, outcome); } catch (Exception) { } } catch (Exception) { } finally { Dispose(activity); }
         return result;
     }
 
@@ -40,22 +24,7 @@ internal static class IdentityObservability
     internal static IdentityResolutionResult CompleteDerivation(IdentityResolutionResult result, Activity? activity, ILogger logger)
     {
         var outcome = result is IdentityResolved ? "derived" : "rejected";
-        try
-        {
-            if (result is IdentityRejected rejected)
-            {
-                activity.SetFailed(outcome, rejected.Failure.Kind.ToString());
-            }
-            else
-            {
-                activity.SetSuccessful(outcome);
-            }
-
-            IdentityMetrics.RecordDerivation(outcome);
-            try { IdentityLog.Derived(logger, outcome); } catch (Exception) { }
-        }
-        catch (Exception) { }
-        finally { Dispose(activity); }
+        try { if (result is IdentityRejected rejected) { activity.SetFailed(outcome, rejected.Failure.Kind.ToString()); } else { activity.SetSuccessful(outcome); } IdentityMetrics.RecordDerivation(outcome); try { IdentityLog.Derived(logger, outcome); } catch (Exception) { } } catch (Exception) { } finally { Dispose(activity); }
         return result;
     }
 
