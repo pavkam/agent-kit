@@ -3578,6 +3578,7 @@ elsewhere in the same packages), and a few contract/determinism gaps. Counts:
   survives; consider offering `BuildAsync` (or disposing via `DisposeAsync` when
   no synchronous context is required) so async-only singletons are released.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### F07 — `Agent.RunAsync` documents `ObjectDisposedException` but the engine performs security capture before any disposed check, and hosted engines never throw
 

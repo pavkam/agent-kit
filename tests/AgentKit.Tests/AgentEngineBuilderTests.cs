@@ -70,6 +70,30 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public void Build_WhenCompositionFailsAfterActivatingAnAsyncDisposableOnlySingleton_PreservesTheOriginalCompositionException()
+    {
+        // ValidateComponentRegistrations (metadata-only) requires exactly one TimeProvider descriptor
+        // to exist but never resolves it; AgentCompositionValidator.Validate's later Resolve<TimeProvider>
+        // call actually activates it, well before the empty-catalog check below runs. The build's
+        // cleanup path must dispose that already-activated async-only singleton without letting a
+        // disposal failure (ServiceProvider.Dispose() throws InvalidOperationException for an
+        // IAsyncDisposable-only singleton) replace the real AgentCompositionException the caller
+        // needs to see.
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.RemoveAll<TimeProvider>();
+        _ = builder.Services.AddSingleton<TimeProvider, TrackingTimeProvider>();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
+
+        var exception = Should.Throw<AggregateException>(builder.Build);
+
+        var compositionFailure = exception.InnerExceptions.OfType<AgentCompositionException>().ShouldHaveSingleItem();
+        compositionFailure.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.catalog.empty");
+        _ = exception.InnerExceptions.OfType<InvalidOperationException>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public void Build_WhenSecurityGrantStoreIsDuplicated_RejectsInsteadOfUsingLastRegistration()
     {
         var storeFactoryCalls = 0;

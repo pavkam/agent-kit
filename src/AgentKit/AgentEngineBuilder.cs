@@ -101,9 +101,27 @@ public sealed class AgentEngineBuilder
             var composition = AgentCompositionValidator.Validate(provider);
             return new AgentEngine(provider, provider, composition);
         }
-        catch
+        catch (Exception original)
         {
-            provider?.Dispose();
+            // AgentCompositionValidator.Validate activates singletons (catalog, profile reader,
+            // ISecurityProfileSelector, TimeProvider, ID generators) before it can fail, so a failed
+            // build must still release them. Microsoft DI's ServiceProvider.Dispose() throws
+            // InvalidOperationException when an activated singleton implements only
+            // IAsyncDisposable; if that cleanup itself fails, it must never replace the original
+            // build failure (e.g. AgentCompositionException) - callers need to see why composition
+            // failed, not an unrelated disposal detail.
+            try
+            {
+                provider?.Dispose();
+            }
+            catch (Exception disposalFailure)
+            {
+                throw new AggregateException(
+                    "The build failed and the partially composed service provider could not be fully released.",
+                    original,
+                    disposalFailure);
+            }
+
             throw;
         }
     }
