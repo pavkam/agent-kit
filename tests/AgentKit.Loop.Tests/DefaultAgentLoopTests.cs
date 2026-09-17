@@ -90,6 +90,48 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenSelectionDowngradesParallelToolCalls_DisablesItOnTheRequestSentToTheModel()
+    {
+        // The selector accepted a CapabilitiesDowngraded candidate (ParallelToolCalls) because the model cannot
+        // honor it, but nothing applied that declared adjustment to the actual request settings: the run must not
+        // still ask for ParallelToolCalls = true against a model that just declared it unsupported.
+        var descriptor = TestFactory.Model();
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        LlmModelRequest? received = null;
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), request =>
+        {
+            received = request;
+            return TestFactory.CompletedWithText(requestId);
+        });
+
+        var selector = FakeModelSelector.SelectingWithAdjustments(
+            descriptor,
+            [new CapabilityAdjustment(
+                ModelCapabilityKind.ParallelToolCalls,
+                "Parallel tool calls were disabled; tools are requested one at a time.")]);
+
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            selector,
+            new FakeLlmModelResolver(adapter));
+
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            Settings = LlmRequestSettings.Default with { ParallelToolCalls = true },
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = received.ShouldNotBeNull();
+        received.Context.Settings.ParallelToolCalls.ShouldBe(false);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenContinuationPolicyHaltsAfterNoToolTurn_SettlesWithTheHaltOutcome()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

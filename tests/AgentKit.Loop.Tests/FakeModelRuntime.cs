@@ -39,6 +39,16 @@ internal sealed class FakeModelSelector(ModelSelectionResult result): IModelSele
             "test selection",
             [])));
 
+    /// <summary>Creates a selector that always chooses <paramref name="model"/> with the given declared capability adjustments.</summary>
+    public static FakeModelSelector SelectingWithAdjustments(
+        ModelDescriptor model, ImmutableArray<CapabilityAdjustment> adjustments) =>
+        new(new ModelSelected(new ModelSelectionDecision(
+            model,
+            new ModelCatalogVersion(1),
+            "test selection with adjustments",
+            [],
+            adjustments)));
+
     public ValueTask<ModelSelectionResult> SelectAsync(
         ModelSelectionRequest request,
         CancellationToken cancellationToken = default)

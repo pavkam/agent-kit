@@ -102,7 +102,8 @@ internal sealed partial class DefaultModelSelector(
                 descriptor,
                 catalog.Version,
                 $"Candidate '{alias}' is the first configured model satisfying the request.",
-                diagnostics.ToImmutable()));
+                diagnostics.ToImmutable(),
+                validation is CapabilitiesDowngraded selectedDowngrade ? selectedDowngrade.Adjustments : []));
         }
 
         ProviderLog.NoCompatibleModel(

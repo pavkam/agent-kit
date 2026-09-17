@@ -1835,6 +1835,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   downgrade `ParallelToolCalls` when the run's settings explicitly request
   `true`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

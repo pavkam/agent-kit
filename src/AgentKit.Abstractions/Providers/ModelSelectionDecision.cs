@@ -24,6 +24,7 @@ public sealed record ModelSelectionDecision
     private readonly ModelDescriptor _model;
     private readonly string _reason;
     private readonly ImmutableArray<ModelSelectionDiagnostic> _diagnostics;
+    private readonly ImmutableArray<CapabilityAdjustment> _adjustments;
 
     /// <summary>
     /// Initializes a new instance of the
@@ -40,28 +41,38 @@ public sealed record ModelSelectionDecision
     /// Per-candidate outcomes, including candidates skipped before this one.
     /// An empty array is valid when the first candidate matched immediately.
     /// </param>
+    /// <param name="adjustments">
+    /// Every declared change the capability validator made to reach this
+    /// choice under <see cref="CapabilityDowngradePolicy.AllowDeclaredAdjustments"/>.
+    /// An uninitialized or empty array is valid, and is the common case when
+    /// the chosen model supported the request without adjustment.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="model"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="reason"/> is null, empty, or whitespace-only, or
+    /// <paramref name="reason"/> is null, empty, or whitespace-only,
     /// <paramref name="diagnostics"/> is uninitialized or contains
+    /// <see langword="null"/>, or <paramref name="adjustments"/> contains
     /// <see langword="null"/>.
     /// </exception>
     public ModelSelectionDecision(
         ModelDescriptor model,
         ModelCatalogVersion catalogVersion,
         string reason,
-        ImmutableArray<ModelSelectionDiagnostic> diagnostics)
+        ImmutableArray<ModelSelectionDiagnostic> diagnostics,
+        ImmutableArray<CapabilityAdjustment> adjustments = default)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         ArgumentException.ThrowIfContainsNull(diagnostics);
+        ArgumentException.ThrowIfContainsNull(adjustments.IsDefault ? [] : adjustments);
 
         _model = model;
         CatalogVersion = catalogVersion;
         _reason = reason;
         _diagnostics = diagnostics;
+        _adjustments = adjustments.IsDefault ? [] : adjustments;
     }
 
     /// <summary>Gets the chosen descriptor.</summary>
@@ -107,6 +118,31 @@ public sealed record ModelSelectionDecision
         {
             ArgumentException.ThrowIfContainsNull(value, nameof(Diagnostics));
             _diagnostics = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets every declared change the capability validator made to reach this
+    /// choice under <see cref="CapabilityDowngradePolicy.AllowDeclaredAdjustments"/>.
+    /// </summary>
+    /// <remarks>
+    /// An uninitialized or empty array means the chosen model supported the
+    /// request without adjustment. A caller applying this decision to a
+    /// request (for example forcing <see cref="LlmRequestSettings.ParallelToolCalls"/>
+    /// to <see langword="false"/> when this contains a
+    /// <see cref="ModelCapabilityKind.ParallelToolCalls"/> adjustment) must
+    /// read this member; the request is not adjusted automatically.
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// An initializer attempts to set an array containing <see langword="null"/>.
+    /// </exception>
+    public ImmutableArray<CapabilityAdjustment> Adjustments
+    {
+        get => _adjustments;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value.IsDefault ? [] : value, nameof(Adjustments));
+            _adjustments = value.IsDefault ? [] : value;
         }
     }
 }

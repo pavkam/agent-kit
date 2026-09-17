@@ -5079,7 +5079,8 @@ namespace AgentKit
     }
     public sealed class ModelSelectionDecision : System.IEquatable<AgentKit.ModelSelectionDecision>
     {
-        public ModelSelectionDecision(AgentKit.ModelDescriptor model, AgentKit.ModelCatalogVersion catalogVersion, string reason, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
+        public ModelSelectionDecision(AgentKit.ModelDescriptor model, AgentKit.ModelCatalogVersion catalogVersion, string reason, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics, System.Collections.Immutable.ImmutableArray<AgentKit.CapabilityAdjustment> adjustments = default) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CapabilityAdjustment> Adjustments { get; init; }
         public AgentKit.ModelCatalogVersion CatalogVersion { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> Diagnostics { get; init; }
         public AgentKit.ModelDescriptor Model { get; init; }

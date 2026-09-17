@@ -347,6 +347,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     operationId,
                     turn,
                     turn == 1 ? modelResolution.FirstModelRequestId : null,
+                    modelResolution.Adjustments,
                     history,
                     committedMessages,
                     currentVersion,
@@ -451,12 +452,45 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         selected.Decision.Diagnostics));
                 }
 
-                return ModelResolution.Resolved(descriptor, adapter, firstModelRequestId);
+                return ModelResolution.Resolved(descriptor, adapter, firstModelRequestId, selected.Decision.Adjustments);
 
             default:
                 throw new InvalidOperationException(
                     $"Unrecognized {nameof(ModelSelectionResult)} kind '{selection.GetType()}'.");
         }
+    }
+
+    /// <summary>
+    /// Applies every declared capability adjustment the selection made to the
+    /// settings that build this turn's request.
+    /// </summary>
+    /// <remarks>
+    /// The selector's <see cref="CapabilitiesDowngraded"/> outcome only
+    /// records that an adjustment happened; nothing applies it to the actual
+    /// request settings by itself. Without this step, a run selected under
+    /// <see cref="CapabilityDowngradePolicy.AllowDeclaredAdjustments"/> would
+    /// still ask for <see cref="LlmRequestSettings.ParallelToolCalls"/> that
+    /// the chosen model just declared it cannot honor, and the adapter's
+    /// request preflight would reject the request at attempt time instead of
+    /// the selection having already accounted for it.
+    /// </remarks>
+    private static LlmRequestSettings ApplySelectionAdjustments(
+        LlmRequestSettings settings, ImmutableArray<CapabilityAdjustment> adjustments)
+    {
+        if (adjustments.IsDefaultOrEmpty || settings.ParallelToolCalls is not true)
+        {
+            return settings;
+        }
+
+        foreach (var adjustment in adjustments)
+        {
+            if (adjustment.Capability is ModelCapabilityKind.ParallelToolCalls)
+            {
+                return settings with { ParallelToolCalls = false };
+            }
+        }
+
+        return settings;
     }
 
     private async Task<TurnOutcome> RunTurnAsync(
@@ -467,6 +501,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         OperationId operationId,
         int turn,
         ModelRequestId? reservedModelRequestId,
+        ImmutableArray<CapabilityAdjustment> selectionAdjustments,
         HistoryView history,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
@@ -528,7 +563,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new ContextAssemblyEvidence(agent, request.Identity, history, turnAuthorization, configuration),
                 finalTurnWithoutTools ? [] : agent.Tools,
                 finalTurnWithoutTools ? LlmToolChoice.None : agent.ToolChoice,
-                agent.Settings,
+                ApplySelectionAdjustments(agent.Settings, selectionAdjustments),
                 ExtensionData.Empty)
             : new ContextAssemblyRequest(
                 request.AgentId,
@@ -542,7 +577,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 history.Messages,
                 finalTurnWithoutTools ? [] : request.Tools,
                 finalTurnWithoutTools ? LlmToolChoice.None : request.ToolChoice,
-                request.Settings,
+                ApplySelectionAdjustments(request.Settings, selectionAdjustments),
                 ExtensionData.Empty);
 
         var assembleResult = await services.Context.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
@@ -2054,12 +2089,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     private readonly struct ModelResolution
     {
-        private ModelResolution(AgentRunOutcome? outcome, ModelDescriptor? model, ILlmModel? adapter, ModelRequestId? firstModelRequestId)
+        private ModelResolution(
+            AgentRunOutcome? outcome,
+            ModelDescriptor? model,
+            ILlmModel? adapter,
+            ModelRequestId? firstModelRequestId,
+            ImmutableArray<CapabilityAdjustment> adjustments)
         {
             Outcome = outcome;
             Model = model;
             Adapter = adapter;
             FirstModelRequestId = firstModelRequestId;
+            Adjustments = adjustments;
         }
 
         /// <summary>Gets the terminal outcome, when no model could be used.</summary>
@@ -2074,12 +2115,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// <summary>Gets the selection's model request identity, which the first turn's attempt reuses, when resolution succeeded.</summary>
         public ModelRequestId? FirstModelRequestId { get; }
 
+        /// <summary>
+        /// Gets every declared capability adjustment the selection made to
+        /// reach this model, when resolution succeeded. Empty when the model
+        /// supported the request without adjustment.
+        /// </summary>
+        public ImmutableArray<CapabilityAdjustment> Adjustments { get; }
+
         /// <summary>Creates a successful resolution.</summary>
-        public static ModelResolution Resolved(ModelDescriptor model, ILlmModel adapter, ModelRequestId firstModelRequestId) =>
-            new(null, model, adapter, firstModelRequestId);
+        public static ModelResolution Resolved(
+            ModelDescriptor model,
+            ILlmModel adapter,
+            ModelRequestId firstModelRequestId,
+            ImmutableArray<CapabilityAdjustment> adjustments) =>
+            new(null, model, adapter, firstModelRequestId, adjustments);
 
         /// <summary>Creates a resolution that settles the run before it starts.</summary>
-        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null);
+        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null, []);
     }
 
     /// <summary>
