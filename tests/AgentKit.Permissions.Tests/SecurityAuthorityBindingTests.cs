@@ -20,6 +20,15 @@ public sealed class SecurityAuthorityBindingTests
     }
 
     [Fact]
+    public async Task AuthorizeAsync_WhenInvokedOnBindingPlaceholder_ThrowsBecauseItMustNeverEvaluateSecurity()
+    {
+        var authority = new UninvokedSecurityAuthority();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await authority.AuthorizeAsync(null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public void Equals_WhenKeyAndAuthorityMatch_AreStructurallyEqual()
     {
         var key = new ComponentKey<ISecurityAuthority>("security.primary");
