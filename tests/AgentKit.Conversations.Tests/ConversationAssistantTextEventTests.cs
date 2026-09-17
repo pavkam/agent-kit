@@ -23,4 +23,46 @@ public sealed class ConversationAssistantTextEventTests
 
         assistantTextEvent.Text.ShouldBe("hello");
     }
+
+    [Fact]
+    public void Equals_WhenTextMatches_ReturnsTrueWithMatchingHashCode()
+    {
+        var first = new ConversationAssistantTextEvent("hello");
+        var second = new ConversationAssistantTextEvent("hello");
+
+        first.Equals(second).ShouldBeTrue();
+        first.Equals((object) second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_WhenTextDiffers_ReturnsFalse()
+    {
+        var first = new ConversationAssistantTextEvent("hello");
+        var second = new ConversationAssistantTextEvent("goodbye");
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToString_WhenCalled_IncludesTypeNameAndText()
+    {
+        var assistantTextEvent = new ConversationAssistantTextEvent("hello");
+
+        var text = assistantTextEvent.ToString();
+
+        text.ShouldContain(nameof(ConversationAssistantTextEvent));
+        text.ShouldContain("hello");
+    }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationAssistantTextEvent("hello");
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }

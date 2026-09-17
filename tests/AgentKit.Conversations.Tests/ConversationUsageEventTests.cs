@@ -29,4 +29,50 @@ public sealed class ConversationUsageEventTests
 
         usageEvent.Usage.ShouldBe(usage);
     }
+
+    [Fact]
+    public void Equals_WhenUsageMatches_ReturnsTrueWithMatchingHashCode()
+    {
+        var usage = new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty);
+        var first = new ConversationUsageEvent(usage);
+        var second = new ConversationUsageEvent(usage);
+
+        first.Equals(second).ShouldBeTrue();
+        first.Equals((object) second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_WhenUsageDiffers_ReturnsFalse()
+    {
+        var first = new ConversationUsageEvent(
+            new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty));
+        var second = new ConversationUsageEvent(
+            new ModelUsage(ModelUsageReportState.Final, 1, 1, null, null, 0.001m, "USD", ExtensionData.Empty));
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToString_WhenCalled_IncludesTypeNameAndUsage()
+    {
+        var usage = new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty);
+        var usageEvent = new ConversationUsageEvent(usage);
+
+        var text = usageEvent.ToString();
+
+        text.ShouldContain(nameof(ConversationUsageEvent));
+    }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var usage = new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty);
+        var original = new ConversationUsageEvent(usage);
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }
