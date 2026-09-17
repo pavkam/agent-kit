@@ -110,20 +110,9 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, extensions));
         }
 
-        ModelUsage usage;
-        try
-        {
-            usage = totalTokenCount is { } total
-                ? new ModelUsage(ModelUsageReportState.Final, total, outputTokens: null, cachedInputTokens: null, reasoningTokens: null, estimatedCost: null, costCurrency: null, ExtensionData.Empty)
-                : ModelUsage.NotReported;
-        }
-        catch (ArgumentException exception)
-        {
-            return new EmbeddingAttemptFailed(BuildFailure(
-                context,
-                "The provider returned invalid usage evidence.",
-                exception));
-        }
+        var usage = totalTokenCount is { } total
+            ? new ModelUsage(ModelUsageReportState.Final, total, outputTokens: null, cachedInputTokens: null, reasoningTokens: null, estimatedCost: null, costCurrency: null, ExtensionData.Empty)
+            : ModelUsage.NotReported;
 
         var response = new EmbeddingResponse(items.ToImmutable(), usage, context.ProviderRequestId, ExtensionData.Empty);
 
