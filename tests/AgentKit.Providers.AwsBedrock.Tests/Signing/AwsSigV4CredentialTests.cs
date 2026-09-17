@@ -108,4 +108,17 @@ public sealed class AwsSigV4CredentialTests
         first.ShouldNotBe(second);
         new AwsSigV4Credential(AccessKeyId, SecretAccessKey, null).ShouldBe(first);
     }
+
+    [Fact]
+    public void With_WhenChangingOneMember_CopiesTheRemainingMembersThroughTheCompilerGeneratedCloneConstructor()
+    {
+        var original = new AwsSigV4Credential(AccessKeyId, SecretAccessKey, SessionToken);
+
+        var rotated = original with { SecretAccessKey = "rotated-secret" };
+
+        rotated.AccessKeyId.ShouldBe(AccessKeyId);
+        rotated.SecretAccessKey.ShouldBe("rotated-secret");
+        rotated.SessionToken.ShouldBe(SessionToken);
+        rotated.ShouldNotBe(original);
+    }
 }
