@@ -56,6 +56,19 @@ public abstract class ToolCatalogCaptureConformanceTests
         invoker.Disposals.ShouldBe(0);
     }
 
+    /// <summary>Verifies the fixture's unconfigured default acquisition behavior reports unavailable rather than fabricating a lease.</summary>
+    [Fact]
+    public async Task AcquireInvokerAsync_WhenSourceHasNoConfiguredBehavior_ReturnsUnavailableFromTheDefaultCallback()
+    {
+        var tool = ToolCaptureTestData.Descriptor();
+        var publication = ToolCaptureTestData.Snapshot([tool]);
+        var source = new CallbackToolProviderCapture(publication);
+
+        var result = await source.AcquireInvokerAsync(new(tool.Id, tool.Version), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ToolInvokerUnavailable>();
+    }
+
     /// <summary>Published empty sources remain retained and owned.</summary>
     [Fact]
     public async Task DisposeAsync_WhenCatalogContainsEmptySources_ReleasesAllOwnersOnceAndKeepsEvidence()
