@@ -4021,6 +4021,7 @@ var client = await McpToolClientActivator.CreateAsync(
   cleared on success).
 - **Confidence:** Medium (path requires an SDK that reports a null/non-canonical
   negotiated version, which 2.2.0 validates against its own list)
+- **Status:** Fixed ✅
 
 ### M06 — Journal writes mutate state before the fallible `GetUtcNow()` call, so a clock failure reports an exception for a committed write
 

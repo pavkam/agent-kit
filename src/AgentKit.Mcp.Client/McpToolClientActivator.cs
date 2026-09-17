@@ -25,23 +25,39 @@ internal static class McpToolClientActivator
         where TTools : class
     {
         ArgumentNullException.ThrowIfNull(caller);
-        var effectiveSerializerOptions = serializerOptions is null
-            ? new JsonSerializerOptions(JsonSerializerDefaults.Web)
-            : new JsonSerializerOptions(serializerOptions);
-        effectiveSerializerOptions.TypeInfoResolver ??= new DefaultJsonTypeInfoResolver();
-        var client = new McpToolClient<TTools>(
-            caller,
-            contract ?? new McpToolContract<TTools>(),
-            effectiveSerializerOptions,
-            (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpToolClient<TTools>>());
+        // caller ownership transfers to this activator for the duration of this call. Everything below
+        // - contract construction, the serializer copy, logger creation, and the initial catalog
+        // refresh - can throw while this method already owns caller; disposal must cover all of it, not
+        // only the final RefreshAsync call, so a failure here never leaks the connected SDK session (and
+        // for stdio transports, its child process).
+        McpToolClient<TTools>? client = null;
         try
         {
+            var effectiveSerializerOptions = serializerOptions is null
+                ? new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                : new JsonSerializerOptions(serializerOptions);
+            effectiveSerializerOptions.TypeInfoResolver ??= new DefaultJsonTypeInfoResolver();
+            client = new McpToolClient<TTools>(
+                caller,
+                contract ?? new McpToolContract<TTools>(),
+                effectiveSerializerOptions,
+                (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpToolClient<TTools>>());
             _ = await client.RefreshAsync(cancellationToken).ConfigureAwait(false);
             return client;
         }
         catch
         {
-            await client.DisposeAsync().ConfigureAwait(false);
+            // Once client exists it owns caller, so dispose through it (exactly once); before that,
+            // caller is still this method's own responsibility.
+            if (client is not null)
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await caller.DisposeAsync().ConfigureAwait(false);
+            }
+
             throw;
         }
     }

@@ -80,8 +80,24 @@ public sealed class McpToolClientFactory<TTools>
                 effectiveLoggerFactory,
                 cancellationToken).ConfigureAwait(false);
 
+            // SdkMcpToolCaller's constructor can throw (a null or non-canonical negotiated protocol
+            // version); evaluating it directly as McpToolClientActivator.CreateAsync's argument would
+            // leak the already-connected sdkClient on that path, since the activator never receives a
+            // caller to dispose. Once caller exists, McpToolClientActivator.CreateAsync owns its
+            // disposal on every later failure.
+            SdkMcpToolCaller caller;
+            try
+            {
+                caller = new SdkMcpToolCaller(sdkClient);
+            }
+            catch
+            {
+                await sdkClient.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+
             var client = await McpToolClientActivator.CreateAsync(
-                new SdkMcpToolCaller(sdkClient),
+                caller,
                 _contract,
                 serializerOptions,
                 effectiveLoggerFactory,

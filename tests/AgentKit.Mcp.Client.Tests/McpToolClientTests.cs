@@ -62,6 +62,21 @@ public sealed class McpToolClientTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenContractConstructionThrowsBeforeTheClientExists_StillDisposesCaller()
+    {
+        // McpToolContract<TTools>() is constructed inside CreateAsync (no contract argument is supplied
+        // here), before the McpToolClient<TTools> that would otherwise own caller's disposal exists.
+        // That failure must not leak the already-connected caller.
+        var caller = CreateCaller([]);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await McpToolClientActivator.CreateAsync<UnattributedTools>(caller, cancellationToken: TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("does not declare any attributed tool methods");
+        caller.IsDisposed.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenRequiredToolIsMissing_RejectsAndDisposesCaller()
     {
         var caller = CreateCaller([]);
@@ -397,6 +412,11 @@ public sealed class McpToolClientTests
     {
         [McpTool("weather.value-task", "1")]
         public abstract ValueTask<WeatherResponse> GetAsync(WeatherRequest request, CancellationToken cancellationToken = default);
+    }
+
+    private abstract class UnattributedTools
+    {
+        public abstract Task<WeatherResponse> GetAsync(WeatherRequest request, CancellationToken cancellationToken = default);
     }
 
     private abstract class PropertyTools
