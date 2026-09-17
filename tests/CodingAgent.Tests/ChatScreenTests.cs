@@ -40,12 +40,13 @@ public sealed class ChatScreenTests
     [Fact]
     public void BuildCommandPaletteItems_WhenConstructed_ProvidesBroadCatalogAndExactCurrentMode()
     {
-        var items = ChatScreen.BuildCommandPaletteItems(busy: true, PermissionMode.ReadOnly);
+        var items = ChatScreen.BuildCommandPaletteItems(busy: true, PermissionMode.ReadOnly, "nord");
 
-        items.Length.ShouldBe(17);
-        items.Select(static item => item.Group).Distinct().ShouldBe(["Session", "View", "Agent", "Permissions", "Help", "Application"], ignoreOrder: true);
-        items.Single(static item => item.Badge == "CURRENT").Id.ShouldBe("permissions.readonly");
+        items.Length.ShouldBe(17 + CodingAgentTheme.Slugs.Count);
+        items.Select(static item => item.Group).Distinct().ShouldBe(["Session", "View", "Agent", "Permissions", "Help", "Theme", "Application"], ignoreOrder: true);
+        items.Where(static item => item.Badge == "CURRENT").Select(static item => item.Id).ShouldBe(["permissions.readonly", "theme.nord"], ignoreOrder: true);
         items.Single(static item => item.Id == "agent.stop").Badge.ShouldBe("RUNNING");
+        items.Count(static item => item.Id.StartsWith(ChatScreen.ThemePaletteIdPrefix, StringComparison.Ordinal)).ShouldBe(CodingAgentTheme.Slugs.Count);
     }
 
     [Fact]
@@ -143,6 +144,93 @@ public sealed class ChatScreenTests
         transcript.IsTextSelectionEnabled.ShouldBeFalse();
         transcript.IsFocusable.ShouldBeFalse();
     }
+
+    [Fact]
+    public void CreateComposer_WhenConstructed_ShowsAPromptMarkerAndTheIdleHint()
+    {
+        var composer = ChatScreen.CreateComposer();
+
+        composer.StartAffix.ShouldNotBeNull().Content.ShouldBe("›");
+        composer.Placeholder.ShouldBe(ChatScreen.ComposerPlaceholder(PermissionMode.AskForChanges));
+    }
+
+    [Theory]
+    [InlineData(PermissionMode.AskForChanges, false)]
+    [InlineData(PermissionMode.AutoApproveWorkspaceEdits, false)]
+    [InlineData(PermissionMode.ReadOnly, true)]
+    internal void ComposerPlaceholder_WhenModeVaries_MentionsReadOnlyOnlyForThatMode(PermissionMode mode, bool readOnly)
+    {
+        var placeholder = ChatScreen.ComposerPlaceholder(mode);
+
+        placeholder.Contains("read-only", StringComparison.Ordinal).ShouldBe(readOnly);
+        placeholder.ShouldContain("Ctrl+K");
+        placeholder.ShouldContain("Shift+Enter");
+    }
+
+    [Fact]
+    public void BuildWelcomeEntry_WhenConstructed_SummarizesWorkspaceModelAndPermissions()
+    {
+        var configuration = CodingAgentConfiguration.CreateDefault() with
+        {
+            ModelId = "gpt-5.6-sol",
+            ReasoningEffort = LlmReasoningEffort.Medium,
+            ReadOnlyToolchainRoots = ["/opt/homebrew", "/opt/dotnet"],
+        };
+
+        var entry = ChatScreen.BuildWelcomeEntry("/tmp/workspace", configuration, PermissionMode.ReadOnly);
+
+        entry.Kind.ShouldBe(ChatEntryKind.System);
+        entry.HeaderText.ShouldBe("CodingAgent");
+        entry.Body.ShouldContain("`/tmp/workspace`");
+        entry.Body.ShouldContain("2 read-only folders");
+        entry.Body.ShouldContain("Sol · Medium");
+        entry.Body.ShouldContain(PermissionModeCatalog.Title(PermissionMode.ReadOnly));
+        entry.Body.ShouldContain("Ctrl+K");
+    }
+
+    [Fact]
+    public void BuildWelcomeEntry_WhenWorkspaceIsBlank_Throws() =>
+        Should.Throw<ArgumentException>(() =>
+            ChatScreen.BuildWelcomeEntry(" ", CodingAgentConfiguration.CreateDefault(), PermissionMode.AskForChanges))
+            .ParamName.ShouldBe("workspaceRoot");
+
+    [Fact]
+    public void BuildWelcomeEntry_WhenConfigurationIsNull_Throws() =>
+        Should.Throw<ArgumentNullException>(() =>
+            ChatScreen.BuildWelcomeEntry("/tmp/workspace", null!, PermissionMode.AskForChanges))
+            .ParamName.ShouldBe("configuration");
+
+    [Fact]
+    public void SidebarSection_WhenConstructed_PlacesAnUppercaseHeadingAboveTheBody()
+    {
+        var body = new Text("body");
+
+        var section = ChatScreen.SidebarSection("Session", body);
+
+        section.Orientation.ShouldBe(Orientation.Vertical);
+        section.Children.Count.ShouldBe(2);
+        section.Children[0].ShouldBeOfType<Text>().Content.ShouldContain("SESSION");
+        section.Children[1].ShouldBeSameAs(body);
+    }
+
+    [Fact]
+    public void SidebarSection_WhenTitleIsBlank_Throws() =>
+        Should.Throw<ArgumentException>(() => ChatScreen.SidebarSection(" ", new Text("body"))).ParamName.ShouldBe("title");
+
+    [Fact]
+    public void SidebarSection_WhenBodyIsNull_Throws() =>
+        Should.Throw<ArgumentNullException>(() => ChatScreen.SidebarSection("Session", null!)).ParamName.ShouldBe("body");
+
+    [Fact]
+    public void WindowPlane_WhenRead_UsesTheThemeWindowColors()
+    {
+        ChatScreen.WindowPlane.Background.ShouldBe((ControlColor) SemanticColor.Window);
+        ChatScreen.WindowPlane.Foreground.ShouldBe((ControlColor) SemanticColor.WindowText);
+    }
+
+    [Fact]
+    public void Constructor_WhenWorkspaceRootIsBlank_Throws() =>
+        Should.Throw<ArgumentException>(() => new ChatScreen(" ")).ParamName.ShouldBe("workspaceRoot");
 
     [Fact]
     public void CreateComposer_WhenTextGainsAndLosesExplicitLines_RetainsIntrinsicGrowthAndContent()

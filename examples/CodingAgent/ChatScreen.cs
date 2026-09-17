@@ -13,6 +13,7 @@ using SharpVision.Documents.Markdown;
 using SharpVision.Scrolling;
 using SharpVision.Terminal.Geometry;
 using SharpVision.Terminal.Input;
+using SharpVision.Terminal.Rendering;
 
 /// <summary>The coding agent's chat screen: a menu bar, a scrollable message list, a status bar, and a
 /// command-palette-driven prompt.</summary>
@@ -25,10 +26,12 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private readonly CommandPalette _commandPalette = CreateCommandPalette();
     private readonly Spinner _spinner = new() { Visibility = Visibility.Collapsed };
     private readonly Text _status = new("Ready");
+    private readonly Text _statusGlyph = new("<success>●</success>");
     private readonly Text _permissionStatus = new();
     private readonly Text _usageStatus = new("<d>usage –</d>");
     private readonly Text _modelStatus = new();
-    private readonly Text _sidebarContext = new("<d>No usage reported yet.</d>");
+    private readonly Text _sidebarSession = new() { Overflow = Overflow.Wrap, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly Text _sidebarContext = new("<d>No usage reported yet.</d>") { Overflow = Overflow.Wrap, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Stack _sidebarTodo = new() { Orientation = Orientation.Vertical, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly MarkdownDocumentReader _markdownReader = new();
     private readonly SessionUsage _usage = new();
@@ -37,6 +40,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private readonly HashSet<ControlBase> _selectedTranscriptRows = [];
     private readonly string _workspaceRoot;
     private readonly Dock _sidebar;
+    private readonly Dock _promptRow;
     private MenuItem? _newSessionMenuItem;
     private MenuItem? _recentSessionsMenuItem;
     private MenuItem? _clearTranscriptMenuItem;
@@ -46,6 +50,8 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private ImmutableArray<MenuItem> _modelMenuItems = [];
     private ImmutableArray<MenuItem> _reasoningMenuItems = [];
     private ImmutableArray<MenuItem> _permissionMenuItems = [];
+    private ImmutableArray<MenuItem> _themeMenuItems = [];
+    private string _themeSlug;
 
     private readonly List<string> _history = [];
 
@@ -71,12 +77,18 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private string _historyDraft = "";
     private CodingAgentConfiguration _configuration;
 
-    public ChatScreen(string workspaceRoot)
+    /// <summary>Initializes the chat screen for one workspace.</summary>
+    /// <param name="workspaceRoot">The absolute workspace root every tool is confined to.</param>
+    /// <param name="themeSlug">The bundled theme slug the host applied at startup; null means the default.</param>
+    /// <exception cref="ArgumentException"><paramref name="workspaceRoot"/> is blank.</exception>
+    public ChatScreen(string workspaceRoot, string? themeSlug = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         _workspaceRoot = workspaceRoot;
+        _themeSlug = CodingAgentTheme.ResolveSlug(themeSlug);
         _configuration = CodingAgentConfiguration.CreateDefault();
         RefreshStatusDetails();
-        AppendEntry(new ChatEntry(ChatEntryKind.System, "Workspace", Text.Escape(workspaceRoot)));
+        AppendEntry(BuildWelcomeEntry(workspaceRoot, _configuration, _permissions.Mode));
         _commandPalette.Resolver = ResolvePaletteCommandsAsync;
         _commandPalette.ItemTemplate = new ItemTemplate(BuildCommandPaletteRow);
         _commandPalette.ItemInvoked += OnCommandPaletteItemInvoked;
@@ -105,7 +117,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 1,
-                        Children = { _spinner, _status },
+                        Children = { _statusGlyph, _spinner, _status },
                     },
                     CreateStatusSegment(_permissionStatus),
                     CreateStatusSegment(_usageStatus),
@@ -115,16 +127,22 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
             },
         });
 
-        var promptRow = new Dock { HorizontalAlignment = HorizontalAlignment.Stretch };
-        promptRow.Children.Add(_prompt);
+        _promptRow = new Dock { HorizontalAlignment = HorizontalAlignment.Stretch };
+        _promptRow.Children.Add(_prompt);
 
         _sidebar = BuildSidebar();
 
+        // Layout panels are transparent in themes that show a desktop pattern beneath them (Turbo
+        // Vision's dithered TDeskTop). Chat text belongs on a solid plane, so the working area
+        // authors the theme's own application-window face rather than letting the pattern bleed
+        // through every row; themes whose panels were already opaque render identically.
         var layout = new Dock
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Face = WindowPlane,
         };
+        var promptRow = _promptRow;
         Dock.SetSide(menuBar, DockSide.Top);
         Dock.SetSide(statusBar, DockSide.Bottom);
         Dock.SetSide(promptRow, DockSide.Bottom);
@@ -185,7 +203,8 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     /// <returns>A one-row-empty composer whose measured height follows explicit and visually wrapped lines.</returns>
     internal static TextInput CreateComposer() => new()
     {
-        Placeholder = "Ask the coding agent, or press / for commands... (Enter sends · Shift+Enter adds a line)",
+        Placeholder = ComposerPlaceholder(PermissionMode.AskForChanges),
+        StartAffix = new Affix("›", ">"),
         HorizontalAlignment = HorizontalAlignment.Stretch,
         Height = Length.Auto,
         MinHeight = Length.Cells(3),
@@ -220,7 +239,37 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     protected override void OnStarted(Application application)
     {
         _application = application;
+        RefreshComposerSeparator();
         _ = application.Focus.Focus(_prompt);
+    }
+
+    /// <summary>The opaque application-window face the working area paints beneath the transcript,
+    /// sidebar, and composer.</summary>
+    internal static Face WindowPlane { get; } = new(
+        SemanticColor.WindowText,
+        SemanticColor.Window,
+        TerminalAttributes.None,
+        Underline.None,
+        SemanticColor.WindowText);
+
+    /// <summary>Draws a rule above the composer only when the active theme gives the text input no
+    /// frame of its own, so a borderless input still reads as a distinct region without doubling
+    /// the frame that boxed inputs already draw.</summary>
+    private void RefreshComposerSeparator()
+    {
+        if (_prompt.ActualStyle.Border.Sides == BorderSide.None)
+        {
+            _promptRow.Border = new Border(
+                BorderSide.Top,
+                BorderGlyphStyle.Light,
+                SemanticColor.Muted,
+                Color.Transparent,
+                SemanticDecoration.Border);
+        }
+        else
+        {
+            _promptRow.ResetBorder();
+        }
     }
 
     private Menu BuildMenuBar()
@@ -241,7 +290,19 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                 view => view
                     .Item("&Follow latest", shortcut: "Ctrl+End", onInvoke: () => InvokeMenu(FollowLatest))
                     .Item("&Previous message", shortcut: "Page Up", onInvoke: () => InvokeMenu(() => ScrollTranscript(-1)))
-                    .Item("&Next message", shortcut: "Page Down", onInvoke: () => InvokeMenu(() => ScrollTranscript(1))))
+                    .Item("&Next message", shortcut: "Page Down", onInvoke: () => InvokeMenu(() => ScrollTranscript(1)))
+                    .Separator()
+                    .Submenu("&Theme", theme =>
+                    {
+                        foreach (var slug in CodingAgentTheme.Slugs)
+                        {
+                            _ = theme.Radio(
+                                CodingAgentTheme.DisplayName(slug),
+                                "theme",
+                                isChecked: string.Equals(slug, _themeSlug, StringComparison.Ordinal),
+                                onInvoke: () => InvokeMenu(() => SetTheme(slug)));
+                        }
+                    }))
             .Submenu(
                 "&Agent",
                 agent => agent
@@ -314,8 +375,24 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         _modelMenuItems = [.. _modelMenuItem.Submenu!.Items.Cast<MenuItem>()];
         _reasoningMenuItems = [.. _reasoningMenuItem.Submenu!.Items.Cast<MenuItem>()];
         _permissionMenuItems = [.. FindMenuItem(menu, "&Permissions").Submenu!.Items.Cast<MenuItem>()];
+        _themeMenuItems = [.. FindMenuItem(FindMenuItem(menu, "&View").Submenu!, "&Theme").Submenu!.Items.Cast<MenuItem>()];
         RefreshMenuState();
         return menu;
+    }
+
+    private void SetTheme(string slug)
+    {
+        Debug.Assert(CodingAgentTheme.Slugs.Contains(slug, StringComparer.Ordinal), "A theme menu callback must carry a catalog slug.");
+        if (_application is null || string.Equals(slug, _themeSlug, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _application.Theme = CodingAgentTheme.Load(slug);
+        _themeSlug = slug;
+        RefreshComposerSeparator();
+        RefreshMenuState();
+        _status.Content = $"Theme: {CodingAgentTheme.DisplayName(slug)}";
     }
 
     /// <summary>Finds the one owned item whose authored label matches exactly.</summary>
@@ -400,15 +477,19 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private Dock BuildSidebar()
     {
         RefreshSidebarTodo();
-        var contextHeader = new Text("<accent><b>Context</b></accent>");
-        var todoHeader = new Text("<accent><b>Todo</b></accent>");
+        RefreshSidebarSession();
         var content = new Stack
         {
             Orientation = Orientation.Vertical,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Spacing = 1,
             Padding = new Thickness(1, 0),
-            Children = { contextHeader, _sidebarContext, todoHeader, _sidebarTodo },
+            Children =
+            {
+                SidebarSection("Session", _sidebarSession),
+                SidebarSection("Usage", _sidebarContext),
+                SidebarSection("Plan", _sidebarTodo),
+            },
         };
 
         return new Dock
@@ -422,6 +503,28 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                 Color.Transparent,
                 SemanticDecoration.Border),
             Children = { content },
+        };
+    }
+
+    /// <summary>Stacks one sidebar heading above its body so every section shares the same rhythm.</summary>
+    /// <param name="title">The non-empty plain heading.</param>
+    /// <param name="body">The non-null section body.</param>
+    /// <returns>A stretched vertical stack.</returns>
+    /// <exception cref="ArgumentException"><paramref name="title"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is null.</exception>
+    internal static Stack SidebarSection(string title, ControlBase body)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentNullException.ThrowIfNull(body);
+        return new Stack
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Children =
+            {
+                new Text($"<info><b>▎{Text.Escape(title.ToUpperInvariant())}</b></info>"),
+                body,
+            },
         };
     }
 
@@ -552,17 +655,19 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var matches = MatchCommandPaletteItems(BuildCommandPaletteItems(_busy, _permissions.Mode), searchTerms);
+        var matches = MatchCommandPaletteItems(BuildCommandPaletteItems(_busy, _permissions.Mode, _themeSlug), searchTerms);
         return ValueTask.FromResult<IReadOnlyList<object?>>([.. matches.Cast<object?>()]);
     }
 
-    /// <summary>Builds the complete palette catalog with current run and permission state.</summary>
+    /// <summary>Builds the complete palette catalog with current run, permission, and theme state.</summary>
     /// <param name="busy">Whether an agent turn is active.</param>
     /// <param name="permissionMode">The current permission mode shown as exact state evidence.</param>
+    /// <param name="themeSlug">The active theme slug, badged as current; null badges none.</param>
     /// <returns>The deterministic application command catalog.</returns>
     internal static ImmutableArray<CommandPaletteItem> BuildCommandPaletteItems(
         bool busy,
-        PermissionMode permissionMode) =>
+        PermissionMode permissionMode,
+        string? themeSlug = null) =>
     [
         new("session.new", "Session", "New session", "Start with a clean conversation.", keywords: "fresh reset chat"),
         new("session.recent", "Session", "Recent sessions", "Browse durable conversations from this workspace.", keywords: "history list open"),
@@ -584,8 +689,18 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         new("info.workspace", "Agent", "Configure workspace", "Select the read-only toolchain folders exposed beside the workspace.", keywords: "folder repository path roots sandbox"),
         new("help.shortcuts", "Help", "Keyboard shortcuts", "Show composer, history, transcript, and application keys.", keywords: "keys commands"),
         new("help.commands", "Help", "Slash command reference", "List the textual commands accepted by the composer.", keywords: "help list"),
+        .. CodingAgentTheme.Slugs.Select(slug => new CommandPaletteItem(
+            ThemePaletteIdPrefix + slug,
+            "Theme",
+            $"Theme: {CodingAgentTheme.DisplayName(slug)}",
+            "Switch the application palette without restarting.",
+            keywords: "theme colors appearance look",
+            badge: string.Equals(slug, themeSlug, StringComparison.Ordinal) ? "CURRENT" : null)),
         new("app.quit", "Application", "Quit CodingAgent", "Close the terminal application.", "Ctrl+Q", "exit close"),
     ];
+
+    /// <summary>The palette identifier prefix every theme action shares; the suffix is the catalog slug.</summary>
+    internal const string ThemePaletteIdPrefix = "theme.";
 
     /// <summary>Filters the catalog by case-insensitive words across visible copy and keywords.</summary>
     /// <param name="items">The complete immutable catalog.</param>
@@ -634,6 +749,12 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
             case "help.commands": ShowCommandReference(); return;
             case "app.quit": _application?.Shutdown(); return;
             default:
+                if (command.Id.StartsWith(ThemePaletteIdPrefix, StringComparison.Ordinal))
+                {
+                    SetTheme(command.Id[ThemePaletteIdPrefix.Length..]);
+                    break;
+                }
+
                 if (!PermissionModeCatalog.TryParsePaletteId(command.Id, out var mode))
                 {
                     throw new UnreachableException($"Unknown command palette item '{command.Id}'.");
@@ -1293,7 +1414,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
             var roots = await WorkspaceConfigurationDialog.ShowAsync(
                 this,
                 _workspaceRoot,
-                CodingAgentHostEnvironment.ToolchainRoots(),
+                [.. CodingAgentHostEnvironment.ToolchainRoots().Concat(_configuration.ReadOnlyToolchainRoots).Distinct(StringComparer.Ordinal)],
                 _configuration.ReadOnlyToolchainRoots,
                 CancellationToken.None);
             if (roots is { } selected && !_busy)
@@ -1592,6 +1713,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         _busy = busy;
         _prompt.IsReadOnly = busy && _pendingApproval is null;
         _spinner.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        _statusGlyph.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
         _status.Content = busy ? "Thinking... (Esc to stop)" : "Ready";
         if (!busy)
         {
@@ -1650,12 +1772,49 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         {
             _permissionMenuItems[index].IsChecked = PermissionModeCatalog.All[index] == _permissions.Mode;
         }
+
+        for (var index = 0; index < _themeMenuItems.Length; index++)
+        {
+            _themeMenuItems[index].IsChecked = string.Equals(CodingAgentTheme.Slugs[index], _themeSlug, StringComparison.Ordinal);
+        }
     }
 
-    private void RefreshPromptPlaceholder() =>
-        _prompt.Placeholder = _permissions.Mode == PermissionMode.ReadOnly
-            ? "Ask the coding agent (read-only), or press / for commands... (Enter sends · Shift+Enter adds a line)"
-            : "Ask the coding agent, or press / for commands... (Enter sends · Shift+Enter adds a line)";
+    private void RefreshPromptPlaceholder() => _prompt.Placeholder = ComposerPlaceholder(_permissions.Mode);
+
+    /// <summary>Builds the idle composer hint for one permission mode.</summary>
+    /// <param name="mode">The live permission mode.</param>
+    /// <returns>A short hint naming the send key, the command prefix, and the palette chord.</returns>
+    internal static string ComposerPlaceholder(PermissionMode mode) => mode == PermissionMode.ReadOnly
+        ? "Ask anything (read-only) · Enter sends · Shift+Enter newline · / commands · Ctrl+K palette"
+        : "Ask the agent · Enter sends · Shift+Enter newline · / commands · Ctrl+K palette";
+
+    /// <summary>Builds the first transcript card: where the agent works, what it runs as, and how to drive it.</summary>
+    /// <param name="workspaceRoot">The absolute workspace root.</param>
+    /// <param name="configuration">The pending runtime configuration.</param>
+    /// <param name="mode">The live permission mode.</param>
+    /// <returns>A system entry whose Markdown body summarizes the session.</returns>
+    /// <exception cref="ArgumentException"><paramref name="workspaceRoot"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="configuration"/> is null.</exception>
+    internal static ChatEntry BuildWelcomeEntry(string workspaceRoot, CodingAgentConfiguration configuration, PermissionMode mode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        ArgumentNullException.ThrowIfNull(configuration);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = configuration.ReadOnlyToolchainRoots.Length switch
+        {
+            0 => "no extra read-only folders",
+            1 => "1 read-only folder",
+            var count => $"{count} read-only folders",
+        };
+        var body = new StringBuilder()
+            .Append("- **Workspace** `").Append(Text.Escape(WorkspaceConfigurationDialog.CompactPath(workspaceRoot, home))).Append("` · ").Append(roots).Append('\n')
+            .Append("- **Model** ").Append(Text.Escape(ModelStatusLabel(configuration))).Append('\n')
+            .Append("- **Permissions** ").Append(Text.Escape(PermissionModeCatalog.Title(mode))).Append('\n')
+            .Append('\n')
+            .Append("Describe a change and press **Enter**. `/` lists commands, **Ctrl+K** opens the palette, **Esc** stops a turn, **Page Up/Down** scroll history.")
+            .ToString();
+        return new ChatEntry(ChatEntryKind.System, "CodingAgent", body);
+    }
 
     /// <inheritdoc/>
     public ValueTask OnEventAsync(ConversationEvent conversationEvent, CancellationToken cancellationToken) =>
@@ -1815,6 +1974,21 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     {
         _permissionStatus.Content = $"<d>{Text.Escape(_permissions.Label())}</d>";
         _modelStatus.Content = $"<d>{Text.Escape(ModelStatusLabel(_configuration))}</d>";
+        RefreshSidebarSession();
+    }
+
+    private void RefreshSidebarSession()
+    {
+        var model = CodingAgentConfiguration.Models.FirstOrDefault(option =>
+            string.Equals(option.ModelId, _configuration.ModelId, StringComparison.Ordinal));
+        var roots = _configuration.ReadOnlyToolchainRoots.Length;
+        _sidebarSession.Content = string.Join(
+            '\n',
+            $"<b>{Text.Escape(model?.Name ?? _configuration.ModelId)}</b> <d>{Text.Escape(_configuration.ModelId)}</d>",
+            $"<d>Reasoning</d> {Text.Escape(ReasoningEffortName(_configuration.ReasoningEffort))}",
+            $"<d>Turn limit</d> {_configuration.MaximumTurns}",
+            $"<d>Mode</d> {Text.Escape(PermissionModeCatalog.Title(_permissions.Mode))}",
+            $"<d>Read-only</d> {(roots == 0 ? "workspace only" : $"+{roots} folder{(roots == 1 ? "" : "s")}")}");
     }
 
     private void RefreshSidebarTodo()
@@ -1851,7 +2025,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private static string TodoTagFor(TodoStatus status) => status switch
     {
         TodoStatus.Pending => "d",
-        TodoStatus.InProgress => "accent",
+        TodoStatus.InProgress => "info",
         TodoStatus.Completed => "success",
         TodoStatus.Blocked => "error",
         _ => "d",
@@ -2039,9 +2213,14 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    /// <remarks>
+    /// Rows sit on the application-window plane, where a theme's <c>accent</c> may equal the plane
+    /// itself (Turbo Vision paints both blue), so the palette here uses colors every bundled theme
+    /// keeps legible against its window: yellow for the person, info for the model.
+    /// </remarks>
     private static SemanticColor AccentColorFor(ChatEntryKind kind) => kind switch
     {
-        ChatEntryKind.User => SemanticColor.Accent,
+        ChatEntryKind.User => SemanticColor.Yellow,
         ChatEntryKind.Assistant => SemanticColor.Info,
         ChatEntryKind.ToolCall => SemanticColor.Muted,
         ChatEntryKind.ToolResultSuccess => SemanticColor.Success,
@@ -2053,7 +2232,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
 
     private static string MarkupTagFor(ChatEntryKind kind) => kind switch
     {
-        ChatEntryKind.User => "accent",
+        ChatEntryKind.User => "yellow",
         ChatEntryKind.Assistant => "info",
         ChatEntryKind.ToolCall => "d",
         ChatEntryKind.ToolResultSuccess => "success",

@@ -10,10 +10,11 @@ composes AgentKit's real production components (`DefaultAgentLoop`,
 tool packages, including `AgentKit.Tools.Plan`'s `todo` tool and
 `AgentKit.Tools.Question`'s authenticated human-question tool) directly, and
 renders the conversation with SharpVision's `Document`/Markdown control, a menu
-bar, a command palette, a context/todo sidebar, a status bar, and a spinner. The
-interactive host loads SharpVision's bundled `turbo-vision` theme once at
-startup, so its published palette and relief flow through the complete control
-tree without application-owned color copies. Native modal windows configure the
+bar, a command palette, a session/usage/plan sidebar, a status bar, and a
+spinner. The interactive host loads SharpVision's bundled `turbo-vision` theme
+at startup (override it with `CODING_AGENT_THEME`, or switch live from View >
+Theme), so its published palette and relief flow through the complete control
+tree without application-owned color copies. Native modal dialogs configure the
 workspace and agent and present formatted help without dumping either into the
 transcript. Every tool call in this example touches your real filesystem and a
 real sandboxed subprocess — there is no mock mode.
@@ -61,7 +62,15 @@ Sandboxed commands receive no ambient environment. Set
 read-only roots and `CODING_AGENT_COMMAND_PATH` to the exact PATH projected into
 commands. For Homebrew Python on Apple Silicon, use `/opt/homebrew` for the
 former and `/opt/homebrew/opt/python@3.14/bin:/opt/homebrew/bin:/usr/bin:/bin`
-for the latter.
+for the latter. You can also add read-only folders without restarting: Session >
+Configure workspace (or `/workspace`) lists the host-declared roots and lets you
+type any absolute folder (`~` expands), validates that it exists and sits
+outside the workspace, and starts a fresh session with the new selection.
+
+Set `CODING_AGENT_THEME` to any bundled SharpVision theme slug (for example
+`nord`, `dracula`, `tokyo-night`, `catppuccin-mocha`, `gruvbox-dark`,
+`solarized-light`) to start with that palette instead of `turbo-vision`; an
+unknown slug falls back to the default. View > Theme switches at run time.
 
 Type `/` for a live list of slash commands (filtered as you keep typing):
 
@@ -167,9 +176,11 @@ collapses on narrow terminals, and Page Up/Page Down plus Follow latest provide
 explicit transcript navigation. SQLite preserves conversation sessions across
 process restarts; `/sessions` discovers a bounded recent page and `/resume`
 opens one while the agent is idle and hydrates its bounded stored history. The
-application selects SharpVision's bundled Turbo Vision theme at startup; menus,
-the responsive paired-line command palette, documents, approvals, and the
-composer inherit that theme.
+application selects SharpVision's bundled Turbo Vision theme at startup and
+paints the working area on the theme's application-window plane, so Turbo
+Vision's dithered desktop shows only behind dialogs; menus, the responsive
+paired-line command palette, documents, approvals, and the composer inherit
+whichever theme is active.
 
 ## What this proves
 
@@ -452,20 +463,40 @@ kind of gap that only shows up once you stop testing against a toy workspace:
 - [`AgentRuntime.cs`](AgentRuntime.cs) — composes the agent: security, session
   store, tools, provider, and the `AgentKit.Conversations` session.
 - [`ChatScreen.cs`](ChatScreen.cs) — the SharpVision UI: a menu bar, a
-  selectable document transcript, SharpVision native command palette, a
-  context/todo sidebar, a status bar with run, permission, usage, model/effort,
-  and workspace context, per-call tool approval prompts, direct model/reasoning
-  radio menus, role-neutral user/assistant transcript prose, Escape-to-cancel,
-  and Ctrl+P/Ctrl+N history.
+  selectable document transcript opened by a welcome card, SharpVision native
+  command palette, a session/usage/plan sidebar, a status bar with run,
+  permission, usage, model/effort, and workspace context, per-call tool approval
+  prompts, direct model/reasoning radio menus, a live theme menu, role-neutral
+  user/assistant transcript prose, Escape-to-cancel, and Ctrl+P/Ctrl+N history.
 - [`CommandPaletteItem.cs`](CommandPaletteItem.cs) — searchable application
   action metadata rendered by the native palette.
-- [`AgentConfigurationWindow.cs`](AgentConfigurationWindow.cs) and
-  [`WorkspaceConfigurationWindow.cs`](WorkspaceConfigurationWindow.cs) — the
-  native TurboVision configuration dialogs.
-- [`KeyboardShortcutsWindow.cs`](KeyboardShortcutsWindow.cs) — the selectable,
-  scrollable Markdown keyboard reference shared by Help, palette, and `/keys`.
-- [`CommandReferenceWindow.cs`](CommandReferenceWindow.cs) — the catalog-backed,
-  selectable Markdown command reference shared by Help, palette, and `/help`.
+- [`CodingAgentDialog.cs`](CodingAgentDialog.cs) — the shared dialog base: one
+  centered modal with titled sections, wrapped notes, and the framework action
+  bar.
+- [`AgentConfigurationDialog.cs`](AgentConfigurationDialog.cs) — model picker
+  with description, reasoning-effort radio group, and a turn-limit slider with a
+  live readout and labeled endpoints.
+- [`WorkspaceConfigurationDialog.cs`](WorkspaceConfigurationDialog.cs) — the
+  workspace card, the read-only folder list with an add-folder entry, and the
+  sandbox summary.
+- [`ToolchainRootPolicy.cs`](ToolchainRootPolicy.cs) and
+  [`ToolchainRootValidation.cs`](ToolchainRootValidation.cs) — the pure
+  validation behind that entry: absolute, existing, outside the workspace, not a
+  duplicate, `~` expanded.
+- [`MarkdownReferenceDialog.cs`](MarkdownReferenceDialog.cs) — the selectable,
+  scrollable Markdown dialog behind Help, the palette, `/keys`, `/help`, and
+  `/tools`; [`KeyboardShortcutsReference.cs`](KeyboardShortcutsReference.cs),
+  [`CommandReference.cs`](CommandReference.cs), and
+  [`ToolReference.cs`](ToolReference.cs) author its content.
+- [`CodingAgentTheme.cs`](CodingAgentTheme.cs) — resolves the startup theme from
+  `CODING_AGENT_THEME` and lists the bundled slugs the View menu offers.
+- [`PermissionMode.cs`](PermissionMode.cs),
+  [`PermissionModeCatalog.cs`](PermissionModeCatalog.cs), and
+  [`PermissionModeController.cs`](PermissionModeController.cs) — the three
+  approval modes, their single source of user-facing strings, and the live
+  holder the security policy reads.
+- [`CodingAgentHostEnvironment.cs`](CodingAgentHostEnvironment.cs) — reads the
+  host-declared toolchain roots and command PATH.
 - [`CodingAgentConfiguration.cs`](CodingAgentConfiguration.cs) — the immutable
   model, reasoning, turn, and read-only-root choices captured by the runtime.
 - [`ChatEntry.cs`](ChatEntry.cs) — the transcript's per-message view model.
@@ -495,6 +526,13 @@ kind of gap that only shows up once you stop testing against a toy workspace:
 - [`AutoApprovePrompt.cs`](AutoApprovePrompt.cs) — the headless
   `IApprovalPrompt` used by `--smoke-test`; approves everything and prints what
   it approved.
+- [`IHumanQuestionPrompt.cs`](IHumanQuestionPrompt.cs),
+  [`HumanQuestionSelection.cs`](HumanQuestionSelection.cs),
+  [`HumanQuestionSelectionParser.cs`](HumanQuestionSelectionParser.cs), and
+  [`UnavailableHumanQuestionPrompt.cs`](UnavailableHumanQuestionPrompt.cs) — the
+  terminal side of the human-question tool and its headless stand-in.
+- [`CodingAgentApprovalResponderAuthorizer.cs`](CodingAgentApprovalResponderAuthorizer.cs)
+  — accepts approval responses only from the local terminal identity.
 - [`OpenAiEnvironment.cs`](OpenAiEnvironment.cs) — reads `OPENAI_API_KEY`/
   `CODING_AGENT_MODEL` from the process environment.
 - [`DotEnvLoader.cs`](DotEnvLoader.cs) — loads `.env.local` into the process

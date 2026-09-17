@@ -30,6 +30,41 @@ internal abstract class CodingAgentDialog<TResult>: Dialog<TResult>
         VerticalAlignment = VerticalAlignment.Center;
     }
 
+    /// <summary>Wraps one group of related controls in a titled frame so every dialog sections its
+    /// content the same way.</summary>
+    /// <param name="title">The non-empty plain section title written into the frame's top edge.</param>
+    /// <param name="content">The non-null content arranged inside the frame with one cell of horizontal breathing room.</param>
+    /// <returns>A stretched group box with one row of margin below it.</returns>
+    /// <exception cref="ArgumentException"><paramref name="title"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
+    protected static GroupBox Section(string title, ControlBase content)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentNullException.ThrowIfNull(content);
+        content.HorizontalAlignment = HorizontalAlignment.Stretch;
+        return new GroupBox
+        {
+            HeaderText = title,
+            Content = content,
+            Padding = new Thickness(1, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+    }
+
+    /// <summary>Creates one explanatory line that wraps to the available width instead of clipping.</summary>
+    /// <param name="markup">The non-null text markup.</param>
+    /// <returns>A wrapping, stretched text control.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="markup"/> is null.</exception>
+    protected static Text Note(string markup)
+    {
+        ArgumentNullException.ThrowIfNull(markup);
+        return new Text(markup)
+        {
+            Overflow = Overflow.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+    }
+
     /// <summary>Builds the dialog content: <paramref name="body"/> above a separator and the
     /// action buttons, with an optional dim keyboard hint on the action row's left.</summary>
     /// <param name="body">The non-null body control; it receives the remaining height when

@@ -321,3 +321,36 @@ menu items are found by label instead of index, and the advertised `Ctrl+Q`
 finally has a bound gesture. SharpVision 1.6.0-beta.2 supplies the menu fixes
 this relies on: drop-downs paint their own plane, keyboard navigation no longer
 opens submenus on its own, and focus returns to the composer when a menu closes.
+
+## SharpVision 1.6.0-beta.7, editable workspace roots, and dialog forms
+
+SharpVision moved from 1.6.0-beta.4 to 1.6.0-beta.7. The bundled Turbo Vision
+theme now reproduces Borland's desktop: layout panels are transparent and the
+screen tiles a dithered `▒` beneath them, buttons carry a block shadow instead
+of a frame, and the input face is borderless. Left alone, that put the dither
+behind every transcript row and made the composer indistinguishable from the
+transcript. The working area now authors the theme's application-window face
+(`WindowPlane`), so the pattern shows only behind dialogs, and the composer
+draws a rule above itself only when the active theme gives the input no frame.
+Rows and sidebar headings stopped using `accent`, which Turbo Vision paints in
+the same blue as its window plane.
+
+The workspace dialog was read-only in practice: it could only tick roots the
+host had exported through `CODING_AGENT_TOOLCHAIN_ROOTS`, and showed one
+disabled checkbox otherwise. It now has an add-folder entry validated by
+`ToolchainRootPolicy` (absolute, `~` expanded, existing, outside the workspace,
+not an ancestor of it, not a duplicate) and lists host roots and previously
+selected roots together; Enter in the entry adds rather than reaching the
+dialog's default Save. Both configuration dialogs are sectioned `GroupBox`
+forms. Reasoning effort is a radio group instead of a five-stop slider, the
+turn-limit slider gained a live readout, labeled endpoints, and a band
+description, and the model picker shows the selected model's description.
+
+Theme selection is exposed through `CODING_AGENT_THEME`, View > Theme, and
+`theme.<slug>` palette actions that switch `Application.Theme` live. The first
+transcript row is a welcome card naming the workspace, model, permission mode,
+and the four keys that matter; the sidebar gained a Session section and the
+status bar a state glyph. Layouts were verified headlessly at 80x24, 100x30, and
+120x40 on `turbo-vision` and `default-dark` by driving a public-API
+`Application` over a modeled terminal; the live tmux pass against a model is
+still owed.

@@ -11,7 +11,8 @@ if (args is ["--smoke-test", .. var rest])
 }
 
 var workspaceRoot = args.Length > 0 ? Path.GetFullPath(args[0]) : Directory.GetCurrentDirectory();
+var themeSlug = CodingAgentTheme.ResolveSlugFromEnvironment();
 var status = await ConsoleApplication.RunAsync(
-    new ChatScreen(workspaceRoot),
-    static builder => builder.UseTheme(ThemeCatalog.Load("turbo-vision")));
+    new ChatScreen(workspaceRoot, themeSlug),
+    builder => builder.UseTheme(CodingAgentTheme.Load(themeSlug)));
 return status == ConsoleRunStatus.Failed ? 1 : 0;
