@@ -440,6 +440,21 @@ public sealed class InMemoryDurableOperationJournalTests
     }
 
     [Fact]
+    public async Task WriteMethods_WhenElapsedTimeIsNegative_StillReturnTheirCommittedOutcomeDespiteMetricsFailure()
+    {
+        // DurableJournalMetrics.RecordWrite and RecordEvidenceLoad reject a negative elapsed duration. Producing one
+        // from a clock that never throws exercises FinishWrite's and FinishEvidenceLoad's own metrics-recording
+        // catches, distinct from TryGetElapsedTime's catch around the clock call itself (covered above).
+        var journal = new InMemoryDurableOperationJournal(new NegativeElapsedTimeProvider());
+
+        var started = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken);
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+
+        _ = started.ShouldBeOfType<DurableRecorded>();
+        _ = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>();
+    }
+
+    [Fact]
     public async Task RecordStartAsync_WhenCancelledAndLoggingIsEnabled_RecordsCancellationEvent()
     {
         var recorder = new RecordingLogger<InMemoryDurableOperationJournal>();
@@ -503,6 +518,21 @@ public sealed class InMemoryDurableOperationJournalTests
         // failure mode); the second call is GetElapsedTime's own internal "now" fetch, which fails
         // independently and exercises TryGetElapsedTime's own catch boundary.
         public override long GetTimestamp() => ++_calls == 1 ? 1 : throw new InvalidTimeZoneException("elapsed-time failure");
+    }
+
+    /// <summary>A clock that never throws but reports a negative elapsed duration, which the bounded metrics
+    /// recorders reject; this exercises the journal's own metrics-recording catch rather than its clock-failure
+    /// catch. Each operation calls <see cref="GetTimestamp"/> once at its start and once more internally through
+    /// the default <see cref="TimeProvider.GetElapsedTime(long)"/> at its finish; alternating a later raw value on
+    /// the first call of each pair with an earlier one on the second makes every operation's derived elapsed
+    /// duration negative, without either call ever throwing.</summary>
+    private sealed class NegativeElapsedTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => DurableJournalTestData.Now;
+
+        public override long GetTimestamp() => ++_calls % 2 == 1 ? 1000 : 0;
     }
 
     private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>
