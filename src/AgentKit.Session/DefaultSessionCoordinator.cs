@@ -722,9 +722,12 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             {
                 await sink.PublishAsync(sessionEvent, CancellationToken.None).ConfigureAwait(false);
             }
-            catch
+            catch (Exception exception)
             {
                 // The protected effect is already committed; event observation cannot replace its result.
+                var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+                TryObserve(() => SessionLog.EventSinkFailed(
+                    _logger, sink.GetType().Name, sessionEvent.Address.SessionId, errorType));
             }
         }
     }

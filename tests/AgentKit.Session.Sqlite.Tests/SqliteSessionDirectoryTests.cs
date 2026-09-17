@@ -69,6 +69,35 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     [Fact]
+    public async Task LocateAsync_WhenDatabaseFileIsMissingAfterAuthorization_PropagatesAndReportsFaulted()
+    {
+        // Authorization succeeds first (it is fully isolated from the database), so the missing file can
+        // only be discovered by the real SQLite read that follows, exercising the unexpected-fault path
+        // that AuthorizeAsync's own catch-all cannot reach.
+        var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-missing-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(path);
+        var databasePath = Path.Combine(path, "sessions.db");
+        var logger = new RecordingLogger<SqliteSessionDirectory>();
+        var directory = new SqliteSessionDirectory(_audience, new RecordingAuditDispatcher(new SecurityAuditAccepted()),
+            new RecordingGrantStore(), new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+                SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteSessionStoreSettings.CreateDefault(), logger);
+        var context = Context();
+        File.Delete(databasePath);
+
+        _ = await Should.ThrowAsync<Exception>(async () =>
+            await directory.LocateAsync(
+                new AuthorizedSessionDirectoryRequest<SessionOperationContext>(
+                    context, Grant(context, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+                TestContext.Current.CancellationToken));
+
+        var faulted = logger.Snapshot().ShouldHaveSingleItem();
+        faulted.EventId.Id.ShouldBe(25003);
+        faulted.State["Operation"].ShouldBe("locate");
+    }
+
+    [Fact]
     public async Task LocateForCreateAsync_WhenRequiredAuditIsUnavailable_ReturnsUnavailable()
     {
         var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditUnavailable("unavailable")), new RecordingGrantStore());
