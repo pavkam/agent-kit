@@ -2061,6 +2061,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   `messages contain System/Developer && !SupportsSystemInstructions` rejections
   (or explicit downgrades) to preflight.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

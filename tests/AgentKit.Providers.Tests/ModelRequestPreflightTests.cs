@@ -16,12 +16,13 @@ public sealed class ModelRequestPreflightTests
     private static LlmModelRequest CreateLlmRequest(
         ModelDescriptor descriptor,
         ImmutableArray<LlmToolDefinition> tools = default,
-        LlmRequestSettings? settings = null) =>
+        LlmRequestSettings? settings = null,
+        ImmutableArray<AgentMessage> messages = default) =>
         new(
             new LlmRequestContext(
                 ProviderTestData.ModelRequestId,
                 descriptor,
-                [],
+                messages.IsDefault ? [] : messages,
                 tools.IsDefault ? [] : tools,
                 LlmToolChoice.Auto,
                 settings ?? LlmRequestSettings.Default,
@@ -29,6 +30,34 @@ public sealed class ModelRequestPreflightTests
             attempt: 1,
             Deadline,
             ProviderRequestOptions.Empty);
+
+    private static SystemMessage SystemInstruction() =>
+        new(
+            new MessageId(Guid.NewGuid()),
+            new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()),
+            conversationId: null,
+            new BranchId(Guid.NewGuid()),
+            runId: null,
+            turnId: null,
+            Deadline,
+            MessageState.Complete,
+            [new TextPart("You are helpful.", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+
+    private static DeveloperMessage DeveloperInstruction() =>
+        new(
+            new MessageId(Guid.NewGuid()),
+            new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()),
+            conversationId: null,
+            new BranchId(Guid.NewGuid()),
+            runId: null,
+            turnId: null,
+            Deadline,
+            MessageState.Complete,
+            [new TextPart("Follow the style guide.", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
 
     private static EmbeddingModelRequest CreateEmbeddingRequest(EmbeddingModelDescriptor descriptor) =>
         new(
@@ -200,6 +229,89 @@ public sealed class ModelRequestPreflightTests
     {
         var descriptor = ProviderTestData.Model("chat", toolCalls: true);
         var request = CreateLlmRequest(descriptor, Tools, LlmRequestSettings.Default with { ParallelToolCalls = parallelToolCalls });
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenReasoningEffortRequestedAndModelDoesNotSupportReasoning_ReturnsInvalidRequest()
+    {
+        var descriptor = ProviderTestData.Model("chat", reasoning: false);
+        var request = CreateLlmRequest(descriptor, settings: LlmRequestSettings.Default with { ReasoningEffort = LlmReasoningEffort.Medium });
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        var rejected = failure.ShouldNotBeNull();
+        rejected.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        rejected.SafeMessage.ShouldBe("The selected model does not support reasoning.");
+    }
+
+    [Fact]
+    public void Validate_WhenReasoningEffortNotRequestedAndModelDoesNotSupportReasoning_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.Model("chat", reasoning: false);
+        var request = CreateLlmRequest(descriptor);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenReasoningEffortRequestedAndModelSupportsReasoning_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.Model("chat", reasoning: true);
+        var request = CreateLlmRequest(descriptor, settings: LlmRequestSettings.Default with { ReasoningEffort = LlmReasoningEffort.Medium });
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenSystemMessagePresentAndModelDoesNotSupportSystemInstructions_ReturnsInvalidRequest()
+    {
+        var descriptor = ProviderTestData.Model("chat", systemInstructions: false);
+        var request = CreateLlmRequest(descriptor, messages: [SystemInstruction()]);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        var rejected = failure.ShouldNotBeNull();
+        rejected.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        rejected.SafeMessage.ShouldBe("The selected model does not support a distinct system or developer instruction role.");
+    }
+
+    [Fact]
+    public void Validate_WhenDeveloperMessagePresentAndModelDoesNotSupportSystemInstructions_ReturnsInvalidRequest()
+    {
+        var descriptor = ProviderTestData.Model("chat", systemInstructions: false);
+        var request = CreateLlmRequest(descriptor, messages: [DeveloperInstruction()]);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        var rejected = failure.ShouldNotBeNull();
+        rejected.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        rejected.SafeMessage.ShouldBe("The selected model does not support a distinct system or developer instruction role.");
+    }
+
+    [Fact]
+    public void Validate_WhenNoSystemOrDeveloperMessageAndModelDoesNotSupportSystemInstructions_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.Model("chat", systemInstructions: false);
+        var request = CreateLlmRequest(descriptor);
+
+        var failure = ModelRequestPreflight.Validate(request, descriptor);
+
+        failure.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Validate_WhenSystemMessagePresentAndModelSupportsSystemInstructions_ReturnsNull()
+    {
+        var descriptor = ProviderTestData.Model("chat", systemInstructions: true);
+        var request = CreateLlmRequest(descriptor, messages: [SystemInstruction()]);
 
         var failure = ModelRequestPreflight.Validate(request, descriptor);
 

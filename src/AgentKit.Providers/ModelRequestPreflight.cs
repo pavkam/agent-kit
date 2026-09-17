@@ -21,10 +21,14 @@ namespace AgentKit.Providers;
 /// </para>
 /// <para>
 /// The remaining checks are capability assertions the request makes
-/// explicitly: exposing tools requires <see cref="ModelCapabilities.SupportsToolCalls"/>,
-/// and requesting <see cref="LlmRequestSettings.ParallelToolCalls"/> with
-/// tools present requires <see cref="ModelCapabilities.SupportsParallelToolCalls"/>.
-/// A request that leaves <see cref="LlmRequestSettings.ParallelToolCalls"/>
+/// explicitly: setting <see cref="LlmRequestSettings.ReasoningEffort"/>
+/// requires <see cref="ModelCapabilities.SupportsReasoning"/>, including a
+/// <see cref="SystemMessage"/> or <see cref="DeveloperMessage"/> requires
+/// <see cref="ModelCapabilities.SupportsSystemInstructions"/>, exposing tools
+/// requires <see cref="ModelCapabilities.SupportsToolCalls"/>, and requesting
+/// <see cref="LlmRequestSettings.ParallelToolCalls"/> with tools present
+/// requires <see cref="ModelCapabilities.SupportsParallelToolCalls"/>. A
+/// request that leaves <see cref="LlmRequestSettings.ParallelToolCalls"/>
 /// unset or <see langword="false"/> asserts nothing and passes.
 /// </para>
 /// <para>
@@ -50,10 +54,17 @@ public static class ModelRequestPreflight
     /// <summary>The safe message reported when parallel tool calls are requested from a model that cannot issue them.</summary>
     private const string _parallelToolCallsUnsupportedMessage = "The selected model does not support parallel tool calls.";
 
+    /// <summary>The safe message reported when reasoning effort is requested from a model that does not support reasoning.</summary>
+    private const string _reasoningUnsupportedMessage = "The selected model does not support reasoning.";
+
+    /// <summary>The safe message reported when a system or developer instruction is sent to a model without a distinct instruction role.</summary>
+    private const string _systemInstructionsUnsupportedMessage = "The selected model does not support a distinct system or developer instruction role.";
+
     /// <summary>
     /// Validates one conversational request against the adapter's configured
-    /// descriptor, checking descriptor identity, tool support, and parallel
-    /// tool-call support in that order.
+    /// descriptor, checking descriptor identity, reasoning support, system
+    /// instruction support, tool support, and parallel tool-call support in
+    /// that order.
     /// </summary>
     /// <param name="request">The request the adapter was asked to execute.</param>
     /// <param name="descriptor">The descriptor the adapter instance was constructed to serve.</param>
@@ -74,6 +85,10 @@ public static class ModelRequestPreflight
         {
             { Model: var model } when model != descriptor =>
                 Reject(descriptor.ProviderId, _descriptorMismatchMessage),
+            { Settings.ReasoningEffort: not null } when !capabilities.SupportsReasoning =>
+                Reject(descriptor.ProviderId, _reasoningUnsupportedMessage),
+            { Messages: var messages } when !capabilities.SupportsSystemInstructions && HasSystemInstructions(messages) =>
+                Reject(descriptor.ProviderId, _systemInstructionsUnsupportedMessage),
             { Tools.Length: 0 } => null,
             _ when !capabilities.SupportsToolCalls =>
                 Reject(descriptor.ProviderId, _toolCallsUnsupportedMessage),
@@ -81,6 +96,28 @@ public static class ModelRequestPreflight
                 Reject(descriptor.ProviderId, _parallelToolCallsUnsupportedMessage),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// Determines whether a conversation contains a distinct system or
+    /// developer instruction message.
+    /// </summary>
+    /// <param name="messages">The ordered conversation history to inspect.</param>
+    /// <returns>
+    /// <see langword="true"/> when <paramref name="messages"/> contains at
+    /// least one <see cref="SystemMessage"/> or <see cref="DeveloperMessage"/>.
+    /// </returns>
+    private static bool HasSystemInstructions(ImmutableArray<AgentMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            if (message is SystemMessage or DeveloperMessage)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
