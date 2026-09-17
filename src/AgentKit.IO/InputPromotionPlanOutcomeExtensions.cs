@@ -11,17 +11,13 @@ internal static class InputPromotionPlanOutcomeExtensions
         /// <summary>Returns the bounded lowercase value shared by promotion logs, activities, and metrics.</summary>
         /// <returns>A stable lowercase terminal-outcome value.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="outcome"/> is undefined.</exception>
-        internal string ToStableValue()
+        internal string ToStableValue() => outcome switch
         {
-            ArgumentOutOfRangeException.ThrowIfUndefined(outcome);
-            return outcome switch
-            {
-                InputPromotionPlanOutcome.Planned => "planned",
-                InputPromotionPlanOutcome.Rejected => "rejected",
-                InputPromotionPlanOutcome.Cancelled => "cancelled",
-                InputPromotionPlanOutcome.Failed => "failed",
-                _ => throw new UnreachableException(),
-            };
-        }
+            InputPromotionPlanOutcome.Planned => "planned",
+            InputPromotionPlanOutcome.Rejected => "rejected",
+            InputPromotionPlanOutcome.Cancelled => "cancelled",
+            InputPromotionPlanOutcome.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The input promotion plan outcome is undefined."),
+        };
     }
 }

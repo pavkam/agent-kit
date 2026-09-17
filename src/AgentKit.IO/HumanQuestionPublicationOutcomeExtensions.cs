@@ -11,21 +11,16 @@ internal static class HumanQuestionPublicationOutcomeExtensions
         /// <summary>Returns the stable bounded value used in telemetry for one defined outcome.</summary>
         /// <returns>A lowercase protocol-stable terminal outcome value.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="outcome"/> is undefined.</exception>
-        public string ToStableValue()
+        public string ToStableValue() => outcome switch
         {
-            ArgumentOutOfRangeException.ThrowIfUndefined(outcome);
-
-            return outcome switch
-            {
-                HumanQuestionPublicationOutcome.Answered => "answered",
-                HumanQuestionPublicationOutcome.TimedOut => "timed_out",
-                HumanQuestionPublicationOutcome.ChannelUnavailable => "channel_unavailable",
-                HumanQuestionPublicationOutcome.GrantDenied => "grant_denied",
-                HumanQuestionPublicationOutcome.CapturedAuthorizationMismatch => "authorization_mismatch",
-                HumanQuestionPublicationOutcome.Cancelled => "cancelled",
-                HumanQuestionPublicationOutcome.Failed => "failed",
-                _ => throw new UnreachableException(),
-            };
-        }
+            HumanQuestionPublicationOutcome.Answered => "answered",
+            HumanQuestionPublicationOutcome.TimedOut => "timed_out",
+            HumanQuestionPublicationOutcome.ChannelUnavailable => "channel_unavailable",
+            HumanQuestionPublicationOutcome.GrantDenied => "grant_denied",
+            HumanQuestionPublicationOutcome.CapturedAuthorizationMismatch => "authorization_mismatch",
+            HumanQuestionPublicationOutcome.Cancelled => "cancelled",
+            HumanQuestionPublicationOutcome.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The human question publication outcome is undefined."),
+        };
     }
 }

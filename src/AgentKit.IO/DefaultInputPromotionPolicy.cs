@@ -216,13 +216,6 @@ internal sealed class DefaultInputPromotionPolicy: IInputPromotionPolicy
 
     private static void SafeSetActivity(Action action)
     {
-        try
-        {
-            action();
-        }
-        catch
-        {
-            // Activity listeners cannot alter the promotion decision.
-        }
+        try { action(); } catch { /* Activity listeners cannot alter the promotion decision. */ }
     }
 }

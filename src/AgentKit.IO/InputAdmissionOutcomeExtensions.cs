@@ -11,19 +11,15 @@ internal static class InputAdmissionOutcomeExtensions
         /// <summary>Returns the bounded lowercase value shared by admission logs, activities, and metrics.</summary>
         /// <returns>A stable lowercase terminal-outcome value.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="outcome"/> is undefined.</exception>
-        internal string ToStableValue()
+        internal string ToStableValue() => outcome switch
         {
-            ArgumentOutOfRangeException.ThrowIfUndefined(outcome);
-            return outcome switch
-            {
-                InputAdmissionOutcome.Accepted => "accepted",
-                InputAdmissionOutcome.Conflict => "conflict",
-                InputAdmissionOutcome.CapacityExceeded => "capacity_exceeded",
-                InputAdmissionOutcome.Rejected => "rejected",
-                InputAdmissionOutcome.Cancelled => "cancelled",
-                InputAdmissionOutcome.Failed => "failed",
-                _ => throw new UnreachableException(),
-            };
-        }
+            InputAdmissionOutcome.Accepted => "accepted",
+            InputAdmissionOutcome.Conflict => "conflict",
+            InputAdmissionOutcome.CapacityExceeded => "capacity_exceeded",
+            InputAdmissionOutcome.Rejected => "rejected",
+            InputAdmissionOutcome.Cancelled => "cancelled",
+            InputAdmissionOutcome.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The input admission outcome is undefined."),
+        };
     }
 }
