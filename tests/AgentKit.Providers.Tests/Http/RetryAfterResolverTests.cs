@@ -74,6 +74,16 @@ public sealed class RetryAfterResolverTests
     }
 
     [Fact]
+    public void Resolve_WhenHeaderIsNegativeDelta_ClampsToZero()
+    {
+        var headers = CreateHeaders(response => response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(-5)));
+
+        var resolved = RetryAfterResolver.Resolve(headers, new FakeTimeProvider(Now));
+
+        resolved.ShouldBe(TimeSpan.Zero);
+    }
+
+    [Fact]
     public void Resolve_WhenHeaderIsRawHttpDateString_ParsesAgainstInjectedClock()
     {
         var headers = CreateHeaders(response => response.Headers.TryAddWithoutValidation("Retry-After", "Sun, 01 Jun 2025 12:02:00 GMT"));

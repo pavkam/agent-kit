@@ -193,4 +193,48 @@ public sealed class GoogleVertexAIEmbeddingResponseParserTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         failed.Failure.SafeMessage.ShouldBe("The provider returned an empty embedding vector at position 0.");
     }
+
+    [Fact]
+    public async Task ParseAsync_WhenPredictionsFieldIsAbsent_FailsWithProtocolViolation()
+    {
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+
+        await using var body = new MemoryStream(/*lang=json,strict*/ """{}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(), [], TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a predict response with no predictions.");
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenAPredictionHasNoEmbeddingsObject_ReturnsProtocolFailure()
+    {
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(/*lang=json,strict*/ """{"predictions":[{}]}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned an empty embedding vector at position 0.");
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenStatisticsAreAbsent_ReportsUsageNotReported()
+    {
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"predictions":[{"embeddings":{"values":[0.1]}}]}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        completed.Response.Usage.ShouldBe(ModelUsage.NotReported);
+
+        var item = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        item.Extensions.Values.ContainsKey("truncated").ShouldBeFalse();
+    }
 }
