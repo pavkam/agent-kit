@@ -16,4 +16,46 @@ public sealed class ConversationHistoryUnavailableTests
 
         exception.ParamName.ShouldBe("safeMessage");
     }
+
+    [Fact]
+    public void Equals_WhenSafeMessageMatches_ReturnsTrueWithMatchingHashCode()
+    {
+        var first = new ConversationHistoryUnavailable("unavailable");
+        var second = new ConversationHistoryUnavailable("unavailable");
+
+        first.Equals(second).ShouldBeTrue();
+        first.Equals((object) second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equals_WhenSafeMessageDiffers_ReturnsFalse()
+    {
+        var first = new ConversationHistoryUnavailable("unavailable");
+        var second = new ConversationHistoryUnavailable("a different reason");
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToString_WhenCalled_IncludesTypeNameAndSafeMessage()
+    {
+        var result = new ConversationHistoryUnavailable("unavailable");
+
+        var text = result.ToString();
+
+        text.ShouldContain(nameof(ConversationHistoryUnavailable));
+        text.ShouldContain("unavailable");
+    }
+
+    [Fact]
+    public void WithExpression_WhenCalled_ProducesAnEqualClone()
+    {
+        var original = new ConversationHistoryUnavailable("unavailable");
+
+        var clone = original with { };
+
+        clone.ShouldNotBeSameAs(original);
+        clone.ShouldBe(original);
+    }
 }
