@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.Cohere.Tests.Parsing;
 
+using System.Diagnostics;
 using System.Text;
 
 /// <summary>
@@ -193,6 +194,21 @@ public sealed class CohereEmbeddingResponseParserTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenRequestedEncodingIsUndefined_ThrowsUnreachableException()
+    {
+        // EmbeddingEncoding's members are all enumerated by EncodingKeyOf's switch; an undefined value can
+        // only be produced by an unsafe cast, and the parser fails closed rather than guessing a wire key.
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+        const string payload = /*lang=json,strict*/ """{"id":"emb-undefined","texts":["hello"],"embeddings":{"float":[[0.1]]}}""";
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        _ = await Should.ThrowAsync<UnreachableException>(
+            () => parser.ParseAsync(body, CreateContext((EmbeddingEncoding) 999), inputs, TestContext.Current.CancellationToken));
     }
 
     [Fact]

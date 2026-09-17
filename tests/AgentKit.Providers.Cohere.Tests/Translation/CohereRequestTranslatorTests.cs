@@ -332,6 +332,24 @@ public sealed class CohereRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenToolChoiceModeIsUndefined_ThrowsNotSupportedException()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.CommandAPlus,
+            [TestMessages.User("hi")],
+            [tool],
+            new LlmToolChoice((LlmToolChoiceMode) 999, null),
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new CohereRequestTranslator().Translate(request, useStreaming: false));
+    }
+
+    [Fact]
     public void Translate_WhenToolMessageHasMultipleResults_ExpandsIntoSeparateToolMessages()
     {
         var callIdA = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
