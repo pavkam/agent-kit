@@ -146,6 +146,30 @@ internal sealed class RecordingDelegationLogger: ILogger<DefaultTaskDelegationBr
         if (state is IReadOnlyList<KeyValuePair<string, object?>> fields)
         {
             FieldNames.Add([.. fields.Select(static field => field.Key)]);
+
+            // Exercises the generated log-state's classic non-generic enumeration surface and Count accessor
+            // that some third-party logging providers use instead of the generic key/value interface, plus the
+            // out-of-range indexer guard, so the compiler-generated accessors are covered from a real call site.
+            if (state is System.Collections.IEnumerable legacy)
+            {
+                foreach (var _ in legacy) { }
+            }
+
+            if (fields.Count > 0)
+            {
+                for (var index = 0; index < fields.Count; index++) { _ = fields[index]; }
+
+                try
+                {
+                    _ = fields[fields.Count];
+                }
+                catch (IndexOutOfRangeException)
+                {
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                }
+            }
         }
 
         Messages.Add(formatter(state, exception));

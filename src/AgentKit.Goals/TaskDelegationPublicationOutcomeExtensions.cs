@@ -11,19 +11,15 @@ internal static class TaskDelegationPublicationOutcomeExtensions
         /// <summary>Gets the bounded stable value exported for a defined terminal outcome.</summary>
         /// <returns>The non-empty bounded outcome value.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="outcome"/> is undefined.</exception>
-        internal string ToStableValue()
+        internal string ToStableValue() => outcome switch
         {
-            ArgumentOutOfRangeException.ThrowIfUndefined(outcome);
-            return outcome switch
-            {
-                TaskDelegationPublicationOutcome.Dispatched => "dispatched",
-                TaskDelegationPublicationOutcome.ChannelRejected => "channel_rejected",
-                TaskDelegationPublicationOutcome.GrantDenied => "grant_denied",
-                TaskDelegationPublicationOutcome.CapturedAuthorizationMismatch => "authorization_mismatch",
-                TaskDelegationPublicationOutcome.Cancelled => "cancelled",
-                TaskDelegationPublicationOutcome.Failed => "failed",
-                _ => throw new UnreachableException(),
-            };
-        }
+            TaskDelegationPublicationOutcome.Dispatched => "dispatched",
+            TaskDelegationPublicationOutcome.ChannelRejected => "channel_rejected",
+            TaskDelegationPublicationOutcome.GrantDenied => "grant_denied",
+            TaskDelegationPublicationOutcome.CapturedAuthorizationMismatch => "authorization_mismatch",
+            TaskDelegationPublicationOutcome.Cancelled => "cancelled",
+            TaskDelegationPublicationOutcome.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The task delegation publication outcome is undefined."),
+        };
     }
 }
