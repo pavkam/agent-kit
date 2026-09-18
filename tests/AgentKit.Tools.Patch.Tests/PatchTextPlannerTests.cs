@@ -34,6 +34,39 @@ public sealed class PatchTextPlannerTests
     }
 
     [Fact]
+    public void TryApply_WhenRemovedUnterminatedLineOnlyMatchesALinePrefix_RejectsAsNoMatch()
+    {
+        // IndexOfLineAnchoredBlock only anchored the start of the old block at a line boundary. When the
+        // hunk's last source line carries the "\ No newline at end of file" marker (HasTerminator: false), the
+        // old block ends without '\n', so "foo" must not match the first three characters of "foobar\n": that
+        // is a different, longer line than the one the hunk describes, and applying anyway would silently
+        // leave "bar\n" behind instead of rejecting the hunk as not matching.
+        var hunk = new ParsedPatchHunk([new ParsedPatchLine('-', "foo", false), new ParsedPatchLine('+', "baz", false),]);
+
+        var success = PatchTextPlanner.TryApply([.. Encoding.UTF8.GetBytes("foobar\n")], [hunk], out var final, out _);
+
+        if (success)
+        {
+            Encoding.UTF8.GetString([.. final]).ShouldBe("foobar\n", "a line-prefix match on an unterminated block must never be applied");
+        }
+
+        success.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryApply_WhenRemovedUnterminatedLineIsTheFilesFinalLine_Matches()
+    {
+        // The positive counterpart: when the old block's unterminated line genuinely reaches the end of the
+        // file, the match is legitimate and must still be applied.
+        var hunk = new ParsedPatchHunk([new ParsedPatchLine('-', "foo", false), new ParsedPatchLine('+', "baz", false),]);
+
+        var success = PatchTextPlanner.TryApply([.. Encoding.UTF8.GetBytes("foo")], [hunk], out var final, out var error);
+
+        success.ShouldBeTrue(error);
+        Encoding.UTF8.GetString([.. final]).ShouldBe("baz");
+    }
+
+    [Fact]
     public void TryApply_WhenSameBlockAppearsAsSuffixOfAnotherLine_DoesNotReportAmbiguity()
     {
         // The exact line "foo" occurs once; "xfoo" is a different line and must not count as a second match.

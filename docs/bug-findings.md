@@ -1491,6 +1491,7 @@ if (candidate == 0 || text[candidate - 1] == '\n')
   `candidate + block.Length == text.Length` (the block must be the file's final,
   unterminated line); apply the same rule in the ambiguity probe.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T04 — `set_status` on a session with no plan is reported as a successful, performed mutation
 
