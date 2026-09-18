@@ -69,7 +69,7 @@ earlier; a workstream is not started until its listed dependencies are merged.
 | #   | Workstream                                    | Depends on | Size |
 | --- | --------------------------------------------- | ---------- | ---- |
 | 1   | Run envelope, admission, lanes, attach/cancel | –          | XL   |
-| 2   | Hook kernel completion                        | –          | L    |
+| 2   | Hook kernel completion                        | –          | XL   |
 | 3   | Permissions algebra, approvals, audit         | 2          | L    |
 | 4   | Tool runtime switch                           | 2, 3       | XL   |
 | 5   | Host access completion                        | 3          | L    |
@@ -300,6 +300,56 @@ profile per definition.
 depth, failure-mode precedence, isolation leaks nothing, profile selection per
 definition, each new point dispatched from its component (added as the component
 lands), observability for dispatch and invocation.
+
+**Size correction from hands-on research (still XL, not L).** The current kernel
+(`src/AgentKit.Hooks/DefaultHookDispatcher.cs`,
+`src/AgentKit.Abstractions/Hooks/IHookDispatcher.cs`) is a working, well-tested,
+stateless dispatcher over a caller-supplied `HookPointId` +
+`IEnumerable<THook>` + invoke delegate + `HookDispatchScope` value. The
+documented target (`docs/architecture/extensions.md:49-346`,
+`docs/concepts/extensions-hooks-and-middleware.md`) is a complete kernel
+rebuild, not a signature change: it requires an activation/leasing/tracking
+layer that does not exist in any form today. None of the following types exist
+anywhere in the codebase: `HookRegistrationId`, `HookDispatchId`,
+`HookCatalogVersion`, `HookOrder`, `HookLifetime`, `HookReentrancyPolicy`,
+`HookPointKind`, `HookMutationDispatchMode`, `HookReloadBoundary`,
+`HookRegistrationDescriptor`, `HookCatalogSnapshot`, `HookDispatchMetadata`,
+`HookInvocationContext`, `HookDispatchContext`, `HookProfileOptions`,
+`HookInvocationDiagnostic`, `HookPointDefinition<THook,TEventArgs>`,
+`HookInvoker<THook,TEventArgs>`, `IHookMutationValidator<TEventArgs>`,
+`IHookRegistrationSource`, `IHookProfileSelector`, `IHookOrderResolver`,
+`IHookCatalog`, `IHookInstanceFactory`, `IHookActivationLease`,
+`IHookInvocationTracker`, `IHookDiagnosticSink`, `IHookDiagnosticDispatcher`.
+The target `IHookDispatcher.DispatchAsync` no longer takes the hook enumerable
+or invoke delegate at all — the kernel resolves hooks itself through
+`context.Activation` against `context.Catalog`, a full control-flow inversion
+from today's caller-owns-the-list model. Ordering metadata
+(`Priority`/`RunsBefore`/`RunsAfter`/`DependsOn`) moves off the hook
+implementation (`IHook`) onto registration-time data
+(`HookRegistrationDescriptor`), so today's `IHook` base interface and all three
+existing point interfaces (`IRunStartedHook`, `IBeforeModelRequestHook`,
+`IBeforeToolInvocationHook`) and their `EventArgs` types are superseded, not
+extended — including a further change on top of the `AgentId`/`SessionId`
+de-duplication that already landed in commit `c9b33fe8`. `AgentHookEventArgs`
+itself changes shape (takes one `HookDispatchMetadata`, drops the
+per-dispatch-shared `HookInvocationId` that today's base incorrectly carries per
+the concept doc's own line 149-153 critique of that exact defect). The kernel
+must enforce a three-way match (point ID / dispatch context point / event-arg
+point, plus matching `HookDispatchId`) before resolving any hook — absent today.
+Every one of `DefaultAgentLoop`'s three existing dispatch call sites (lines
+~419, ~717, ~1368) must be rewritten to build a `HookDispatchContext` and closed
+`HookPointDefinition` instead of passing `HookDispatchScope.Root` and an ad-hoc
+lambda. Composition validation gains five new required engine-wide singular
+services (profile selector, catalog, order resolver, dispatch kernel,
+point-definition catalog) plus a per-catalog invocation tracker, none of which
+exist as validated services today. Treat this as its own multi-commit effort:
+(2a) kernel types, activation/leasing/tracking, `DefaultHookDispatcher` rewrite,
+migrate the three existing points and their loop call sites, full reusable
+conformance suite for the new contracts; (2b) hook profile selection wired to
+`AgentDefinition.HookProfile`; new dispatch sites at each component are added
+incrementally as that component is touched by its own workstream (context
+assembly in workstream 9, tool execution in workstream 4, output in workstream
+8, etc.) rather than all at once here.
 
 **Docs.** `architecture/extensions.md`,
 `concepts/extensions-hooks-and- middleware.md` scenario list, `agentkit-hooks`
