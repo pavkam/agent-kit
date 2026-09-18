@@ -175,8 +175,13 @@ uncovered four blocking gaps. Status as of commit `9c7ca08a`:
    swappable `IInputQueue` cannot be built against today's shape. Extend both
    request records with these fields, or accept that a session-backed queue is
    agent/definition-scoped (resolved per loop key) rather than one engine-wide
-   singleton. Blocked on (4) for the same reason `AcceptRunAsync` is: it needs a
-   real `RunConfigurationReference` from a lane-aware caller.
+   singleton. This is no longer blocked on (4) — `AgentEngine.SendAgentAsync`
+   now builds a real `RunConfigurationReference` directly at the admission
+   boundary rather than through a generic `IInputQueue` — but a first-party
+   `SessionBackedInputQueue` for steering/follow-up promotion during an
+   in-flight run (`IInputCoordinator`, not the initial-message admission this
+   workstream just closed) still needs this shape decided before it can be
+   built.
 3. **Closed for the loop's own consumption; still open for durable engine
    admission.** `RunConfigurationReference` requires a `RunPolicyVersion`, but
    no first-party component ever produced one — every call site in the
@@ -189,37 +194,33 @@ uncovered four blocking gaps. Status as of commit `9c7ca08a`:
    the gap for `RunContinuationContext.PolicyVersion`, `DefaultAgentLoop`'s only
    current consumer. It does not yet flow into a durable
    `RunConfigurationReference` from the engine's admission path — see (4).
-4. **Open, and the actual blocker for the rest of this workstream.**
-   `DefaultAgentLoop` is not lane-aware: every turn appends with
-   `executionLaneId: null` (`RunTurnAsync`, session-wide, never lane-scoped),
-   mints its own fresh `TurnId` per turn independent of any admission-level turn
-   identity, and never calls `ProvisionLaneAsync`, `AdmitInputAsync`,
-   `AcceptRunAsync`, `LoadLaneStateAsync`, `LoadRunStateAsync`, or
-   `ReleaseRunAsync`. This is architecture's own documented, deliberate interim
-   state (`agent-runtime.md:68-71`: "until the loop carries an explicit lane and
-   policy snapshot, it drives one implicit lane per branch... and names a single
-   fixed policy version"). Consequently, if `AgentEngine.SendAgentAsync` called
-   `ProvisionLaneAsync`/`AdmitInputAsync`/ `AcceptRunAsync` today, it would
-   write a durable `SessionAcceptedRunState` (with an `InitialTurnId` the loop
-   never honors, an `OperationStateRevision` the loop never advances, and a lane
-   the loop never releases) that is inert — present in the session's history but
-   never read, updated, or released by anything. That is a worse failure mode
-   than a fabricated version: it is durable infrastructure providing zero actual
-   recovery benefit while presenting a false impression of durability. Replacing
-   `AgentEngine.SendAgentAsync`'s direct `sessions.AppendAsync` and the
-   process-local `SessionLaneRegistry` with the real lane protocol therefore
-   requires making `DefaultAgentLoop` lane-aware first, or as part of the same
-   change: threading `ExecutionLaneId`/`SessionExecutionCapability` through
-   every turn, honoring an admission-supplied `InitialTurnId` for the run's
-   first turn, advancing a real `OperationStateRevision`, and calling
-   `ReleaseRunAsync` on settlement. This is the loop-signature rewrite already
-   scoped earlier in this workstream
-   (`IAgentLoop.RunAsync(AgentRunInvocation, …)` replacing the interim shape;
-   `AgentRunServices` gaining `IInputCoordinator`/`SessionExecutionCapability`;
-   the loop draining steering input at the turn boundary) — this hands-on
-   finding confirms it is a hard ordering prerequisite for engine-level lane
-   wiring, not independent, parallelizable work. Do not attempt a partial
-   engine-side wiring that writes an accepted-run record the loop cannot honor.
+4. **Closed.** `DefaultAgentLoop` is now lane-aware (commit `4288752b`):
+   `LoopLaneAdmission` (`ExecutionLaneId`, an `AcceptedCorrelation` carrying a
+   non-null `TurnId`, `OperationStateRevision`) flows through
+   `AgentRunRequest.LaneAdmission` (optional). When present, the loop uses the
+   admitted lane instead of `null` at both `SessionOperationContext`
+   construction sites, uses the admission's `TurnId` for the run's first turn
+   instead of minting a fresh one, and calls `ReleaseRunAsync` (best-effort,
+   `CancellationToken.None`, never changes the settled outcome) once
+   `AgentRunServices.RunCoordinator` (also new, optional) and `FinalVersion` are
+   both present. `AgentEngine.SendAgentAsync` now drives the real protocol end
+   to end (commit `3b209f27`): `LoadLaneStateAsync` discovers an idle lane or
+   rejects an occupied one; `ProvisionLaneAsync` provisions against the real
+   branch tip and session version when no lane exists yet; a real
+   `RunConfigurationReference` is built from the pinned configuration version,
+   `RunPolicyVersioning.Compute`, and the session profile's configuration
+   fingerprint; `AdmitInputAsync` durably admits the user message; and
+   `AcceptRunAsync` produces the `LoopLaneAdmission` passed into
+   `BuildRunRequest`. The engine releases the lane itself once the loop settles,
+   independent of which `IAgentLoop` drove the run, so a scripted or third-party
+   loop that never learned the protocol cannot leave a session permanently
+   occupied; `DefaultAgentLoop`'s own release is a harmless second no-op in that
+   case. The process-local `SessionLaneRegistry` is retained deliberately,
+   layered in front of the durable protocol, because it serves a different
+   concern the protocol has no opinion on: serializing concurrent in-process
+   callers targeting the same session (`Wait`/`Reject` busy behavior) before
+   either one attempts durable admission. Full solution format/lint/build/test
+   (15,817 tests) green after this change.
 
 **Deliverables.** Abstractions: `AgentRunInvocation`, extended
 `AgentRunServices`, unified outcome family, `IRunEventSink`,
@@ -246,7 +247,13 @@ SQLite present, JSON present).
 **Acceptance.** `docs/architecture/composition-and-configuration.md` L272–445
 compiles as written against the public surface; no production code references
 `SessionLaneRegistry`; `AgentRunFinished<T>` is produced by the facade for every
-terminal run.
+terminal run. (As of commit `3b209f27`, `SessionLaneRegistry` is still present
+and still referenced by `AgentEngine`, now layered in front of the durable lane
+protocol rather than instead of it — see prerequisite (4) above. This acceptance
+criterion is not yet met; closing it requires deciding whether the final design
+still needs an in-process concurrency gate ahead of durable admission and, if
+so, replacing this fixed-purpose type with whatever the outcome-family
+unification settles on.)
 
 ---
 
