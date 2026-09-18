@@ -980,6 +980,29 @@ public sealed class DefaultHookDispatcherTests
         activity.OperationName.ShouldBe(AgentKitActivityNames.HookDispatch);
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.HookInvocationId).ShouldBe(args.InvocationId.ToString());
+        activity.GetTagItem(AgentKitTagNames.AgentId).ShouldBeNull();
+        activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenArgsAreAgentScoped_TagsAgentAndSessionIdentity()
+    {
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var args = new TestAgentScopedHookEventArgs(agentId, sessionId);
+        var dispatcher = new DefaultHookDispatcher();
+        await dispatcher.DispatchAsync<TestHook, TestAgentScopedHookEventArgs>(new HookPointId("test.scoped"), [], args, static (_, _, _, _) => Task.CompletedTask, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
+        var activity = stopped.ShouldNotBeNull();
+        activity.GetTagItem(AgentKitTagNames.AgentId).ShouldBe(agentId.ToString());
+        activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBe(sessionId.ToString());
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;

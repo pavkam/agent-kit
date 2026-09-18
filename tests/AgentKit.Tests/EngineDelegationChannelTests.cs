@@ -222,20 +222,24 @@ public sealed class EngineDelegationChannelTests
         AgentId target,
         int maximumTurns = 2,
         ImmutableArray<string> criteria = default,
-        DateTimeOffset? deadline = null) => new(
-        new DelegationId(Guid.NewGuid()),
-        CompositionTestData.AgentId,
-        CompositionTestData.SessionId,
-        new RunId(Guid.NewGuid()),
-        new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
-        new ToolCallId(Guid.NewGuid()),
-        CompositionTestData.Identity(),
-        target,
-        "Find the retry policy.",
-        criteria.IsDefault ? ["Answer briefly."] : criteria,
-        [],
-        new TaskDelegationBudget(maximumTurns, 10),
-        deadline ?? new DateTimeOffset(2026, 9, 18, 13, 0, 0, TimeSpan.Zero));
+        DateTimeOffset? deadline = null)
+    {
+        var parentRunId = new RunId(Guid.NewGuid());
+        return new(
+            new DelegationId(Guid.NewGuid()),
+            CompositionTestData.AgentId,
+            CompositionTestData.SessionId,
+            parentRunId,
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), parentRunId, null),
+            new ToolCallId(Guid.NewGuid()),
+            CompositionTestData.Identity(),
+            target,
+            "Find the retry policy.",
+            criteria.IsDefault ? ["Answer briefly."] : criteria,
+            [],
+            new TaskDelegationBudget(maximumTurns, 10),
+            deadline ?? new DateTimeOffset(2026, 9, 18, 13, 0, 0, TimeSpan.Zero));
+    }
 
     private sealed class CountingGoalIdGenerator: IIdentifierGenerator<GoalId>
     {

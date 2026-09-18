@@ -28,30 +28,30 @@ internal sealed class SessionRunLease: ISessionRunLease
         _owner = owner;
         _session = session;
         _context = request.Context;
-        TenantId = request.Context.Identity.TenantId;
         LeaseId = leaseId;
-        AgentId = request.AgentId;
-        SessionId = request.SessionId;
-        ExecutionLaneId = request.ExecutionLaneId;
-        OperationId = request.OperationId;
-        RunId = request.RunId;
         StateRevision = request.ExpectedStateRevision;
     }
 
     /// <inheritdoc/>
     public SessionLeaseId LeaseId { get; }
     /// <inheritdoc/>
-    public TenantId TenantId { get; }
+    /// <value>Read through the retained lease context; never a second stored copy.</value>
+    public TenantId TenantId => _context.Identity.TenantId;
     /// <inheritdoc/>
-    public AgentId AgentId { get; }
+    /// <value>Read through the retained lease context; never a second stored copy.</value>
+    public AgentId AgentId => _context.AgentId;
     /// <inheritdoc/>
-    public SessionId SessionId { get; }
+    /// <value>Read through the retained lease context; never a second stored copy.</value>
+    public SessionId SessionId => _context.SessionId;
     /// <inheritdoc/>
-    public ExecutionLaneId ExecutionLaneId { get; }
+    /// <value>Read through the retained lease context; never a second stored copy.</value>
+    public ExecutionLaneId ExecutionLaneId => _context.ExecutionLaneId!.Value;
     /// <inheritdoc/>
-    public OperationId OperationId { get; }
+    /// <value>Read through the retained lease context's in-run correlation; never a second stored copy.</value>
+    public OperationId OperationId => ((InRunOperationCorrelation) _context.Correlation).OperationId;
     /// <inheritdoc/>
-    public RunId RunId { get; }
+    /// <value>Read through the retained lease context's in-run correlation; never a second stored copy.</value>
+    public RunId RunId => ((InRunOperationCorrelation) _context.Correlation).RunId;
     /// <inheritdoc/>
     public OperationStateRevision StateRevision { get; }
     /// <inheritdoc/>

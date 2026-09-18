@@ -34,6 +34,25 @@ turn, message, tool call, goal, or operation identity as a raw string, GUID, or
 integer. Identifier creation that affects deterministic behavior MUST use an
 injected generator.
 
+### Reference the value you hold; never store an identity twice
+
+Within one process and one call chain, a type that already holds an immutable
+value exposing an identity (an authorization scope, a causal correlation, a
+session address, a pinned definition) MUST NOT also store that same identity a
+second time as a sibling property. Expose it as a computed accessor over the
+held value instead. This is distinct from the identity-versus-primitive rule
+above: the concern here is a second copy of a real identity value, not a
+downgrade to a raw type.
+
+A stored duplicate is real only when a constructor actually enforces equality
+between the two copies; if nothing enforces it, the fields are either not truly
+redundant or a missing invariant needs to be added and tested before the
+duplicate is removed. Wire, session-entry, and other persisted or serialized
+shapes are unaffected by this rule; they keep every identity they carry today.
+See
+[identity values versus object references](../identity-and-object-references.md)
+for the full inventory and migration record.
+
 ### Separate acceptance from execution
 
 [Accepting input is not the same operation as promoting it](input-admission-and-message-queues.md)

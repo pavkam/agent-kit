@@ -94,6 +94,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         ArgumentNullException.ThrowIfNull(invoke);
         ArgumentNullException.ThrowIfNull(scope);
 
+        var scoped = args as AgentScopedHookEventArgs;
         using var activityScope = AgentKitActivityScope.Start(
             AgentKitActivityNames.HookDispatch,
             ActivityKind.Internal,
@@ -101,8 +102,8 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
             {
                 new(AgentKitTagNames.HookPoint, point.ToString()),
                 new(AgentKitTagNames.HookInvocationId, args.InvocationId.ToString()),
-                new(AgentKitTagNames.AgentId, args.AgentId.ToString()),
-                new(AgentKitTagNames.SessionId, args.SessionId?.ToString()),
+                new(AgentKitTagNames.AgentId, scoped?.AgentId.ToString()),
+                new(AgentKitTagNames.SessionId, scoped?.SessionId?.ToString()),
                 new(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString()),
             });
         var activity = activityScope.Activity;

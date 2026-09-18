@@ -56,29 +56,26 @@ public sealed record SessionOperationContext
             authorization,
             nameof(authorization));
 
-        AgentId = agentId;
-        SessionId = sessionId;
         ExecutionLaneId = executionLaneId;
-        Correlation = correlation;
         Identity = identity;
         Authorization = authorization;
     }
 
     /// <summary>Gets the agent that owns the session.</summary>
-    /// <value>The non-default agent identity bound into authorization.</value>
-    public AgentId AgentId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public AgentId AgentId => Authorization.Scope.AgentId;
 
     /// <summary>Gets the session this operation targets.</summary>
-    /// <value>The non-default session identity bound into authorization.</value>
-    public SessionId SessionId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public SessionId SessionId => Authorization.Scope.SessionId!.Value;
 
     /// <summary>Gets the lane for lane-owned work.</summary>
     /// <value>A non-default lane identity, or <see langword="null"/> for truthful session-wide work.</value>
     public ExecutionLaneId? ExecutionLaneId { get; }
 
     /// <summary>Gets the causal operation performing this call.</summary>
-    /// <value>The immutable before-, in-, or after-run correlation captured for authorization and audit.</value>
-    public OperationCorrelation Correlation { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public OperationCorrelation Correlation => Authorization.Scope.Correlation;
 
     /// <summary>Gets the identity on whose behalf this operation is performed.</summary>
     /// <value>The complete immutable trusted-ingress identity matching authorization evidence.</value>

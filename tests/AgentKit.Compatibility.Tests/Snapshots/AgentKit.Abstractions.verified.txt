@@ -240,11 +240,9 @@ namespace AgentKit
     }
     public abstract class AgentHookEventArgs : System.EventArgs
     {
-        protected AgentHookEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId? sessionId, AgentKit.OperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId) { }
-        public AgentKit.AgentId AgentId { get; }
+        protected AgentHookEventArgs(AgentKit.OperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId) { }
         public AgentKit.OperationCorrelation Correlation { get; }
         public AgentKit.HookInvocationId InvocationId { get; }
-        public AgentKit.SessionId? SessionId { get; }
         public System.DateTimeOffset Timestamp { get; }
         public virtual object? CaptureMutableState() { }
         public virtual void RestoreMutableState(object? snapshot) { }
@@ -546,6 +544,12 @@ namespace AgentKit
     {
         public AgentRunTurnLimitReached(int maxTurns) { }
         public int MaxTurns { get; init; }
+    }
+    public abstract class AgentScopedHookEventArgs : AgentKit.AgentHookEventArgs
+    {
+        protected AgentScopedHookEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId? sessionId, AgentKit.OperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SessionId? SessionId { get; }
     }
     public readonly struct ApiFamilyId : System.IEquatable<AgentKit.ApiFamilyId>
     {
@@ -1217,7 +1221,7 @@ namespace AgentKit
         public TRequest Request { get; }
         public AgentKit.SessionStoreKey StoreKey { get; }
     }
-    public sealed class BeforeModelRequestEventArgs : AgentKit.AgentHookEventArgs
+    public sealed class BeforeModelRequestEventArgs : AgentKit.AgentScopedHookEventArgs
     {
         public BeforeModelRequestEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, int turn, AgentKit.LlmRequestContext request) { }
         public AgentKit.LlmRequestSettings OriginalSettings { get; }
@@ -1236,7 +1240,7 @@ namespace AgentKit
         public BeforeRunOperationCorrelation(AgentKit.OperationId operationId, AgentKit.AdmissionId? admissionId) { }
         public AgentKit.AdmissionId? AdmissionId { get; init; }
     }
-    public sealed class BeforeToolInvocationEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IShortCircuitingHookArgs
+    public sealed class BeforeToolInvocationEventArgs : AgentKit.AgentScopedHookEventArgs, AgentKit.IShortCircuitingHookArgs
     {
         public BeforeToolInvocationEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, AgentKit.ToolCallPart call) { }
         public System.Text.Json.JsonElement Arguments { get; set; }
@@ -6600,7 +6604,7 @@ namespace AgentKit
         public RunSettlementRecoveryRequired(AgentKit.AgentError failure) { }
         public AgentKit.AgentError Failure { get; }
     }
-    public sealed class RunStartedEventArgs : AgentKit.AgentHookEventArgs
+    public sealed class RunStartedEventArgs : AgentKit.AgentScopedHookEventArgs
     {
         public RunStartedEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, AgentKit.BranchId branchId, AgentKit.ModelDescriptor model, int maxTurns, System.TimeSpan attemptTimeout) { }
         public System.TimeSpan AttemptTimeout { get; }
@@ -8051,7 +8055,7 @@ namespace AgentKit
         public AgentKit.ExecutionIdentity Identity { get; init; }
         public string Objective { get; init; }
         public AgentKit.AgentId ParentAgentId { get; init; }
-        public AgentKit.RunId ParentRunId { get; init; }
+        public AgentKit.RunId ParentRunId { get; }
         public AgentKit.SessionId ParentSessionId { get; init; }
         public AgentKit.AgentId TargetAgentId { get; init; }
         public AgentKit.ToolCallId ToolCallId { get; init; }

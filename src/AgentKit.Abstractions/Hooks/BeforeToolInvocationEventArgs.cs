@@ -20,7 +20,7 @@ using System.Text.Json;
 /// This is a transform point: the loop dispatches it with <see cref="HookFailureMode.FailOperation"/>.
 /// </para>
 /// </remarks>
-public sealed class BeforeToolInvocationEventArgs: AgentHookEventArgs, IShortCircuitingHookArgs
+public sealed class BeforeToolInvocationEventArgs: AgentScopedHookEventArgs, IShortCircuitingHookArgs
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="agentId">The agent being run.</param>
@@ -40,19 +40,20 @@ public sealed class BeforeToolInvocationEventArgs: AgentHookEventArgs, IShortCir
         ToolCallPart call)
         : base(agentId, sessionId, correlation, timestamp, invocationId)
     {
+        ArgumentNullException.ThrowIfNull(correlation);
         ArgumentNullException.ThrowIfNull(call);
         ArgumentException.ThrowIfNotEqual(correlation.TurnId.HasValue, true, nameof(correlation));
-        RunId = correlation.RunId;
-        TurnId = correlation.TurnId!.Value;
         Call = call;
         Arguments = call.Arguments;
     }
 
     /// <summary>Gets the run identity.</summary>
-    public RunId RunId { get; }
+    /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>
+    public RunId RunId => ((InRunOperationCorrelation) Correlation).RunId;
 
     /// <summary>Gets the turn identity.</summary>
-    public TurnId TurnId { get; }
+    /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to name a turn; never a second stored copy.</value>
+    public TurnId TurnId => ((InRunOperationCorrelation) Correlation).TurnId!.Value;
 
     /// <summary>Gets the model's tool call as committed; read-only.</summary>
     public ToolCallPart Call { get; }
