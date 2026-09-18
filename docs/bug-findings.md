@@ -1090,6 +1090,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   `await using var loopScope = _loopScopeFactory.CreateAsyncScope();` (with
   `ConfigureAwait(false)`), matching `AgentEngine`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### L03 — `CompleteAsync`/`DisposeAsync` race leaves a retained final result whose `Completion` is cancelled
 

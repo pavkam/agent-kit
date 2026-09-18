@@ -4,10 +4,25 @@
 namespace AgentKit.Conversations.Tests;
 
 /// <summary>A deterministic, configurable <see cref="IAgentLoop"/> fake used to drive <see cref="DefaultConversationSession"/> tests.</summary>
-internal sealed class FakeAgentLoop: IAgentLoop
+/// <remarks>
+/// Also implements <see cref="IAsyncDisposable"/> (but deliberately not <see cref="IDisposable"/>) so a test can
+/// register this fake as a scoped keyed service and observe how the disposing scope handles an
+/// IAsyncDisposable-only occupant.
+/// </remarks>
+internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
 {
     /// <summary>Gets the number of times <see cref="RunAsync"/> was called.</summary>
     public int CallCount { get; private set; }
+
+    /// <summary>Gets the number of times <see cref="DisposeAsync"/> was called.</summary>
+    public int DisposeAsyncCallCount { get; private set; }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        DisposeAsyncCallCount++;
+        return ValueTask.CompletedTask;
+    }
 
     /// <summary>Gets the most recent request observed.</summary>
     public AgentRunRequest? LastRequest { get; private set; }

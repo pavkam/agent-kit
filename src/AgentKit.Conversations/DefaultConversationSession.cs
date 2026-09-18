@@ -559,7 +559,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     _toolPresentationBindings),
         };
 
-        using var loopScope = _loopScopeFactory.CreateScope();
+        await using var loopScope = _loopScopeFactory.CreateAsyncScope();
         var agentLoop = loopScope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
         var loopResult = await agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);

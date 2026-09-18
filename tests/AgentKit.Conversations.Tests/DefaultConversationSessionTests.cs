@@ -691,6 +691,27 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheScopedLoopIsOnlyAsyncDisposable_DoesNotThrowAfterTheTurnAlreadyCommitted()
+    {
+        // IAgentLoop is registered scoped and is an explicitly replaceable extension point. Disposing the loop
+        // scope synchronously (a plain `using`) makes Microsoft DI's ServiceProviderEngineScope.Dispose() throw
+        // InvalidOperationException when the scope holds a service that implements only IAsyncDisposable, and
+        // that exception fires after RunAsync already returned - turning a fully committed, successful turn into
+        // a reported fault and losing its ConversationTurnResult.
+        var loop = new FakeAgentLoop();
+        var services = new ServiceCollection();
+        _ = services.AddKeyedScoped<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, (_, _) => loop);
+        var loopScopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        var coordinator = new FakeSessionCoordinator();
+        using var session = CreateSession(coordinator: coordinator, loopScopeFactory: loopScopeFactory);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        loop.DisposeAsyncCallCount.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAssistantResponseReportsUsage_ProjectsAUsageEventAfterItsContent()
     {
         var usage = new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty);
@@ -1598,6 +1619,7 @@ public sealed class DefaultConversationSessionTests
         ISessionCoordinator? coordinator = null,
         ISecurityProfileSelector? selector = null,
         IAgentLoop? loop = null,
+        IServiceScopeFactory? loopScopeFactory = null,
         Action<ConversationSessionOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
         ConversationSessionOptions? options = null,
@@ -1606,7 +1628,7 @@ public sealed class DefaultConversationSessionTests
         new(
             coordinator ?? new FakeSessionCoordinator(),
             selector ?? new FakeSecurityProfileSelector(),
-            LoopScopeFactory(loop ?? new FakeAgentLoop()),
+            loopScopeFactory ?? LoopScopeFactory(loop ?? new FakeAgentLoop()),
             new UnsupportedContextAssembler(),
             new CaptureTestToolInvoker(),
             new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])),
