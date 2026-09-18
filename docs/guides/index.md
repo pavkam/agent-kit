@@ -12,6 +12,8 @@ outgrow them.
 | [Permissions and approvals](permissions.md) | How a decision is made, read-only and scoped policies, asking a human before acting, identity, and audit. |
 | [Composing an application](composition.md)  | The engine's lifetimes and required collaborators, and the written-out composition behind the sugar.      |
 
+The [use cases](../use-cases/index.md) combine these features into complete
+compositions for particular applications, and document the two example programs.
 Use the [project catalog](../packages/index.md) to choose a package, or return
 to the [documentation home](../index.md) for architecture, concepts, and the
 provider reference.

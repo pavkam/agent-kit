@@ -6,17 +6,18 @@ architecture and concept specifications define the complete intended design.
 
 ## Build with AgentKit
 
-| You want to…                                   | Start here                                          |
-| ---------------------------------------------- | --------------------------------------------------- |
-| Run your first agent                           | [Getting started](getting-started.md)               |
-| Keep conversations after a restart             | [Storing conversations](guides/storage.md)          |
-| Let the agent read, search, and edit files     | [Working with files](guides/file-system.md)         |
-| Decide what the agent may do                   | [Permissions and approvals](guides/permissions.md)  |
-| Understand engines, agents, sessions, and runs | [Composing an application](guides/composition.md)   |
-| Find a package and its related projects        | [Project catalog](packages/index.md)                |
-| Select a provider and check its wire behavior  | [Provider reference](providers/index.md)            |
-| Check what still needs implementation or proof | [Current status](getting-started.md#current-status) |
-| Run focused tests or add a regression          | [Testing guide](testing/index.md)                   |
+| You want to…                                    | Start here                                          |
+| ----------------------------------------------- | --------------------------------------------------- |
+| Run your first agent                            | [Getting started](getting-started.md)               |
+| Keep conversations after a restart              | [Storing conversations](guides/storage.md)          |
+| Let the agent read, search, and edit files      | [Working with files](guides/file-system.md)         |
+| Decide what the agent may do                    | [Permissions and approvals](guides/permissions.md)  |
+| Understand engines, agents, sessions, and runs  | [Composing an application](guides/composition.md)   |
+| See complete compositions for real applications | [Use cases](use-cases/index.md)                     |
+| Find a package and its related projects         | [Project catalog](packages/index.md)                |
+| Select a provider and check its wire behavior   | [Provider reference](providers/index.md)            |
+| Check what still needs implementation or proof  | [Current status](getting-started.md#current-status) |
+| Run focused tests or add a regression           | [Testing guide](testing/index.md)                   |
 
 ## Go deeper
 
