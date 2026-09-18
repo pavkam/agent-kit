@@ -23,6 +23,13 @@ public sealed class ProcessEnvironmentVariableTests
         Should.Throw<ArgumentException>(() => new ProcessEnvironmentVariable("NAME", "value\0")).ParamName.ShouldBe("value");
 
     [Fact]
+    public void Constructor_WhenNameContainsEquals_ThrowsExactParameter() =>
+        // A process runner materializes name=value into a single "name=value" environment block entry. A name
+        // containing '=' would split that entry, so the child process would observe a different variable name
+        // (everything before the first '=') carrying attacker-chosen content instead of the declared value.
+        Should.Throw<ArgumentException>(() => new ProcessEnvironmentVariable("PATH=/tmp", "value")).ParamName.ShouldBe("name");
+
+    [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
         var variable = new ProcessEnvironmentVariable("NAME", "value");

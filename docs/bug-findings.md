@@ -485,6 +485,7 @@ findings).
 - **Suggested fix:** Reject `name.Contains('=')` (and, ideally, leading/trailing
   whitespace) with an `ArgumentException` and document it.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A11 — `LlmRequestSettings` equality is non-reflexive for NaN and accepts NaN/±Infinity sampling parameters
 

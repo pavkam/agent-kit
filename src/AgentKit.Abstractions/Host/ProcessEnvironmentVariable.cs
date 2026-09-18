@@ -7,9 +7,11 @@ namespace AgentKit;
 public sealed record ProcessEnvironmentVariable
 {
     /// <summary>Initializes one projected environment value.</summary>
-    /// <param name="name">The non-blank platform variable name.</param>
+    /// <param name="name">The non-blank platform variable name, which must not contain <c>'='</c>.</param>
     /// <param name="value">The non-null value supplied only to the child process.</param>
-    /// <exception cref="ArgumentException"><paramref name="name"/> is blank or either value contains NUL.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="name"/> is blank, contains <c>'='</c>, or either value contains NUL.
+    /// </exception>
     /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public ProcessEnvironmentVariable(string name, string value)
     {
@@ -17,6 +19,15 @@ public sealed record ProcessEnvironmentVariable
         ArgumentNullException.ThrowIfNull(value);
         ArgumentException.ThrowIfContainsNul(name);
         ArgumentException.ThrowIfContainsNul(value);
+        if (name.Contains('=', StringComparison.Ordinal))
+        {
+            // A process runner materializes name=value into a single "name=value" environment block entry. A
+            // name containing '=' would split that entry, so the child process would observe a different
+            // variable name (everything before the first '=') carrying attacker-chosen content instead of the
+            // declared value.
+            throw new ArgumentException("Value must not contain '='.", nameof(name));
+        }
+
         Name = name;
         Value = value;
     }
