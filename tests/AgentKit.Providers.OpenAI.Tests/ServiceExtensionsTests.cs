@@ -43,6 +43,20 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddOpenAI_WhenRegistered_BoundsThePooledConnectionLifetimeInsteadOfTheInfiniteDefault()
+    {
+        // SocketsHttpHandler's default PooledConnectionLifetime is infinite. A process-lifetime HttpClient
+        // singleton built over that default never observes a DNS change (e.g. a failed-over endpoint) until the
+        // process restarts - the well-documented singleton-HttpClient pitfall.
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        using var provider = services.BuildServiceProvider();
+        var handler = provider.GetRequiredService<SocketsHttpHandler>();
+
+        handler.PooledConnectionLifetime.ShouldBe(TimeSpan.FromMinutes(2));
+    }
+
+    [Fact]
     public void AddOpenAI_WhenOptionsConfigured_AppliesOverrides()
     {
         var services = new ServiceCollection();

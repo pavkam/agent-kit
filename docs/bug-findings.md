@@ -2171,6 +2171,7 @@ hygiene. Totals: **1 High, 5 Medium, 6 Low** (12 findings).
   client over a
   `SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) }`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

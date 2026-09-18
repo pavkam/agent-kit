@@ -63,11 +63,24 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton(TimeProvider.System);
+            // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
+            // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
+            // instead of pinning to one address for the process lifetime - the well-documented
+            // singleton-HttpClient pitfall. Registered as its own replaceable singleton so a caller can
+            // override the transport policy (e.g. a custom DelegatingHandler chain) without also having
+            // to replace the HttpClient registration below.
+            services.TryAddSingleton(_ => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            });
             // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered
             // (non-streaming) attempt regardless of the caller's LlmModelRequest.Deadline, since
             // this adapter's own deadlineSource is layered on top of, not instead of, the
             // transport-level timeout. The per-request deadlineSource already bounds every attempt.
-            services.TryAddSingleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
+            services.TryAddSingleton(provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>())
+            {
+                Timeout = Timeout.InfiniteTimeSpan,
+            });
 
             return services;
         }
