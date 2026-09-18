@@ -874,6 +874,42 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenALaterAssistantMessageResolvedItsOwnCalls_AttributesRecoveryToTheEarlierStillDanglingMessage()
+    {
+        // danglingEntry used to be overwritten by every complete AssistantMessage containing a ToolCallPart,
+        // regardless of whether that message's own calls were later resolved. An earlier assistant message
+        // (call1, never resolved) followed by a resolving tool result, then a later assistant message (call2,
+        // also resolved) must attribute the recovery's idempotency key and causal parent to the earlier,
+        // still-dangling message - not the later one, which has no dangling call at all.
+        var call1 = new ToolCallId(Guid.NewGuid());
+        var call2 = new ToolCallId(Guid.NewGuid());
+        var priorRunId = new RunId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => TestFactory.CompletedWithText(requestId));
+        var earlierDangling = TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, call1, priorRunId);
+        var laterResolved = TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 3, call2, priorRunId);
+        var resolvingResult = TestFactory.SeedToolResultEntry(_agentId, _sessionId, _branchId, 4, call2, priorRunId);
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            earlierDangling,
+            laterResolved,
+            resolvingResult,
+        ]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoker.ReceivedRequests.ShouldBeEmpty();
+        var settlement = result.NewMessages[0].ShouldBeOfType<ToolMessage>();
+        var settled = settlement.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolResultPart>();
+        settled.CallId.ShouldBe(call1);
+        var settlementEntry = coordinator.Entries[4].ShouldBeOfType<MessageSessionEntry>();
+        settlementEntry.CausalParentId.ShouldBe(earlierDangling.Id);
+        coordinator.ReceivedAppends[0].IdempotencyKey.Value.ShouldContain(earlierDangling.Message.Id.ToString());
+    }
+
+    [Fact]
     public async Task RunAsync_WhenDanglingToolCallIsInsideTheRetainedSuffix_StillSettlesItBeforeTheFirstTurn()
     {
         var callId = new ToolCallId(Guid.NewGuid());

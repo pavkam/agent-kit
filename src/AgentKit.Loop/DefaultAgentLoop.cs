@@ -1751,8 +1751,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(request is not null, "A validated run request is required for run-start recovery.");
         Debug.Assert(!entries.IsDefault, "Loaded history is an initialized array.");
         Debug.Assert(!messages.IsDefault, "The projected history is an initialized array.");
-        var pendingCalls = new Dictionary<ToolCallId, ToolCallPart>();
-        MessageSessionEntry? danglingEntry = null;
+        // Each pending call retains its own owning entry rather than a single shared "last assistant message
+        // seen" variable: a later assistant message whose own calls were all resolved (possible via
+        // imported/branched history or a different writer) must never overwrite the owner of an earlier,
+        // still-unresolved call.
+        var pendingCalls = new Dictionary<ToolCallId, (ToolCallPart Call, MessageSessionEntry Owner)>();
         foreach (var entry in entries)
         {
             if (entry is not MessageSessionEntry { Message.State: MessageState.Complete } messageEntry)
@@ -1765,8 +1768,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 switch (part)
                 {
                     case ToolCallPart call when messageEntry.Message is AssistantMessage:
-                        _ = pendingCalls.TryAdd(call.CallId, call);
-                        danglingEntry = messageEntry;
+                        _ = pendingCalls.TryAdd(call.CallId, (call, messageEntry));
                         break;
                     case ToolResultPart result when messageEntry.Message is ToolMessage:
                         _ = pendingCalls.Remove(result.CallId);
@@ -1777,14 +1779,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
         }
 
-        if (pendingCalls.Count == 0 || danglingEntry is null)
+        if (pendingCalls.Count == 0)
         {
             return (new HistoryView(cursor, messages, []), null);
         }
 
+        // The idempotency key and causal parent are attributed to the earliest still-pending call's owning
+        // message, not whichever assistant message the scan happened to visit last.
+        var danglingEntry = pendingCalls.Values
+            .Select(static pending => pending.Owner)
+            .DistinctBy(static owner => owner.Id)
+            .OrderBy(static owner => owner.Sequence.Value)
+            .First();
+
         LoopLog.DanglingToolCallsSettled(_logger, request.RunId, pendingCalls.Count);
         var now = _timeProvider.GetUtcNow();
         var resultParts = pendingCalls.Values
+            .Select(static pending => pending.Call)
             .Select(static call => (ContentPart) new ToolResultPart(
                 call.CallId,
                 call.Tool,

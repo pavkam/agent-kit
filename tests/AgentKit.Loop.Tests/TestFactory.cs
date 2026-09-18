@@ -186,6 +186,41 @@ internal static class TestFactory
                 ExtensionData.Empty));
     }
 
+    /// <summary>Builds a complete tool-result message entry that resolves one prior tool call, as a normal turn commits.</summary>
+    public static MessageSessionEntry SeedToolResultEntry(
+        AgentId agentId, SessionId sessionId, BranchId branchId, long sequence, ToolCallId callId, RunId runId)
+    {
+        var address = new SessionAddress(agentId, sessionId);
+        return new MessageSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId, new TurnId(Guid.NewGuid())),
+            branchId,
+            new SessionSequence(sequence),
+            null,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            new ToolMessage(
+                new MessageId(Guid.NewGuid()),
+                agentId,
+                sessionId,
+                null,
+                branchId,
+                runId,
+                turnId: null,
+                DateTimeOffset.UnixEpoch,
+                MessageState.Complete,
+                [new ToolResultPart(
+                    callId,
+                    new ToolReference(new ToolAlias("search"), null, null),
+                    new ToolCallOutcome(
+                        ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                    [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+                    new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+                    ExtensionData.Empty)],
+                ExtensionData.Empty));
+    }
+
     /// <summary>
     /// Builds a compaction entry in the shape the first-party compactor commits: an <see cref="CompactionRecordStatus.Active"/>
     /// record covering <paramref name="coveredStart"/>..<paramref name="coveredEnd"/> whose retained suffix starts at

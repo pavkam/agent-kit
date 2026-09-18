@@ -1290,6 +1290,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   recovery entry per owning message) for both the idempotency key and the causal
   parent.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 
