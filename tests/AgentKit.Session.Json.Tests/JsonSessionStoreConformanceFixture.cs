@@ -16,10 +16,32 @@ public sealed class JsonSessionStoreConformanceFixture: ISessionStoreConformance
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero));
     private readonly string _directory = TestTemporaryDirectory.Create();
     private readonly JsonSessionStoreInstanceId _instanceId = new(Guid.NewGuid());
+    private readonly JsonSessionStoreSettings _settings;
+    private readonly JsonStoreRecoveryMode _recoveryMode;
     private long _nextIdentity;
     private ServiceProvider? _services;
     private InMemorySecurityGrantStore? _grants;
     private JsonSessionStore? _store;
+
+    /// <summary>Initializes a fixture that composes the store under conservative default settings.</summary>
+    public JsonSessionStoreConformanceFixture()
+        : this(JsonSessionStoreSettings.CreateDefault(), JsonStoreRecoveryMode.RecoverTornAppends)
+    {
+    }
+
+    /// <summary>Initializes a fixture that composes the store under caller-supplied settings and recovery policy.</summary>
+    /// <param name="settings">The immutable bounds, continuation limits, compaction policy, and encoding contract.</param>
+    /// <param name="recoveryMode">Whether an incomplete trailing append may be discarded during initialization.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="settings"/> is null.</exception>
+    public JsonSessionStoreConformanceFixture(JsonSessionStoreSettings settings, JsonStoreRecoveryMode recoveryMode)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _settings = settings;
+        _recoveryMode = recoveryMode;
+    }
+
+    /// <summary>Gets the fully qualified store root this fixture composes, for direct filesystem manipulation in tests.</summary>
+    public string DirectoryPath => Path.Combine(_directory, "sessions");
 
     /// <inheritdoc/>
     public async ValueTask<ISessionStore> CreateAsync(CancellationToken cancellationToken = default)
@@ -32,11 +54,9 @@ public sealed class JsonSessionStoreConformanceFixture: ISessionStoreConformance
             _grants = new InMemorySecurityGrantStore(_timeProvider);
             _ = services.AddSingleton<ISecurityGrantStore>(_grants);
             _ = services.AddSingleton<ISecurityAuditDispatcher>(this);
-            _ = services.AddJsonSessionStore(new JsonSessionStoreTarget(
-                Path.Combine(_directory, "sessions"),
-                _instanceId,
-                JsonStoreOpenMode.CreateIfMissing,
-                JsonStoreRecoveryMode.RecoverTornAppends));
+            _ = services.AddJsonSessionStore(
+                new JsonSessionStoreTarget(DirectoryPath, _instanceId, JsonStoreOpenMode.CreateIfMissing, _recoveryMode),
+                _settings);
             _services = services.BuildServiceProvider(new ServiceProviderOptions
             {
                 ValidateOnBuild = true,

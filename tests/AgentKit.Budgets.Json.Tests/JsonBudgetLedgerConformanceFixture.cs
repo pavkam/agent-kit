@@ -15,6 +15,18 @@ public sealed class JsonBudgetLedgerConformanceFixture: IBudgetLedgerConformance
     private readonly SequentialScopeIdGenerator _scopeIds = new();
     private readonly SequentialReservationIdGenerator _reservationIds = new();
     private readonly TestDimensionCatalog _catalog = new();
+    private readonly ILogger<JsonBudgetLedger>? _logger;
+
+    /// <summary>Creates a deterministic fixture without a diagnostics sink.</summary>
+    public JsonBudgetLedgerConformanceFixture() { }
+
+    /// <summary>Creates a deterministic fixture that supplies a caller-owned diagnostics sink to every created ledger.</summary>
+    /// <param name="logger">The non-null logger supplied to created adapters.</param>
+    internal JsonBudgetLedgerConformanceFixture(ILogger<JsonBudgetLedger> logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
+    }
 
     /// <inheritdoc/>
     /// <value>Durable local accounting whose transitions linearize only inside the single writer process.</value>
@@ -32,6 +44,7 @@ public sealed class JsonBudgetLedgerConformanceFixture: IBudgetLedgerConformance
     /// <param name="storeInstanceId">The persistent store identity the manifest must carry.</param>
     /// <param name="recoveryMode">The torn-append policy applied during initialization.</param>
     /// <param name="openMode">Whether the root and its manifest may be created.</param>
+    /// <param name="settings">The evidence bounds and encoding contract to apply, or null for <see cref="JsonBudgetLedgerSettings.CreateDefault"/>.</param>
     /// <returns>A fully initialized ledger the caller owns and must dispose.</returns>
     /// <remarks>A failed initialization disposes the partially opened ledger, so its advisory exclusive lock never blocks the next attempt against the same root.</remarks>
     /// <exception cref="ArgumentException"><paramref name="directoryPath"/> is null or blank.</exception>
@@ -39,16 +52,18 @@ public sealed class JsonBudgetLedgerConformanceFixture: IBudgetLedgerConformance
         string directoryPath,
         JsonBudgetLedgerInstanceId storeInstanceId,
         JsonStoreRecoveryMode recoveryMode,
-        JsonStoreOpenMode openMode = JsonStoreOpenMode.CreateIfMissing)
+        JsonStoreOpenMode openMode = JsonStoreOpenMode.CreateIfMissing,
+        JsonBudgetLedgerSettings? settings = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
         var ledger = new JsonBudgetLedger(
             new JsonBudgetLedgerTarget(directoryPath, storeInstanceId, openMode, recoveryMode),
-            JsonBudgetLedgerSettings.CreateDefault(),
+            settings ?? JsonBudgetLedgerSettings.CreateDefault(),
             _timeProvider,
             _scopeIds,
             _reservationIds,
-            _catalog);
+            _catalog,
+            _logger);
         try
         {
             ledger.InitializeAsync().AsTask().GetAwaiter().GetResult();
