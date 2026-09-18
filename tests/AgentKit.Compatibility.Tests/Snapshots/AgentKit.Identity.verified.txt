@@ -11,6 +11,15 @@ namespace AgentKit.Identity
         public int MaximumDelegationDepth { get; set; }
         public System.TimeSpan MaximumEvidenceLifetime { get; set; }
     }
+    public static class ExecutionIdentityExtensions
+    {
+        public static AgentKit.AuthenticationEvidenceFingerprint Fingerprint(AgentKit.IdentityIssuerId issuer, AgentKit.PrincipalId subject, string method, System.DateTimeOffset authenticatedAt) { }
+        extension(AgentKit.ExecutionIdentity)
+        {
+            public static AgentKit.ExecutionIdentity ForService(AgentKit.TenantId tenantId, AgentKit.PrincipalId principalId, AgentKit.IdentityIssuerId issuer, string method, System.DateTimeOffset authenticatedAt, System.DateTimeOffset? expiresAt = default, AgentKit.IdentityAssuranceLevel assurance = 2, System.Collections.Immutable.ImmutableArray<AgentKit.IdentityClaim> claims = default) { }
+            public static AgentKit.ExecutionIdentity ForHuman(AgentKit.TenantId tenantId, AgentKit.PrincipalId principalId, AgentKit.IdentityIssuerId issuer, string method, System.DateTimeOffset authenticatedAt, System.DateTimeOffset? expiresAt = default, AgentKit.IdentityAssuranceLevel assurance = 1, System.Collections.Immutable.ImmutableArray<AgentKit.IdentityClaim> claims = default) { }
+        }
+    }
     public sealed class IdentityIssuerRegistration : System.IEquatable<AgentKit.Identity.IdentityIssuerRegistration>
     {
         public IdentityIssuerRegistration(AgentKit.IdentityIssuerId issuerId) { }

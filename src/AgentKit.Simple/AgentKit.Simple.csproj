@@ -33,6 +33,7 @@
     <ProjectReference Include="../AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>
     <ProjectReference Include="../AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <ProjectReference Include="../AgentKit.Identity/AgentKit.Identity.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Edit/AgentKit.Tools.Edit.csproj"/>

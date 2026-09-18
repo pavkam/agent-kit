@@ -69,22 +69,19 @@ The identity comes from your authentication middleware, never from the request
 body. Map the authenticated principal once, at the trusted ingress:
 
 ```csharp
-static ExecutionIdentity IdentityFor(ClaimsPrincipal user, TimeProvider clock) => new(
-    new TenantId(user.FindFirstValue("tenant")!),
-    new PrincipalId(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
-    ExecutionSubjectKind.Human,
-    new AuthenticationEvidence(
-        new AuthenticationEvidenceId(user.FindFirstValue("sid")!),
+static ExecutionIdentity IdentityFor(ClaimsPrincipal user, DateTimeOffset authenticatedAt, DateTimeOffset? expiresAt) =>
+    ExecutionIdentity.ForHuman(
+        new TenantId(user.FindFirstValue("tenant")!),
+        new PrincipalId(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
         new IdentityIssuerId("acme-idp"),
         "oidc",
-        clock.GetUtcNow(),
-        null,
-        new AuthenticationEvidenceFingerprint(new ContentHash($"sha256:{sessionFingerprint}"))),
-    claims: [],
-    delegationChain: [],
-    IdentityAssuranceLevel.Strong,
-    new IdentityVersion(1));
+        authenticatedAt,
+        expiresAt,
+        assurance: IdentityAssuranceLevel.Strong);
 ```
+
+`ForHuman` records who authenticated the customer, how, and when, and derives a
+content-safe fingerprint from those facts; the token itself is never an input.
 
 ## Use it
 
@@ -94,7 +91,7 @@ server-sent events:
 ```csharp
 app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, HttpContext http, CancellationToken ct) =>
 {
-    var customer = IdentityFor(http.User, TimeProvider.System);
+    var customer = IdentityFor(http.User, authenticatedAt, expiresAt);   // from the auth ticket
     await using var engine = CreateSupportEngine(customer, apiKey);
 
     if (sessionId is { } existing)

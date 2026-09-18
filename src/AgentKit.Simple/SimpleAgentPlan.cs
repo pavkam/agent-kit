@@ -235,19 +235,10 @@ internal sealed class SimpleAgentPlan
         [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
         ExtensionData.Empty);
 
-    private static ExecutionIdentity LocalDevelopmentIdentity() => new(
+    private static ExecutionIdentity LocalDevelopmentIdentity() => ExecutionIdentity.ForHuman(
         new TenantId("local"),
         new PrincipalId(Environment.UserName is { Length: > 0 } user ? user : "local-user"),
-        ExecutionSubjectKind.Human,
-        new AuthenticationEvidence(
-            new AuthenticationEvidenceId("local-process"),
-            new IdentityIssuerId("agentkit.simple"),
-            "local-process",
-            DateTimeOffset.UtcNow,
-            null,
-            new AuthenticationEvidenceFingerprint(new ContentHash("sha256:agentkit-simple-local-process"))),
-        [],
-        [],
-        IdentityAssuranceLevel.Basic,
-        new IdentityVersion(1));
+        new IdentityIssuerId("agentkit.simple"),
+        "local-process",
+        DateTimeOffset.UtcNow);
 }

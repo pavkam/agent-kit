@@ -45,21 +45,12 @@ await host.Build().RunAsync();
 sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, ISecurityAuditSink audit, IConfiguration config, ILogger<TriageWorker> logger)
     : BackgroundService
 {
-    static readonly ExecutionIdentity WorkerIdentity = new(
+    static readonly ExecutionIdentity WorkerIdentity = ExecutionIdentity.ForService(
         new TenantId("acme"),
         new PrincipalId("triage-worker"),
-        ExecutionSubjectKind.Service,
-        new AuthenticationEvidence(
-            new AuthenticationEvidenceId("triage-worker-mi"),
-            new IdentityIssuerId("azure-managed-identity"),
-            "managed-identity",
-            DateTimeOffset.UtcNow,
-            null,
-            new AuthenticationEvidenceFingerprint(new ContentHash("sha256:triage-worker"))),
-        claims: [],
-        delegationChain: [],
-        IdentityAssuranceLevel.Strong,
-        new IdentityVersion(1));
+        new IdentityIssuerId("azure-managed-identity"),
+        "managed-identity",
+        authenticatedAt: DateTimeOffset.UtcNow);
 
     AgentEngine CreateEngine(Ticket ticket)
     {

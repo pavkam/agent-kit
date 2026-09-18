@@ -8,6 +8,7 @@ global using AgentKit;
 global using AgentKit.Context;
 global using AgentKit.Conversations;
 global using AgentKit.FileSystem;
+global using AgentKit.Identity;
 global using AgentKit.Loop;
 global using AgentKit.Output;
 global using AgentKit.Permissions;
