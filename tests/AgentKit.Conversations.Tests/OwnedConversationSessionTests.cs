@@ -7,6 +7,18 @@ namespace AgentKit.Conversations.Tests;
 public sealed class OwnedConversationSessionTests
 {
     [Fact]
+    public void SessionId_WhenRead_ForwardsToTheWrappedConversationEvenAfterDispose()
+    {
+        var inner = new RecordingSession();
+        var owned = new OwnedConversationSession(inner, new RecordingDisposable());
+
+        owned.SessionId.ShouldBe(inner.SessionId);
+        owned.BranchId.ShouldBe(inner.BranchId);
+        owned.Dispose();
+        owned.SessionId.ShouldBe(inner.SessionId);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenObserverIsSupplied_ForwardsLiveOverloadAndToken()
     {
         var inner = new RecordingSession();
@@ -93,6 +105,10 @@ public sealed class OwnedConversationSessionTests
 
     private sealed class RecordingSession: IConversationSession
     {
+        public SessionId? SessionId { get; } = new SessionId(Guid.NewGuid());
+
+        public BranchId? BranchId { get; } = new BranchId(Guid.NewGuid());
+
         internal string? LastOperation { get; private set; }
         internal IConversationEventObserver? Observer { get; private set; }
         internal CancellationToken CancellationToken { get; private set; }

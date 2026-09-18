@@ -7,6 +7,19 @@ namespace AgentKit.Conversations.Tests;
 public sealed class AsyncOwnedConversationSessionTests
 {
     [Fact]
+    public void SessionId_WhenRead_ForwardsToTheWrappedConversation()
+    {
+        var sessionId = new SessionId(Guid.NewGuid());
+        var branchId = new BranchId(Guid.NewGuid());
+        var owned = new AsyncOwnedConversationSession(
+            new StubSession { SessionId = sessionId, BranchId = branchId },
+            new RecordingAsyncDisposable());
+
+        owned.SessionId.ShouldBe(sessionId);
+        owned.BranchId.ShouldBe(branchId);
+    }
+
+    [Fact]
     public async Task ReadHistoryAsync_WhenInnerUsesCompatibleDefault_ReturnsTypedUnavailableFallback()
     {
         var owner = new RecordingAsyncDisposable();
@@ -238,6 +251,10 @@ public sealed class AsyncOwnedConversationSessionTests
 
     private sealed class StubSession: IConversationSession
     {
+        public SessionId? SessionId { get; init; }
+
+        public BranchId? BranchId { get; init; }
+
         internal Func<string, CancellationToken, Task<ConversationTurnResult>>? SendOverride { get; set; }
 
         public Task<ConversationTurnResult> SendAsync(string userText, CancellationToken cancellationToken = default) =>

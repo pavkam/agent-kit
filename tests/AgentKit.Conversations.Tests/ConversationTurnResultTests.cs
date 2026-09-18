@@ -34,6 +34,31 @@ public sealed class ConversationTurnResultTests
     }
 
     [Fact]
+    public void Constructor_WhenIdentitiesAreNotSupplied_LeavesSessionIdAndRunIdNull()
+    {
+        var result = new ConversationTurnResult(true, []);
+
+        result.SessionId.ShouldBeNull();
+        result.RunId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Init_WhenIdentitiesAreSupplied_PreservesThemAndParticipatesInEquality()
+    {
+        var sessionId = new SessionId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+
+        var result = new ConversationTurnResult(true, []) { SessionId = sessionId, RunId = runId };
+        var same = new ConversationTurnResult(true, []) { SessionId = sessionId, RunId = runId };
+        var other = new ConversationTurnResult(true, []) { SessionId = sessionId, RunId = new RunId(Guid.NewGuid()) };
+
+        result.SessionId.ShouldBe(sessionId);
+        result.RunId.ShouldBe(runId);
+        result.ShouldBe(same);
+        result.ShouldNotBe(other);
+    }
+
+    [Fact]
     public void Equals_WhenSucceededAndEventsMatch_ReturnsTrueWithMatchingHashCode()
     {
         var events = ImmutableArray.Create<ConversationEvent>(new ConversationAssistantTextEvent("hi"));

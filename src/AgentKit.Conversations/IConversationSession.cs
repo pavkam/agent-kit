@@ -24,6 +24,23 @@ namespace AgentKit.Conversations;
 /// </remarks>
 public interface IConversationSession
 {
+    /// <summary>Gets the durable session this conversation is bound to, once it is bound.</summary>
+    /// <value>
+    /// <see langword="null"/> until the first successful <c>SendAsync</c> creates the session or <c>OpenAsync</c>
+    /// binds an existing one; afterwards the stable identity every later turn is recorded against. Implementations
+    /// that do not bind a durable session return <see langword="null"/> permanently.
+    /// </value>
+    /// <remarks>
+    /// Reading this property is safe from any thread and never blocks on an in-flight turn; it reflects the last
+    /// completed binding. The same identity is also announced once as a <see cref="ConversationSessionBoundEvent"/>
+    /// at the start of the first turn delivered to an <see cref="IConversationEventObserver"/>.
+    /// </remarks>
+    public SessionId? SessionId => null;
+
+    /// <summary>Gets the active branch every turn of this conversation appends to, once the session is bound.</summary>
+    /// <value><see langword="null"/> whenever <see cref="SessionId"/> is <see langword="null"/>; otherwise the bound branch.</value>
+    public BranchId? BranchId => null;
+
     /// <summary>Presents one durable tool call or result using this conversation's captured tool bindings.</summary>
     /// <param name="part">The original immutable tool call or result part.</param>
     /// <param name="cancellationToken">Cancels bounded presentation work.</param>

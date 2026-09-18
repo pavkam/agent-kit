@@ -67,6 +67,14 @@ if (page is ConversationSessionPage sessions && sessions.Sessions.Length > 0)
 }
 ```
 
+To hand a client its own resume token without listing, read the identity the
+first turn bound:
+
+```csharp
+var result = await engine.SendAsync("Hello");
+var resumeToken = result.SessionId!.Value;            // also engine.Conversation.SessionId
+```
+
 A few rules keep this honest:
 
 - **Open before you send.** A fresh engine starts a new session on its first

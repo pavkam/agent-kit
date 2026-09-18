@@ -114,6 +114,10 @@ app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, H
 });
 ```
 
+The browser learns which session it is in before the first token arrives: the
+first observed turn begins with a `ConversationSessionBoundEvent`, and the
+result carries the same `SessionId` for a non-streaming caller.
+
 ```csharp
 sealed class SseObserver(HttpResponse response) : IConversationEventObserver
 {
@@ -121,6 +125,7 @@ sealed class SseObserver(HttpResponse response) : IConversationEventObserver
     {
         var payload = conversationEvent switch
         {
+            ConversationSessionBoundEvent bound => $"event: session\ndata: {bound.SessionId}\n\n",
             ConversationAssistantTextDeltaEvent delta => $"event: delta\ndata: {JsonSerializer.Serialize(delta.Text)}\n\n",
             ConversationUsageEvent usage => $"event: usage\ndata: {usage.Usage.OutputTokens}\n\n",
             ConversationTurnCompletedEvent done => $"event: done\ndata: {done.Outcome}\n\n",

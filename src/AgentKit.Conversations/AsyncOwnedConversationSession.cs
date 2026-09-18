@@ -29,6 +29,14 @@ public sealed class AsyncOwnedConversationSession: IConversationSession, IAsyncD
     }
 
     /// <inheritdoc/>
+    /// <remarks>Forwards to the wrapped conversation; readable after disposal because it performs no work.</remarks>
+    public SessionId? SessionId => _inner.SessionId;
+
+    /// <inheritdoc/>
+    /// <remarks>Forwards to the wrapped conversation; readable after disposal because it performs no work.</remarks>
+    public BranchId? BranchId => _inner.BranchId;
+
+    /// <inheritdoc/>
     public ValueTask<ConversationHistoryReadResult> ReadHistoryAsync(
         SessionSequence afterSequence,
         int maximumEntries,

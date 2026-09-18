@@ -6,6 +6,8 @@ namespace AgentKit.Conversations
     public sealed class AsyncOwnedConversationSession : AgentKit.Conversations.IConversationSession, System.IAsyncDisposable
     {
         public AsyncOwnedConversationSession(AgentKit.Conversations.IConversationSession inner, System.IAsyncDisposable owner) { }
+        public AgentKit.BranchId? BranchId { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }
@@ -44,6 +46,12 @@ namespace AgentKit.Conversations
     {
         public ConversationReasoningEvent(string text) { }
         public string Text { get; }
+    }
+    public sealed class ConversationSessionBoundEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationSessionBoundEvent>
+    {
+        public ConversationSessionBoundEvent(AgentKit.SessionId sessionId, AgentKit.BranchId branchId) { }
+        public AgentKit.BranchId BranchId { get; }
+        public AgentKit.SessionId SessionId { get; }
     }
     public abstract class ConversationSessionListResult : System.IEquatable<AgentKit.Conversations.ConversationSessionListResult> { }
     public sealed class ConversationSessionListUnavailable : AgentKit.Conversations.ConversationSessionListResult, System.IEquatable<AgentKit.Conversations.ConversationSessionListUnavailable>
@@ -134,6 +142,8 @@ namespace AgentKit.Conversations
     {
         public ConversationTurnResult(bool succeeded, System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> events) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> Events { get; init; }
+        public AgentKit.RunId? RunId { get; init; }
+        public AgentKit.SessionId? SessionId { get; init; }
         public bool Succeeded { get; init; }
     }
     public sealed class ConversationUsageEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationUsageEvent>
@@ -178,6 +188,8 @@ namespace AgentKit.Conversations
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
                     Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
                     AgentKit.IToolPresenter? toolPresenter) { }
+        public AgentKit.BranchId? BranchId { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }
@@ -192,6 +204,8 @@ namespace AgentKit.Conversations
     }
     public interface IConversationSession
     {
+        AgentKit.BranchId? BranchId { get; }
+        AgentKit.SessionId? SessionId { get; }
         System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> PresentToolAsync(AgentKit.ContentPart part, System.Threading.CancellationToken cancellationToken = default);
@@ -202,6 +216,8 @@ namespace AgentKit.Conversations
     public sealed class OwnedConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
     {
         public OwnedConversationSession(AgentKit.Conversations.IConversationSession inner, System.IDisposable owner) { }
+        public AgentKit.BranchId? BranchId { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }

@@ -86,9 +86,9 @@ sealed class SpecialistChannel(string repoRoot, string designRoot, string apiKey
             prompt.Id,
             new GoalId(Guid.NewGuid()),
             prompt.TargetAgentId,
-            childSessionId: new SessionId(Guid.NewGuid()),
+            childSessionId: result.SessionId!.Value,   // the session the child turn was recorded against
             childAttemptId: null,
-            childRunId: null,
+            childRunId: result.RunId,
             completed.Outcome switch
             {
                 "settled" when result.Succeeded => TaskDelegationStatus.Succeeded,

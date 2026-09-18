@@ -9,7 +9,9 @@ namespace AgentKit.Conversations;
 /// </summary>
 /// <remarks>
 /// This class lazily creates its underlying session on the first <see cref="SendAsync(string, CancellationToken)"/> call and reuses that
-/// same session and active branch for every later call. Calls are serialized with an internal lock, so this
+/// same session and active branch for every later call. The binding is announced once to a live observer, as the
+/// first event of the first observed turn, and is readable at any time through <see cref="SessionId"/> and
+/// <see cref="BranchId"/>. Calls are serialized with an internal lock, so this
 /// type is safe to share as a singleton for one conversation; a host that needs several independent
 /// conversations against the same agent composes one instance per conversation instead.
 /// </remarks>
@@ -48,7 +50,19 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
     private SessionId? _sessionId;
     private BranchId _branchId;
+    private volatile ConversationSessionBoundEvent? _binding;
+    private bool _bindingAnnounced;
     private bool _disposed;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Backed by an immutable snapshot published after the binding fields are written under the turn lock, so a
+    /// reader on another thread sees either no binding or a complete one.
+    /// </remarks>
+    public SessionId? SessionId => _binding?.SessionId;
+
+    /// <inheritdoc/>
+    public BranchId? BranchId => _binding?.BranchId;
 
     /// <inheritdoc/>
     public async ValueTask<ConversationHistoryReadResult> ReadHistoryAsync(
@@ -146,6 +160,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
             _sessionId = sessionId;
             _branchId = descriptor.ActiveBranchId;
+            _binding = new ConversationSessionBoundEvent(sessionId, _branchId);
             return new ConversationSessionOpened(sessionId, _branchId);
         }
         finally
@@ -448,6 +463,16 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     {
         await EnsureSessionAsync(cancellationToken).ConfigureAwait(false);
 
+        // The first observed turn of a conversation leads with the binding so a live host learns the session
+        // identity before any content arrives. The durable result carries the same identities as properties rather
+        // than as an event, because Events is the rendered activity of the turn and the binding is not content.
+        var binding = _binding!;
+        if (observer is not null && !_bindingAnnounced)
+        {
+            _bindingAnnounced = true;
+            await ObserveAsync(observer, binding, cancellationToken).ConfigureAwait(false);
+        }
+
         var runId = _runIds.Create();
         var correlation = new InRunOperationCorrelation(_operationIds.Create(), runId, null);
         var appendAuthorization = await CaptureAuthorizationAsync(_sessionId, correlation, cancellationToken).ConfigureAwait(false);
@@ -462,7 +487,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         if (loadResult is not SessionLoaded loaded)
         {
             return (
-                new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session could not be loaded.")]),
+                Finish(false, [new ConversationAssistantTextEvent("The session could not be loaded.")]),
                 "admission_failed");
         }
 
@@ -473,7 +498,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         if (readResult is not SessionPage { Snapshot: { } snapshot })
         {
             return (
-                new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session history snapshot could not be captured.")]),
+                Finish(false, [new ConversationAssistantTextEvent("The session history snapshot could not be captured.")]),
                 "admission_failed");
         }
 
@@ -516,9 +541,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         {
             ConversationLog.TurnAdmissionFailed(_logger, _agentId);
             return (
-                new ConversationTurnResult(
-                    false,
-                    [new ConversationAssistantTextEvent($"Could not record the message: {DescribeAppendResult(appendResult)}")]),
+                Finish(false, [new ConversationAssistantTextEvent($"Could not record the message: {DescribeAppendResult(appendResult)}")]),
                 "admission_failed");
         }
 
@@ -570,7 +593,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         var events = ProjectEvents(loopResult);
         if (loopResult.Outcome is AgentRunCompleted)
         {
-            return (new ConversationTurnResult(true, events), "settled");
+            return (Finish(true, events), "settled");
         }
 
         // The message was admitted; the run itself settled without completing. This is distinct from admission
@@ -579,8 +602,16 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         ConversationLog.TurnRunNotCompleted(_logger, _agentId, loopResult.Outcome.GetType().Name);
         var description = DescribeIncompleteOutcome(loopResult.Outcome);
         return (
-            new ConversationTurnResult(false, [.. events, new ConversationAssistantTextEvent(description)]),
+            Finish(false, [.. events, new ConversationAssistantTextEvent(description)]),
             RunOutcomeKind(loopResult.Outcome));
+
+        // Every result of this turn carries the bound session and the allocated run.
+        ConversationTurnResult Finish(bool succeeded, ImmutableArray<ConversationEvent> turnEvents) =>
+            new(succeeded, turnEvents)
+            {
+                SessionId = binding.SessionId,
+                RunId = runId,
+            };
     }
 
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>
@@ -628,6 +659,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
         _sessionId = created.Descriptor.Address.SessionId;
         _branchId = created.Descriptor.ActiveBranchId;
+        _binding = new ConversationSessionBoundEvent(_sessionId.Value, _branchId);
     }
 
     /// <summary>Projects one coordinator page without exposing non-message records or malformed stored content.</summary>

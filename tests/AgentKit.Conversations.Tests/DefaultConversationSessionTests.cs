@@ -1089,8 +1089,9 @@ public sealed class DefaultConversationSessionTests
         await loop.EnteredSignal.Task;
 
         pending.IsCompleted.ShouldBeFalse();
-        observer.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextDeltaEvent>()
-            .Text.ShouldBe("hello ");
+        observer.Events.Count.ShouldBe(2);
+        _ = observer.Events[0].ShouldBeOfType<ConversationSessionBoundEvent>();
+        observer.Events[1].ShouldBeOfType<ConversationAssistantTextDeltaEvent>().Text.ShouldBe("hello ");
 
         loop.Gate.SetResult();
         var result = await pending;
@@ -1238,6 +1239,129 @@ public sealed class DefaultConversationSessionTests
         _ = result.ShouldBeOfType<ConversationSessionOpenRejected>();
         coordinator.CreateCallCount.ShouldBe(0);
         coordinator.AppendCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public void SessionId_BeforeAnyTurnOrOpen_IsNull()
+    {
+        using var session = CreateSession();
+
+        session.SessionId.ShouldBeNull();
+        session.BranchId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenFirstCalled_LeadsWithTheBindingAndExposesTheCreatedSession()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var observer = new RecordingConversationEventObserver();
+        using var session = CreateSession(coordinator: coordinator);
+
+        var result = await session.SendAsync("hello", observer, TestContext.Current.CancellationToken);
+
+        var bound = observer.Events[0].ShouldBeOfType<ConversationSessionBoundEvent>();
+        bound.SessionId.ShouldBe(coordinator.SessionId);
+        bound.BranchId.ShouldBe(coordinator.BranchId);
+        result.Events.OfType<ConversationSessionBoundEvent>().ShouldBeEmpty();
+        result.SessionId.ShouldBe(coordinator.SessionId);
+        _ = result.RunId.ShouldNotBeNull();
+        session.SessionId.ShouldBe(coordinator.SessionId);
+        session.BranchId.ShouldBe(coordinator.BranchId);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCalledAgain_DoesNotRepeatTheBindingAndAllocatesANewRun()
+    {
+        var observer = new RecordingConversationEventObserver();
+        using var session = CreateSession();
+
+        var first = await session.SendAsync("first", observer, TestContext.Current.CancellationToken);
+        var second = await session.SendAsync("second", observer, TestContext.Current.CancellationToken);
+
+        _ = observer.Events.OfType<ConversationSessionBoundEvent>().ShouldHaveSingleItem();
+        second.SessionId.ShouldBe(first.SessionId);
+        second.RunId.ShouldNotBeNull().ShouldNotBe(first.RunId!.Value);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheSessionWasOpened_AnnouncesTheOpenedIdentityOnce()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var requested = new SessionId(Guid.NewGuid());
+        using var session = CreateSession(coordinator: coordinator);
+
+        var observer = new RecordingConversationEventObserver();
+        var opened = await session.OpenAsync(requested, TestContext.Current.CancellationToken);
+        var result = await session.SendAsync("continue", observer, TestContext.Current.CancellationToken);
+
+        _ = opened.ShouldBeOfType<ConversationSessionOpened>();
+        session.SessionId.ShouldBe(requested);
+        observer.Events[0].ShouldBeOfType<ConversationSessionBoundEvent>().SessionId.ShouldBe(requested);
+        result.SessionId.ShouldBe(requested);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAdmissionFailsAfterTheSessionExists_StillReportsTheSessionAndRun()
+    {
+        var coordinator = new FakeSessionCoordinator { AppendResult = new SessionAppendFailed("no capacity") };
+        using var session = CreateSession(coordinator: coordinator);
+
+        var result = await session.SendAsync("hello", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.SessionId.ShouldBe(coordinator.SessionId);
+        _ = result.RunId.ShouldNotBeNull();
+        session.SessionId.ShouldBe(coordinator.SessionId);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheFirstTurnIsCancelledAfterBinding_DoesNotAnnounceAgainButKeepsTheSessionReadable()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var observer = new RecordingConversationEventObserver();
+        var loop = new FakeAgentLoop { Gate = new TaskCompletionSource(), EnteredSignal = new TaskCompletionSource() };
+        using var cancellation = new CancellationTokenSource();
+        using var session = CreateSession(coordinator: coordinator, loop: loop);
+        var pending = session.SendAsync("first", observer, cancellation.Token);
+        await loop.EnteredSignal.Task;
+        await cancellation.CancelAsync();
+        loop.Gate.SetResult();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await pending);
+        loop.Gate = null;
+        var second = await session.SendAsync("second", observer, TestContext.Current.CancellationToken);
+
+        observer.Events.OfType<ConversationSessionBoundEvent>().ShouldHaveSingleItem().SessionId.ShouldBe(coordinator.SessionId);
+        second.SessionId.ShouldBe(coordinator.SessionId);
+        session.SessionId.ShouldBe(coordinator.SessionId);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheFirstObserverArrivesOnALaterTurn_AnnouncesTheBindingToItOnce()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var observer = new RecordingConversationEventObserver();
+        using var session = CreateSession(coordinator: coordinator);
+
+        _ = await session.SendAsync("first", TestContext.Current.CancellationToken);
+        _ = await session.SendAsync("second", observer, TestContext.Current.CancellationToken);
+        _ = await session.SendAsync("third", observer, TestContext.Current.CancellationToken);
+
+        observer.Events.OfType<ConversationSessionBoundEvent>().ShouldHaveSingleItem().SessionId.ShouldBe(coordinator.SessionId);
+        _ = observer.Events[0].ShouldBeOfType<ConversationSessionBoundEvent>();
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenRejected_LeavesSessionIdNull()
+    {
+        var coordinator = new FakeSessionCoordinator { LoadResult = new SessionNotFound(new SessionAddress(ConversationSessionOptionsFactory.AgentId, new SessionId(Guid.NewGuid()))) };
+        using var session = CreateSession(coordinator: coordinator);
+
+        _ = (await session.OpenAsync(new SessionId(Guid.NewGuid()), TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ConversationSessionOpenRejected>();
+
+        session.SessionId.ShouldBeNull();
+        session.BranchId.ShouldBeNull();
     }
 
     [Fact]

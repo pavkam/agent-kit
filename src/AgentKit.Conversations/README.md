@@ -85,11 +85,19 @@ summary. Missing or mismatched evidence uses the presenter's generic fallback
 path.
 
 For live output, pass an `IConversationEventObserver` to the observing overload.
-It receives assistant text and reasoning deltas, correlated tool starts and
-results, usage updates, and exactly one `ConversationTurnCompletedEvent` before
-`SendAsync` completes. Observer failures are isolated from the run. The returned
-`Events` remain the committed projection, so a live UI should use the terminal
-result for completion and recovery rather than replaying those events.
+It receives, on the first observed turn, one `ConversationSessionBoundEvent`
+naming the session and branch, then assistant text and reasoning deltas,
+correlated tool starts and results, usage updates, and exactly one
+`ConversationTurnCompletedEvent` before `SendAsync` completes. Observer failures
+are isolated from the run. The returned `Events` remain the committed
+projection, so a live UI should use the terminal result for completion and
+recovery rather than replaying those events.
+
+The bound session is readable at any time through `SessionId` and `BranchId`
+(null until the first send or a successful `OpenAsync`), and every
+`ConversationTurnResult` carries the `SessionId` it was recorded against and the
+`RunId` allocated for that turn, so a host can hand out a resume token after the
+first turn without a discovery round trip.
 
 To continue a persisted conversation after restart, create a fresh configured
 `IConversationSession` and call `OpenAsync(sessionId)` before the first send.

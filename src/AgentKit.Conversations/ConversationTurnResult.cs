@@ -24,4 +24,18 @@ public sealed record ConversationTurnResult
     /// <summary>Gets the ordered rendered activity for this turn.</summary>
     /// <value>Never a default array; empty only when the underlying run committed no renderable content.</value>
     public ImmutableArray<ConversationEvent> Events { get; init; }
+
+    /// <summary>Gets the durable session the turn was recorded against, when one was bound.</summary>
+    /// <value>
+    /// The bound session identity, including on a turn whose message admission failed after the session existed;
+    /// <see langword="null"/> only when the implementation never bound a session for this turn.
+    /// </value>
+    public SessionId? SessionId { get; init; }
+
+    /// <summary>Gets the run identity allocated for this turn, when the turn reached run allocation.</summary>
+    /// <value>
+    /// A fresh identity per turn; <see langword="null"/> when the implementation does not allocate runs or the turn
+    /// ended before allocating one.
+    /// </value>
+    public RunId? RunId { get; init; }
 }
