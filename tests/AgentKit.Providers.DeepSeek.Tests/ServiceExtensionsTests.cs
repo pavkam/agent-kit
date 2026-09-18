@@ -140,6 +140,119 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGroqLlmModel(new ModelAlias("groq-chat"), new ModelId("llama-3.3-70b-versatile"));
     }
 
+    [Fact]
+    public void AddDeepSeekLlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddDeepSeek();
+        _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            DeepSeekProviderDefaults.ProviderId,
+            DeepSeekProviderDefaults.ApiFamily,
+            new ModelId("deepseek-flash"),
+            deploymentId: null,
+            DeepSeekProviderDefaults.DefaultCapabilities,
+            DeepSeekProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddDeepSeekLlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddDeepSeekLlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddDeepSeekLlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddDeepSeekLlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            DeepSeekProviderDefaults.ApiFamily,
+            new ModelId("deepseek-flash"),
+            deploymentId: null,
+            DeepSeekProviderDefaults.DefaultCapabilities,
+            DeepSeekProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddDeepSeekLlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddDeepSeekKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddDeepSeek();
+        _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
+
+        _ = services.AddDeepSeekKnownLlmModel(new ModelAlias("known"), new ModelId("deepseek-flash"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("known"));
+        published.ProviderId.ShouldBe(DeepSeekProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(DeepSeekProviderDefaults.ApiFamily);
+        published.ModelId.ShouldBe(new ModelId("deepseek-flash"));
+        _ = published.Limits.MaxContextTokens.ShouldNotBeNull();
+        model.Alias.ShouldBe(published.Alias);
+        provider.GetRequiredService<ILlmModelResolver>().Resolve(published).ShouldBeSameAs(model);
+    }
+
+    [Fact]
+    public void AddDeepSeekKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelIdBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddDeepSeekKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddDeepSeekKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddDeepSeekKnownLlmModel(new ModelAlias("x"), new ModelId("deepseek-flash"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddDeepSeekKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddDeepSeekKnownLlmModel(default, new ModelId("deepseek-flash"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddDeepSeekKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddDeepSeekKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
     private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderId providerId)
     {
         Debug.Assert(provider is not null, "The caller must provide a service provider.");

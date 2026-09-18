@@ -184,20 +184,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddDeepSeekLlmModel(new ModelDescriptor(
+                alias,
+                DeepSeekProviderDefaults.ProviderId,
+                DeepSeekProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId: null,
+                capabilities ?? DeepSeekProviderDefaults.DefaultCapabilities,
+                limits ?? DeepSeekProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one DeepSeek conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the DeepSeek provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddDeepSeek"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddDeepSeekLlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != DeepSeekProviderDefaults.ProviderId || descriptor.ApiFamily != DeepSeekProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the DeepSeek provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<DeepSeekProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    DeepSeekProviderDefaults.ProviderId,
-                    DeepSeekProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? DeepSeekProviderDefaults.DefaultCapabilities,
-                    limits ?? DeepSeekProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new DeepSeekLlmModel(
                     descriptor,
@@ -209,6 +234,56 @@ public static class ServiceExtensions
                     provider.GetRequiredService<TimeProvider>());
             });
 
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one DeepSeek conversational model from the bundled <see cref="KnownModelCatalog"/>: both the
+        /// <see cref="ILlmModel"/> adapter and the matching catalog descriptor, built from the model's published
+        /// limits, capabilities, and list prices.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">The vendor's own model identifier; it must exist in the catalog under the DeepSeek provider.</param>
+        /// <param name="catalog">The catalog to consult, or <see langword="null"/> for <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="alias"/> or <paramref name="modelId"/> is blank, or <paramref name="modelId"/> is not a known
+        /// DeepSeek model.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// This is the one-call form of <c>AddDeepSeekLlmModel(ModelDescriptor)</c> followed by <c>AddModelDescriptors</c>
+        /// with an identical descriptor. Both registrations are additive; the descriptor source is keyed
+        /// <c>deepseek.known/{alias}</c>. <see cref="AddDeepSeek"/> must be called first and <c>AddAgentProviders</c>
+        /// must be registered for the descriptor to be published.
+        /// </para>
+        /// <para>
+        /// The catalog is reference data with stated provenance, not runtime discovery. A model the catalog does not
+        /// know can still be registered explicitly with <c>AddDeepSeekLlmModel(alias, modelId, capabilities, limits)</c>
+        /// followed by <c>AddModelDescriptors</c>.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddDeepSeekKnownLlmModel(
+            ModelAlias alias,
+            ModelId modelId,
+            KnownModelCatalog? catalog = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(alias.Value, nameof(alias));
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId.Value, nameof(modelId));
+
+            catalog ??= KnownModelCatalog.Default;
+            if (!catalog.TryFind(DeepSeekProviderDefaults.ProviderId, modelId, out var known))
+            {
+                throw new ArgumentException(
+                    $"'{modelId.Value}' is not a DeepSeek model in the known-model catalog; register it explicitly with {nameof(AddDeepSeekLlmModel)}.",
+                    nameof(modelId));
+            }
+
+            var descriptor = known.ToDescriptor(alias, DeepSeekProviderDefaults.ApiFamily, DeepSeekProviderDefaults.DefaultCapabilities);
+            _ = services.AddDeepSeekLlmModel(descriptor);
+            _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"deepseek.known/{alias.Value}"), [descriptor]);
             return services;
         }
     }

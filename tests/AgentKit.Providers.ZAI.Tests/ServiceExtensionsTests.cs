@@ -120,6 +120,119 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddZAILlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            ZAIProviderDefaults.ProviderId,
+            ZAIProviderDefaults.ApiFamily,
+            new ModelId("glm-4.5"),
+            deploymentId: null,
+            ZAIProviderDefaults.DefaultCapabilities,
+            ZAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddZAILlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddZAILlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddZAILlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddZAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            ZAIProviderDefaults.ApiFamily,
+            new ModelId("glm-4.5"),
+            deploymentId: null,
+            ZAIProviderDefaults.DefaultCapabilities,
+            ZAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddZAILlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddZAIKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-test-key");
+
+        _ = services.AddZAIKnownLlmModel(new ModelAlias("known"), new ModelId("glm-4.5"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("known"));
+        published.ProviderId.ShouldBe(ZAIProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(ZAIProviderDefaults.ApiFamily);
+        published.ModelId.ShouldBe(new ModelId("glm-4.5"));
+        _ = published.Limits.MaxContextTokens.ShouldNotBeNull();
+        model.Alias.ShouldBe(published.Alias);
+        provider.GetRequiredService<ILlmModelResolver>().Resolve(published).ShouldBeSameAs(model);
+    }
+
+    [Fact]
+    public void AddZAIKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelIdBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddZAIKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddZAIKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddZAIKnownLlmModel(new ModelAlias("x"), new ModelId("glm-4.5"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddZAIKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddZAIKnownLlmModel(default, new ModelId("glm-4.5"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddZAIKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddZAIKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

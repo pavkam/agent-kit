@@ -9,6 +9,10 @@ namespace AgentKit.Simple
         {
             public AgentKit.AgentEngineBuilder UseLocalDevelopmentDefaults() { }
             public AgentKit.AgentEngineBuilder UseOpenAI(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenAI.OpenAIProviderOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseAnthropic(string apiKey, string modelId, System.Action<AgentKit.Providers.Anthropic.AnthropicProviderOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseOllama(string modelId, string? apiKey = null, System.Action<AgentKit.Providers.Ollama.OllamaProviderOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseOpenRouter(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenRouter.OpenRouterProviderOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseAzureOpenAI(System.Uri resourceEndpoint, string apiKey, string deploymentId, string modelId, System.Action<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
             public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseModel(AgentKit.ModelAlias alias) { }
@@ -18,6 +22,12 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder WithMaxTurns(int maxTurns) { }
             public AgentKit.AgentEngineBuilder WithAttemptTimeout(System.TimeSpan timeout) { }
             public AgentKit.AgentEngineBuilder WithRequestSettings(AgentKit.LlmRequestSettings settings) { }
+            public AgentKit.AgentEngineBuilder AddAgent(AgentKit.AgentId agentId, System.Action<AgentKit.Simple.SimpleAgentOptions> configure) { }
+            public AgentKit.AgentEngineBuilder WithBudget(System.Action<AgentKit.Simple.SimpleBudgetOptions> configure) { }
+            public AgentKit.AgentEngineBuilder WithDelegation(System.Action<AgentKit.Tools.Task.TaskToolOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
+            public AgentKit.AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2) { }
         }
     }
     public static class AgentEngineExtensions
@@ -25,7 +35,9 @@ namespace AgentKit.Simple
         extension(AgentKit.AgentEngine engine)
         {
             public AgentKit.Conversations.IConversationSession Conversation { get; }
+            public AgentKit.ExecutionIdentity Identity { get; }
             public System.Threading.Tasks.Task<string> AskAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
+            public System.Threading.Tasks.Task<T> AskAsync<T>(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
         }
@@ -34,5 +46,26 @@ namespace AgentKit.Simple
     {
         public SimpleAgentException(string message, AgentKit.Conversations.ConversationTurnResult result) { }
         public AgentKit.Conversations.ConversationTurnResult Result { get; }
+    }
+    public sealed class SimpleAgentOptions
+    {
+        public SimpleAgentOptions() { }
+        public System.TimeSpan AttemptTimeout { get; set; }
+        public string DisplayName { get; set; }
+        public bool IncludeRegisteredTools { get; set; }
+        public System.Collections.Generic.List<string> Instructions { get; }
+        public int MaxTurns { get; set; }
+        public AgentKit.OutputDefinition? Output { get; set; }
+        public AgentKit.LlmRequestSettings RequestSettings { get; set; }
+    }
+    public sealed class SimpleBudgetOptions
+    {
+        public SimpleBudgetOptions() { }
+        public decimal? MaxCostUsd { get; set; }
+        public long? MaxInputTokens { get; set; }
+        public int? MaxModelRequests { get; set; }
+        public long? MaxOutputTokens { get; set; }
+        public int? MaxToolCalls { get; set; }
+        public int? MaxTurns { get; set; }
     }
 }

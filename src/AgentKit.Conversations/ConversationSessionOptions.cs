@@ -76,6 +76,29 @@ public sealed class ConversationSessionOptions
     /// <value><see cref="LlmRequestSettings.Default"/> by default.</value>
     public LlmRequestSettings RequestSettings { get; set; } = LlmRequestSettings.Default;
 
+    /// <summary>Gets or sets the structured-output contract every turn's final answer must satisfy.</summary>
+    /// <value>
+    /// <see langword="null"/> by default, meaning free text. When set, the loop validates each terminal assistant
+    /// response through the <see cref="IOutputProcessor"/> resolved from the turn's scope; an accepted value is
+    /// surfaced as <see cref="ConversationOutputEvent"/> and <see cref="ConversationTurnResult.Output"/>, a
+    /// rejected candidate is repaired within the definition's retry policy, and exhaustion fails the turn.
+    /// </value>
+    /// <remarks>
+    /// Ignored when <see cref="Agent"/> is pinned; the pinned definition's own <see cref="AgentDefinition.Output"/>
+    /// applies. The composition must register an output processor (for example through <c>AddAgentOutput</c>) or a
+    /// turn with an output definition fails closed. In <see cref="OutputMode.Prompted"/> the schema reaches the
+    /// model only through <see cref="Instructions"/>.
+    /// </remarks>
+    public OutputDefinition? Output { get; set; }
+
+    /// <summary>Gets the budget limits every turn's run reserves against.</summary>
+    /// <value>
+    /// Empty by default. When non-empty the composition must register an <see cref="IBudgetAuthority"/> and a ledger;
+    /// a refused reservation ends the turn with a failed completion naming the exhausted dimension.
+    /// </value>
+    /// <remarks>Ignored when <see cref="Agent"/> is pinned; the pinned definition's own limits apply.</remarks>
+    public IList<BudgetLimit> BudgetLimits { get; } = [];
+
     /// <summary>Gets or sets the maximum tool-calling turns one run may take before it stops.</summary>
     /// <value>A positive count; twelve by default.</value>
     public int MaxTurns { get; set; } = 12;

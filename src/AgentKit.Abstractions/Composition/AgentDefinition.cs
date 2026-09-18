@@ -198,6 +198,38 @@ public sealed record AgentDefinition
     /// </value>
     public ComponentKey<IAgentLoop>? LoopKey { get; init; }
 
+    /// <summary>Gets the structured-output contract every run of this definition must satisfy before it completes.</summary>
+    /// <value>
+    /// The immutable definition the loop hands to the selected <see cref="IOutputProcessor"/> after each terminal
+    /// assistant response, or <see langword="null"/> when the agent's final answer is free text. When set, a run
+    /// completes only with an <see cref="OutputAccepted"/> decision; a rejected candidate is repaired within the
+    /// definition's retry policy or the run halts with <see cref="AgentRunOutputRejected"/>.
+    /// </value>
+    /// <remarks>
+    /// The definition owner is responsible for telling the model what to produce: in <see cref="OutputMode.Prompted"/>
+    /// the schema reaches the model only through <see cref="Instructions"/>, which carry definition authority.
+    /// </remarks>
+    public OutputDefinition? Output { get; init; }
+
+    /// <summary>Gets the budget limits every run of this definition reserves against.</summary>
+    /// <value>
+    /// Hard or soft limits over first-party or host dimensions, or empty when runs are bounded only by turns and
+    /// timeouts. When non-empty the composition must select an <see cref="IBudgetAuthority"/>; the loop creates one
+    /// run scope with these limits, reserves before each turn, model request, and tool call, accounts reported usage,
+    /// and settles the run as <see cref="AgentRunBudgetExhausted"/> when a reservation is refused.
+    /// </value>
+    /// <exception cref="ArgumentException">An initializer assigns a default array or one containing a null element.</exception>
+    public ImmutableArray<BudgetLimit> BudgetLimits
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(BudgetLimits));
+            ArgumentException.ThrowIfContainsNull(value, nameof(BudgetLimits));
+            field = value;
+        }
+    } = [];
+
     /// <summary>Gets the human-readable name used in diagnostics.</summary>
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set null, empty, or whitespace-only text.
@@ -347,6 +379,8 @@ public sealed record AgentDefinition
         && SecurityProfile.Equals(other.SecurityProfile)
         && SessionProfile.Equals(other.SessionProfile)
         && LoopKey.Equals(other.LoopKey)
+        && Equals(Output, other.Output)
+        && BudgetLimits.SequenceEqual(other.BudgetLimits)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -372,6 +406,12 @@ public sealed record AgentDefinition
         hash.Add(SecurityProfile);
         hash.Add(SessionProfile);
         hash.Add(LoopKey);
+        hash.Add(Output);
+        foreach (var limit in BudgetLimits)
+        {
+            hash.Add(limit);
+        }
+
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);

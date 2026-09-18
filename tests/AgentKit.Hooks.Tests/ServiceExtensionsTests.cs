@@ -8,6 +8,50 @@ public sealed class ServiceExtensionsTests
     private static readonly HookPointId _point = new("test.point");
 
     [Fact]
+    public void AddRunStartedHook_WhenCalled_RegistersTheHookAndTheDispatcherOnce()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddRunStartedHook<TestRunStartedHook>().AddRunStartedHook<TestRunStartedHook>();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IHookDispatcher>().ShouldBeOfType<DefaultHookDispatcher>();
+        _ = provider.GetServices<IRunStartedHook>().ShouldHaveSingleItem().ShouldBeOfType<TestRunStartedHook>();
+    }
+
+    [Fact]
+    public void AddBeforeModelRequestHook_WhenCalled_RegistersAdditively()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddBeforeModelRequestHook<TestBeforeModelRequestHook>().AddBeforeModelRequestHook<OtherBeforeModelRequestHook>();
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetServices<IBeforeModelRequestHook>().Select(static h => h.GetType()).ShouldBe([typeof(TestBeforeModelRequestHook), typeof(OtherBeforeModelRequestHook)]);
+    }
+
+    [Fact]
+    public void AddBeforeToolInvocationHook_WhenCalled_RegistersTheHook()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddBeforeToolInvocationHook<TestBeforeToolInvocationHook>();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetServices<IBeforeToolInvocationHook>().ShouldHaveSingleItem().ShouldBeOfType<TestBeforeToolInvocationHook>();
+    }
+
+    [Fact]
+    public void AddPointHooks_WhenServicesNull_ThrowArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(services.AddRunStartedHook<TestRunStartedHook>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(services.AddBeforeModelRequestHook<TestBeforeModelRequestHook>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(services.AddBeforeToolInvocationHook<TestBeforeToolInvocationHook>).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddAgentHooks_WhenServicesNull_ThrowsArgumentNullException()
     {
         IServiceCollection services = null!;
@@ -135,4 +179,32 @@ public sealed class ServiceExtensionsTests
     }
 
     private static Func<TestHook, TestHookEventArgs, HookDispatchScope, CancellationToken, Task> Invoker => static (hook, args, scope, ct) => hook.InvokeAsync(args, scope, ct);
+
+    private sealed class TestRunStartedHook: IRunStartedHook
+    {
+        public HookId Id { get; } = new("test.run-started");
+
+        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeModelRequestHook: IBeforeModelRequestHook
+    {
+        public HookId Id { get; } = new("test.before-model");
+
+        public ValueTask OnBeforeModelRequestAsync(BeforeModelRequestEventArgs args, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
+
+    private sealed class OtherBeforeModelRequestHook: IBeforeModelRequestHook
+    {
+        public HookId Id { get; } = new("test.before-model.other");
+
+        public ValueTask OnBeforeModelRequestAsync(BeforeModelRequestEventArgs args, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeToolInvocationHook: IBeforeToolInvocationHook
+    {
+        public HookId Id { get; } = new("test.before-tool");
+
+        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
 }

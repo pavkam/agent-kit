@@ -159,6 +159,8 @@ internal sealed class DefaultRunContinuationPolicy: IRunContinuationPolicy
                 Invalid("Committed tool results require explicit continuation evidence."),
             CommittedTurnContinuationBoundary { RequiresOutputValidation: true, OutputDecision: not OutputAccepted } =>
                 Invalid("Required output validation is missing an accepted terminal decision."),
+            CommittedTurnContinuationBoundary { OutputDecision: OutputAccepted accepted } committed =>
+                new CompleteRun(new AgentRunCompleted(committed.Response) { Output = accepted.Output }),
             CommittedTurnContinuationBoundary committed =>
                 new CompleteRun(new AgentRunCompleted(committed.Response)),
             IdleContinuationBoundary =>

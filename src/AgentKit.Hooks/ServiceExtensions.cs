@@ -57,5 +57,50 @@ public static class ServiceExtensions
             services.TryAddSingleton<IHookDispatcher, DefaultHookDispatcher>();
             return services;
         }
+
+        /// <summary>Registers one <see cref="IRunStartedHook"/> additively for the <see cref="AgentHookPoints.RunStarted"/> point.</summary>
+        /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Registrations are additive and de-duplicated per implementation type. <see cref="AddAgentHooks"/> is also
+        /// registered so the loop has a dispatcher; a loop that finds hooks without a dispatcher fails closed.
+        /// </remarks>
+        public IServiceCollection AddRunStartedHook<THook>()
+            where THook : class, IRunStartedHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks();
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IRunStartedHook, THook>());
+            return services;
+        }
+
+        /// <summary>Registers one <see cref="IBeforeModelRequestHook"/> additively for the <see cref="AgentHookPoints.BeforeModelRequest"/> point.</summary>
+        /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Registrations are additive and de-duplicated per implementation type; <see cref="AddAgentHooks"/> is also registered.</remarks>
+        public IServiceCollection AddBeforeModelRequestHook<THook>()
+            where THook : class, IBeforeModelRequestHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks();
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeModelRequestHook, THook>());
+            return services;
+        }
+
+        /// <summary>Registers one <see cref="IBeforeToolInvocationHook"/> additively for the <see cref="AgentHookPoints.BeforeToolInvocation"/> point.</summary>
+        /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Registrations are additive and de-duplicated per implementation type; <see cref="AddAgentHooks"/> is also registered.</remarks>
+        public IServiceCollection AddBeforeToolInvocationHook<THook>()
+            where THook : class, IBeforeToolInvocationHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks();
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeToolInvocationHook, THook>());
+            return services;
+        }
     }
 }

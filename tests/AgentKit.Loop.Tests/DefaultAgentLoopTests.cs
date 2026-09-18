@@ -2821,6 +2821,706 @@ public sealed class DefaultAgentLoopTests
         committedResultIds.ShouldBe(committedCallIds);
     }
 
+
+    [Fact]
+    public async Task RunAsync_WhenOutputIsAccepted_CompletesWithTheValidatedOutputAttached()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request, value: 42));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId, /*lang=json,strict*/ """{"ok":true}"""), outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var definition = ScriptedOutputProcessor.Definition();
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = definition };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var completed = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        completed.Output.ShouldNotBeNull().Value.ShouldBe(42);
+        var processed = processor.Requests.ShouldHaveSingleItem();
+        processed.Definition.ShouldBeSameAs(definition);
+        processed.ValidationAttempt.ShouldBe(1);
+        processed.Response.RequestId.ShouldBe(requestId);
+        _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputNeedsRepair_CommitsARuntimeRepairMessageAndValidatesTheNextTurnAsAttemptTwo()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(
+            _ => ScriptedOutputProcessor.Retry("Return only the JSON object."),
+            request => ScriptedOutputProcessor.Accepted(request, value: "fixed"));
+        var modelCalls = 0;
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => TestFactory.CompletedWithText(requestId, ++modelCalls == 1 ? "not json" : /*lang=json,strict*/ """{"ok":true}"""),
+            contextAssembler: assembler,
+            outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunCompleted>().Output.ShouldNotBeNull().Value.ShouldBe("fixed");
+        modelCalls.ShouldBe(2);
+        processor.Requests.Select(static r => r.ValidationAttempt).ShouldBe([1, 2]);
+        result.NewMessages.Length.ShouldBe(3);
+        _ = result.NewMessages[0].ShouldBeOfType<AssistantMessage>();
+        var repair = result.NewMessages[1].ShouldBeOfType<RuntimeMessage>();
+        repair.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Return only the JSON object.");
+        repair.RunId.ShouldBe(request.RunId);
+        _ = result.NewMessages[2].ShouldBeOfType<AssistantMessage>();
+        _ = coordinator.Entries.OfType<MessageSessionEntry>().Select(static e => e.Message).OfType<RuntimeMessage>().ShouldHaveSingleItem();
+        assembler.Requests.Count.ShouldBe(2);
+        assembler.Requests[1].History.OfType<RuntimeMessage>().ShouldHaveSingleItem().Id.ShouldBe(repair.Id);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputIsRejected_HaltsWithOutputRejectedAndKeepsTheCommittedResponse()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(_ => ScriptedOutputProcessor.Rejected());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunOutputRejected>().Rejection.ShouldBeOfType<OutputRejected>();
+        _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputConfigurationIsRejected_HaltsWithOutputRejectedWithoutARepairTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(_ => ScriptedOutputProcessor.ConfigurationRejected());
+        var modelCalls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); }, outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunOutputRejected>().Rejection.ShouldBeOfType<OutputConfigurationRejected>();
+        modelCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputIsSelectedButNoProcessorIsComposed_FailsClosedAsInvalidState()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("no output processor");
+        _ = result.NewMessages.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputIsSelectedAndTheModelCallsATool_ValidatesOnlyTheTerminalResponse()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>().Output.ShouldNotBeNull();
+        modelCalls.ShouldBe(2);
+        processor.Requests.ShouldHaveSingleItem().Response.Parts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheOutputProcessorThrows_FailsClosedAsInvalidState()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(_ => throw new InvalidOperationException("boom"));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("faulted");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRepairIsRequestedOnTheFinalTurn_SettlesAsTurnLimitReached()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(_ => ScriptedOutputProcessor.Retry());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1) with { Output = ScriptedOutputProcessor.Definition() };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
+        _ = result.NewMessages.OfType<RuntimeMessage>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledDuringOutputValidation_SettlesAsCancelledWithTheCommittedResponse()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var processor = new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request)) { Gate = new TaskCompletionSource() };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = loop.RunAsync(request, _services, cancellation.Token);
+        while (processor.Requests.Count == 0)
+        {
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+        }
+
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+    }
+
+
+    [Fact]
+    public void Constructor_WhenHooksAreRegisteredWithoutADispatcher_ThrowsInvalidOperationException() =>
+        _ = Should.Throw<InvalidOperationException>(() => CreateLoop(out _, out _, _ => throw new InvalidOperationException("unused"), runStartedHooks: [new RecordingRunStartedHook()]));
+
+    [Fact]
+    public async Task RunAsync_WhenARunStartedHookIsRegistered_ObservesTheRunOnceBeforeTheFirstTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var hook = new RecordingRunStartedHook();
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; hook.ModelCallsWhenInvoked ??= modelCalls; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(), runStartedHooks: [hook]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var args = hook.Invocations.ShouldHaveSingleItem();
+        args.RunId.ShouldBe(request.RunId);
+        args.BranchId.ShouldBe(_branchId);
+        args.MaxTurns.ShouldBe(request.MaxTurns);
+        args.Model.Alias.ShouldBe(new ModelAlias("chat"));
+        hook.ModelCallsWhenInvoked.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARunStartedHookThrows_IsIsolatedAndTheRunProceeds()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            runStartedHooks: [new RecordingRunStartedHook { Throw = true }]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookNarrowsSettings_SendsTheNarrowedSettings()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        LlmModelRequest? received = null;
+        var hook = new SettingsHook(settings => settings with { Temperature = 0.1, MaxOutputTokens = 50 });
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(), beforeModelRequestHooks: [hook]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        received.ShouldNotBeNull().Context.Settings.Temperature.ShouldBe(0.1);
+        received.Context.Settings.MaxOutputTokens.ShouldBe(50);
+        hook.Invocations.ShouldHaveSingleItem().Turn.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookWidensTheCap_FailsTheTurnWithoutSendingTheRequest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeModelRequestHooks: [new SettingsHook(settings => settings with { MaxOutputTokens = 1_000 })]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("hook");
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookThrows_FailsTheTurnWithoutSendingTheRequest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeModelRequestHooks: [new SettingsHook(_ => throw new InvalidOperationException("boom"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookRewritesArguments_InvokesTheToolWithTheRewrittenArguments()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        ToolCallRequest? invoked = null;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: call => { invoked = call; return TestFactory.SuccessResult(); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(args => args.Arguments = System.Text.Json.JsonDocument.Parse("""{"rewritten":true}""").RootElement.Clone())]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoked.ShouldNotBeNull().Arguments.GetProperty("rewritten").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookVetoes_SettlesTheCallAsRejectedWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(args => args.Veto = new ToolInvocationVeto("blocked by policy"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        toolInvocations.ShouldBe(0);
+        var toolResult = result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single();
+        toolResult.CallId.ShouldBe(callId);
+        toolResult.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        toolResult.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        toolResult.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("blocked by policy");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookThrows_TheCallFaultsWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(_ => throw new InvalidOperationException("boom"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        toolInvocations.ShouldBe(0);
+        var toolResult = result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single();
+        toolResult.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        toolResult.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoHooksAreRegistered_BehavesAsBefore()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        LlmModelRequest? received = null;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new Hooks.DefaultHookDispatcher());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { Temperature = 0.7 } };
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        received.ShouldNotBeNull().Context.Settings.Temperature.ShouldBe(0.7);
+    }
+
+    private sealed class RecordingRunStartedHook: IRunStartedHook
+    {
+        public HookId Id { get; } = new("test.run-started");
+
+        public List<RunStartedEventArgs> Invocations { get; } = [];
+
+        public bool Throw { get; init; }
+
+        public int? ModelCallsWhenInvoked { get; set; }
+
+        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default)
+        {
+            Invocations.Add(args);
+            ModelCallsWhenInvoked ??= 1;
+            return Throw ? throw new InvalidOperationException("observer failed") : ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class SettingsHook(Func<LlmRequestSettings, LlmRequestSettings> transform): IBeforeModelRequestHook
+    {
+        public HookId Id { get; } = new("test.settings");
+
+        public List<BeforeModelRequestEventArgs> Invocations { get; } = [];
+
+        public ValueTask OnBeforeModelRequestAsync(BeforeModelRequestEventArgs args, CancellationToken cancellationToken = default)
+        {
+            Invocations.Add(args);
+            args.Settings = transform(args.Settings);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ToolHook(Action<BeforeToolInvocationEventArgs> act): IBeforeToolInvocationHook
+    {
+        public HookId Id { get; } = new("test.tool");
+
+        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        {
+            act(args);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+
+    [Fact]
+    public async Task RunAsync_WhenHistoryIsBelowThePressureThreshold_DoesNotAskTheCompactor()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "short")]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenHistoryExceedsThePressureThreshold_CompactsOnceAndSendsTheCheckpointedHistory()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        FakeSessionCoordinator? store = null;
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request =>
+            {
+                // A successful compaction is a durable checkpoint on the branch; the loop reloads from it.
+                var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3, "summary");
+                store!.SimulateConcurrentAppend([checkpoint]);
+                return new CompactionSucceeded(request.Context, checkpoint.Record);
+            },
+        };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, compactor: compactor);
+        store = coordinator;
+        var big = new string('x', 4 * 2000);   // ~2000 tokens each at 4 chars/token; the model window is 4096
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, big),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, big),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "latest"),
+        ]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var compaction = compactor.Requests.ShouldHaveSingleItem();
+        compaction.Trigger.Kind.ShouldBe(CompactionTriggerKind.ContextPressure);
+        _ = compaction.Trigger.CausalOperationId.ShouldNotBeNull();
+        compaction.Context.AgentId.ShouldBe(_agentId);
+        compaction.Context.SessionId.ShouldBe(_sessionId);
+        compaction.BranchId.ShouldBe(_branchId);
+        compaction.SourceThrough.ShouldBe(new SessionSequence(3));
+        compaction.Deadline.ShouldBeGreaterThan(compaction.RequestedAt);
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        _ = history[0].ShouldBeOfType<RuntimeMessage>();
+        history.OfType<UserMessage>().Select(static m => ((TextPart) m.Parts[0]).Text).ShouldBe(["latest"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCompactorDoesNotReduce_ContinuesWithTheFullHistoryAndDoesNotRetryThisRun()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request => new CompactionNotReducing(
+                request.Context, new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(10, 10, 1), 0.1),
+        };
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler, compactor: compactor);
+        var big = new string('x', 4 * 4000);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, big)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        modelCalls.ShouldBe(2);
+        compactor.Requests.Count.ShouldBe(1);
+        _ = assembler.Requests[0].History.OfType<UserMessage>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCompactorThrows_ContinuesWithTheFullHistory()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor { OnRequest = _ => throw new InvalidOperationException("boom") };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledDuringCompaction_PropagatesCancellation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        using var cancellation = new CancellationTokenSource();
+        var compactor = new ScriptedCompactor { OnRequest = _ => { cancellation.Cancel(); throw new OperationCanceledException(cancellation.Token); } };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cancellation.Token));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheModelDeclaresNoContextWindow_DoesNotAskTheCompactor()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor();
+        var descriptor = TestFactory.Model() with { Limits = new ModelLimits(null, null) };
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+        var loop = CreateLoopWith(
+            coordinator, new FakeModelCatalog(TestFactory.Catalog(descriptor)), FakeModelSelector.Selecting(descriptor),
+            new FakeLlmModelResolver(new RespondingLlmModel(new ModelAlias("chat"), _ => TestFactory.CompletedWithText(requestId))),
+            compactor: compactor);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.ShouldBeEmpty();
+    }
+
+    private sealed class ScriptedCompactor: ICompactor
+    {
+        public List<CompactionRequest> Requests { get; } = [];
+
+        public Func<CompactionRequest, CompactionResult>? OnRequest { get; init; }
+
+        public Task<CompactionResult> CompactAsync(CompactionRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(OnRequest?.Invoke(request) ?? throw new InvalidOperationException("No compaction was scripted."));
+        }
+    }
+
+
+    [Fact]
+    public async Task RunAsync_WhenBudgetLimitsAreDeclaredWithoutAnAuthority_FailsClosedBeforeAnyTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { BudgetLimits = [TurnLimit(5)] };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("budget authority");
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheTurnBudgetIsSmallerThanMaxTurns_SettlesAsBudgetExhaustedOnTheTurnThatWouldExceedIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 5 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8) with { BudgetLimits = [TurnLimit(2)] };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var exhausted = result.Outcome.ShouldBeOfType<AgentRunBudgetExhausted>();
+        exhausted.Dimension.ShouldBe(BudgetDimensions.Turns);
+        _ = exhausted.Failure.ShouldNotBeNull();
+        modelCalls.ShouldBe(2);
+        result.NewMessages.OfType<ToolMessage>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolCallBudgetIsExhausted_RejectsTheCallWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 3 ? TestFactory.CompletedWithToolCall(requestId, new ToolCallId(Guid.NewGuid())) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits = [new BudgetLimit(BudgetDimensions.AttemptedToolCalls, 1m, new BudgetUnit("count"), BudgetLimitKind.Hard)],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        toolInvocations.ShouldBe(1);
+        var results = result.NewMessages.OfType<ToolMessage>().SelectMany(static m => m.Parts.OfType<ToolResultPart>()).ToList();
+        results.Count.ShouldBe(2);
+        results[1].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        results[1].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.ResourceLimitExceeded);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenReportedUsageExceedsTheTokenBudget_KeepsTheCommittedResponseAndSettlesAsExhausted()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => new ModelAttemptCompleted(TestFactory.Response(
+                requestId,
+                ++modelCalls == 1
+                    ? [new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty)]
+                    : [new TextPart("done", TextSemantics.Plain, ExtensionData.Empty)],
+                modelCalls == 1 ? NormalizedStopReason.ToolUse : NormalizedStopReason.Completed) with
+            {
+                Usage = new ModelUsage(ModelUsageReportState.Final, 700, 50, null, null, null, null, ExtensionData.Empty),
+            }),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits = [new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard)],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var exhausted = result.Outcome.ShouldBeOfType<AgentRunBudgetExhausted>();
+        exhausted.Dimension.ShouldBe(BudgetDimensions.InputTokens);
+        modelCalls.ShouldBe(2);
+        result.NewMessages.OfType<AssistantMessage>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenUsageStaysWithinTheBudget_CompletesNormally()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => new ModelAttemptCompleted(TestFactory.Response(requestId, [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Completed) with
+            {
+                Usage = new ModelUsage(ModelUsageReportState.Final, 10, 5, null, null, 0.001m, "USD", ExtensionData.Empty),
+            }),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits =
+            [
+                TurnLimit(3),
+                new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard),
+                new BudgetLimit(BudgetDimensions.Cost, 0.05m, new BudgetUnit("usd"), BudgetLimitKind.Hard),
+            ],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoBudgetLimitsAreDeclared_NeverTouchesTheAuthority()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var authority = new ThrowingBudgetAuthority();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), budgets: authority);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    private static BudgetLimit TurnLimit(int turns) => new(BudgetDimensions.Turns, turns, new BudgetUnit("count"), BudgetLimitKind.Hard);
+
+    private static IBudgetAuthority Authority()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentBudgets();
+        _ = services.AddInMemoryBudgetLedger();
+        return services.BuildServiceProvider().GetRequiredService<IBudgetAuthority>();
+    }
+
+    private sealed class ThrowingBudgetAuthority: IBudgetAuthority
+    {
+        public ValueTask<BudgetScopeResult> CreateChildScopeAsync(BudgetScopeRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The authority must not be touched by an unbudgeted run.");
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
@@ -2835,7 +3535,14 @@ public sealed class DefaultAgentLoopTests
         FakeSecurityProfileSelector? securityProfileSelector = null,
         AgentLoopOptions? options = null,
         TimeProvider? timeProvider = null,
-        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null)
+        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
+        IOutputProcessor? outputProcessor = null,
+        IHookDispatcher? hookDispatcher = null,
+        IEnumerable<IRunStartedHook>? runStartedHooks = null,
+        IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -2853,7 +3560,10 @@ public sealed class DefaultAgentLoopTests
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
-            continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System));
+            continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
+            outputProcessor,
+            compactor,
+            budgets);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
@@ -2864,7 +3574,11 @@ public sealed class DefaultAgentLoopTests
             timeProvider ?? TimeProvider.System,
             new FakeOptionsMonitor<AgentLoopOptions>(options ?? new AgentLoopOptions()),
             TestLoopKey,
-            logger);
+            logger,
+            hookDispatcher,
+            runStartedHooks,
+            beforeModelRequestHooks,
+            beforeToolInvocationHooks);
     }
 
     private DefaultAgentLoop CreateLoopWith(
@@ -2873,7 +3587,8 @@ public sealed class DefaultAgentLoopTests
         IModelSelector selector,
         ILlmModelResolver resolver,
         IContextAssembler? contextAssembler = null,
-        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null)
+        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
+        ICompactor? compactor = null)
     {
         _services = new AgentRunServices(
             coordinator,
@@ -2883,7 +3598,9 @@ public sealed class DefaultAgentLoopTests
             catalog,
             selector,
             resolver,
-            new DefaultRunContinuationPolicy(TimeProvider.System));
+            new DefaultRunContinuationPolicy(TimeProvider.System),
+            output: null,
+            compactor);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),

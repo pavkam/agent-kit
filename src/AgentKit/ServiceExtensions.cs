@@ -28,9 +28,12 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>
         /// Registration is idempotent and uses <c>TryAdd</c> semantics. The
-        /// engine, clock, and catalog are singular, thread-safe singletons. A
-        /// resolved engine does not own the external host's provider; the host
-        /// remains responsible for scopes, shutdown, and disposal.
+        /// engine, clock, catalog, and the run, operation, message, and
+        /// session-entry identifier generators are singular, thread-safe
+        /// singletons; a host that registered deterministic generators first
+        /// keeps them. A resolved engine does not own the external host's
+        /// provider; the host remains responsible for scopes, shutdown, and
+        /// disposal.
         /// </para>
         /// <para>
         /// This registers no loop, provider, store, tool, or security
@@ -55,6 +58,10 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<RunId>(static () => new RunId(Guid.NewGuid())));
             services.TryAddSingleton<IIdentifierGenerator<OperationId>>(
                 new DelegateIdentifierGenerator<OperationId>(static () => new OperationId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<MessageId>>(
+                new DelegateIdentifierGenerator<MessageId>(static () => new MessageId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
+                new DelegateIdentifierGenerator<SessionEntryId>(static () => new SessionEntryId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddSingleton(
@@ -64,6 +71,36 @@ public static class ServiceExtensions
                     return new AgentEngine(provider, ownedProvider: null, composition);
                 });
 
+            return services;
+        }
+
+        /// <summary>
+        /// Registers <see cref="EngineDelegationChannel"/> as the <see cref="ITaskDelegationChannel"/> the delegation
+        /// broker hands authorized prompts to, so a delegated task runs as one turn of the target agent on this
+        /// engine.
+        /// </summary>
+        /// <param name="configure">Optional channel bounds.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Idempotent (<c>TryAdd</c>). Pair with <c>AddAgentDelegation</c> from <c>AgentKit.Goals</c> and
+        /// <c>AddTaskTool</c> from <c>AgentKit.Tools.Task</c>; the target agents must be published on the same engine.
+        /// A <see cref="GoalId"/> generator is registered when absent.
+        /// </remarks>
+        public IServiceCollection AddEngineDelegationChannel(Action<EngineDelegationChannelOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            var options = services.AddOptions<EngineDelegationChannelOptions>()
+                .Validate(static o => o.MaximumSummaryCharacters > 0, "MaximumSummaryCharacters must be positive.");
+            if (configure is not null)
+            {
+                _ = options.Configure(configure);
+            }
+
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IIdentifierGenerator<GoalId>>(
+                new DelegateIdentifierGenerator<GoalId>(static () => new GoalId(Guid.NewGuid())));
+            services.TryAddSingleton<ITaskDelegationChannel, EngineDelegationChannel>();
             return services;
         }
 

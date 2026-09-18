@@ -9,6 +9,7 @@ namespace AgentKit
         public AgentKit.AgentDefinition Definition { get; }
         public AgentKit.AgentId Id { get; }
         public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunOptions options, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> SendAsync(AgentKit.AgentSendRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class AgentAdmissionRejectedException : System.InvalidOperationException
     {
@@ -64,11 +65,42 @@ namespace AgentKit
         public int? MaxTurns { get; init; }
         public AgentKit.SessionId SessionId { get; init; }
     }
+    public sealed class AgentSendRequest : System.IEquatable<AgentKit.AgentSendRequest>
+    {
+        public AgentSendRequest(AgentKit.ExecutionIdentity identity, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.SessionId? sessionId = default, int? maxTurns = default, System.TimeSpan? attemptTimeout = default, AgentKit.IAgentRunObserver? observer = null) { }
+        public AgentSendRequest(AgentKit.ExecutionIdentity identity, string text, AgentKit.SessionId? sessionId = default, int? maxTurns = default, System.TimeSpan? attemptTimeout = default, AgentKit.IAgentRunObserver? observer = null) { }
+        public System.TimeSpan? AttemptTimeout { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public int? MaxTurns { get; }
+        public AgentKit.IAgentRunObserver? Observer { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> Parts { get; }
+        public AgentKit.SessionId? SessionId { get; }
+        public bool Equals(AgentKit.AgentSendRequest? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class AgentSessionBusyException : System.InvalidOperationException
+    {
+        public AgentSessionBusyException(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId activeRunId) { }
+        public AgentKit.RunId ActiveRunId { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SessionId SessionId { get; }
+    }
+    public sealed class EngineDelegationChannel : AgentKit.ITaskDelegationChannel
+    {
+        public EngineDelegationChannel(System.IServiceProvider services, System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.GoalId> goalIds, Microsoft.Extensions.Options.IOptions<AgentKit.EngineDelegationChannelOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.EngineDelegationChannel>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationPrompt prompt, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class EngineDelegationChannelOptions
+    {
+        public EngineDelegationChannelOptions() { }
+        public int MaximumSummaryCharacters { get; set; }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKit() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEngineDelegationChannel(System.Action<AgentKit.EngineDelegationChannelOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgent(AgentKit.AgentDefinition definition, int precedence = 0) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentRunProfilePublication(AgentKit.AgentRunProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSnapshot(AgentKit.AgentDefinitionSourceSnapshot snapshot) { }

@@ -39,6 +39,32 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets the selected model alias, when one was chosen.</summary>
     public ModelAlias? ModelAlias { get; set; }
 
+    /// <summary>
+    /// Gets the name of the <c>Use&lt;Provider&gt;</c> method that registered a model under the shared sugar alias,
+    /// or <see langword="null"/> when none has. Every sugar method uses the same alias, so a second one would publish
+    /// a duplicate descriptor; this lets the second call fail immediately instead of at the first turn.
+    /// </summary>
+    public string? SugarProvider { get; private set; }
+
+    /// <summary>
+    /// Records that <paramref name="method"/> selected the shared sugar alias, rejecting a second selection.
+    /// </summary>
+    /// <param name="method">The sugar method's name, used in the diagnostic.</param>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is blank.</exception>
+    /// <exception cref="InvalidOperationException">Another sugar method already selected a model.</exception>
+    public void SelectSugarModel(string method)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        if (SugarProvider is { } existing)
+        {
+            throw new InvalidOperationException(
+                $"{existing} already selected the model; a builder selects one model through the Use<Provider> methods. " +
+                "Register further providers on Services and pick one with UseModel.");
+        }
+
+        SugarProvider = method;
+    }
+
     /// <summary>Gets or sets an explicitly supplied identity.</summary>
     public ExecutionIdentity? Identity { get; set; }
 
@@ -53,6 +79,35 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Gets or sets the portable request settings.</summary>
     public LlmRequestSettings RequestSettings { get; set; } = LlmRequestSettings.Default;
+
+    /// <summary>Gets or sets the structured-output contract every turn must satisfy, or <see langword="null"/> for free text.</summary>
+    public OutputDefinition? Output { get; set; }
+
+    /// <summary>Gets or sets the budget limits every run of the default agent reserves against; empty for none.</summary>
+    public ImmutableArray<BudgetLimit> BudgetLimits { get; set; } = [];
+
+    /// <summary>Gets the additional agents hosted next to the default one, keyed by their pinned identities.</summary>
+    public Dictionary<AgentId, SimpleAgentOptions> AdditionalAgents { get; } = [];
+
+    /// <summary>
+    /// Records an additional agent, rejecting an identity already used by the default agent or another addition.
+    /// </summary>
+    /// <param name="agentId">The additional agent's stable identity.</param>
+    /// <param name="options">Its validated behavior.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The identity is already hosted by this plan.</exception>
+    public void AddAgent(AgentId agentId, SimpleAgentOptions options)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentNullException.ThrowIfNull(options);
+        if (agentId == EffectiveAgentId || AdditionalAgents.ContainsKey(agentId))
+        {
+            throw new InvalidOperationException($"Agent {agentId} is already hosted by this engine; every agent needs a distinct identity.");
+        }
+
+        AdditionalAgents.Add(agentId, options);
+    }
 
     /// <summary>Gets or sets a value indicating whether the named local-development defaults were opted into.</summary>
     public bool LocalDevelopmentDefaults { get; set; }
@@ -114,8 +169,13 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Builds the security publication the engine, the selector, and the permission options all pin.</summary>
     /// <returns>The publication.</returns>
-    public SecurityProfilePublication SecurityPublication() => new(
-        EffectiveAgentId,
+    public SecurityProfilePublication SecurityPublication() => SecurityPublication(EffectiveAgentId);
+
+    /// <summary>Builds the security publication for one hosted agent; every agent shares the plan's profile, policy, and authority.</summary>
+    /// <param name="agentId">The hosted agent.</param>
+    /// <returns>The publication the engine pins and the security authority reads for that agent.</returns>
+    public SecurityProfilePublication SecurityPublication(AgentId agentId) => new(
+        agentId,
         DefinitionRevision,
         ConfigurationVersion,
         SecurityProfileKey,
@@ -143,11 +203,16 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Builds the exact run-profile publication the engine pins for the definition.</summary>
     /// <returns>The publication pairing the security and session profiles with the configuration snapshot.</returns>
-    public AgentRunProfilePublication RunProfile()
+    public AgentRunProfilePublication RunProfile() => RunProfile(EffectiveAgentId);
+
+    /// <summary>Builds the run-profile publication for one hosted agent over the plan's shared session profile.</summary>
+    /// <param name="agentId">The hosted agent.</param>
+    /// <returns>The publication the engine pins for that agent.</returns>
+    public AgentRunProfilePublication RunProfile(AgentId agentId)
     {
         var sessionProfile = SessionProfile();
         return new AgentRunProfilePublication(
-            SecurityPublication(),
+            SecurityPublication(agentId),
             sessionProfile,
             new EffectiveConfigurationSnapshot(ConfigurationVersion, sessionProfile.ConfigurationFingerprint, [], []));
     }
@@ -168,7 +233,11 @@ internal sealed class SimpleAgentPlan
         new RunPolicyDefaults(MaxTurns, AttemptTimeout),
         ExtensionData.Empty,
         SecurityProfileKey,
-        SessionProfileKey);
+        SessionProfileKey)
+    {
+        Output = Output,
+        BudgetLimits = BudgetLimits,
+    };
 
     /// <summary>Applies the plan to the conversation options.</summary>
     /// <param name="options">The options to populate.</param>
@@ -183,6 +252,12 @@ internal sealed class SimpleAgentPlan
         options.SessionProfile = SessionProfile();
         options.ModelSelectionPolicy = new ModelSelectionPolicy([RequireModelAlias()]);
         options.RequestSettings = RequestSettings;
+        options.Output = Output;
+        foreach (var limit in BudgetLimits)
+        {
+            options.BudgetLimits.Add(limit);
+        }
+
         options.MaxTurns = MaxTurns;
         options.AttemptTimeout = AttemptTimeout;
         foreach (var instruction in InstructionMessages())
@@ -191,14 +266,66 @@ internal sealed class SimpleAgentPlan
         }
     }
 
+    /// <summary>
+    /// Selects the tools the model is offered: every registered tool when the tool runtime allows all of them,
+    /// otherwise only those on the allow-list, so the model never sees a tool whose call is certain to be rejected.
+    /// </summary>
+    /// <param name="tools">Every tool registered on the service collection.</param>
+    /// <param name="toolOptions">The tool runtime's authorization options.</param>
+    /// <returns>The advertised descriptors, in registration order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> or <paramref name="toolOptions"/> is null.</exception>
+    public static ImmutableArray<ToolDescriptor> AdvertisedTools(IEnumerable<ITool> tools, AgentToolsOptions toolOptions)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(toolOptions);
+        return
+        [
+            .. tools
+                .Select(static tool => tool.Descriptor)
+                .Where(descriptor => toolOptions.AllowAllRegisteredTools || toolOptions.AllowedToolIds.Contains(descriptor.Id)),
+        ];
+    }
+
+    /// <summary>Builds the immutable definition of one additional agent over the plan's shared model, profiles, and tools.</summary>
+    /// <param name="agentId">The additional agent's identity.</param>
+    /// <param name="options">Its configured behavior.</param>
+    /// <param name="tools">Every registered tool, offered when <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> is set.</param>
+    /// <returns>The definition the engine catalog publishes.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public AgentDefinition DefinitionFor(AgentId agentId, SimpleAgentOptions options, ImmutableArray<LlmToolDefinition> tools)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentNullException.ThrowIfNull(options);
+        return new AgentDefinition(
+            agentId,
+            DefinitionRevision,
+            options.DisplayName,
+            new ModelSelectionPolicy([RequireModelAlias()]),
+            ModelRequirements.None,
+            [.. options.Instructions.Select(text => BuildInstructionMessage(agentId, text)).Cast<AgentMessage>()],
+            options.IncludeRegisteredTools ? tools : [],
+            LlmToolChoice.Auto,
+            options.RequestSettings,
+            new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
+            ExtensionData.Empty,
+            SecurityProfileKey,
+            SessionProfileKey)
+        {
+            Output = options.Output,
+        };
+    }
+
     /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>
     /// <returns>One immutable message per entry in <see cref="Instructions"/>, in call order.</returns>
     private ImmutableArray<AgentMessage> InstructionMessages() =>
         _instructionMessages ??= [.. Instructions.Select(BuildInstructionMessage).Cast<AgentMessage>()];
 
-    private SystemMessage BuildInstructionMessage(string text) => new(
+    private SystemMessage BuildInstructionMessage(string text) => BuildInstructionMessage(EffectiveAgentId, text);
+
+    private static SystemMessage BuildInstructionMessage(AgentId agentId, string text) => new(
         new MessageId(Guid.NewGuid()),
-        EffectiveAgentId,
+        agentId,
         default,
         null,
         default,
@@ -209,19 +336,10 @@ internal sealed class SimpleAgentPlan
         [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
         ExtensionData.Empty);
 
-    private static ExecutionIdentity LocalDevelopmentIdentity() => new(
+    private static ExecutionIdentity LocalDevelopmentIdentity() => ExecutionIdentity.ForHuman(
         new TenantId("local"),
         new PrincipalId(Environment.UserName is { Length: > 0 } user ? user : "local-user"),
-        ExecutionSubjectKind.Human,
-        new AuthenticationEvidence(
-            new AuthenticationEvidenceId("local-process"),
-            new IdentityIssuerId("agentkit.simple"),
-            "local-process",
-            DateTimeOffset.UtcNow,
-            null,
-            new AuthenticationEvidenceFingerprint(new ContentHash("sha256:agentkit-simple-local-process"))),
-        [],
-        [],
-        IdentityAssuranceLevel.Basic,
-        new IdentityVersion(1));
+        new IdentityIssuerId("agentkit.simple"),
+        "local-process",
+        DateTimeOffset.UtcNow);
 }

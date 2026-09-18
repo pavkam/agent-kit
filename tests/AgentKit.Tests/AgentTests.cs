@@ -292,6 +292,326 @@ public sealed class AgentTests
         catalog.Reads.ShouldBe(baselineReads);
     }
 
+    [Fact]
+    public async Task SendAsync_WhenRequestIsNull_ThrowsArgumentNullException()
+    {
+        var loop = new GatedAgentLoop();
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => agent.SendAsync(null!, TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("request");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenNoSessionIsNamed_CreatesOneAppendsTheUserMessageAndRunsTheLoopAgainstIt()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+
+        var result = await agent.SendAsync(new AgentSendRequest(identity, "hello"), TestContext.Current.CancellationToken);
+
+        var create = sessions.CreateRequests.ShouldHaveSingleItem();
+        create.AgentId.ShouldBe(CompositionTestData.AgentId);
+        create.Identity.ShouldBe(identity);
+        create.Authorization.Scope.SessionId.ShouldBeNull();
+        var append = sessions.AppendRequests.ShouldHaveSingleItem();
+        append.Context.SessionId.ShouldBe(result.SessionId);
+        append.IdempotencyKey.Value.ShouldContain(result.RunId.ToString());
+        var user = append.Entries.ShouldHaveSingleItem().ShouldBeOfType<MessageSessionEntry>().Message.ShouldBeOfType<UserMessage>();
+        user.RunId.ShouldBe(result.RunId);
+        user.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("hello");
+        append.Entries[0].Sequence.ShouldBe(new SessionSequence(1));
+        var request = loop.Requests.ShouldHaveSingleItem();
+        request.SessionId.ShouldBe(result.SessionId);
+        request.BranchId.ShouldBe(result.BranchId);
+        request.RunId.ShouldBe(result.RunId);
+        request.Identity.ShouldBe(identity);
+        request.Authorization.Scope.SessionId.ShouldBe(result.SessionId);
+        request.Authorization.Scope.Correlation.ShouldBeOfType<InRunOperationCorrelation>().RunId.ShouldBe(result.RunId);
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenASessionIsNamed_ContinuesItWithTheNextSequenceAndNoCreate()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+        var first = await agent.SendAsync(new AgentSendRequest(identity, "first"), TestContext.Current.CancellationToken);
+
+        var second = await agent.SendAsync(new AgentSendRequest(identity, "second", first.SessionId), TestContext.Current.CancellationToken);
+
+        second.SessionId.ShouldBe(first.SessionId);
+        second.BranchId.ShouldBe(first.BranchId);
+        second.RunId.ShouldNotBe(first.RunId);
+        sessions.CreateRequests.Count.ShouldBe(1);
+        sessions.AppendRequests.Count.ShouldBe(2);
+        sessions.AppendRequests[1].Entries[0].Sequence.ShouldBe(new SessionSequence(2));
+        sessions.AppendRequests[1].ExpectedVersion.ShouldBe(new SessionVersion(1));
+        loop.Requests.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheNamedSessionBelongsToAnotherPrincipal_RejectsWithoutAppending()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        var foreign = new SessionId(Guid.NewGuid());
+        sessions.Seed(new SessionDescriptor(
+            new SessionAddress(CompositionTestData.AgentId, foreign), null, new TenantId("tenant"), new PrincipalId("someone-else"),
+            new SessionStoreKey("store"), new BranchId(Guid.NewGuid()), new SessionVersion(0), SessionLifecycleState.Active,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), ExtensionData.Empty));
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(() =>
+            agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi", foreign), TestContext.Current.CancellationToken));
+
+        exception.Rejection.Reason.ShouldContain("not visible");
+        sessions.AppendRequests.ShouldBeEmpty();
+        loop.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheNamedSessionDoesNotExist_RejectsWithoutAppending()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await Should.ThrowAsync<AgentAdmissionRejectedException>(() =>
+            agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi", new SessionId(Guid.NewGuid())), TestContext.Current.CancellationToken));
+
+        sessions.AppendRequests.ShouldBeEmpty();
+        loop.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheAppendFails_RejectsWithoutRunningTheLoop()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator { AppendOverride = new SessionAppendFailed("store fault") };
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(() =>
+            agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi"), TestContext.Current.CancellationToken));
+
+        exception.Rejection.Reason.ShouldContain("could not be recorded");
+        loop.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTwoTurnsRaceForOneSessionAndTheProfileRejects_TheLoserFailsWithoutEffect()
+    {
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+        var opener = await SeedSessionAsync(agent, identity, loop);
+        loop.Gate = new TaskCompletionSource();
+
+        var running = agent.SendAsync(new AgentSendRequest(identity, "one", opener), TestContext.Current.CancellationToken);
+        await loop.Entered.Task;
+        var busy = await Should.ThrowAsync<AgentSessionBusyException>(() =>
+            agent.SendAsync(new AgentSendRequest(identity, "two", opener), TestContext.Current.CancellationToken));
+        loop.Gate.SetResult();
+        var completed = await running;
+
+        busy.SessionId.ShouldBe(opener);
+        busy.ActiveRunId.ShouldBe(completed.RunId);
+        sessions.AppendRequests.Count.ShouldBe(2);
+        loop.Requests.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTwoTurnsRaceForOneSessionAndTheProfileWaits_TheyRunOneAfterTheOther()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions, SessionBusyBehavior.Wait).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+        var opener = await SeedSessionAsync(agent, identity, loop);
+        loop.Gate = new TaskCompletionSource();
+
+        var first = agent.SendAsync(new AgentSendRequest(identity, "one", opener), TestContext.Current.CancellationToken);
+        await loop.Entered.Task;
+        var second = agent.SendAsync(new AgentSendRequest(identity, "two", opener), TestContext.Current.CancellationToken);
+        await Task.Delay(20, TestContext.Current.CancellationToken);
+        second.IsCompleted.ShouldBeFalse();
+        loop.Requests.Count.ShouldBe(2);
+        loop.Gate.SetResult();
+        _ = await first;
+        _ = await second;
+
+        loop.PeakConcurrency.ShouldBe(1);
+        sessions.AppendRequests.Select(static a => a.Entries[0].Sequence.Value).ShouldBe([1, 2, 3]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTurnsTargetDifferentSessions_RunConcurrently()
+    {
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+
+        var first = agent.SendAsync(new AgentSendRequest(identity, "a"), TestContext.Current.CancellationToken);
+        var second = agent.SendAsync(new AgentSendRequest(identity, "b"), TestContext.Current.CancellationToken);
+        while (loop.Requests.Count < 2)
+        {
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+        }
+
+        loop.Gate.SetResult();
+        var results = await Task.WhenAll(first, second);
+
+        loop.PeakConcurrency.ShouldBe(2);
+        results[0].SessionId.ShouldNotBe(results[1].SessionId);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTwoAgentsShareTheEngine_EachRunsItsOwnDefinition()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        var other = new AgentId(Guid.Parse("a0000000-0000-0000-0000-00000000000b"));
+        await using var engine = CompositionTestData.SendableBuilder(
+            loop, sessions, SessionBusyBehavior.Reject,
+            CompositionTestData.Definition(), CompositionTestData.Definition(other, "other agent", maxTurns: 3)).Build();
+        var first = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var second = (await engine.GetAgentAsync(other, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+
+        var firstResult = await first.SendAsync(new AgentSendRequest(identity, "one"), TestContext.Current.CancellationToken);
+        var secondResult = await second.SendAsync(new AgentSendRequest(identity, "two"), TestContext.Current.CancellationToken);
+
+        firstResult.AgentId.ShouldBe(CompositionTestData.AgentId);
+        secondResult.AgentId.ShouldBe(other);
+        firstResult.SessionId.ShouldNotBe(secondResult.SessionId);
+        loop.Requests[0].MaxTurns.ShouldBe(8);
+        loop.Requests[1].MaxTurns.ShouldBe(3);
+        sessions.CreateRequests.Select(static c => c.AgentId).ShouldBe([CompositionTestData.AgentId, other]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAnObserverIsSupplied_ItReceivesTheLoopsProgress()
+    {
+        var loop = new GatedAgentLoop();
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var observer = new RecordingRunObserver();
+
+        _ = await agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi", observer: observer), TestContext.Current.CancellationToken);
+
+        _ = observer.Events.ShouldHaveSingleItem().ShouldBeOfType<AgentRunModelResponseEvent>();
+        loop.Requests.Single().Observer.ShouldBeSameAs(observer);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAnOverrideWidensTheDefinition_ThrowsArgumentOutOfRangeExceptionBeforeAnyEffect()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(() =>
+            agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi", maxTurns: 99), TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("request");
+        sessions.CreateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAnOverrideNarrowsTheDefinition_UsesIt()
+    {
+        var loop = new GatedAgentLoop();
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi", maxTurns: 2, attemptTimeout: TimeSpan.FromSeconds(5)), TestContext.Current.CancellationToken);
+
+        loop.Requests.Single().MaxTurns.ShouldBe(2);
+        loop.Requests.Single().AttemptTimeout.ShouldBe(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCancelledBeforeTheMessageIsCommitted_PropagatesAndLeavesNoRun()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator { AppendGate = new TaskCompletionSource() };
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi"), cancellation.Token);
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await pending);
+        loop.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheEngineIsDisposed_ThrowsObjectDisposedException()
+    {
+        var loop = new GatedAgentLoop();
+        var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        await engine.DisposeAsync();
+
+        _ = await Should.ThrowAsync<ObjectDisposedException>(() =>
+            agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi"), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheDefinitionSelectsAnOutput_CarriesItOnTheRequest()
+    {
+        var loop = new GatedAgentLoop();
+        var output = new OutputDefinition(
+            new OutputDefinitionId("answer"), new OutputDefinitionVersion("1"), "answer", OutputMode.Text,
+            schema: null, runtimeType: null, alternatives: [], validators: [],
+            OutputValidationPolicy.RejectOnFirstFailure, OutputRetryPolicy.None, OutputEndStrategy.Graceful);
+        var definition = CompositionTestData.Definition() with { Output = output };
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator(), SessionBusyBehavior.Reject, definition).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.SendAsync(new AgentSendRequest(CompositionTestData.Identity(), "hi"), TestContext.Current.CancellationToken);
+
+        loop.Requests.Single().Output.ShouldBe(output);
+    }
+
+    private static async Task<SessionId> SeedSessionAsync(Agent agent, ExecutionIdentity identity, GatedAgentLoop loop)
+    {
+        var gate = loop.Gate;
+        loop.Gate = null;
+        var result = await agent.SendAsync(new AgentSendRequest(identity, "seed"), TestContext.Current.CancellationToken);
+        loop.Gate = gate;
+        return result.SessionId;
+    }
+
+    private sealed class RecordingRunObserver: IAgentRunObserver
+    {
+        public List<AgentRunEvent> Events { get; } = [];
+
+        public ValueTask OnEventAsync(AgentRunEvent runEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(runEvent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private static AgentEngine Build(MutableAgentDefinitionCatalog catalog, AdmissionRunEffects effects, CountingRunIdGenerator runIds, ILogger<AgentEngine>? logger = null)
     {
         var builder = AgentEngine.CreateBuilder();

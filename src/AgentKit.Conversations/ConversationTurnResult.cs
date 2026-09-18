@@ -38,4 +38,12 @@ public sealed record ConversationTurnResult
     /// ended before allocating one.
     /// </value>
     public RunId? RunId { get; init; }
+
+    /// <summary>Gets the validated structured output the turn's selected definition accepted, when one was selected.</summary>
+    /// <value>
+    /// The accepted output, whose <see cref="ValidatedOutput.Value"/> is the deserialized runtime type when the
+    /// definition declares one; <see langword="null"/> for a free-text conversation or a turn that did not complete.
+    /// The same value is the last element of <see cref="Events"/> as a <see cref="ConversationOutputEvent"/>.
+    /// </value>
+    public ValidatedOutput? Output { get; init; }
 }

@@ -96,6 +96,8 @@ namespace AgentKit.Providers.MistralAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAILlmModel(AgentKit.ModelDescriptor descriptor) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIKnownLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.Providers.KnownModelCatalog? catalog = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }

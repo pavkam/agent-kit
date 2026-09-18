@@ -189,4 +189,56 @@ internal static partial class LoopLog
     /// <summary>Logs a model response that could not be accepted as a complete turn because its stop reason or tool-call identities were invalid.</summary>
     [LoggerMessage(1024, LogLevel.Warning, "Model response for run {RunId} turn {TurnId} was not accepted as complete: {Reason}.")]
     internal static partial void ModelResponseNotAccepted(ILogger logger, RunId runId, TurnId turnId, string reason);
+
+    /// <summary>Logs that the run selects an output definition but no output processor was composed, so it fails closed.</summary>
+    [LoggerMessage(1091, LogLevel.Error, "Run {RunId} turn {TurnId} selects output definition {OutputDefinitionId} but no output processor is composed; the run fails closed.")]
+    internal static partial void OutputProcessorMissing(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId);
+
+    /// <summary>Logs the output processor's typed decision for one terminal response.</summary>
+    [LoggerMessage(1092, LogLevel.Information, "Run {RunId} turn {TurnId} output definition {OutputDefinitionId} attempt {Attempt} decided {Decision}.")]
+    internal static partial void OutputDecided(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string decision);
+
+    /// <summary>Logs that output validation was cancelled after the response was committed.</summary>
+    [LoggerMessage(1093, LogLevel.Information, "Run {RunId} turn {TurnId} output validation for {OutputDefinitionId} attempt {Attempt} was cancelled; the response is committed.")]
+    internal static partial void OutputValidationCancelled(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt);
+
+    /// <summary>Logs that the output processor threw instead of returning a typed decision.</summary>
+    [LoggerMessage(1094, LogLevel.Error, "Run {RunId} turn {TurnId} output validation for {OutputDefinitionId} attempt {Attempt} faulted with {ErrorType}.")]
+    internal static partial void OutputValidationFaulted(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string errorType);
+
+    /// <summary>Logs that a transform hook point failed and the turn settled without sending the request.</summary>
+    [LoggerMessage(1095, LogLevel.Error, "Run {RunId} turn {TurnId}: hook point {HookPoint} failed with {ErrorType}; the turn did not proceed.")]
+    internal static partial void HookFailedTurn(ILogger logger, RunId runId, TurnId turnId, HookPointId hookPoint, string errorType);
+
+    /// <summary>Logs that a before-tool-invocation hook vetoed a call, which settled as rejected without invocation.</summary>
+    [LoggerMessage(1096, LogLevel.Information, "Run {RunId}: tool call {ToolCallId} was vetoed by a hook and settled as rejected without invocation.")]
+    internal static partial void ToolCallVetoed(ILogger logger, RunId runId, ToolCallId toolCallId);
+
+    /// <summary>Logs that estimated history size crossed the pressure threshold and a compaction was requested.</summary>
+    [LoggerMessage(1097, LogLevel.Information, "Run {RunId}: history estimated at {EstimatedTokens} tokens against a {ContextWindow}-token window; requesting compaction {CompactionId}.")]
+    internal static partial void CompactionTriggered(ILogger logger, RunId runId, CompactionId compactionId, long estimatedTokens, long contextWindow);
+
+    /// <summary>Logs that a requested compaction did not yield a checkpoint and the run continues uncompacted.</summary>
+    [LoggerMessage(1098, LogLevel.Warning, "Run {RunId}: compaction {CompactionId} was not applied ({Outcome}); continuing with the current history.")]
+    internal static partial void CompactionNotApplied(ILogger logger, RunId runId, CompactionId compactionId, string outcome);
+
+    /// <summary>Logs that the compactor threw; the run continues uncompacted.</summary>
+    [LoggerMessage(1099, LogLevel.Error, "Run {RunId}: compaction {CompactionId} faulted with {ErrorType}; continuing with the current history.")]
+    internal static partial void CompactionFaulted(ILogger logger, RunId runId, CompactionId compactionId, string errorType);
+
+    /// <summary>Logs that a checkpoint was activated and the model-facing history was rebuilt from it.</summary>
+    [LoggerMessage(1100, LogLevel.Information, "Run {RunId}: compaction {CompactionId} applied; model-facing history went from {MessagesBefore} to {MessagesAfter} messages.")]
+    internal static partial void CompactionApplied(ILogger logger, RunId runId, CompactionId compactionId, int messagesBefore, int messagesAfter);
+
+    /// <summary>Logs that a budgeted run found no budget authority and failed closed.</summary>
+    [LoggerMessage(1101, LogLevel.Error, "Run {RunId} declares budget limits but no budget authority is composed; the run fails closed.")]
+    internal static partial void BudgetAuthorityMissing(ILogger logger, RunId runId);
+
+    /// <summary>Logs that the run's budget scope could not be created.</summary>
+    [LoggerMessage(1102, LogLevel.Error, "Run {RunId}: the budget scope could not be created ({Outcome}); the run fails closed.")]
+    internal static partial void BudgetScopeNotCreated(ILogger logger, RunId runId, string outcome);
+
+    /// <summary>Logs that a reservation was refused and the run or call stopped.</summary>
+    [LoggerMessage(1103, LogLevel.Warning, "Run {RunId}: the {Dimension} budget is exhausted; no further work on it is attempted.")]
+    internal static partial void BudgetExhausted(ILogger logger, RunId runId, BudgetDimension dimension);
 }

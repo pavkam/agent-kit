@@ -22,6 +22,12 @@ namespace AgentKit.Hooks
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentHooks(System.Action<AgentKit.Hooks.AgentHookOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunStartedHook<THook>()
+                where THook :  class, AgentKit.IRunStartedHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeModelRequestHook<THook>()
+                where THook :  class, AgentKit.IBeforeModelRequestHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeToolInvocationHook<THook>()
+                where THook :  class, AgentKit.IBeforeToolInvocationHook { }
         }
     }
 }

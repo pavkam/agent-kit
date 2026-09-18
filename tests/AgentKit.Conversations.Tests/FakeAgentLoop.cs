@@ -27,6 +27,9 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
     /// <summary>Gets the most recent request observed.</summary>
     public AgentRunRequest? LastRequest { get; private set; }
 
+    /// <summary>Gets the collaborator bundle supplied with the most recent call.</summary>
+    public AgentRunServices? LastServices { get; private set; }
+
     /// <summary>Gets or sets the result factory used to build the run result; a trivial idle-turn result by default.</summary>
     public Func<AgentRunRequest, AgentLoopResult>? ResultFactory { get; set; }
 
@@ -48,6 +51,7 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(services);
         CallCount++;
         LastRequest = request;
+        LastServices = services;
         cancellationToken.ThrowIfCancellationRequested();
         _ = EnteredSignal?.TrySetResult();
 

@@ -42,6 +42,11 @@ namespace AgentKit.Conversations
         public ConversationHistoryUnavailable(string safeMessage) { }
         public string SafeMessage { get; }
     }
+    public sealed class ConversationOutputEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationOutputEvent>
+    {
+        public ConversationOutputEvent(AgentKit.ValidatedOutput output) { }
+        public AgentKit.ValidatedOutput Output { get; }
+    }
     public sealed class ConversationReasoningEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationReasoningEvent>
     {
         public ConversationReasoningEvent(string text) { }
@@ -78,6 +83,7 @@ namespace AgentKit.Conversations
         public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; set; }
         public AgentKit.AgentId AgentId { get; set; }
         public System.TimeSpan AttemptTimeout { get; set; }
+        public System.Collections.Generic.IList<AgentKit.BudgetLimit> BudgetLimits { get; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; set; }
         public AgentKit.ConfigurationVersion ConfigurationVersion { get; set; }
         public AgentKit.ExecutionIdentity? Identity { get; set; }
@@ -85,6 +91,7 @@ namespace AgentKit.Conversations
         public int MaxTurns { get; set; }
         public AgentKit.ModelRequirements ModelRequirements { get; set; }
         public AgentKit.ModelSelectionPolicy? ModelSelectionPolicy { get; set; }
+        public AgentKit.OutputDefinition? Output { get; set; }
         public AgentKit.LlmRequestSettings RequestSettings { get; set; }
         public AgentKit.SecurityProfileKey SecurityProfileKey { get; set; }
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; set; }
@@ -142,6 +149,7 @@ namespace AgentKit.Conversations
     {
         public ConversationTurnResult(bool succeeded, System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> events) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> Events { get; init; }
+        public AgentKit.ValidatedOutput? Output { get; init; }
         public AgentKit.RunId? RunId { get; init; }
         public AgentKit.SessionId? SessionId { get; init; }
         public bool Succeeded { get; init; }
@@ -169,7 +177,9 @@ namespace AgentKit.Conversations
                     AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
                     System.TimeProvider timeProvider,
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null,
+                    AgentKit.ICompactor? compactor = null,
+                    AgentKit.IBudgetAuthority? budgets = null) { }
         public DefaultConversationSession(
                     AgentKit.ISessionCoordinator sessionCoordinator,
                     AgentKit.ISecurityProfileSelector securityProfileSelector,
@@ -187,7 +197,9 @@ namespace AgentKit.Conversations
                     System.TimeProvider timeProvider,
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
                     Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
-                    AgentKit.IToolPresenter? toolPresenter) { }
+                    AgentKit.IToolPresenter? toolPresenter,
+                    AgentKit.ICompactor? compactor = null,
+                    AgentKit.IBudgetAuthority? budgets = null) { }
         public AgentKit.BranchId? BranchId { get; }
         public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }

@@ -17,9 +17,9 @@ when evaluating these instructions. The repository's version number does not
 establish availability on a public package feed.
 
 The path below is the direct, in-process one: one conversation with one agent,
-composed by `AgentKit.Simple` over `AgentKit.Conversations`. The `AgentEngine`
-facade that hosts a catalog of several agents with queue-backed input admission
-exists but its complete runnable graph is still tracked in the
+composed by `AgentKit.Simple` over `AgentKit.Conversations`. The same
+`AgentEngine` hosts further agents and many concurrent sessions through
+`Agent.SendAsync`; queue-backed input admission is still tracked in the
 [implementation ledger](implementation-progress.md#component-coverage).
 
 ## Set up the repository
@@ -98,15 +98,26 @@ Each of these is one more line on the same builder; each has its own guide.
   `builder.Services`; deny wins over the local allow-all default, and
   `RequireApproval` puts a human in the loop. See
   [Permissions and approvals](guides/permissions.md).
+- **Get a typed answer.** `.WithOutput<Triage>(schemaJson)` makes every final
+  answer JSON that validates against the schema, and
+  `await engine.AskAsync<Triage>(question)` returns it deserialized. Invalid
+  answers are sent back to the model for repair before the turn fails.
 - **Stream the answer.** Pass an `IConversationEventObserver` to
   `engine.SendAsync(text, observer)` to receive text and reasoning deltas, tool
   starts and results, and usage before the call returns.
-- **Use another provider or an unknown model.** Register that provider's
-  services on `builder.Services` and select the alias with `UseModel`;
-  `KnownModelCatalog.Default.TryFind(providerId, modelId)` supplies limits and
-  prices. See [Composing an application](guides/composition.md).
-- **Host several agents.** You already have an `AgentEngine`; `AddAgent` on
-  `builder.Services` publishes further definitions.
+- **Use another provider.** `UseAnthropic(apiKey, modelId)`,
+  `UseOllama(modelId)`, `UseOpenRouter(apiKey, modelId)`, and
+  `UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)` replace `UseOpenAI`
+  one for one. For any other provider, or a model outside the known-model
+  catalog, register that provider's services on `builder.Services` (each has an
+  `Add<Provider>KnownLlmModel` where the catalog covers it) and select the alias
+  with `UseModel`. See [Composing an application](guides/composition.md).
+- **Host several agents.** `.AddAgent(agentId, o => o.Instructions.Add(...))`
+  publishes a second definition on the same engine. Drive it with
+  `var agent = await engine.GetAgentAsync(agentId)` and
+  `agent.SendAsync(new AgentSendRequest(engine.Identity, text, sessionId))`;
+  each turn names the session it ran in, and different sessions run
+  concurrently.
 
 To see the behavior this walkthrough relies on under test, run:
 

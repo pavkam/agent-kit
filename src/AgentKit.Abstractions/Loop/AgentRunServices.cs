@@ -43,7 +43,20 @@ public sealed class AgentRunServices
     /// <param name="modelSelector">Chooses one configured model for this run.</param>
     /// <param name="modelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
     /// <param name="continuationPolicy">Decides, at every committed-turn boundary, whether the run continues, completes, or halts.</param>
-    /// <exception cref="ArgumentNullException">Any parameter is <see langword="null"/>.</exception>
+    /// <param name="output">
+    /// Validates the terminal assistant response against the run's selected <see cref="OutputDefinition"/>, or
+    /// <see langword="null"/> when the composition selects no output processor. A run whose request names an
+    /// output definition fails closed when this is <see langword="null"/>.
+    /// </param>
+    /// <param name="compactor">
+    /// Produces and activates a compaction checkpoint over older history when the loop detects context pressure,
+    /// or <see langword="null"/> when the composition selects no compactor; the loop then never compacts.
+    /// </param>
+    /// <param name="budgets">
+    /// Creates the run's budget scope and serves its reservations when the request declares limits, or
+    /// <see langword="null"/> when the composition selects no budget authority; a budgeted request then fails closed.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
         ISecurityProfileSelector securityProfileSelector,
@@ -52,7 +65,10 @@ public sealed class AgentRunServices
         IModelCatalog models,
         IModelSelector modelSelector,
         ILlmModelResolver modelResolver,
-        IRunContinuationPolicy continuationPolicy)
+        IRunContinuationPolicy continuationPolicy,
+        IOutputProcessor? output = null,
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -71,6 +87,9 @@ public sealed class AgentRunServices
         ModelSelector = modelSelector;
         ModelResolver = modelResolver;
         ContinuationPolicy = continuationPolicy;
+        Output = output;
+        Compactor = compactor;
+        Budgets = budgets;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -96,4 +115,16 @@ public sealed class AgentRunServices
 
     /// <summary>Gets the policy consulted at every committed-turn boundary to decide continuation.</summary>
     public IRunContinuationPolicy ContinuationPolicy { get; }
+
+    /// <summary>Gets the processor that validates terminal responses against a selected output definition.</summary>
+    /// <value><see langword="null"/> when the composition selects no output processor; runs with an output definition then fail closed.</value>
+    public IOutputProcessor? Output { get; }
+
+    /// <summary>Gets the compactor the loop asks to checkpoint older history under context pressure.</summary>
+    /// <value><see langword="null"/> when the composition selects no compactor; the loop then never compacts.</value>
+    public ICompactor? Compactor { get; }
+
+    /// <summary>Gets the budget authority the loop reserves a budgeted run's capacity through.</summary>
+    /// <value><see langword="null"/> when the composition selects none; a request with budget limits then fails closed.</value>
+    public IBudgetAuthority? Budgets { get; }
 }

@@ -187,20 +187,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddOpenRouterLlmModel(new ModelDescriptor(
+                alias,
+                OpenRouterProviderDefaults.ProviderId,
+                OpenRouterProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId: null,
+                capabilities ?? OpenRouterProviderDefaults.DefaultCapabilities,
+                limits ?? OpenRouterProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one OpenRouter conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the OpenRouter provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddOpenRouter"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddOpenRouterLlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != OpenRouterProviderDefaults.ProviderId || descriptor.ApiFamily != OpenRouterProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the OpenRouter provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    OpenRouterProviderDefaults.ProviderId,
-                    OpenRouterProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? OpenRouterProviderDefaults.DefaultCapabilities,
-                    limits ?? OpenRouterProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new OpenRouterLlmModel(
                     descriptor,

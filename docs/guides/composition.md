@@ -4,11 +4,10 @@ Your host chooses AgentKit libraries, registers their services, and supplies
 configuration. An engine captures that composition and exposes immutable agent
 handles.
 
-This guide explains the design and current entry points. Full runnable-graph
-integration for the multi-agent engine is still tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage).
+This guide explains the design and current entry points.
 [Getting started](../getting-started.md) walks through a complete single-agent
-composition you can run today.
+composition; the section on hosting several agents below shows the same engine
+coordinating many agents and sessions.
 
 ## Start from the working shape
 
@@ -65,6 +64,34 @@ form; [`examples/CodingAgent`](../../examples/CodingAgent/README.md) is the
 written-out form grown with SQLite sessions, an approval broker, and eight
 tools. The rest of this guide explains what each block owns and how the
 multi-agent `AgentEngine` facade generalizes it.
+
+## Host several agents on one engine
+
+The engine, not a per-conversation container, is the coordinator. Publish each
+definition, then drive turns through `Agent.SendAsync`:
+
+```csharp
+var builder = AgentEngine.CreateBuilder()
+    .UseLocalDevelopmentDefaults()
+    .UseOpenAI(apiKey, "gpt-4o-mini")
+    .WithInstructions("You are the default assistant.")
+    .AddAgent(ReviewerId, o => { o.Instructions.Add("You review code."); o.IncludeRegisteredTools = false; });
+await using var engine = builder.Build();
+
+var reviewer = (await engine.GetAgentAsync(ReviewerId))!;
+var first = await reviewer.SendAsync(new AgentSendRequest(engine.Identity, "Review PR 42"));
+var next = await reviewer.SendAsync(new AgentSendRequest(engine.Identity, "And the tests?", first.SessionId));
+```
+
+Each `SendAsync` creates a session owned by the identity (or opens the named one
+after checking the agent, tenant, and principal own it), enters that session's
+lane, appends the user message, and runs the agent in its own scope. Turns on
+different sessions run concurrently; a second turn on a busy session is rejected
+with `AgentSessionBusyException` or waits, as the session profile's
+`SessionBusyBehavior` says. `AgentLoopResult.SessionId` is the resume token and
+`NewMessages` holds what the turn committed. On a raw `ServiceCollection`, the
+same surface is `AddAgent(AgentDefinition)` plus `AddAgentRunProfilePublication`
+and `AddSecurityProfilePublication` for each definition.
 
 ## Understand the four lifetimes
 

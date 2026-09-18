@@ -203,6 +203,79 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAnOutputProcessorIsRegistered_CompilesItIntoTheRunServices()
+    {
+        var loop = new RecordingAgentLoop();
+        var processor = new NullOutputProcessor();
+        var builder = CompositionTestData.RunnableBuilder(loop);
+        _ = builder.Services.AddSingleton<IOutputProcessor>(processor);
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        loop.ReceivedServices.ShouldHaveSingleItem().Output.ShouldBeSameAs(processor);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoOutputProcessorIsRegistered_LeavesTheRunServicesOutputNull()
+    {
+        var loop = new RecordingAgentLoop();
+        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        loop.ReceivedServices.ShouldHaveSingleItem().Output.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheDefinitionSelectsAnOutput_CarriesItOnTheRequest()
+    {
+        var loop = new RecordingAgentLoop();
+        var output = new OutputDefinition(
+            new OutputDefinitionId("answer"), new OutputDefinitionVersion("1"), "answer", OutputMode.Text,
+            schema: null, runtimeType: null, alternatives: [], validators: [],
+            OutputValidationPolicy.RejectOnFirstFailure, OutputRetryPolicy.None, OutputEndStrategy.Graceful);
+        var definition = CompositionTestData.Definition() with { Output = output };
+        await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        loop.ReceivedRequests.ShouldHaveSingleItem().Output.ShouldBe(output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABudgetAuthorityIsRegistered_CompilesItIntoTheRunServices()
+    {
+        var loop = new RecordingAgentLoop();
+        var authority = new NullBudgetAuthority();
+        var builder = CompositionTestData.RunnableBuilder(loop);
+        _ = builder.Services.AddSingleton<IBudgetAuthority>(authority);
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        loop.ReceivedServices.ShouldHaveSingleItem().Budgets.ShouldBeSameAs(authority);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheDefinitionDeclaresBudgetLimits_CarriesThemOnTheRequest()
+    {
+        var loop = new RecordingAgentLoop();
+        var limit = new BudgetLimit(BudgetDimensions.Turns, 3m, new BudgetUnit("count"), BudgetLimitKind.Hard);
+        var definition = CompositionTestData.Definition() with { BudgetLimits = [limit] };
+        await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        loop.ReceivedRequests.ShouldHaveSingleItem().BudgetLimits.ShouldBe([limit]);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenCalledTwice_AllocatesADistinctRunIdEachTime()
     {
         var loop = new RecordingAgentLoop();
@@ -352,5 +425,17 @@ public sealed class AgentEngineTests
             DisposeCount++;
             throw new InvalidOperationException("disposal failed");
         }
+    }
+
+    private sealed class NullOutputProcessor: IOutputProcessor
+    {
+        public ValueTask<OutputProcessingResult> ProcessAsync(OutputProcessingRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class NullBudgetAuthority: IBudgetAuthority
+    {
+        public ValueTask<BudgetScopeResult> CreateChildScopeAsync(BudgetScopeRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

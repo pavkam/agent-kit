@@ -191,6 +191,59 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddGoogleVertexAILlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(ConfigureOptions);
+        _ = services.AddGoogleVertexAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            GoogleVertexAIProviderDefaults.ProviderId,
+            GoogleVertexAIProviderDefaults.ApiFamily,
+            new ModelId("gemini-2.5-flash"),
+            deploymentId: new DeploymentId("test-deployment"),
+            GoogleVertexAIProviderDefaults.DefaultCapabilities,
+            GoogleVertexAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddGoogleVertexAILlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleVertexAILlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddGoogleVertexAILlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddGoogleVertexAILlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddGoogleVertexAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            GoogleVertexAIProviderDefaults.ApiFamily,
+            new ModelId("gemini-2.5-flash"),
+            deploymentId: new DeploymentId("test-deployment"),
+            GoogleVertexAIProviderDefaults.DefaultCapabilities,
+            GoogleVertexAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddGoogleVertexAILlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

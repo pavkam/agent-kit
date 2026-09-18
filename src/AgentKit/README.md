@@ -20,14 +20,34 @@ builder.Services.AddAgent(definition);
 
 await using var engine = builder.Build();
 var agent = await engine.GetAgentAsync(definition.Id, cancellationToken);
+
+// One turn: creates a session for this identity, records the message, runs the agent.
+var first = await agent.SendAsync(new AgentSendRequest(identity, "Hello"), cancellationToken);
+// Continue the same session; a concurrent turn on it is rejected or queued per the session profile.
+var second = await agent.SendAsync(new AgentSendRequest(identity, "And then?", first.SessionId), cancellationToken);
 ```
+
+One engine hosts every published definition and coordinates their sessions:
+`Agent.SendAsync` creates or opens the session (verifying the agent, tenant, and
+principal own it), enters a per-session lane that applies the pinned session
+profile's `SessionBusyBehavior`, appends the user message under the run's
+identity, and runs the agent in a fresh keyed scope. Turns on different sessions
+run concurrently; a `Reject` profile fails a contender with
+`AgentSessionBusyException`. `Agent.RunAsync(AgentRunOptions)` remains for a
+caller that already admitted input into an existing session and branch.
+
+`AddEngineDelegationChannel()` registers the engine-backed
+`ITaskDelegationChannel`: with `AgentKit.Goals`'s broker and the `task` tool,
+one hosted agent can delegate a bounded task to another, which runs as one turn
+in its own session and returns a summary with its real session and run
+identities.
 
 In a .NET host, `AddAgentKit()` registers the same engine and validation into
 the host's `IServiceCollection` and leaves provider disposal to the host. Start
 with `AddAgentKit`, `AddAgent`, and `AddAgentRunProfilePublication` in
 [ServiceExtensions.cs](ServiceExtensions.cs); the XML documentation lists
-required collaborators, lifetimes, and duplicate-registration behavior. Complete
-keyed run-plan compilation for the engine is tracked in the
+required collaborators, lifetimes, and duplicate-registration behavior.
+Queue-backed admission and run attachment by `RunId` are tracked in the
 [implementation ledger](../../docs/implementation-progress.md#component-coverage).
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow

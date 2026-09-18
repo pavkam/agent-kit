@@ -5,6 +5,8 @@ global using System.Collections.Immutable;
 global using System.Diagnostics;
 
 global using AgentKit;
+global using AgentKit.Budgets;
+global using AgentKit.Budgets.InMemory;
 global using AgentKit.Context;
 global using AgentKit.Loop;
 global using AgentKit.Observability;

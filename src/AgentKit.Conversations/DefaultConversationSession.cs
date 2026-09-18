@@ -45,6 +45,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     private readonly IToolPresenter? _toolPresenter;
     private readonly LlmToolChoice _toolChoice;
     private readonly LlmRequestSettings _requestSettings;
+    private readonly OutputDefinition? _output;
+    private readonly ImmutableArray<BudgetLimit> _budgetLimits;
     private readonly int _maxTurns;
     private readonly TimeSpan _attemptTimeout;
 
@@ -218,6 +220,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="timeProvider">The clock used to timestamp committed messages and entries.</param>
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional logger that receives safe turn diagnostics; a null logger is used when omitted.</param>
+    /// <param name="compactor">The optional compactor the loop asks to checkpoint older history under context pressure.</param>
+    /// <param name="budgets">The optional budget authority a budgeted turn reserves through.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <see cref="ConversationSessionOptions.AgentId"/> or <see cref="ConversationSessionOptions.SecurityProfileKey"/>
@@ -241,7 +245,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         IIdentifierGenerator<SessionEntryId> sessionEntryIds,
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
-        ILogger<DefaultConversationSession>? logger = null)
+        ILogger<DefaultConversationSession>? logger = null,
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
         : this(
             sessionCoordinator,
             securityProfileSelector,
@@ -259,7 +265,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             timeProvider,
             options,
             logger,
-            toolPresenter: null)
+            toolPresenter: null,
+            compactor,
+            budgets)
     {
     }
 
@@ -285,6 +293,14 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional content-safe diagnostics logger.</param>
     /// <param name="toolPresenter">The optional observational presenter used for bounded live tool rendering.</param>
+    /// <param name="compactor">
+    /// The optional compactor the loop asks to checkpoint older history under context pressure; <see langword="null"/>
+    /// when the composition selects none, in which case turns never compact.
+    /// </param>
+    /// <param name="budgets">
+    /// The optional budget authority a budgeted turn reserves through; <see langword="null"/> when the composition
+    /// selects none, in which case a turn with budget limits fails closed.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An identity, limit, or timeout option is invalid.</exception>
     public DefaultConversationSession(
@@ -304,7 +320,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
         ILogger<DefaultConversationSession>? logger,
-        IToolPresenter? toolPresenter)
+        IToolPresenter? toolPresenter,
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -349,7 +367,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _loopScopeFactory = loopScopeFactory;
         _runServices = new AgentRunServices(
             sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
-            modelCatalog, modelSelector, llmModelResolver, continuationPolicy);
+            modelCatalog, modelSelector, llmModelResolver, continuationPolicy, output: null, compactor, budgets);
         _runIds = runIds;
         _operationIds = operationIds;
         _messageIds = messageIds;
@@ -373,6 +391,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _toolPresentationBindings = toolPresentationBindings;
         _toolChoice = optionValues.ToolChoice;
         _requestSettings = optionValues.RequestSettings;
+        _output = optionValues.Output;
+        _budgetLimits = [.. optionValues.BudgetLimits];
+        ArgumentException.ThrowIfContainsNull(_budgetLimits, nameof(options));
         _maxTurns = optionValues.MaxTurns;
         _attemptTimeout = optionValues.AttemptTimeout;
     }
@@ -585,14 +606,28 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     DescribeToolResult,
                     _toolPresenter,
                     _toolPresentationBindings),
+            Output = _agent is null ? _output : request.Output,
+            BudgetLimits = _agent is null ? _budgetLimits : request.BudgetLimits,
         };
 
         await using var loopScope = _loopScopeFactory.CreateAsyncScope();
         var agentLoop = loopScope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
-        var loopResult = await agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
+        // The output processor is scoped, so a run that needs one borrows it from the same short-lived scope as the
+        // loop; a free-text run keeps the bundle built at construction.
+        var runServices = request.Output is null
+            ? _runServices
+            : WithOutputProcessor(_runServices, loopScope.ServiceProvider.GetService<IOutputProcessor>());
+        var loopResult = await agentLoop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);
-        if (loopResult.Outcome is AgentRunCompleted)
+        if (loopResult.Outcome is AgentRunCompleted completed)
         {
+            if (completed.Output is { } output)
+            {
+                var outputEvent = new ConversationOutputEvent(output);
+                await ObserveAsync(observer, outputEvent, cancellationToken).ConfigureAwait(false);
+                return (Finish(true, events.Add(outputEvent)) with { Output = output }, "settled");
+            }
+
             return (Finish(true, events), "settled");
         }
 
@@ -614,6 +649,27 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             };
     }
 
+    /// <summary>Copies the run collaborator bundle with the turn-scoped output processor attached.</summary>
+    /// <param name="services">The bundle built at construction.</param>
+    /// <param name="processor">The processor resolved from the turn's scope, or <see langword="null"/> when none is composed.</param>
+    /// <returns>An equivalent bundle whose <see cref="AgentRunServices.Output"/> is <paramref name="processor"/>.</returns>
+    private static AgentRunServices WithOutputProcessor(AgentRunServices services, IOutputProcessor? processor)
+    {
+        Debug.Assert(services is not null, "The construction-time bundle always exists.");
+        return new AgentRunServices(
+            services.Session,
+            services.SecurityProfileSelector,
+            services.Context,
+            services.Tools,
+            services.Models,
+            services.ModelSelector,
+            services.ModelResolver,
+            services.ContinuationPolicy,
+            processor,
+            services.Compactor,
+            services.Budgets);
+    }
+
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>
     /// <param name="outcome">The run's terminal outcome, which is not <see cref="AgentRunCompleted"/>.</param>
     /// <returns>A stable, low-cardinality token distinguishing why the run did not complete.</returns>
@@ -627,6 +683,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         AgentRunContextPreparationFailed => "context_preparation_failed",
         AgentRunInvalidState => "invalid_state",
         AgentRunOutputRejected => "output_rejected",
+        AgentRunBudgetExhausted => "budget_exhausted",
         AgentRunIdle => "idle",
         _ => "run_not_completed",
     };
@@ -914,6 +971,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 $"The run stopped: its terminal output was rejected ({outputRejected.Failure.Kind}: {outputRejected.Failure.SafeMessage}).",
             AgentRunOutputRejected =>
                 "The run stopped: its output definition could not be applied.",
+            AgentRunBudgetExhausted exhausted =>
+                $"The run stopped: the {exhausted.Dimension.Value} budget is exhausted ({exhausted.SafeMessage}).",
             _ => $"The run ended without a final assistant message (outcome: {outcome.GetType().Name}).",
         };
     }

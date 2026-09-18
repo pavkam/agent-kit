@@ -16,7 +16,7 @@ using Microsoft.Extensions.Options;
 /// deliberately separate calls: <see cref="AddAwsBedrock"/> configures the
 /// region and wire-behavior options, <see cref="AddAwsBedrockStaticCredential"/>
 /// or a custom <see cref="IAwsCredentialSource"/> registration configures
-/// authentication, and <see cref="AddAwsBedrockLlmModel"/> is called once
+/// authentication, and <c>AddAwsBedrockLlmModel</c> is called once
 /// per model an application wants to use. No default fabricates a region
 /// or credential an account may not actually have.
 /// </remarks>
@@ -46,7 +46,7 @@ public static class ServiceExtensions
         /// configuration pipeline. The authentication and model
         /// registrations are independent calls documented on
         /// <see cref="AddAwsBedrockStaticCredential"/> and
-        /// <see cref="AddAwsBedrockLlmModel"/>.
+        /// <c>AddAwsBedrockLlmModel</c>.
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="configureOptions"/> is null.</exception>
         public IServiceCollection AddAwsBedrock(Action<AwsBedrockProviderOptions> configureOptions)
@@ -204,20 +204,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddAwsBedrockLlmModel(new ModelDescriptor(
+                alias,
+                AwsBedrockProviderDefaults.ProviderId,
+                AwsBedrockProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId,
+                capabilities ?? AwsBedrockProviderDefaults.DefaultCapabilities,
+                limits ?? AwsBedrockProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one AWS Bedrock conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the AWS Bedrock provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddAwsBedrock"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddAwsBedrockLlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != AwsBedrockProviderDefaults.ProviderId || descriptor.ApiFamily != AwsBedrockProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the AWS Bedrock provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<AwsBedrockProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    AwsBedrockProviderDefaults.ProviderId,
-                    AwsBedrockProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId,
-                    capabilities ?? AwsBedrockProviderDefaults.DefaultCapabilities,
-                    limits ?? AwsBedrockProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new AwsBedrockLlmModel(
                     descriptor,

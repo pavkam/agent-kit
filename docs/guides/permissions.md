@@ -167,10 +167,16 @@ version of this with a terminal UI, three permission modes, and a
 The identity in every request comes from `WithIdentity`:
 
 ```csharp
-.WithIdentity(new ExecutionIdentity(
-    new TenantId("acme"), new PrincipalId("alice"), ExecutionSubjectKind.Human,
-    evidence, claims: [], delegationChain: [], IdentityAssuranceLevel.Strong, new IdentityVersion(1)))
+.WithIdentity(ExecutionIdentity.ForHuman(
+    new TenantId("acme"), new PrincipalId("alice"),
+    new IdentityIssuerId("acme-idp"), "oidc", authenticatedAt, expiresAt,
+    assurance: IdentityAssuranceLevel.Strong))
 ```
+
+`ExecutionIdentity.ForHuman` and `ForService` (from `AgentKit.Identity`) record
+who authenticated the subject, how, and when, and derive a content-safe
+fingerprint; no token is an input. The full constructor remains for hosts that
+carry claims and delegation chains.
 
 Identity is authenticated at your trusted ingress and carried unchanged;
 policies read it, and stores partition by it, but it never grants anything on

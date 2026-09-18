@@ -196,21 +196,51 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddAzureOpenAILlmModel(new ModelDescriptor(
+                alias,
+                AzureOpenAIProviderDefaults.ProviderId,
+                AzureOpenAIProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId,
+                capabilities ?? AzureOpenAIProviderDefaults.DefaultCapabilities,
+                limits ?? AzureOpenAIProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one Azure OpenAI conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the Azure OpenAI provider and API family and carry a deployment identity.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family, or has no deployment identity.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddAzureOpenAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddAzureOpenAILlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != AzureOpenAIProviderDefaults.ProviderId || descriptor.ApiFamily != AzureOpenAIProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the Azure OpenAI provider and API family.", nameof(descriptor));
+            }
+
+            if (descriptor.DeploymentId is null)
+            {
+                throw new ArgumentException("The descriptor must name the deployment the model is served from.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value;
                 var profile = AzureOpenAIProviderDefaults.CreateProfile(options);
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    AzureOpenAIProviderDefaults.ProviderId,
-                    AzureOpenAIProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId,
-                    capabilities ?? AzureOpenAIProviderDefaults.DefaultCapabilities,
-                    limits ?? AzureOpenAIProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new AzureOpenAILlmModel(
                     descriptor,

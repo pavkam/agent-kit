@@ -3,12 +3,21 @@
 
 namespace AgentKit.Simple.Tests;
 
+using AgentKit.Context.Compaction;
 using AgentKit.FileSystem.InMemory;
+using AgentKit.Hooks;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
+using AgentKit.Providers.Anthropic;
+using AgentKit.Providers.AzureOpenAI;
+using AgentKit.Providers.Ollama;
 using AgentKit.Providers.OpenAI;
 using AgentKit.Session.InMemory;
+using AgentKit.Tools;
+using AgentKit.Tools.Glob;
 using AgentKit.Tools.Read;
+
+using Microsoft.Extensions.Options;
 
 /// <summary>Verifies AgentEngineBuilderExtensions behavior and contracts.</summary>
 public sealed class AgentEngineBuilderExtensionsTests
@@ -34,6 +43,366 @@ public sealed class AgentEngineBuilderExtensionsTests
     [Fact]
     public void UseOpenAI_WhenModelIsUnknown_ThrowsArgumentException() =>
         Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseOpenAI("sk-test", "gpt-imaginary")).ParamName.ShouldBe("modelId");
+
+    [Theory]
+    [InlineData(null, "claude-sonnet-4-5", "apiKey")]
+    [InlineData(" ", "claude-sonnet-4-5", "apiKey")]
+    [InlineData("sk-ant", null, "modelId")]
+    [InlineData("sk-ant", "", "modelId")]
+    public void UseAnthropic_WhenAnArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseAnthropic(apiKey!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public void UseAnthropic_WhenModelIsUnknown_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseAnthropic("sk-ant", "claude-imaginary")).ParamName.ShouldBe("modelId");
+
+    [Fact]
+    public async Task UseAnthropic_WhenBuilt_SendsToAnthropicWithTheKeyHeaderAndPublishesTheKnownDescriptor()
+    {
+        var handler = new ThrowingHandler();
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAnthropic("sk-ant-test", "claude-sonnet-4-5");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hello", TestContext.Current.CancellationToken));
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().Host.ShouldBe("api.anthropic.com");
+        request.Headers.GetValues("x-api-key").ShouldBe(["sk-ant-test"]);
+        definition.Models.Candidates.ShouldBe([new ModelAlias("assistant")]);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(AnthropicProviderDefaults.ProviderId);
+        published.ModelId.ShouldBe(new ModelId("claude-sonnet-4-5"));
+        _ = published.Pricing.ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData(null, "modelId")]
+    [InlineData("  ", "modelId")]
+    public void UseOllama_WhenModelIdIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseOllama(modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void UseOllama_WhenApiKeyIsSuppliedButBlank_ThrowsArgumentException(string apiKey) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseOllama("llama3.1:8b", apiKey)).ParamName.ShouldBe("apiKey");
+
+    [Fact]
+    public async Task UseOllama_WhenBuilt_SendsToTheConfiguredServerWithThePlaceholderTokenAndCompletesATurn()
+    {
+        var handler = new StubOpenAIHandler("local reply");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOllama("llama3.1:8b", configure: o => o.BaseAddress = new Uri("http://127.0.0.1:11434/v1/"));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("local reply");
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().GetLeftPart(UriPartial.Authority).ShouldBe("http://127.0.0.1:11434");
+        request.Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("ollama");
+        handler.Bodies.Single().ShouldContain("\"model\":\"llama3.1:8b\"");
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(OllamaProviderDefaults.ProviderId);
+        published.Pricing.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task UseOllama_WhenAKeyIsSupplied_SendsThatKey()
+    {
+        var handler = new StubOpenAIHandler("ok");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOllama("llama3.1:8b", "remote-key");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        handler.Requests.Single().Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("remote-key");
+    }
+
+    [Theory]
+    [InlineData(null, "openai/gpt-4o-mini", "apiKey")]
+    [InlineData(" ", "openai/gpt-4o-mini", "apiKey")]
+    [InlineData("sk-or", null, "modelId")]
+    [InlineData("sk-or", "", "modelId")]
+    public void UseOpenRouter_WhenAnArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseOpenRouter(apiKey!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task UseOpenRouter_WhenBuilt_SendsToOpenRouterWithTheBearerKeyAndCompletesATurn()
+    {
+        var handler = new StubOpenAIHandler("routed");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenRouter("sk-or-test", "openai/gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("routed");
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().Host.ShouldBe("openrouter.ai");
+        request.Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("sk-or-test");
+        handler.Bodies.Single().ShouldContain("\"model\":\"openai/gpt-4o-mini\"");
+    }
+
+    [Fact]
+    public void UseAzureOpenAI_WhenEndpointIsNull_ThrowsArgumentNullExceptionBeforeRegisteringTheProvider()
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentNullException>(() => builder.UseAzureOpenAI(null!, "key", "dep", "gpt-4o-mini")).ParamName.ShouldBe("resourceEndpoint");
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Theory]
+    [InlineData(null, "dep", "gpt-4o-mini", "apiKey")]
+    [InlineData("key", " ", "gpt-4o-mini", "deploymentId")]
+    [InlineData("key", "dep", "", "modelId")]
+    public void UseAzureOpenAI_WhenAStringArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? deploymentId, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), apiKey!, deploymentId!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task UseAzureOpenAI_WhenTheModelIsKnown_OverlaysTheOpenAIFactsOntoTheDeploymentDescriptor()
+    {
+        var handler = new StubOpenAIHandler("azure reply");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), "azure-key", "chat-deployment", "gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("azure reply");
+        handler.Requests.Single().RequestUri.ShouldNotBeNull().Host.ShouldBe("acme.openai.azure.com");
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(AzureOpenAIProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(AzureOpenAIProviderDefaults.ApiFamily);
+        published.DeploymentId.ShouldBe(new DeploymentId("chat-deployment"));
+        published.Limits.MaxContextTokens.ShouldBe(128000);
+        _ = published.Pricing.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task UseAzureOpenAI_WhenTheModelIsUnknown_UsesTheAdapterDefaults()
+    {
+        await using var engine = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), "azure-key", "custom-deployment", "my-finetune")
+            .Build();
+
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ModelId.ShouldBe(new ModelId("my-finetune"));
+        published.DeploymentId.ShouldBe(new DeploymentId("custom-deployment"));
+        published.Pricing.ShouldBeNull();
+        published.Limits.ShouldBe(AzureOpenAIProviderDefaults.DefaultLimits);
+    }
+
+    [Fact]
+    public void UseOpenRouter_WhenAnotherSugarMethodAlreadySelectedAModel_ThrowsInvalidOperationExceptionNamingIt()
+    {
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini");
+        var before = builder.Services.Count;
+
+        var exception = Should.Throw<InvalidOperationException>(() => builder.UseOpenRouter("sk-or", "openai/gpt-4o-mini"));
+
+        exception.Message.ShouldContain("UseOpenAI");
+        exception.Message.ShouldContain("UseModel");
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public void WithOutput_WhenDefinitionIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().WithOutput(null!)).ParamName.ShouldBe("definition");
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void WithOutputOfT_WhenSchemaIsBlank_ThrowsArgumentException(string? schema) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>(schema!)).ParamName.ShouldBe("schemaJson");
+
+    [Fact]
+    public void WithOutputOfT_WhenSchemaIsNotAnObject_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>("[1,2]")).ParamName.ShouldBe("schemaJson");
+
+    [Fact]
+    public void WithOutputOfT_WhenSchemaIsNotJson_ThrowsJsonException() =>
+        _ = Should.Throw<JsonException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{not json"));
+
+    [Fact]
+    public void WithOutputOfT_WhenNameIsWhitespace_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{}", name: " ")).ParamName.ShouldBe("name");
+
+    [Fact]
+    public void WithOutputOfT_WhenRepairAttemptsAreNegative_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{}", maximumRepairAttempts: -1)).ParamName.ShouldBe("maximumRepairAttempts");
+
+    [Fact]
+    public async Task WithOutputOfT_WhenBuilt_PublishesTheDefinitionOnTheAgentAndAnInstructionCarryingTheSchema()
+    {
+        await using var engine = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<int>(/*lang=json,strict*/ """{"type":"object","properties":{"n":{"type":"integer"}}}""", name: "count", maximumRepairAttempts: 3)
+            .Build();
+
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        var output = definition.Output.ShouldNotBeNull();
+        output.Name.ShouldBe("count");
+        output.Mode.ShouldBe(OutputMode.Prompted);
+        output.RuntimeType.ShouldBe(typeof(int));
+        output.RetryPolicy.MaximumAttempts.ShouldBe(3);
+        output.Schema.ShouldNotBeNull().Schema.GetProperty("properties").GetProperty("n").GetProperty("type").GetString().ShouldBe("integer");
+        definition.Instructions.OfType<SystemMessage>().Select(static m => ((TextPart) m.Parts[0]).Text)
+            .ShouldContain(text => text.Contains("JSON Schema", StringComparison.Ordinal) && text.Contains("\"n\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddAgent_WhenConfigureIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), null!)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenAgentIdIsDefault_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().AddAgent(default, static _ => { })).ParamName.ShouldBe("agentId");
+
+    [Fact]
+    public void AddAgent_WhenTheConfiguredTurnLimitIsNotPositive_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), static o => o.MaxTurns = 0)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenTheConfiguredDisplayNameIsBlank_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), static o => o.DisplayName = " ")).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenTheIdentityIsAlreadyHosted_ThrowsInvalidOperationException()
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var builder = AgentEngine.CreateBuilder().AddAgent(agentId, static _ => { });
+
+        _ = Should.Throw<InvalidOperationException>(() => builder.AddAgent(agentId, static _ => { }));
+        _ = Should.Throw<InvalidOperationException>(() => AgentEngine.CreateBuilder().WithAgentId(agentId).AddAgent(agentId, static _ => { }));
+    }
+
+    [Fact]
+    public async Task AddAgent_WhenBuilt_HostsBothAgentsAndDrivesEachThroughItsOwnSessions()
+    {
+        var handler = new StubOpenAIHandler("reply");
+        var reviewer = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000002"));
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithInstructions("You are the default agent.")
+            .AddAgent(reviewer, o =>
+            {
+                o.DisplayName = "reviewer";
+                o.Instructions.Add("You are the reviewer.");
+                o.MaxTurns = 3;
+                o.IncludeRegisteredTools = false;
+            });
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var agents = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
+        var reviewerAgent = (await engine.GetAgentAsync(reviewer, TestContext.Current.CancellationToken))!;
+        var defaultAgent = (await engine.GetAgentAsync(agents.Single(a => a.Id != reviewer).Id, TestContext.Current.CancellationToken))!;
+
+        var first = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "review this"), TestContext.Current.CancellationToken);
+        var second = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "and this", first.SessionId), TestContext.Current.CancellationToken);
+        var other = await defaultAgent.SendAsync(new AgentSendRequest(engine.Identity, "hello"), TestContext.Current.CancellationToken);
+        var viaConversation = await engine.AskAsync("hello again", TestContext.Current.CancellationToken);
+
+        agents.Length.ShouldBe(2);
+        reviewerAgent.Definition.DisplayName.ShouldBe("reviewer");
+        reviewerAgent.Definition.RunDefaults.MaxTurns.ShouldBe(3);
+        reviewerAgent.Definition.Tools.ShouldBeEmpty();
+        defaultAgent.Definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+        _ = first.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        second.SessionId.ShouldBe(first.SessionId);
+        other.SessionId.ShouldNotBe(first.SessionId);
+        viaConversation.ShouldBe("reply");
+        handler.Bodies.Count.ShouldBe(4);
+        handler.Bodies[0].ShouldContain("You are the reviewer.");
+        handler.Bodies[0].ShouldNotContain("default agent");
+        handler.Bodies[0].ShouldNotContain("read_file");
+        handler.Bodies[1].ShouldContain("review this");
+        handler.Bodies[1].ShouldContain("and this");
+        handler.Bodies[2].ShouldContain("You are the default agent.");
+        handler.Bodies[2].ShouldContain("read_file");
+    }
+
+    [Fact]
+    public async Task AddAgent_WhenTurnsTargetDifferentSessions_RunConcurrentlyOnOneEngine()
+    {
+        var handler = new StubOpenAIHandler("reply");
+        var worker = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000003"));
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .AddAgent(worker, static o => o.Instructions.Add("Work."));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(worker, TestContext.Current.CancellationToken))!;
+
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, 4).Select(i => agent.SendAsync(new AgentSendRequest(engine.Identity, $"job {i}"), TestContext.Current.CancellationToken)));
+
+        results.Select(static r => r.SessionId).Distinct().Count().ShouldBe(4);
+        results.ShouldAllBe(static r => r.Outcome is AgentRunCompleted);
+        handler.Bodies.Count.ShouldBe(4);
+    }
+
+    [Fact]
+    public async Task Identity_WhenBuiltWithLocalDefaults_ReturnsTheProcessUserIdentityEveryTurnUses()
+    {
+        await using var engine = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini").Build();
+
+        var identity = engine.Identity;
+
+        identity.TenantId.ShouldBe(new TenantId("local"));
+        identity.SubjectKind.ShouldBe(ExecutionSubjectKind.Human);
+        engine.Identity.ShouldBe(identity);
+    }
 
     [Fact]
     public void UseModel_WhenAliasIsDefault_ThrowsArgumentNullException() =>
@@ -179,6 +548,176 @@ public sealed class AgentEngineBuilderExtensionsTests
 
         handler.Bodies.Single().ShouldContain("\"name\":\"read_file\"");
         definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+    }
+
+    [Fact]
+    public async Task Build_WhenTheAllowListExcludesARegisteredTool_DoesNotAdvertiseItToTheModelOrTheDefinition()
+    {
+        var handler = new StubOpenAIHandler("done");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.AddGlobTool();
+        _ = builder.Services.Configure<AgentToolsOptions>(static o =>
+        {
+            o.AllowAllRegisteredTools = false;
+            _ = o.AllowedToolIds.Add(new ToolId("glob"));
+        });
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        handler.Bodies.Single().ShouldContain("\"name\":\"glob\"");
+        handler.Bodies.Single().ShouldNotContain("read_file");
+        definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("glob");
+    }
+
+    [Fact]
+    public async Task Build_WhenABeforeToolInvocationHookVetoesACall_TheModelSeesARejectedResultAndTheToolNeverRuns()
+    {
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"secret.txt\"}", "understood");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.AddBeforeToolInvocationHook<VetoSecretsHook>();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("read the secret", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResult = result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem();
+        toolResult.Succeeded.ShouldBeFalse();
+        handler.Bodies.Count.ShouldBe(2);
+        handler.Bodies[1].ShouldContain("secrets stay secret");
+    }
+
+    [Fact]
+    public void WithCompaction_WhenBuilderIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithCompaction()).ParamName.ShouldBe("builder");
+
+    [Fact]
+    public async Task WithCompaction_WhenBuilt_RegistersACompactorAndTurnsStillComplete()
+    {
+        var handler = new StubOpenAIHandler("fine");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithCompaction(o => o.MaximumCheckpointCharacters = 8_000);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("fine");
+        _ = engine.Services.GetRequiredService<ICompactor>().ShouldNotBeNull();
+        engine.Services.GetRequiredService<IOptions<CompactionOptions>>().Value.MaximumCheckpointCharacters.ShouldBe(8_000);
+    }
+
+    [Fact]
+    public void WithDelegation_WhenBuilderIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithDelegation()).ParamName.ShouldBe("builder");
+
+    [Fact]
+    public async Task WithDelegation_WhenTheLeadDelegates_TheSpecialistRunsOnTheSameEngineAndItsAnswerReturnsThroughTheTool()
+    {
+        var specialist = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000009"));
+        var delegation = $$"""tool:task:{"target_agent_id":"{{specialist.Value}}","objective":"Find the retry policy.","acceptance_criteria":["Name the file."],"allowed_tools":[]}""";
+        // Turn 1 of the lead: call task. The specialist's single turn answers. Turn 2 of the lead: final answer.
+        var handler = new StubOpenAIHandler(delegation, "It is in RetryPolicy.cs.", "The specialist found it in RetryPolicy.cs.");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithInstructions("You are the lead.")
+            .AddAgent(specialist, static o =>
+            {
+                o.DisplayName = "specialist";
+                o.Instructions.Add("You are the specialist.");
+                o.IncludeRegisteredTools = false;
+            })
+            .WithDelegation();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("Where is the retry policy?", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResult = result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem();
+        toolResult.ToolName.ShouldBe("task");
+        toolResult.Succeeded.ShouldBeTrue();
+        handler.Bodies.Count.ShouldBe(3);
+        handler.Bodies[0].ShouldContain("\"name\":\"task\"");
+        handler.Bodies[1].ShouldContain("You are the specialist.");
+        handler.Bodies[1].ShouldContain("Find the retry policy.");
+        handler.Bodies[1].ShouldNotContain("\"name\":\"task\"");
+        handler.Bodies[2].ShouldContain("RetryPolicy.cs");
+        var specialistSessions = await (await engine.GetAgentAsync(specialist, TestContext.Current.CancellationToken))!
+            .SendAsync(new AgentSendRequest(engine.Identity, "and now?"), TestContext.Current.CancellationToken);
+        _ = specialistSessions.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public void WithBudget_WhenConfigureIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().WithBudget(null!)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void WithBudget_WhenNoLimitIsConfigured_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithBudget(static _ => { })).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void WithBudget_WhenALimitIsNotPositive_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithBudget(static o => o.MaxCostUsd = 0m)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public async Task WithBudget_WhenTheToolCallBudgetIsExhausted_TheTurnFailsNamingTheDimensionAndTheToolIsNotInvoked()
+    {
+        var handler = new StubOpenAIHandler(
+            "tool:read_file:{\"path\":\"a.txt\"}",
+            "tool:read_file:{\"path\":\"b.txt\"}",
+            "done");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithBudget(static o => o.MaxToolCalls = 1);
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("b.txt"), "B");
+
+        var result = await engine.SendAsync("read both", TestContext.Current.CancellationToken);
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResults = result.Events.OfType<ConversationToolResultEvent>().ToList();
+        toolResults.Count.ShouldBe(2);
+        toolResults[0].Succeeded.ShouldBeTrue();
+        toolResults[1].Succeeded.ShouldBeFalse();
+        handler.Bodies[2].ShouldContain("not attempted");
+        definition.BudgetLimits.ShouldHaveSingleItem().Dimension.ShouldBe(BudgetDimensions.AttemptedToolCalls);
+    }
+
+    [Fact]
+    public async Task WithBudget_WhenTheTurnBudgetIsExhausted_AskAsyncThrowsNamingTheDimension()
+    {
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"a.txt\"}", "done");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithBudget(static o => o.MaxTurns = 1);
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
+
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("read it", TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("agentkit.turns");
+        handler.Bodies.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -413,6 +952,32 @@ public sealed class AgentEngineBuilderExtensionsTests
             {
                 yield return inner;
             }
+        }
+    }
+
+    private sealed class ThrowingHandler: HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            throw new HttpRequestException("connection refused");
+        }
+    }
+
+    private sealed class VetoSecretsHook: IBeforeToolInvocationHook
+    {
+        public HookId Id { get; } = new("test.veto-secrets");
+
+        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        {
+            if (args.Arguments.TryGetProperty("path", out var path) && path.GetString()!.Contains("secret", StringComparison.Ordinal))
+            {
+                args.Veto = new ToolInvocationVeto("secrets stay secret");
+            }
+
+            return ValueTask.CompletedTask;
         }
     }
 }

@@ -66,6 +66,11 @@ using Microsoft.Extensions.Options;
 /// </remarks>
 public sealed class DefaultAgentLoop: IAgentLoop
 {
+    private readonly IHookDispatcher? _hookDispatcher;
+    private readonly ImmutableArray<IRunStartedHook> _runStartedHooks;
+    private readonly ImmutableArray<IBeforeModelRequestHook> _beforeModelRequestHooks;
+    private readonly ImmutableArray<IBeforeToolInvocationHook> _beforeToolInvocationHooks;
+    private readonly IIdentifierGenerator<HookInvocationId> _hookInvocationIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
@@ -94,6 +99,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>Whether the final permitted turn is requested without tools; see <see cref="AgentLoopOptions.DisableToolsOnFinalTurn"/>.</summary>
     private readonly bool _disableToolsOnFinalTurn;
+    private readonly double _contextPressureThreshold;
+    private readonly double _estimatedCharactersPerToken;
+    private readonly IIdentifierGenerator<CompactionId> _compactionIds;
 
     /// <summary>
     /// The first backoff before a required terminal commit that the store reported as failed is retried under its
@@ -135,12 +143,27 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// The optional logger that receives safe run-lifecycle diagnostics; a
     /// Microsoft null logger is used when omitted.
     /// </param>
-    /// <exception cref="ArgumentNullException">Any parameter other than <paramref name="logger"/> is null.</exception>
+    /// <param name="hookDispatcher">
+    /// The typed dispatch kernel the first-party hook points run through, or <see langword="null"/> when the
+    /// composition registers no hooks. Required as soon as any hook collection below is non-empty.
+    /// </param>
+    /// <param name="runStartedHooks">The registered <see cref="IRunStartedHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="beforeModelRequestHooks">The registered <see cref="IBeforeModelRequestHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="hookInvocationIds">The generator for hook invocation identities, or <see langword="null"/> for a GUID generator.</param>
+    /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
+    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
     /// <see cref="AgentLoopOptions.HistoryReadPageSize"/>, a negative
     /// <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
-    /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.
+    /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>, a
+    /// <see cref="AgentLoopOptions.ContextPressureThreshold"/> outside (0, 1], or a non-positive
+    /// <see cref="AgentLoopOptions.EstimatedCharactersPerToken"/>.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Hooks are registered but <paramref name="hookDispatcher"/> is <see langword="null"/>; the loop fails closed
+    /// rather than silently skipping registered hooks.
     /// </exception>
     public DefaultAgentLoop(
         IIdentifierGenerator<OperationId> operationIds,
@@ -151,7 +174,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
         TimeProvider timeProvider,
         IOptionsMonitor<AgentLoopOptions> optionsMonitor,
         [ServiceKey] string loopKey,
-        ILogger<DefaultAgentLoop>? logger = null)
+        ILogger<DefaultAgentLoop>? logger = null,
+        IHookDispatcher? hookDispatcher = null,
+        IEnumerable<IRunStartedHook>? runStartedHooks = null,
+        IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null,
+        IIdentifierGenerator<CompactionId>? compactionIds = null)
     {
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
@@ -179,6 +208,27 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _settlementTimeout = loopOptions.SettlementTimeout;
         _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
         _disableToolsOnFinalTurn = loopOptions.DisableToolsOnFinalTurn;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.ContextPressureThreshold, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(loopOptions.ContextPressureThreshold, 1, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.EstimatedCharactersPerToken, nameof(optionsMonitor));
+        _contextPressureThreshold = loopOptions.ContextPressureThreshold;
+        _estimatedCharactersPerToken = loopOptions.EstimatedCharactersPerToken;
+        _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
+        _runStartedHooks = [.. runStartedHooks ?? []];
+        _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
+        _beforeToolInvocationHooks = [.. beforeToolInvocationHooks ?? []];
+        ArgumentException.ThrowIfContainsNull(_runStartedHooks, nameof(runStartedHooks));
+        ArgumentException.ThrowIfContainsNull(_beforeModelRequestHooks, nameof(beforeModelRequestHooks));
+        ArgumentException.ThrowIfContainsNull(_beforeToolInvocationHooks, nameof(beforeToolInvocationHooks));
+        if (hookDispatcher is null
+            && (!_runStartedHooks.IsEmpty || !_beforeModelRequestHooks.IsEmpty || !_beforeToolInvocationHooks.IsEmpty))
+        {
+            throw new InvalidOperationException(
+                "Hooks are registered but no IHookDispatcher is composed; register AddAgentHooks so registered hooks are dispatched rather than silently skipped.");
+        }
+
+        _hookDispatcher = hookDispatcher;
+        _hookInvocationIds = hookInvocationIds ?? new GuidIdentifierGenerator<HookInvocationId>(static value => new HookInvocationId(value));
     }
 
     /// <inheritdoc/>
@@ -334,8 +384,80 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
+        var tracking = new RunTracking();
+        if (!request.BudgetLimits.IsEmpty)
+        {
+            if (services.Budgets is not { } budgets)
+            {
+                LoopLog.BudgetAuthorityMissing(_logger, request.RunId);
+                return BuildResult(
+                    request,
+                    new AgentRunInvalidState("The run declares budget limits but the composition provides no budget authority."),
+                    committedMessages.ToImmutable(),
+                    currentVersion);
+            }
+
+            var scopeResult = await budgets.CreateChildScopeAsync(
+                new BudgetScopeRequest(
+                    parentScopeId: null,
+                    new BudgetScopeAddress(
+                        request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, null),
+                    request.BudgetLimits,
+                    new IdempotencyKey($"run:{request.RunId}:budget")),
+                cancellationToken).ConfigureAwait(false);
+            if (scopeResult is not BudgetScopeCreated created)
+            {
+                LoopLog.BudgetScopeNotCreated(_logger, request.RunId, scopeResult.GetType().Name);
+                return BuildResult(
+                    request,
+                    new AgentRunInvalidState("The run's budget scope could not be created."),
+                    committedMessages.ToImmutable(),
+                    currentVersion);
+            }
+
+            tracking.Budget = new RunBudget(created.Scope, request.RunId, _timeProvider);
+            _ = runActivity?.SetTag(AgentKitTagNames.BudgetScopeId, created.Scope.Id.ToString());
+        }
+
+        if (_hookDispatcher is not null && !_runStartedHooks.IsEmpty)
+        {
+            // Read-only point: failures are isolated by default, cancellation still propagates.
+            await _hookDispatcher.DispatchAsync(
+                AgentHookPoints.RunStarted,
+                _runStartedHooks,
+                new RunStartedEventArgs(
+                    request.AgentId, request.SessionId, runCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(),
+                    request.BranchId, model, request.MaxTurns, request.AttemptTimeout),
+                static (hook, args, _, token) => hook.OnRunStartedAsync(args, token).AsTask(),
+                HookDispatchScope.Root,
+                HookFailureMode.Isolate,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        var compactionAttempted = false;
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
+            if (tracking.Budget is { } turnBudget
+                && await turnBudget.CountAsync(BudgetDimensions.Turns, operationId, $"turn:{turn}", cancellationToken).ConfigureAwait(false) is { } turnExhausted)
+            {
+                LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
+                return BuildResult(request, turnExhausted, committedMessages.ToImmutable(), currentVersion);
+            }
+
+            if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
+            {
+                var estimatedTokens = EstimateTokens(history.Messages);
+                var threshold = contextWindow * _contextPressureThreshold;
+                if (estimatedTokens > threshold)
+                {
+                    compactionAttempted = true;
+                    history = await CompactUnderPressureAsync(
+                        request, services, compactor, sessionContext, runCorrelation, runAuthorization, history,
+                        estimatedTokens, contextWindow, threshold, cancellationToken).ConfigureAwait(false);
+                    currentVersion = history.SourceCursor.Version;
+                }
+            }
+
             TurnOutcome result;
             try
             {
@@ -349,6 +471,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     turn == 1 ? modelResolution.FirstModelRequestId : null,
                     modelResolution.Adjustments,
                     history,
+                    tracking,
                     committedMessages,
                     currentVersion,
                     cancellationToken).ConfigureAwait(false);
@@ -503,6 +626,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ModelRequestId? reservedModelRequestId,
         ImmutableArray<CapabilityAdjustment> selectionAdjustments,
         HistoryView history,
+        RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
@@ -590,6 +714,47 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var context = ((ContextReady) assembleResult).Context;
+        if (_hookDispatcher is not null && !_beforeModelRequestHooks.IsEmpty)
+        {
+            var hookArgs = new BeforeModelRequestEventArgs(
+                request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), turn, context);
+            try
+            {
+                await _hookDispatcher.DispatchAsync(
+                    AgentHookPoints.BeforeModelRequest,
+                    _beforeModelRequestHooks,
+                    hookArgs,
+                    static (hook, args, _, token) => hook.OnBeforeModelRequestAsync(args, token).AsTask(),
+                    HookDispatchScope.Root,
+                    HookFailureMode.FailOperation,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.BeforeModelRequest, exception.GetType().FullName ?? exception.GetType().Name);
+                turnActivity.SetFailed("hook_failed", exception.GetType().Name);
+                return TurnOutcome.Settled(
+                    new AgentRunInvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
+            }
+
+            if (hookArgs.SettingsChanged)
+            {
+                context = context with { Settings = hookArgs.Settings };
+            }
+        }
+
+        if (tracking.Budget is { } requestBudget
+            && await requestBudget.CountAsync(BudgetDimensions.ModelRequests, turnCorrelation.OperationId, $"turn:{turnId}:request", cancellationToken).ConfigureAwait(false) is { } requestExhausted)
+        {
+            LoopLog.BudgetExhausted(_logger, request.RunId, requestExhausted.Dimension);
+            turnActivity.SetFailed("budget_exhausted", requestExhausted.Dimension.Value);
+            return TurnOutcome.Settled(requestExhausted, currentVersion);
+        }
+
         var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
         var chatRequest = new LlmModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
 
@@ -665,7 +830,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
-                committedMessages, currentVersion, cancellationToken)
+                tracking, committedMessages, currentVersion, cancellationToken)
                 .ConfigureAwait(false),
 
             _ => throw new InvalidOperationException(
@@ -697,6 +862,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         TurnId turnId,
         int turn,
         ModelResponse response,
+        RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
@@ -810,11 +976,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
         currentVersion = appended.NewVersion;
         committedMessages.Add(assistantMessage);
 
+        if (tracking.Budget is { } usageBudget
+            && await usageBudget.AccountUsageAsync(response.Usage, turnCorrelation.OperationId, $"turn:{turnId}:usage", cancellationToken).ConfigureAwait(false) is { } usageExhausted)
+        {
+            // The response is committed; the run stops here rather than spending past the limit on another request.
+            LoopLog.BudgetExhausted(_logger, request.RunId, usageExhausted.Dimension);
+            return TurnOutcome.Settled(usageExhausted, currentVersion);
+        }
+
         var toolCalls = requestedCalls;
         var committedSequence = appended.CommittedEntries[^1].Sequence;
 
         return toolCalls switch
         {
+            { IsEmpty: true } when request.Output is { } outputDefinition => await ValidateOutputAsync(
+                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                assistantMessage, response, outputDefinition, tracking, committedMessages, currentVersion, committedSequence,
+                cancellationToken)
+                .ConfigureAwait(false),
             { IsEmpty: true } => await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken)
@@ -825,9 +1004,179 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
-                committedMessages, currentVersion, committedSequence, cancellationToken)
+                tracking, committedMessages, currentVersion, committedSequence, cancellationToken)
                 .ConfigureAwait(false),
         };
+    }
+
+    /// <summary>
+    /// Validates the committed terminal response against the run's selected <see cref="OutputDefinition"/> and
+    /// hands the processor's typed decision to the continuation policy.
+    /// </summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle, whose <see cref="AgentRunServices.Output"/> performs the validation.</param>
+    /// <param name="sourceCursor">The history cursor the turn started from.</param>
+    /// <param name="turnSessionContext">The turn's session operation context.</param>
+    /// <param name="turnCorrelation">The turn's in-run correlation.</param>
+    /// <param name="turnId">The committed turn's identity.</param>
+    /// <param name="turn">The one-based number of the committed turn.</param>
+    /// <param name="assistantEntryId">The committed assistant entry's identity.</param>
+    /// <param name="assistantMessage">The complete, committed assistant response.</param>
+    /// <param name="response">The provider response the assistant message was built from.</param>
+    /// <param name="definition">The output contract the run must satisfy.</param>
+    /// <param name="tracking">The run-scoped attempt counter the processor's retry policy is evaluated against.</param>
+    /// <param name="committedMessages">Every message this run has committed so far.</param>
+    /// <param name="currentVersion">The branch version after the assistant commit.</param>
+    /// <param name="committedSequence">The sequence of the committed assistant entry.</param>
+    /// <param name="cancellationToken">Cancels validation; the assistant message is already committed.</param>
+    /// <returns>The turn's continuation or settlement.</returns>
+    /// <remarks>
+    /// <para>
+    /// An <see cref="OutputAccepted"/> decision completes the run with the validated value attached. An
+    /// <see cref="OutputRetryRequired"/> decision commits the processor's bounded repair instruction as a
+    /// <see cref="RuntimeMessage"/>, which the provider translation carries with user-level trust and never with
+    /// system authority, and continues to the next turn so the model can correct its answer; the turn limit still
+    /// applies. An <see cref="OutputRejected"/> or <see cref="OutputConfigurationRejected"/> decision halts the run
+    /// as <see cref="AgentRunOutputRejected"/>. The processor never sees a turn that requested tools: output is
+    /// validated only on a terminal response.
+    /// </para>
+    /// <para>
+    /// The attempt counter is per run, not per turn, so repairs consumed on earlier turns count against the
+    /// definition's retry policy. A composition that selects an output definition without an output processor fails
+    /// closed as <see cref="AgentRunInvalidState"/> rather than completing with unvalidated text.
+    /// </para>
+    /// </remarks>
+    private async Task<TurnOutcome> ValidateOutputAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        MessageCursor sourceCursor,
+        SessionOperationContext turnSessionContext,
+        InRunOperationCorrelation turnCorrelation,
+        TurnId turnId,
+        int turn,
+        SessionEntryId assistantEntryId,
+        AssistantMessage assistantMessage,
+        ModelResponse response,
+        OutputDefinition definition,
+        RunTracking tracking,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
+        SessionVersion currentVersion,
+        SessionSequence committedSequence,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request.Output is not null, "Output validation runs only when the request selects a definition.");
+
+        if (services.Output is not { } processor)
+        {
+            LoopLog.OutputProcessorMissing(_logger, request.RunId, turnId, definition.Id);
+            return TurnOutcome.Settled(
+                new AgentRunInvalidState("The run selects an output definition but the composition provides no output processor."),
+                currentVersion);
+        }
+
+        var attempt = tracking.NextAttempt();
+        OutputProcessingResult decision;
+        try
+        {
+            decision = await processor.ProcessAsync(
+                new OutputProcessingRequest(definition, response, attempt), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            LoopLog.OutputValidationCancelled(_logger, request.RunId, turnId, definition.Id, attempt);
+            return TurnOutcome.Settled(
+                new AgentRunCancelled("The run was cancelled while its output was being validated; the response is committed."),
+                currentVersion);
+        }
+        catch (Exception exception)
+        {
+            LoopLog.OutputValidationFaulted(_logger, request.RunId, turnId, definition.Id, attempt, exception.GetType().FullName ?? exception.GetType().Name);
+            return TurnOutcome.Settled(
+                new AgentRunInvalidState("The output processor faulted while validating the response."),
+                currentVersion);
+        }
+
+        LoopLog.OutputDecided(_logger, request.RunId, turnId, definition.Id, attempt, decision.GetType().Name);
+
+        if (decision is not OutputRetryRequired retry)
+        {
+            return await DecideContinuationAsync(
+                request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
+                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken,
+                decision).ConfigureAwait(false);
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var repairMessage = new RuntimeMessage(
+            _messageIds.Create(),
+            request.AgentId,
+            request.SessionId,
+            sourceCursor.ConversationId,
+            request.BranchId,
+            request.RunId,
+            turnId,
+            now,
+            MessageState.Complete,
+            [new TextPart(retry.Repair.SafeMessage, TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var repairEntry = new MessageSessionEntry(
+            _entryIds.Create(),
+            turnSessionContext.ToAddress(),
+            turnCorrelation,
+            request.BranchId,
+            new SessionSequence(committedSequence.Value + 1),
+            assistantEntryId,
+            now,
+            new SchemaVersion("1"),
+            repairMessage);
+
+        var appendAttempt = await AppendWithDiagnosticsAsync(
+            services,
+            new SessionAppendRequest(
+                turnSessionContext,
+                request.BranchId,
+                currentVersion,
+                new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:output-repair"),
+                [repairEntry]),
+            request.SessionProfile,
+            allowInterleavedMessages: true,
+            cancellationToken).ConfigureAwait(false);
+        if (appendAttempt.Result is not SessionAppended appended)
+        {
+            return TurnOutcome.Settled(
+                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+        }
+
+        committedMessages.Add(repairMessage);
+        var repairSequence = appended.CommittedEntries[^1].Sequence;
+        return await DecideContinuationAsync(
+            request, services, turnCorrelation, turn, assistantMessage, [], repairEntry.Id,
+            NextCursor(sourceCursor, appended.NewVersion, repairSequence),
+            [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, cancellationToken,
+            retry).ConfigureAwait(false);
+    }
+
+    /// <summary>Builds the continuation causes that describe one committed turn to the policy.</summary>
+    /// <param name="toolResults">The committed tool results of the turn, or empty.</param>
+    /// <param name="outputDecision">The output processor's decision for the turn, or <see langword="null"/>.</param>
+    /// <returns>Tool-result evidence when tools ran, repair evidence when a repair turn follows, otherwise empty.</returns>
+    private static ImmutableArray<RunContinuationCause> ContinuationCauses(
+        ImmutableArray<CommittedToolResultReference> toolResults,
+        OutputProcessingResult? outputDecision)
+    {
+        Debug.Assert(toolResults.IsEmpty || outputDecision is null, "Output is validated only on a turn without tool calls.");
+        var causes = ImmutableArray.CreateBuilder<RunContinuationCause>();
+        if (!toolResults.IsEmpty)
+        {
+            causes.Add(new CommittedToolResultsContinuationCause(toolResults));
+        }
+
+        if (outputDecision is OutputRetryRequired retry)
+        {
+            causes.Add(new OutputRepairContinuationCause(retry));
+        }
+
+        return causes.ToImmutable();
     }
 
     /// <summary>
@@ -953,6 +1302,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionEntryId assistantEntryId,
         AssistantMessage assistantMessage,
         ImmutableArray<ToolCallPart> toolCalls,
+        RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence currentSequence,
@@ -1005,8 +1355,44 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     new AgentRunToolCallStarted(turnId, toolCall),
                     cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if (tracking.Budget is { } callBudget
+                    && await callBudget.CountAsync(BudgetDimensions.AttemptedToolCalls, turnCorrelation.OperationId, $"call:{toolCall.CallId}", cancellationToken).ConfigureAwait(false) is { } callExhausted)
+                {
+                    LoopLog.BudgetExhausted(_logger, request.RunId, callExhausted.Dimension);
+                    resultPart = BudgetRejectedResultPart(toolCall, callExhausted);
+                    resultParts.Add(resultPart);
+                    await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+                    continue;
+                }
+
+                var arguments = toolCall.Arguments;
+                if (_hookDispatcher is not null && !_beforeToolInvocationHooks.IsEmpty)
+                {
+                    var hookArgs = new BeforeToolInvocationEventArgs(
+                        request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), toolCall);
+                    await _hookDispatcher.DispatchAsync(
+                        AgentHookPoints.BeforeToolInvocation,
+                        _beforeToolInvocationHooks,
+                        hookArgs,
+                        static (hook, args, _, token) => hook.OnBeforeToolInvocationAsync(args, token).AsTask(),
+                        HookDispatchScope.Root,
+                        HookFailureMode.FailOperation,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                    if (hookArgs.Veto is { } veto)
+                    {
+                        LoopLog.ToolCallVetoed(_logger, request.RunId, toolCall.CallId);
+                        resultPart = VetoedResultPart(toolCall, veto);
+                        resultParts.Add(resultPart);
+                        await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    arguments = hookArgs.Arguments;
+                }
+
                 var resolved = await services.Tools.InvokeAsync(
-                    new ToolCallRequest(toolCall.Tool, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
+                    new ToolCallRequest(toolCall.Tool, toolContext, arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
                 resultPart = new ToolResultPart(
@@ -1126,6 +1512,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
     /// <param name="version">The branch version after this turn's commits.</param>
     /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
+    /// <param name="outputDecision">
+    /// The output processor's decision for this terminal turn, or <see langword="null"/> when the run selects no
+    /// output definition or the turn requested tools. When present the boundary requires output validation, so the
+    /// policy completes only on acceptance, continues on a repair decision, and halts on rejection.
+    /// </param>
     /// <returns>A continuation to the next turn, or the settled outcome proposed by the policy.</returns>
     /// <remarks>
     /// <para>
@@ -1162,7 +1553,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         MessageCursor nextCursor,
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion version,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OutputProcessingResult? outputDecision = null)
     {
         Debug.Assert(request is not null, "A validated run request is required to decide continuation.");
         Debug.Assert(turnCorrelation.TurnId is not null, "Continuation is decided for one committed turn.");
@@ -1184,9 +1576,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 nextCursor.Sequence,
                 request.Authorization.ConfigurationVersion,
                 _policyVersion,
-                new CommittedTurnContinuationBoundary(assistantMessage, toolResults, outputDecision: null, requiresOutputValidation: false),
+                new CommittedTurnContinuationBoundary(
+                    assistantMessage, toolResults, outputDecision, requiresOutputValidation: outputDecision is not null),
                 requiredStopOutcome: null,
-                toolResults.IsEmpty ? [] : [new CommittedToolResultsContinuationCause(toolResults)]);
+                ContinuationCauses(toolResults, outputDecision));
         }
         catch (ArgumentException exception)
         {
@@ -1335,6 +1728,42 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
             statusCode: null, providerCode: null, retryAfter: null, safeMessage, diagnosticCause: null, ExtensionData.Empty));
     }
+
+    /// <summary>Builds the rejected terminal result a refused tool-call budget reservation produces.</summary>
+    /// <param name="toolCall">The call that was not attempted.</param>
+    /// <param name="exhausted">The exhaustion that refused it.</param>
+    /// <returns>A rejected, not-performed result recording <see cref="ToolTerminalStatus.ResourceLimitExceeded"/>.</returns>
+    private static ToolResultPart BudgetRejectedResultPart(ToolCallPart toolCall, AgentRunBudgetExhausted exhausted) => new(
+        toolCall.CallId,
+        toolCall.Tool,
+        new ToolCallOutcome(
+            ToolCallOutcomeKind.Rejected,
+            ToolTerminalStatus.ResourceLimitExceeded,
+            SideEffectCertainty.DefinitelyNotPerformed,
+            retryable: false,
+            $"The call was not attempted: {exhausted.SafeMessage}",
+            ExtensionData.Empty),
+        [new TextPart($"The call was not attempted: {exhausted.SafeMessage}", TextSemantics.Plain, ExtensionData.Empty)],
+        DefaultProjection(ToolTerminalStatus.ResourceLimitExceeded),
+        ExtensionData.Empty);
+
+    /// <summary>Builds the rejected terminal result a hook veto produces; the veto's safe reason is what the model sees.</summary>
+    /// <param name="toolCall">The vetoed call.</param>
+    /// <param name="veto">The hook's typed refusal.</param>
+    /// <returns>A rejected, not-performed result correlated to the call.</returns>
+    private static ToolResultPart VetoedResultPart(ToolCallPart toolCall, ToolInvocationVeto veto) => new(
+        toolCall.CallId,
+        toolCall.Tool,
+        new ToolCallOutcome(
+            ToolCallOutcomeKind.Rejected,
+            ToolTerminalStatus.Unsupported,
+            SideEffectCertainty.DefinitelyNotPerformed,
+            retryable: false,
+            $"The call was vetoed before invocation: {veto.SafeReason}",
+            ExtensionData.Empty),
+        [new TextPart($"The call was vetoed before invocation: {veto.SafeReason}", TextSemantics.Plain, ExtensionData.Empty)],
+        DefaultProjection(ToolTerminalStatus.Unsupported),
+        ExtensionData.Empty);
 
     /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>
     /// <param name="toolCall">The requested call to settle.</param>
@@ -2075,6 +2504,127 @@ public sealed class DefaultAgentLoop: IAgentLoop
         LoopMetrics.RunDuration.Record(_timeProvider.GetElapsedTime(startedTimestamp).TotalSeconds, tags);
     }
 
+    /// <summary>
+    /// Estimates the tokens the model-facing history occupies from the UTF-16 length of its text-bearing parts.
+    /// </summary>
+    /// <param name="messages">The history about to be sent.</param>
+    /// <returns>An advisory estimate; never used to block a request on its own.</returns>
+    private long EstimateTokens(ImmutableArray<AgentMessage> messages)
+    {
+        long characters = 0;
+        foreach (var message in messages)
+        {
+            foreach (var part in message.Parts)
+            {
+                characters += part switch
+                {
+                    TextPart text => text.Text.Length,
+                    ToolCallPart call => call.Arguments.ValueKind == System.Text.Json.JsonValueKind.Undefined ? 0 : call.Arguments.GetRawText().Length,
+                    ToolResultPart result => result.Content.OfType<TextPart>().Sum(static inner => (long) inner.Text.Length),
+                    ReasoningPart { Content.Text: { } reasoning } => reasoning.Length,
+                    _ => 0,
+                };
+            }
+        }
+
+        return (long) Math.Ceiling(characters / _estimatedCharactersPerToken);
+    }
+
+    /// <summary>
+    /// Asks the composed compactor to checkpoint older history and, when it succeeds, reloads the model-facing history
+    /// from the newest checkpoint; on any other outcome the run continues with the history it had.
+    /// </summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="compactor">The composed compactor.</param>
+    /// <param name="sessionContext">The run-scoped session context used to reload history.</param>
+    /// <param name="runCorrelation">The run's correlation, recorded as the compaction's cause.</param>
+    /// <param name="authorization">The run's captured authorization.</param>
+    /// <param name="history">The history under pressure.</param>
+    /// <param name="estimatedTokens">The estimate that crossed the threshold.</param>
+    /// <param name="contextWindow">The model's declared context window.</param>
+    /// <param name="threshold">The token count at which pressure was declared.</param>
+    /// <param name="cancellationToken">Cancels the compaction; cancellation propagates.</param>
+    /// <returns>The reloaded history after a successful checkpoint, otherwise <paramref name="history"/>.</returns>
+    /// <remarks>
+    /// Compaction runs at most once per run and is advisory: a compactor that rejects, fails, conflicts, or finds
+    /// nothing to reduce leaves the request as it was, and the provider remains the authority on whether the
+    /// request fits. The checkpoint is a durable session entry, so later runs benefit even when this one does not.
+    /// </remarks>
+    private async Task<HistoryView> CompactUnderPressureAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        ICompactor compactor,
+        SessionOperationContext sessionContext,
+        InRunOperationCorrelation runCorrelation,
+        SecurityAuthorizationContext authorization,
+        HistoryView history,
+        long estimatedTokens,
+        long contextWindow,
+        double threshold,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(history is not null, "Pressure is evaluated over a loaded history.");
+        var compactionId = _compactionIds.Create();
+        LoopLog.CompactionTriggered(_logger, request.RunId, compactionId, estimatedTokens, contextWindow);
+        var now = _timeProvider.GetUtcNow();
+        CompactionResult outcome;
+        try
+        {
+            outcome = await compactor.CompactAsync(
+                new CompactionRequest(
+                    new CompactionOperationContext(
+                        compactionId, request.AgentId, request.SessionId, runCorrelation, request.Identity, authorization, request.SessionProfile),
+                    request.BranchId,
+                    history.SourceCursor.Version,
+                    history.SourceCursor.Sequence,
+                    new ContextEpoch(0),
+                    new CompactionTrigger(
+                        CompactionTriggerKind.ContextPressure,
+                        $"Estimated {estimatedTokens} tokens exceed {threshold:F0} of a {contextWindow}-token window.",
+                        runCorrelation.OperationId),
+                    targetInputTokens: (int) Math.Min(int.MaxValue, Math.Max(1, threshold / 2)),
+                    minimumReductionRatio: 0.1,
+                    minimumRetainedEntries: 1,
+                    now,
+                    now + request.AttemptTimeout,
+                    ExtensionData.Empty),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LoopLog.CompactionFaulted(_logger, request.RunId, compactionId, exception.GetType().FullName ?? exception.GetType().Name);
+            return history;
+        }
+
+        if (outcome is not CompactionSucceeded)
+        {
+            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, outcome.GetType().Name);
+            return history;
+        }
+
+        var reloaded = await LoadHistoryAsync(
+            request.RunId, services, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
+        if (reloaded is not { } loaded)
+        {
+            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, "history_reload_failed");
+            return history;
+        }
+
+        var messages = ToMessages(loaded.Entries);
+        if (loaded.Checkpoint is { } checkpoint)
+        {
+            messages = messages.Insert(0, CompactionCheckpointProjector.Project(checkpoint, loaded.Cursor));
+        }
+
+        LoopLog.CompactionApplied(_logger, request.RunId, compactionId, history.Messages.Length, messages.Length);
+        return new HistoryView(loaded.Cursor, messages, []);
+    }
+
     private static ImmutableArray<AgentMessage> ToMessages(ImmutableArray<SessionEntry> entries)
     {
         var builder = ImmutableArray.CreateBuilder<AgentMessage>();
@@ -2228,6 +2778,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>
+    /// <summary>Per-run state the turns share: the output validation attempt counter and the run's budget.</summary>
+    /// <remarks>
+    /// The processor's retry policy is evaluated against the attempt count, so repairs consumed on earlier turns are
+    /// not forgotten when a later turn produces another invalid candidate. One instance exists per run and is touched
+    /// only by that run's sequential turns.
+    /// </remarks>
+    private sealed class RunTracking
+    {
+        private int _attempts;
+
+        /// <summary>Gets or sets the run's budget, or <see langword="null"/> for an unbudgeted run.</summary>
+        public RunBudget? Budget { get; set; }
+
+        /// <summary>Allocates the next one-based output validation attempt number.</summary>
+        /// <returns>1 for the first validation of the run, then 2, 3, and so on.</returns>
+        public int NextAttempt() => ++_attempts;
+    }
+
     private readonly struct TurnOutcome
     {
         private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, MessageCursor? cursor, ImmutableArray<AgentMessage> newMessages)
