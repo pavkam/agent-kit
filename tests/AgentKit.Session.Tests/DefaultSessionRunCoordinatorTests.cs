@@ -75,6 +75,25 @@ public sealed class DefaultSessionRunCoordinatorTests
     }
 
     [Fact]
+    public async Task Release_WhenTheLastOwnerAndReferenceAreGone_RemovesTheSlotInsteadOfLeakingIt()
+    {
+        // AcquireAsync did GetOrAdd for every (tenant, address, lane) ever acquired and Release only cleared
+        // slot.Owner; nothing ever removed the entry. In a long-lived host each new session/lane leaked a
+        // SessionRunSlot (a SemaphoreSlim plus monitor object) for the process lifetime, including for sessions
+        // that were later deleted.
+        var scenario = Scenario.Create();
+        scenario.Coordinator.SlotCount.ShouldBe(0);
+
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        scenario.Coordinator.SlotCount.ShouldBe(1);
+
+        await acquired.Lease.DisposeAsync();
+
+        scenario.Coordinator.SlotCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task Release_WhenLeaseIdDoesNotMatchCurrentOwner_DoesNotFreeTheLane()
     {
         var scenario = Scenario.Create();

@@ -841,6 +841,7 @@ lock (slot.SyncRoot)
   same instance), or bound the dictionary with an eviction policy for idle
   slots.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### S04 — `Outcome` classifier omits release and directory-list results, so successful releases/lists are recorded as failed/"unknown"
 

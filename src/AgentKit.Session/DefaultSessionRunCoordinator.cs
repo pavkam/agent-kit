@@ -18,6 +18,12 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
     private readonly TimeSpan _busyWaitTimeout;
     private readonly ILogger<DefaultSessionRunCoordinator> _logger;
 
+    /// <summary>
+    /// Gets the number of process-local lane slots this coordinator currently retains, for tests verifying an
+    /// idle slot is removed rather than leaking for the process lifetime.
+    /// </summary>
+    internal int SlotCount => _slots.Count;
+
     /// <summary>Initializes the process-local coordinator over protected canonical state.</summary>
     /// <param name="leaseIds">Generates unique lease identities.</param>
     /// <param name="timeProvider">Controls bounded local waiting deterministically.</param>
@@ -74,83 +80,90 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
 
             var key = (request.Context.Identity.TenantId,
                 Address: new SessionAddress(request.AgentId, request.SessionId), LaneId: request.ExecutionLaneId);
-            var slot = _slots.GetOrAdd(key, static _ => new SessionRunSlot());
-            var entered = await EnterAsync(slot, profile.BusyBehavior, cancellationToken).ConfigureAwait(false);
-            if (!entered)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                SessionRunSlotOwner? activeOwner;
-                lock (slot.SyncRoot)
-                {
-                    activeOwner = slot.Owner;
-                }
-                if (activeOwner is null)
-                {
-                    return Complete(activity.Activity, request,
-                        new SessionRunLeaseUnavailable("The local lane is still validating a provisional owner."));
-                }
-
-                var loaded = await session.Coordinator.LoadRunStateAsync(
-                    new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                var validation = ValidateLoadedState(request, profile, loaded);
-                if (validation is not null)
-                {
-                    return Complete(activity.Activity, request, validation);
-                }
-
-                lock (slot.SyncRoot)
-                {
-                    activeOwner = slot.Owner;
-                }
-                return activeOwner is null
-                    ? Complete(activity.Activity, request,
-                        new SessionRunLeaseUnavailable("The local lane wait ended without an observable owner."))
-                    : activeOwner.OperationId == request.OperationId
-                        && activeOwner.RunId == request.RunId
-                        && activeOwner.StateRevision == request.ExpectedStateRevision
-                        ? Complete(activity.Activity, request,
-                            new SessionRunBusy(request.OperationId, request.RunId))
-                        : Complete(activity.Activity, request,
-                            new SessionRunLeaseConflict(SessionRunLeaseConflictKind.AcceptedState,
-                                "The validated accepted operation does not own the occupied local lane."));
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                ReleaseUnownedGate(slot);
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
+            var slot = AcquireSlotReference(key);
             try
             {
-                var loaded = await session.Coordinator.LoadRunStateAsync(
-                    new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                var validation = ValidateLoadedState(request, profile, loaded);
-                if (validation is not null)
+                var entered = await EnterAsync(slot, profile.BusyBehavior, cancellationToken).ConfigureAwait(false);
+                if (!entered)
                 {
-                    ReleaseUnownedGate(slot);
-                    return Complete(activity.Activity, request, validation);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    SessionRunSlotOwner? activeOwner;
+                    lock (slot.SyncRoot)
+                    {
+                        activeOwner = slot.Owner;
+                    }
+                    if (activeOwner is null)
+                    {
+                        return Complete(activity.Activity, request,
+                            new SessionRunLeaseUnavailable("The local lane is still validating a provisional owner."));
+                    }
+
+                    var loaded = await session.Coordinator.LoadRunStateAsync(
+                        new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var validation = ValidateLoadedState(request, profile, loaded);
+                    if (validation is not null)
+                    {
+                        return Complete(activity.Activity, request, validation);
+                    }
+
+                    lock (slot.SyncRoot)
+                    {
+                        activeOwner = slot.Owner;
+                    }
+                    return activeOwner is null
+                        ? Complete(activity.Activity, request,
+                            new SessionRunLeaseUnavailable("The local lane wait ended without an observable owner."))
+                        : activeOwner.OperationId == request.OperationId
+                            && activeOwner.RunId == request.RunId
+                            && activeOwner.StateRevision == request.ExpectedStateRevision
+                            ? Complete(activity.Activity, request,
+                                new SessionRunBusy(request.OperationId, request.RunId))
+                            : Complete(activity.Activity, request,
+                                new SessionRunLeaseConflict(SessionRunLeaseConflictKind.AcceptedState,
+                                    "The validated accepted operation does not own the occupied local lane."));
                 }
 
-                cancellationToken.ThrowIfCancellationRequested();
-                var leaseId = _leaseIds.Create();
-                var owner = new SessionRunSlotOwner(leaseId, request.OperationId, request.RunId,
-                    request.ExpectedStateRevision);
-                var lease = new SessionRunLease(this, session, request, leaseId);
-                lock (slot.SyncRoot)
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    Debug.Assert(slot.Owner is null, "Canonical validation completes before the exact owner is published.");
-                    slot.Owner = owner;
+                    ReleaseUnownedGate(slot);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
-                return Complete(activity.Activity, request,
-                    new SessionRunLeaseAcquired(lease));
+
+                try
+                {
+                    var loaded = await session.Coordinator.LoadRunStateAsync(
+                        new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var validation = ValidateLoadedState(request, profile, loaded);
+                    if (validation is not null)
+                    {
+                        ReleaseUnownedGate(slot);
+                        return Complete(activity.Activity, request, validation);
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var leaseId = _leaseIds.Create();
+                    var owner = new SessionRunSlotOwner(leaseId, request.OperationId, request.RunId,
+                        request.ExpectedStateRevision);
+                    var lease = new SessionRunLease(this, session, request, leaseId);
+                    lock (slot.SyncRoot)
+                    {
+                        Debug.Assert(slot.Owner is null, "Canonical validation completes before the exact owner is published.");
+                        slot.Owner = owner;
+                    }
+                    return Complete(activity.Activity, request,
+                        new SessionRunLeaseAcquired(lease));
+                }
+                catch
+                {
+                    ReleaseUnownedGate(slot);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                ReleaseUnownedGate(slot);
-                throw;
+                ReleaseSlotReference(key, slot);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -182,7 +195,8 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
         ArgumentNullException.ThrowIfNull(address);
         ArgumentOutOfRangeException.ThrowIfEqual(laneId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(leaseId, default);
-        if (!_slots.TryGetValue((tenantId, address, laneId), out var slot))
+        var key = (tenantId, address, laneId);
+        if (!_slots.TryGetValue(key, out var slot))
         {
             return;
         }
@@ -195,7 +209,82 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
             }
             slot.Owner = null;
             _ = slot.Gate.Release();
+            RetireIfUnreferenced(key, slot);
         }
+    }
+
+    /// <summary>
+    /// Obtains this coordinator's slot for <paramref name="key"/>, incrementing its in-flight reference count so
+    /// a concurrent release cannot remove it while this call is still using it, and retries with a fresh
+    /// instance if a racing removal retired the one this call found.
+    /// </summary>
+    /// <param name="key">The exact tenant, session, and lane identity naming one process-local slot.</param>
+    /// <returns>A non-retired slot with an incremented reference count, matching the entry currently owned by the dictionary for <paramref name="key"/> at the moment of increment.</returns>
+    /// <remarks>
+    /// Every caller of this method must eventually call <see cref="ReleaseSlotReference"/> exactly once with the
+    /// same <paramref name="key"/> and the returned instance, regardless of how it exits, so the reference count
+    /// never leaks and an idle slot becomes eligible for removal.
+    /// </remarks>
+    private SessionRunSlot AcquireSlotReference(
+        (TenantId TenantId, SessionAddress Address, ExecutionLaneId LaneId) key)
+    {
+        while (true)
+        {
+            var slot = _slots.GetOrAdd(key, static _ => new SessionRunSlot());
+            lock (slot.SyncRoot)
+            {
+                if (slot.Retired)
+                {
+                    // A concurrent Release retired this exact instance between GetOrAdd and this lock; look up
+                    // (or create) whatever instance now occupies the dictionary entry instead of reviving it.
+                    continue;
+                }
+
+                slot.RefCount++;
+                return slot;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Releases one reference obtained from <see cref="AcquireSlotReference"/>, removing the slot from the
+    /// owning dictionary when it becomes both unowned and unreferenced.
+    /// </summary>
+    /// <param name="key">The exact key <paramref name="slot"/> was obtained under.</param>
+    /// <param name="slot">The exact instance <see cref="AcquireSlotReference"/> returned.</param>
+    private void ReleaseSlotReference(
+        (TenantId TenantId, SessionAddress Address, ExecutionLaneId LaneId) key, SessionRunSlot slot)
+    {
+        lock (slot.SyncRoot)
+        {
+            slot.RefCount--;
+            Debug.Assert(slot.RefCount >= 0, "A reference release must exactly pair with a prior acquisition.");
+            RetireIfUnreferenced(key, slot);
+        }
+    }
+
+    /// <summary>
+    /// Removes <paramref name="slot"/> from the owning dictionary when it holds no owner and no in-flight
+    /// acquirer reference it, so a session or lane that is no longer active does not leak a
+    /// <see cref="SessionRunSlot"/> (a <see cref="SemaphoreSlim"/> plus monitor object) for the process lifetime.
+    /// </summary>
+    /// <param name="key">The exact key <paramref name="slot"/> is stored under.</param>
+    /// <param name="slot">The exact instance to retire; the caller must already hold <see cref="SessionRunSlot.SyncRoot"/>.</param>
+    /// <remarks>
+    /// Removal uses the dictionary's key-and-value-comparing overload so a newer instance that already replaced
+    /// this one under the same key (impossible under the current acquire/release protocol, but never assumed) is
+    /// never removed in its place.
+    /// </remarks>
+    private void RetireIfUnreferenced(
+        (TenantId TenantId, SessionAddress Address, ExecutionLaneId LaneId) key, SessionRunSlot slot)
+    {
+        if (slot.Retired || slot.Owner is not null || slot.RefCount > 0)
+        {
+            return;
+        }
+
+        slot.Retired = true;
+        _ = _slots.TryRemove(new KeyValuePair<(TenantId, SessionAddress, ExecutionLaneId), SessionRunSlot>(key, slot));
     }
 
     /// <summary>
