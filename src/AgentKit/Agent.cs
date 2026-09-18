@@ -107,4 +107,36 @@ public sealed class Agent
         ArgumentNullException.ThrowIfNull(options);
         return _engine.RunAgentAsync(Definition, options, cancellationToken);
     }
+
+    /// <summary>
+    /// Sends one user turn to this agent: the engine creates or opens the session, takes its lane, records the
+    /// message, and runs the agent to a terminal outcome.
+    /// </summary>
+    /// <param name="request">The identity, message, session selection, overrides, and observer for the turn.</param>
+    /// <param name="cancellationToken">
+    /// Cancels the caller's wait. Before the message is committed nothing durable happens and the exception
+    /// propagates; afterwards the run settles with a typed cancelled outcome that is returned.
+    /// </param>
+    /// <returns>
+    /// The terminal result. <see cref="AgentLoopResult.SessionId"/> is the session to pass back as
+    /// <see cref="AgentSendRequest.SessionId"/> to continue the conversation, and
+    /// <see cref="AgentLoopResult.NewMessages"/> holds every message this turn committed.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An override is wider than the definition's default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The definition is no longer enabled, or the session could not be created, opened, or appended to.</exception>
+    /// <exception cref="AgentSessionBusyException">The session is running another turn and its profile rejects concurrent turns.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    /// <remarks>
+    /// Turns on different sessions, of this or any other agent hosted by the same engine, run concurrently. Turns
+    /// on the same session are serialized or rejected by the session profile's <see cref="SessionBusyBehavior"/>.
+    /// This handle holds no state between calls and is safe to share.
+    /// </remarks>
+    public Task<AgentLoopResult> SendAsync(
+        AgentSendRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return _engine.SendAgentAsync(Definition, request, cancellationToken);
+    }
 }

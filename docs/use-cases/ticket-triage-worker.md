@@ -21,8 +21,9 @@ not a person.
 
 ## Compose the host
 
-Telemetry and the shared stores belong to the host; the agent engine is built
-per job so that each job's session, limits, and cancellation are isolated:
+Telemetry and the shared stores belong to the host. The engine is built once and
+registered as a singleton; each ticket becomes one session on it, so jobs are
+isolated by session while sharing the model catalog, stores, and audit sink:
 
 ```csharp
 var host = Host.CreateApplicationBuilder(args);
@@ -34,6 +35,8 @@ host.Services.AddOpenTelemetry()
 host.Services.AddSingleton<ITicketQueue, ServiceBusTicketQueue>();
 host.Services.AddSingleton<ITicketApi, HttpTicketApi>();
 host.Services.AddSingleton<ISecurityAuditSink, AuditLogSink>();
+host.Services.AddSingleton(sp => TriageWorker.CreateEngine(
+    host.Configuration["OpenAI:ApiKey"]!, sp.GetRequiredService<ISecurityAuditSink>()));
 host.Services.AddHostedService<TriageWorker>();
 
 await host.Build().RunAsync();
@@ -42,7 +45,7 @@ await host.Build().RunAsync();
 ## Compose the engine
 
 ```csharp
-sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, ISecurityAuditSink audit, IConfiguration config, ILogger<TriageWorker> logger)
+sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, AgentEngine engine, ILogger<TriageWorker> logger)
     : BackgroundService
 {
     static readonly ExecutionIdentity WorkerIdentity = ExecutionIdentity.ForService(
@@ -52,10 +55,10 @@ sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, ISecurityAudit
         "managed-identity",
         authenticatedAt: DateTimeOffset.UtcNow);
 
-    AgentEngine CreateEngine(Ticket ticket)
+    internal static AgentEngine CreateEngine(string apiKey, ISecurityAuditSink audit)
     {
         var builder = AgentEngine.CreateBuilder()
-            .UseOpenAI(config["OpenAI:ApiKey"]!, "gpt-4o-mini")
+            .UseOpenAI(apiKey, "gpt-4o-mini")
             .UseSqliteSessions("/var/lib/triage/sessions.db")
             .WithIdentity(WorkerIdentity)
             .WithInstructions("You triage support tickets: classify, set a priority from 1 (urgent) to 4, and draft a first reply.")
@@ -102,37 +105,40 @@ the model to repair an invalid one before the turn fails.
 ```csharp
 protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 {
-    await foreach (var ticket in queue.ReadAllAsync(stoppingToken))
+    var triage = (await engine.GetAgentAsync((await engine.GetAgentsAsync(stoppingToken)).Single().Id, stoppingToken))!;
+
+    await Parallel.ForEachAsync(queue.ReadAllAsync(stoppingToken), new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = stoppingToken }, async (ticket, ct) =>
     {
-        using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         jobCancellation.CancelAfter(TimeSpan.FromMinutes(3));
 
-        await using var engine = CreateEngine(ticket);
-        var result = await engine.SendAsync(TicketPrompt(ticket), jobCancellation.Token);
+        var result = await triage.SendAsync(new AgentSendRequest(WorkerIdentity, TicketPrompt(ticket)), jobCancellation.Token);
 
-        var usage = result.Events.OfType<ConversationUsageEvent>().Select(e => e.Usage).ToList();
-        var completed = result.Events.OfType<ConversationTurnCompletedEvent>().Last();
-
-        logger.LogTriageCompleted(ticket.Id, completed.Outcome,
+        var usage = result.NewMessages.OfType<AssistantMessage>().Select(m => m.Response.Usage)
+            .Where(u => u.ReportState != ModelUsageReportState.NotReported).ToList();
+        logger.LogTriageCompleted(ticket.Id, result.SessionId, result.Outcome.GetType().Name,
             usage.Sum(u => u.InputTokens ?? 0), usage.Sum(u => u.OutputTokens ?? 0), usage.Sum(u => u.EstimatedCost ?? 0m));
 
-        if (result.Output?.Value is TriageDecision decision)
+        if (result.Outcome is AgentRunCompleted { Output.Value: TriageDecision decision })
         {
-            await tickets.UpdateAsync(ticket.Id, decision.Category, decision.Priority, decision.DraftReply, stoppingToken);
+            await tickets.UpdateAsync(ticket.Id, decision.Category, decision.Priority, decision.DraftReply, ct);
         }
         else
         {
-            await queue.DeadLetterAsync(ticket, completed.Outcome, stoppingToken);
+            await queue.DeadLetterAsync(ticket, result.Outcome.GetType().Name, ct);
         }
-    }
+    });
 }
 ```
 
+Eight tickets run at once on the one engine, each in its own session; the
+engine's per-session lane never contends because every ticket is a new session.
+
 `stoppingToken` flows into every turn, so host shutdown cancels the model call
-and any in-flight tool, the turn ends with `Outcome == "cancelled"`, and the
-ticket is dead-lettered instead of updated from a half-formed answer. The
-per-job `CancelAfter` is an outer bound above the attempt timeout; both produce
-a typed outcome rather than an exception from the engine.
+and any in-flight tool, the run settles as `AgentRunCancelled`, and the ticket
+is dead-lettered instead of updated from a half-formed answer. The per-job
+`CancelAfter` is an outer bound above the attempt timeout; both produce a typed
+outcome rather than an exception from the engine.
 
 ## What the framework guarantees
 
@@ -152,18 +158,15 @@ a typed outcome rather than an exception from the engine.
 
 ## Status
 
-The in-process path above is complete. Two designed capabilities that would
-tighten this worker are not yet wired into the turn loop and are tracked in the
+One engine, many concurrent sessions, and typed output are all in place. One
+designed capability that would tighten this worker is not yet wired into the
+turn loop and is tracked in the
 [implementation ledger](../implementation-progress.md#component-coverage):
-
-- **Budgets.** `AgentKit.Budgets` provides hierarchical atomic reservations with
-  typed exhaustion (`BudgetRejected` carrying a `BudgetLimitFailure`), and
-  `AddInMemoryBudgetLedger` / `AddSqliteBudgetLedger` back it. The loop and
-  providers do not reserve through it yet, so today a cost cap is the token
-  arithmetic above plus `MaxOutputTokens` and `MaxTurns`.
-- **Hosted engine.** `AddAgentKit()` with `AgentKitServiceProviderFactory`
-  registers a host-managed engine that would let this worker keep one engine and
-  many concurrent runs instead of one engine per job.
+`AgentKit.Budgets` provides hierarchical atomic reservations with typed
+exhaustion (`BudgetRejected` carrying a `BudgetLimitFailure`), backed by
+`AddInMemoryBudgetLedger` / `AddSqliteBudgetLedger`, but the loop and providers
+do not reserve through it yet, so today a cost cap is the token arithmetic above
+plus `MaxOutputTokens` and `MaxTurns`.
 
 ## What lives where
 

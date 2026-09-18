@@ -28,9 +28,12 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>
         /// Registration is idempotent and uses <c>TryAdd</c> semantics. The
-        /// engine, clock, and catalog are singular, thread-safe singletons. A
-        /// resolved engine does not own the external host's provider; the host
-        /// remains responsible for scopes, shutdown, and disposal.
+        /// engine, clock, catalog, and the run, operation, message, and
+        /// session-entry identifier generators are singular, thread-safe
+        /// singletons; a host that registered deterministic generators first
+        /// keeps them. A resolved engine does not own the external host's
+        /// provider; the host remains responsible for scopes, shutdown, and
+        /// disposal.
         /// </para>
         /// <para>
         /// This registers no loop, provider, store, tool, or security
@@ -55,6 +58,10 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<RunId>(static () => new RunId(Guid.NewGuid())));
             services.TryAddSingleton<IIdentifierGenerator<OperationId>>(
                 new DelegateIdentifierGenerator<OperationId>(static () => new OperationId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<MessageId>>(
+                new DelegateIdentifierGenerator<MessageId>(static () => new MessageId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
+                new DelegateIdentifierGenerator<SessionEntryId>(static () => new SessionEntryId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddSingleton(

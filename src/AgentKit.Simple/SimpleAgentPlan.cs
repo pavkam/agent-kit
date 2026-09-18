@@ -83,6 +83,29 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets the structured-output contract every turn must satisfy, or <see langword="null"/> for free text.</summary>
     public OutputDefinition? Output { get; set; }
 
+    /// <summary>Gets the additional agents hosted next to the default one, keyed by their pinned identities.</summary>
+    public Dictionary<AgentId, SimpleAgentOptions> AdditionalAgents { get; } = [];
+
+    /// <summary>
+    /// Records an additional agent, rejecting an identity already used by the default agent or another addition.
+    /// </summary>
+    /// <param name="agentId">The additional agent's stable identity.</param>
+    /// <param name="options">Its validated behavior.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The identity is already hosted by this plan.</exception>
+    public void AddAgent(AgentId agentId, SimpleAgentOptions options)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentNullException.ThrowIfNull(options);
+        if (agentId == EffectiveAgentId || AdditionalAgents.ContainsKey(agentId))
+        {
+            throw new InvalidOperationException($"Agent {agentId} is already hosted by this engine; every agent needs a distinct identity.");
+        }
+
+        AdditionalAgents.Add(agentId, options);
+    }
+
     /// <summary>Gets or sets a value indicating whether the named local-development defaults were opted into.</summary>
     public bool LocalDevelopmentDefaults { get; set; }
 
@@ -143,8 +166,13 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Builds the security publication the engine, the selector, and the permission options all pin.</summary>
     /// <returns>The publication.</returns>
-    public SecurityProfilePublication SecurityPublication() => new(
-        EffectiveAgentId,
+    public SecurityProfilePublication SecurityPublication() => SecurityPublication(EffectiveAgentId);
+
+    /// <summary>Builds the security publication for one hosted agent; every agent shares the plan's profile, policy, and authority.</summary>
+    /// <param name="agentId">The hosted agent.</param>
+    /// <returns>The publication the engine pins and the security authority reads for that agent.</returns>
+    public SecurityProfilePublication SecurityPublication(AgentId agentId) => new(
+        agentId,
         DefinitionRevision,
         ConfigurationVersion,
         SecurityProfileKey,
@@ -172,11 +200,16 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Builds the exact run-profile publication the engine pins for the definition.</summary>
     /// <returns>The publication pairing the security and session profiles with the configuration snapshot.</returns>
-    public AgentRunProfilePublication RunProfile()
+    public AgentRunProfilePublication RunProfile() => RunProfile(EffectiveAgentId);
+
+    /// <summary>Builds the run-profile publication for one hosted agent over the plan's shared session profile.</summary>
+    /// <param name="agentId">The hosted agent.</param>
+    /// <returns>The publication the engine pins for that agent.</returns>
+    public AgentRunProfilePublication RunProfile(AgentId agentId)
     {
         var sessionProfile = SessionProfile();
         return new AgentRunProfilePublication(
-            SecurityPublication(),
+            SecurityPublication(agentId),
             sessionProfile,
             new EffectiveConfigurationSnapshot(ConfigurationVersion, sessionProfile.ConfigurationFingerprint, [], []));
     }
@@ -224,14 +257,46 @@ internal sealed class SimpleAgentPlan
         }
     }
 
+    /// <summary>Builds the immutable definition of one additional agent over the plan's shared model, profiles, and tools.</summary>
+    /// <param name="agentId">The additional agent's identity.</param>
+    /// <param name="options">Its configured behavior.</param>
+    /// <param name="tools">Every registered tool, offered when <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> is set.</param>
+    /// <returns>The definition the engine catalog publishes.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public AgentDefinition DefinitionFor(AgentId agentId, SimpleAgentOptions options, ImmutableArray<LlmToolDefinition> tools)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentNullException.ThrowIfNull(options);
+        return new AgentDefinition(
+            agentId,
+            DefinitionRevision,
+            options.DisplayName,
+            new ModelSelectionPolicy([RequireModelAlias()]),
+            ModelRequirements.None,
+            [.. options.Instructions.Select(text => BuildInstructionMessage(agentId, text)).Cast<AgentMessage>()],
+            options.IncludeRegisteredTools ? tools : [],
+            LlmToolChoice.Auto,
+            options.RequestSettings,
+            new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
+            ExtensionData.Empty,
+            SecurityProfileKey,
+            SessionProfileKey)
+        {
+            Output = options.Output,
+        };
+    }
+
     /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>
     /// <returns>One immutable message per entry in <see cref="Instructions"/>, in call order.</returns>
     private ImmutableArray<AgentMessage> InstructionMessages() =>
         _instructionMessages ??= [.. Instructions.Select(BuildInstructionMessage).Cast<AgentMessage>()];
 
-    private SystemMessage BuildInstructionMessage(string text) => new(
+    private SystemMessage BuildInstructionMessage(string text) => BuildInstructionMessage(EffectiveAgentId, text);
+
+    private static SystemMessage BuildInstructionMessage(AgentId agentId, string text) => new(
         new MessageId(Guid.NewGuid()),
-        EffectiveAgentId,
+        agentId,
         default,
         null,
         default,

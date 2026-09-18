@@ -22,6 +22,7 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder WithMaxTurns(int maxTurns) { }
             public AgentKit.AgentEngineBuilder WithAttemptTimeout(System.TimeSpan timeout) { }
             public AgentKit.AgentEngineBuilder WithRequestSettings(AgentKit.LlmRequestSettings settings) { }
+            public AgentKit.AgentEngineBuilder AddAgent(AgentKit.AgentId agentId, System.Action<AgentKit.Simple.SimpleAgentOptions> configure) { }
             public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
             public AgentKit.AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2) { }
         }
@@ -31,6 +32,7 @@ namespace AgentKit.Simple
         extension(AgentKit.AgentEngine engine)
         {
             public AgentKit.Conversations.IConversationSession Conversation { get; }
+            public AgentKit.ExecutionIdentity Identity { get; }
             public System.Threading.Tasks.Task<string> AskAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<T> AskAsync<T>(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
@@ -41,5 +43,16 @@ namespace AgentKit.Simple
     {
         public SimpleAgentException(string message, AgentKit.Conversations.ConversationTurnResult result) { }
         public AgentKit.Conversations.ConversationTurnResult Result { get; }
+    }
+    public sealed class SimpleAgentOptions
+    {
+        public SimpleAgentOptions() { }
+        public System.TimeSpan AttemptTimeout { get; set; }
+        public string DisplayName { get; set; }
+        public bool IncludeRegisteredTools { get; set; }
+        public System.Collections.Generic.List<string> Instructions { get; }
+        public int MaxTurns { get; set; }
+        public AgentKit.OutputDefinition? Output { get; set; }
+        public AgentKit.LlmRequestSettings RequestSettings { get; set; }
     }
 }

@@ -9,28 +9,28 @@ record, and a streaming path to the browser.
 
 ## What the agent needs
 
-| Need                                 | AgentKit part                                                                           |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| Conversations that survive a restart | `UseSqliteSessions`, backed by `AgentKit.Session.Sqlite`                                |
-| Each customer sees only their own    | `WithIdentity` with the identity your authentication produced; stores partition by it   |
-| Resume a conversation by id          | `engine.Conversation.OpenAsync` and `ListAsync`                                         |
-| Stream tokens to the browser         | `SendAsync(text, IConversationEventObserver)` and `ConversationAssistantTextDeltaEvent` |
-| No host access at all                | A policy that allows session state and denies everything else                           |
+| Need                                 | AgentKit part                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Conversations that survive a restart | `UseSqliteSessions`, backed by `AgentKit.Session.Sqlite`                                                                 |
+| Many customers on one engine         | `Agent.SendAsync(AgentSendRequest)`: the engine owns sessions and their lanes                                            |
+| Each customer sees only their own    | `AgentSendRequest.Identity` from your authentication; the store partitions by it and the engine checks ownership on open |
+| Resume a conversation by id          | `AgentSendRequest.SessionId` from the previous `AgentLoopResult.SessionId`                                               |
+| Stream tokens to the browser         | `AgentSendRequest.Observer`, an `IAgentRunObserver` receiving `AgentRunModelResponseEvent` deltas                        |
+| No host access at all                | A policy that allows session state and denies everything else                                                            |
 
 ## Compose the engine
 
-Build one engine per active conversation. An `IConversationSession` serializes
-its calls and holds one open session at a time, so a per-request factory keyed
-by the customer's session is the shape that fits today; see **Status** below for
-where the multi-run engine is heading.
+Build one engine when the application starts and keep it for the life of the
+process. The engine coordinates every customer's sessions: each request names
+the customer's identity and, after the first turn, their session id.
 
 ```csharp
-static AgentEngine CreateSupportEngine(ExecutionIdentity customer, string apiKey)
+static AgentEngine CreateSupportEngine(string apiKey, ISecurityAuditSink auditSink)
 {
     var builder = AgentEngine.CreateBuilder()
         .UseOpenAI(apiKey, "gpt-4o-mini")
         .UseSqliteSessions("/var/lib/support/sessions.db")
-        .WithIdentity(customer)
+        .WithIdentity(ServiceIdentity)      // the host's own identity; customers arrive per request
         .WithInstructions(
             "You are the support assistant for Acme. Answer from the customer's " +
             "own account context. If you do not know, say so and offer a human agent.")
@@ -48,6 +48,9 @@ static AgentEngine CreateSupportEngine(ExecutionIdentity customer, string apiKey
 
     return builder.Build();
 }
+
+// At startup:
+builder.Services.AddSingleton(sp => CreateSupportEngine(config["OpenAI:ApiKey"]!, sp.GetRequiredService<ISecurityAuditSink>()));
 ```
 
 The policy is small because the agent is small. Session reads and appends are
@@ -86,75 +89,82 @@ content-safe fingerprint from those facts; the token itself is never an input.
 ## Use it
 
 A minimal API endpoint that starts or continues a conversation and streams
-server-sent events:
+server-sent events. The engine is resolved once; each request drives the support
+agent for one customer:
 
 ```csharp
-app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, HttpContext http, CancellationToken ct) =>
+app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, HttpContext http, AgentEngine engine, CancellationToken ct) =>
 {
     var customer = IdentityFor(http.User, authenticatedAt, expiresAt);   // from the auth ticket
-    await using var engine = CreateSupportEngine(customer, apiKey);
-
-    if (sessionId is { } existing)
-    {
-        var opened = await engine.Conversation.OpenAsync(new SessionId(existing), ct);
-        if (opened is ConversationSessionOpenRejected rejected)
-        {
-            return Results.NotFound(rejected.SafeMessage);
-        }
-    }
+    var agent = (await engine.GetAgentsAsync(ct)).Single();
+    var support = (await engine.GetAgentAsync(agent.Id, ct))!;
 
     http.Response.ContentType = "text/event-stream";
     var observer = new SseObserver(http.Response);
-    var result = await engine.SendAsync(body.Text, observer, ct);
-    await observer.CompleteAsync(result.Succeeded, ct);
+    AgentLoopResult result;
+    try
+    {
+        result = await support.SendAsync(
+            new AgentSendRequest(customer, body.Text, sessionId is { } id ? new SessionId(id) : null, observer: observer),
+            ct);
+    }
+    catch (AgentAdmissionRejectedException)
+    {
+        return Results.NotFound();          // unknown session, or one that belongs to someone else
+    }
+    catch (AgentSessionBusyException)
+    {
+        return Results.Conflict();          // the customer double-submitted; the first turn is still running
+    }
+
+    await observer.CompleteAsync(result, ct);
     return Results.Empty;
 });
 ```
 
-The browser learns which session it is in before the first token arrives: the
-first observed turn begins with a `ConversationSessionBoundEvent`, and the
-result carries the same `SessionId` for a non-streaming caller.
+The observer receives the loop's provisional events (text deltas, tool starts
+and results) and the final result names the session, so the browser learns its
+resume token from the `done` frame:
 
 ```csharp
-sealed class SseObserver(HttpResponse response) : IConversationEventObserver
+sealed class SseObserver(HttpResponse response) : IAgentRunObserver
 {
-    public async ValueTask OnEventAsync(ConversationEvent conversationEvent, CancellationToken cancellationToken)
+    public async ValueTask OnEventAsync(AgentRunEvent runEvent, CancellationToken cancellationToken)
     {
-        var payload = conversationEvent switch
+        if (runEvent is AgentRunModelResponseEvent { ResponseEvent: ModelPartDelta { Delta: TextContentDelta text } })
         {
-            ConversationSessionBoundEvent bound => $"event: session\ndata: {bound.SessionId}\n\n",
-            ConversationAssistantTextDeltaEvent delta => $"event: delta\ndata: {JsonSerializer.Serialize(delta.Text)}\n\n",
-            ConversationUsageEvent usage => $"event: usage\ndata: {usage.Usage.OutputTokens}\n\n",
-            ConversationTurnCompletedEvent done => $"event: done\ndata: {done.Outcome}\n\n",
-            _ => null,
-        };
-
-        if (payload is not null)
-        {
-            await response.WriteAsync(payload, cancellationToken);
+            await response.WriteAsync($"event: delta\ndata: {JsonSerializer.Serialize(text.Text)}\n\n", cancellationToken);
             await response.Body.FlushAsync(cancellationToken);
         }
+    }
+
+    public async ValueTask CompleteAsync(AgentLoopResult result, CancellationToken cancellationToken)
+    {
+        var answer = string.Concat(result.NewMessages.OfType<AssistantMessage>().SelectMany(m => m.Parts.OfType<TextPart>()).Select(p => p.Text));
+        await response.WriteAsync($"event: done\ndata: {JsonSerializer.Serialize(new { session = result.SessionId.Value, outcome = result.Outcome.GetType().Name, answer })}\n\n", cancellationToken);
     }
 }
 ```
 
-Listing a customer's earlier conversations for a sidebar is one call on the same
-session; because the store partitions by identity, the page contains only that
-customer's sessions:
-
-```csharp
-var page = (ConversationSessionPage) await engine.Conversation.ListAsync(afterSessionId: null, maximumResults: 20, ct);
-```
+Listing a customer's earlier conversations for a sidebar goes through the
+session directory the engine composed; because the store partitions by tenant
+and principal, a customer sees only their own sessions, and `SendAsync` with a
+session id that belongs to someone else is rejected before anything is appended.
 
 ## What the framework guarantees
 
-- **A session id from another tenant does not open.** `OpenAsync` checks the
-  session against the identity the engine was built with and returns
-  `ConversationSessionOpenRejected` with a safe message.
-- **Client disconnect is a clean cancellation.** Cancelling `ct` ends the turn
-  with a `ConversationTurnCompletedEvent` whose `Outcome` is `"cancelled"`; the
-  session store is left consistent and the next `SendAsync` continues from the
-  committed history.
+- **A session id from another tenant does not open.** The engine loads the
+  session and checks its agent, tenant, principal, and state against the request
+  before appending anything; a mismatch is an `AgentAdmissionRejectedException`
+  with a safe reason.
+- **One turn per session at a time.** The engine enters the session's lane
+  before recording the message; the session profile decides whether a second
+  turn waits or fails with `AgentSessionBusyException`. Other customers'
+  sessions are unaffected.
+- **Client disconnect is a clean cancellation.** Cancelling `ct` before the
+  message is committed leaves no trace; afterwards the run settles with
+  `AgentRunCancelled` and the next `SendAsync` continues from the committed
+  history.
 - **Audit is required, not hoped for.** With `SecurityAuditDelivery.Required`
   and a durable sink, an audited operation whose record cannot be delivered does
   not run.
@@ -163,14 +173,15 @@ var page = (ConversationSessionPage) await engine.Conversation.ListAsync(afterSe
 
 ## Status
 
-The direct path above is complete. The `AgentEngine` facade is designed to host
-one composition for many concurrent sessions with queue-backed input admission,
-which would replace the per-conversation engine with one long-lived engine and
-`agent.RunAsync(options)`; that runnable graph is tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage). Audit
-coverage is also still widening: the approval flow and session-store enforcement
-are audited today, while ordinary allow and deny decisions and file, process,
-and network enforcement are not yet, as
+The engine path above is complete for in-process hosting: one engine, many
+customers, concurrent sessions, per-session exclusion. Two refinements are
+tracked in the
+[implementation ledger](../implementation-progress.md#component-coverage):
+queue-backed admission through `AgentKit.IO` (so a double-submit can be queued
+as a follow-up instead of rejected) and attaching a second request to a run in
+progress by `RunId`. Audit coverage is also still widening: the approval flow
+and session-store enforcement are audited today, while ordinary allow and deny
+decisions and file, process, and network enforcement are not yet, as
 [Permissions and approvals](../guides/permissions.md#audit) explains.
 
 ## What lives where

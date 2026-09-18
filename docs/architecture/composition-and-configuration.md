@@ -442,6 +442,36 @@ file. It owns the standalone or host-managed scope boundary and is not a public
 extension point; all behavior it invokes remains selected through the public
 abstractions, definitions, options, and DI registrations described here.
 
+### Current admission surface
+
+The process-level surface above is the target shape. The facade currently ships
+its reduced form, `Agent.SendAsync(AgentSendRequest)`, which already gives one
+engine the coordination role the invariant requires:
+
+- `AgentSendRequest` carries the identity, the user content parts, an optional
+  `SessionId`, narrowing overrides, and an `IAgentRunObserver`.
+- The engine revalidates the pinned definition and publication, then creates a
+  session owned by the identity or loads the named one and verifies the agent,
+  tenant, principal, and active state own it. A session that is not visible is
+  an `AgentAdmissionRejectedException`, not a silent new session.
+- A process-local lane per `(AgentId, SessionId)` is entered before anything is
+  appended and applies the pinned session profile's `SessionBusyBehavior`:
+  `Reject` fails the contender with `AgentSessionBusyException` naming the
+  active run, `Wait` serializes it. Different sessions, of the same or different
+  agents, run concurrently on the same engine. Distributed exclusion remains the
+  session run coordinator's durable lease.
+- The user message is appended under the run's identity with an idempotency key
+  derived from it, the run request is compiled in a fresh scope with the keyed
+  loop and services (including the optional output processor), and the loop
+  settles the run. `AgentLoopResult.SessionId` is the resume token.
+
+`AgentKit.Simple` exposes this through `AddAgent(agentId, configure)` for
+additional definitions on the same engine and `engine.Identity` for the composed
+identity; `engine.Conversation` remains the single-session convenience.
+Queue-backed admission through `AgentKit.IO`, engine-level run attachment and
+cancellation by `RunId`, and durable lane acceptance are the remaining steps to
+the full surface.
+
 ### Compiled run activation
 
 The facade creates one DI scope per run, then materializes every keyed choice

@@ -473,6 +473,50 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
+        /// Hosts an additional agent on the same engine: its own instructions, limits, request settings, and output
+        /// contract over the model, tools, identity, storage, and security the builder already selected.
+        /// </summary>
+        /// <param name="agentId">The additional agent's stable identity; distinct from the default agent's and from every other addition.</param>
+        /// <param name="configure">Configures the agent's behavior.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configure"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default, or the configured turn limit or timeout is not positive.</exception>
+        /// <exception cref="ArgumentException">The configured display name is blank.</exception>
+        /// <exception cref="InvalidOperationException">The identity is already hosted by this builder.</exception>
+        /// <remarks>
+        /// <para>
+        /// The engine publishes the additional definition next to the default one and pins a run profile for it, so
+        /// <c>engine.GetAgentAsync(agentId)</c> returns a handle and <c>Agent.SendAsync</c> drives it: each turn
+        /// creates or continues a session of that agent, and different sessions run concurrently. The builder's
+        /// <c>Conversation</c> and <c>AskAsync</c> keep addressing the default agent.
+        /// </para>
+        /// <para>
+        /// Every hosted agent shares the builder's model alias, security profile, and session profile. Give an
+        /// agent a different model or policy by composing it on <see cref="AgentEngineBuilder.Services"/> with
+        /// <c>AddAgent(AgentDefinition)</c> and its own publications.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder AddAgent(AgentId agentId, Action<SimpleAgentOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+            ArgumentNullException.ThrowIfNull(configure);
+
+            var options = new SimpleAgentOptions();
+            configure(options);
+            ArgumentException.ThrowIfNullOrWhiteSpace(options.DisplayName, nameof(configure));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxTurns, nameof(configure));
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.AttemptTimeout, TimeSpan.Zero, nameof(configure));
+            ArgumentNullException.ThrowIfNull(options.RequestSettings, nameof(configure));
+
+            var plan = Plan(builder);
+            plan.AddAgent(agentId, options);
+            _ = builder.Services.AddSingleton(provider => provider.GetRequiredService<SimpleAgentPlan>().SecurityPublication(agentId));
+            _ = builder.Services.AddSingleton(provider => provider.GetRequiredService<SimpleAgentPlan>().RunProfile(agentId));
+            return builder;
+        }
+
+        /// <summary>
         /// Requires every final answer to satisfy a structured-output contract: the loop validates each terminal
         /// response through the composed output processor, asks the model to correct a rejected candidate within
         /// the definition's retry policy, and surfaces the accepted value on the turn result.
@@ -590,7 +634,7 @@ public static class AgentEngineBuilderExtensions
             o.PolicySnapshot = plan.PolicySnapshot;
         });
         _ = services.AddSecurityAuthority(plan.AuthorityKey);
-        _ = services.AddSingleton(static provider => provider.GetRequiredService<AgentRunProfilePublication>().SecurityProfile);
+        _ = services.AddSingleton(static provider => provider.GetRequiredService<SimpleAgentPlan>().SecurityPublication());
         _ = services.AddSingleton(static provider => provider.GetRequiredService<SimpleAgentPlan>().RunProfile());
 
         // The engine catalog: one definition, its bootstrap snapshot materialized without I/O.

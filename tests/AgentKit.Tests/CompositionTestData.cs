@@ -40,7 +40,10 @@ internal static class CompositionTestData
             new SecurityProfileKey("security"),
             new SessionProfileKey("session"));
 
-    public static AgentRunProfilePublication RunProfile(AgentDefinition definition) => new(
+    public static AgentRunProfilePublication RunProfile(AgentDefinition definition) =>
+        RunProfile(definition, SessionBusyBehavior.Reject);
+
+    public static AgentRunProfilePublication RunProfile(AgentDefinition definition, SessionBusyBehavior busyBehavior) => new(
         new SecurityProfilePublication(
             definition.Id,
             definition.Revision,
@@ -61,7 +64,7 @@ internal static class CompositionTestData
             requiresDurableStore: false,
             requiresDistributedFencing: false,
             new SessionRetentionProfileKey("retention"),
-            SessionBusyBehavior.Reject,
+            busyBehavior,
             maximumAppendEntries: 128,
             maximumPageSize: 256,
             verifySnapshotHashes: true,
@@ -99,14 +102,41 @@ internal static class CompositionTestData
         services.TryAddSingleton<ISecurityGrantStore>(static _ =>
             throw new InvalidOperationException("The reduced facade fixture must not activate security grant storage."));
 
-    public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions)
+    public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions) =>
+        AddRunProfiles(services, SessionBusyBehavior.Reject, definitions);
+
+    public static void AddRunProfiles(IServiceCollection services, SessionBusyBehavior busyBehavior, params AgentDefinition[] definitions)
     {
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         AddRequiredSecurityGrantStore(services);
         foreach (var definition in definitions)
         {
-            _ = services.AddAgentRunProfilePublication(RunProfile(definition));
+            _ = services.AddAgentRunProfilePublication(RunProfile(definition, busyBehavior));
         }
+    }
+
+    /// <summary>
+    /// Builds a composition whose session coordinator is a stateful in-memory double, so engine admission can
+    /// create, open, and append to sessions end to end.
+    /// </summary>
+    public static AgentEngineBuilder SendableBuilder(
+        IAgentLoop loop,
+        TestSupport.InMemoryTestSessionCoordinator sessions,
+        SessionBusyBehavior busyBehavior = SessionBusyBehavior.Reject,
+        params AgentDefinition[] definitions)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.AddKeyedSingleton(AgentLoopComponentDefaults.LoopKeyValue, loop);
+        _ = builder.Services.AddSingleton<ISessionCoordinator>(sessions);
+        AddRunServicesFakes(builder.Services);
+        var selected = definitions.Length == 0 ? [Definition()] : definitions;
+        AddRunProfiles(builder.Services, busyBehavior, selected);
+        foreach (var definition in selected)
+        {
+            _ = builder.Services.AddAgent(definition);
+        }
+
+        return builder;
     }
 
     public static ServiceProvider BuildHostedProvider(

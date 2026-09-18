@@ -49,6 +49,24 @@ public static class AgentEngineExtensions
         }
 
         /// <summary>
+        /// Gets the identity the builder's sugar composed every turn with: the one passed to <c>WithIdentity</c>, or
+        /// the local-development identity when <c>UseLocalDevelopmentDefaults</c> was used.
+        /// </summary>
+        /// <value>The identity to pass to <see cref="AgentSendRequest"/> when driving a hosted agent directly.</value>
+        /// <exception cref="ArgumentNullException"><paramref name="engine"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">The engine was not built through the <c>AgentKit.Simple</c> sugar.</exception>
+        public ExecutionIdentity Identity
+        {
+            get
+            {
+                ArgumentNullException.ThrowIfNull(engine);
+                return (engine.Services.GetService<SimpleAgentPlan>()
+                    ?? throw new InvalidOperationException("This engine was not composed with the AgentKit.Simple builder methods; it carries no default identity."))
+                    .RequireIdentity();
+            }
+        }
+
+        /// <summary>
         /// Sends one user message and returns the validated structured answer as <typeparamref name="T"/>.
         /// </summary>
         /// <typeparam name="T">The runtime type the engine's output definition deserializes into; see <c>WithOutput&lt;T&gt;</c>.</typeparam>

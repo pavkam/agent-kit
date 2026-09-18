@@ -18,7 +18,11 @@ internal sealed class SimpleAgentDefinitionSource: IAgentDefinitionSource
         ArgumentNullException.ThrowIfNull(tools);
         plan.Validate();
         var definitions = tools.Select(static tool => tool.Descriptor).ToImmutableArray().ToLlmToolDefinitions();
-        Snapshot = new AgentDefinitionSourceSnapshot(SourceId, new AgentDefinitionSourceVersion(0), 0, [plan.Definition(definitions)]);
+        Snapshot = new AgentDefinitionSourceSnapshot(
+            SourceId,
+            new AgentDefinitionSourceVersion(0),
+            0,
+            [plan.Definition(definitions), .. plan.AdditionalAgents.Select(agent => plan.DefinitionFor(agent.Key, agent.Value, definitions))]);
     }
 
     /// <inheritdoc/>

@@ -15,21 +15,42 @@ gets the specialists' tools, and a specialist cannot start further delegations.
 | Something that runs the child    | Your `ITaskDelegationChannel`: builds the specialist's engine, runs it, returns a typed result |
 | Distinct specialists             | One builder per specialist with its own workspace, policy, instructions, and limits            |
 
-## Compose the lead
+## Compose the engine
+
+All three agents live on one engine. The lead is the builder's default agent;
+the specialists are added with `AddAgent` and share the model, identity, and
+security profile while owning their instructions, tools, and limits:
 
 ```csharp
-static AgentEngine CreateLead(SpecialistChannel specialists, string apiKey)
+static readonly AgentId CodeReader = new(Guid.Parse("6f1c6d8e-1111-4a00-9c00-000000000001"));
+static readonly AgentId DocsReader = new(Guid.Parse("6f1c6d8e-1111-4a00-9c00-000000000002"));
+
+static AgentEngine CreateTeam(string repoRoot, string designRoot, string apiKey)
 {
     var builder = AgentEngine.CreateBuilder()
         .UseLocalDevelopmentDefaults()
         .UseOpenAI(apiKey, "gpt-4o-mini")
+        .UseWorkspace(repoRoot)
         .WithInstructions(
             "You lead a research team. Split the question into focused sub-tasks and " +
             "delegate each with the task tool to agent 'code-reader' (source code) or " +
             "'docs-reader' (design documents). Combine their summaries into one answer.")
-        .WithMaxTurns(20);
+        .WithMaxTurns(20)
+        .AddAgent(CodeReader, o =>
+        {
+            o.DisplayName = "code-reader";
+            o.Instructions.Add("You answer questions about the source code only. Read; never write.");
+            o.MaxTurns = 15;
+        })
+        .AddAgent(DocsReader, o =>
+        {
+            o.DisplayName = "docs-reader";
+            o.Instructions.Add("You answer questions about the design documents only. Read; never write.");
+            o.MaxTurns = 15;
+        });
 
-    builder.Services.AddSingleton<ITaskDelegationChannel>(specialists);
+    // The lead delegates through the task tool; the channel resolves the target on this same engine.
+    builder.Services.AddSingleton<ITaskDelegationChannel>(sp => new SpecialistChannel(sp.GetRequiredService<AgentEngine>()));
     builder.Services.AddAgentDelegation();
     builder.Services.AddTaskTool(o =>
     {
@@ -38,6 +59,9 @@ static AgentEngine CreateLead(SpecialistChannel specialists, string apiKey)
         o.DefaultTimeout = TimeSpan.FromMinutes(5);
     });
 
+    // Nobody on this engine may write or run anything.
+    builder.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>();
+
     return builder.Build();
 }
 ```
@@ -45,82 +69,64 @@ static AgentEngine CreateLead(SpecialistChannel specialists, string apiKey)
 The `task` tool exposes `target_agent_id`, `objective`, `acceptance_criteria`,
 `allowed_tools`, `max_turns`, `max_tool_calls`, and `timeout_seconds` to the
 model, clamps them to the configured ceilings, and asks the broker to delegate.
-The broker issues a `SecurityRequest` of kind `Delegation` for the target and
-forwards the prompt with the grant to your channel.
+The broker issues a `SecurityRequest` of kind `Delegation` and forwards the
+prompt with the grant to your channel. Registering the engine itself as a
+singleton service is what lets the channel find the specialists; a standalone
+`AgentEngine` owns its provider, so resolve it lazily as shown rather than
+capturing it before `Build()`.
 
 ## Write the channel
 
-The channel is where a delegation becomes a run. It maps the target agent id to
-a specialist composition, runs one turn with the objective, and returns a
-`TaskDelegationChildResult` whose summary is all the parent will ever see:
+The channel turns a delegation into one turn of the target agent on the same
+engine. The child runs in its own session under the parent's identity, deadline,
+and turn budget, and only its summary flows back:
 
 ```csharp
-sealed class SpecialistChannel(string repoRoot, string designRoot, string apiKey) : ITaskDelegationChannel
+sealed class SpecialistChannel(AgentEngine engine) : ITaskDelegationChannel
 {
-    public static readonly AgentId CodeReader = new(Guid.Parse("6f1c6d8e-1111-4a00-9c00-000000000001"));
-    public static readonly AgentId DocsReader = new(Guid.Parse("6f1c6d8e-1111-4a00-9c00-000000000002"));
-
     public async ValueTask<TaskDelegationResult> DelegateAsync(TaskDelegationPrompt prompt, CancellationToken cancellationToken = default)
     {
-        var builder = prompt.TargetAgentId switch
-        {
-            var id when id == CodeReader => Specialist(repoRoot, "You answer questions about the source code only.", prompt),
-            var id when id == DocsReader => Specialist(designRoot, "You answer questions about the design documents only.", prompt),
-            _ => null,
-        };
-        if (builder is null)
+        var specialist = await engine.GetAgentAsync(prompt.TargetAgentId, cancellationToken);
+        if (specialist is null)
         {
             return new TaskDelegationRejected(prompt.Id, "Unknown specialist.");
         }
 
         using var deadline = new CancellationTokenSource(prompt.Deadline - DateTimeOffset.UtcNow);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        await using var child = builder.Build();
 
         var objective = $"{prompt.Objective}\n\nAcceptance criteria:\n- {string.Join("\n- ", prompt.AcceptanceCriteria)}";
-        var result = await child.SendAsync(objective, linked.Token);
-        var summary = string.Concat(result.Events.OfType<ConversationAssistantTextEvent>().Select(e => e.Text));
-        var completed = result.Events.OfType<ConversationTurnCompletedEvent>().Last();
+        var result = await specialist.SendAsync(
+            new AgentSendRequest(prompt.Identity, objective, maxTurns: prompt.Budget.MaximumTurns),
+            linked.Token);
+
+        var summary = string.Concat(result.NewMessages.OfType<AssistantMessage>()
+            .SelectMany(m => m.Parts.OfType<TextPart>()).Select(p => p.Text));
 
         return new TaskDelegationChildResult(
             prompt.Id,
             new GoalId(Guid.NewGuid()),
             prompt.TargetAgentId,
-            childSessionId: result.SessionId!.Value,   // the session the child turn was recorded against
+            result.SessionId,                 // the child's real session on this engine
             childAttemptId: null,
-            childRunId: result.RunId,
-            completed.Outcome switch
+            result.RunId,
+            result.Outcome switch
             {
-                "settled" when result.Succeeded => TaskDelegationStatus.Succeeded,
-                "cancelled" => TaskDelegationStatus.Cancelled,
+                AgentRunCompleted => TaskDelegationStatus.Succeeded,
+                AgentRunCancelled => TaskDelegationStatus.Cancelled,
                 _ => TaskDelegationStatus.Failed,
             },
             summary.Length <= 16_000 ? summary : summary[..16_000],
             SideEffectCertainty.DefinitelyNotPerformed);
     }
-
-    AgentEngineBuilder Specialist(string root, string instructions, TaskDelegationPrompt prompt)
-    {
-        var builder = AgentEngine.CreateBuilder()
-            .UseLocalDevelopmentDefaults()
-            .UseOpenAI(apiKey, "gpt-4o-mini")
-            .UseWorkspace(root)
-            .WithAgentId(prompt.TargetAgentId)
-            .WithIdentity(prompt.Identity)
-            .WithInstructions(instructions)
-            .WithMaxTurns(prompt.Budget.MaximumTurns);
-
-        builder.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>();
-        return builder;
-    }
 }
 ```
 
-The child engine carries the parent's identity (`prompt.Identity`), the parent's
-chosen limits (`prompt.Budget`), the parent's deadline, and a read-only policy.
-It has no `task` tool, so a specialist cannot delegate again.
-`ReadOnlyWorkspacePolicy` is the one from
-[Read-only code review in CI](code-review-in-ci.md).
+The specialists have no `task` tool, so a specialist cannot delegate again, and
+the shared `ReadOnlyWorkspacePolicy` (from
+[Read-only code review in CI](code-review-in-ci.md)) denies every write and
+process for all three. Because each delegation is a new session, the engine runs
+concurrent delegations from one lead turn in parallel.
 
 ## Decide who may delegate
 
@@ -144,10 +150,9 @@ sealed class NoDelegationForGuestsPolicy : ISecurityPolicy
 ## Use it
 
 ```csharp
-var specialists = new SpecialistChannel("/src/acme", "/docs/acme-design", apiKey);
-await using var lead = CreateLead(specialists, apiKey);
+await using var engine = CreateTeam("/src/acme", "/docs/acme-design", apiKey);
 
-var result = await lead.SendAsync(
+var result = await engine.SendAsync(
     "Does the retry policy implemented in the payment client match what the design says it should be?",
     new ConsoleProgress(),
     cancellationToken);
@@ -155,7 +160,8 @@ var result = await lead.SendAsync(
 
 The observer sees two `task` calls, each with a `ConversationToolResultEvent`
 whose `Summary` is the specialist's report, followed by the lead's combined
-answer.
+answer. `engine.GetAgentsAsync()` lists all three agents, and each specialist's
+sessions are visible through the engine's session directory.
 
 ## What the framework guarantees
 
@@ -176,10 +182,10 @@ answer.
 
 ## Status
 
-The broker (`AgentKit.Goals`) and the `task` tool are implemented; the channel
-and the child composition are the host's, as shown. What the architecture
-describes beyond this, durable goal and attempt records, joins over several
-children, and worker hosting for detached child work, is tracked in the
+The broker (`AgentKit.Goals`), the `task` tool, and multi-agent hosting on one
+engine are implemented; the channel is the host's, as shown. What the
+architecture describes beyond this, durable goal and attempt records, joins over
+several children, and worker hosting for detached child work, is tracked in the
 [implementation ledger](../implementation-progress.md#component-coverage). Until
 then a child is a synchronous run inside the parent's tool call, bounded by the
 deadline it was given.

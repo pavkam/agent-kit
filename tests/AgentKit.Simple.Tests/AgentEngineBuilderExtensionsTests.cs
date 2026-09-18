@@ -291,6 +291,114 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public void AddAgent_WhenConfigureIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), null!)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenAgentIdIsDefault_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().AddAgent(default, static _ => { })).ParamName.ShouldBe("agentId");
+
+    [Fact]
+    public void AddAgent_WhenTheConfiguredTurnLimitIsNotPositive_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), static o => o.MaxTurns = 0)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenTheConfiguredDisplayNameIsBlank_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().AddAgent(new AgentId(Guid.NewGuid()), static o => o.DisplayName = " ")).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void AddAgent_WhenTheIdentityIsAlreadyHosted_ThrowsInvalidOperationException()
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var builder = AgentEngine.CreateBuilder().AddAgent(agentId, static _ => { });
+
+        _ = Should.Throw<InvalidOperationException>(() => builder.AddAgent(agentId, static _ => { }));
+        _ = Should.Throw<InvalidOperationException>(() => AgentEngine.CreateBuilder().WithAgentId(agentId).AddAgent(agentId, static _ => { }));
+    }
+
+    [Fact]
+    public async Task AddAgent_WhenBuilt_HostsBothAgentsAndDrivesEachThroughItsOwnSessions()
+    {
+        var handler = new StubOpenAIHandler("reply");
+        var reviewer = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000002"));
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithInstructions("You are the default agent.")
+            .AddAgent(reviewer, o =>
+            {
+                o.DisplayName = "reviewer";
+                o.Instructions.Add("You are the reviewer.");
+                o.MaxTurns = 3;
+                o.IncludeRegisteredTools = false;
+            });
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var agents = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
+        var reviewerAgent = (await engine.GetAgentAsync(reviewer, TestContext.Current.CancellationToken))!;
+        var defaultAgent = (await engine.GetAgentAsync(agents.Single(a => a.Id != reviewer).Id, TestContext.Current.CancellationToken))!;
+
+        var first = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "review this"), TestContext.Current.CancellationToken);
+        var second = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "and this", first.SessionId), TestContext.Current.CancellationToken);
+        var other = await defaultAgent.SendAsync(new AgentSendRequest(engine.Identity, "hello"), TestContext.Current.CancellationToken);
+        var viaConversation = await engine.AskAsync("hello again", TestContext.Current.CancellationToken);
+
+        agents.Length.ShouldBe(2);
+        reviewerAgent.Definition.DisplayName.ShouldBe("reviewer");
+        reviewerAgent.Definition.RunDefaults.MaxTurns.ShouldBe(3);
+        reviewerAgent.Definition.Tools.ShouldBeEmpty();
+        defaultAgent.Definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+        _ = first.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        second.SessionId.ShouldBe(first.SessionId);
+        other.SessionId.ShouldNotBe(first.SessionId);
+        viaConversation.ShouldBe("reply");
+        handler.Bodies.Count.ShouldBe(4);
+        handler.Bodies[0].ShouldContain("You are the reviewer.");
+        handler.Bodies[0].ShouldNotContain("default agent");
+        handler.Bodies[0].ShouldNotContain("read_file");
+        handler.Bodies[1].ShouldContain("review this");
+        handler.Bodies[1].ShouldContain("and this");
+        handler.Bodies[2].ShouldContain("You are the default agent.");
+        handler.Bodies[2].ShouldContain("read_file");
+    }
+
+    [Fact]
+    public async Task AddAgent_WhenTurnsTargetDifferentSessions_RunConcurrentlyOnOneEngine()
+    {
+        var handler = new StubOpenAIHandler("reply");
+        var worker = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000003"));
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .AddAgent(worker, static o => o.Instructions.Add("Work."));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(worker, TestContext.Current.CancellationToken))!;
+
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, 4).Select(i => agent.SendAsync(new AgentSendRequest(engine.Identity, $"job {i}"), TestContext.Current.CancellationToken)));
+
+        results.Select(static r => r.SessionId).Distinct().Count().ShouldBe(4);
+        results.ShouldAllBe(static r => r.Outcome is AgentRunCompleted);
+        handler.Bodies.Count.ShouldBe(4);
+    }
+
+    [Fact]
+    public async Task Identity_WhenBuiltWithLocalDefaults_ReturnsTheProcessUserIdentityEveryTurnUses()
+    {
+        await using var engine = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini").Build();
+
+        var identity = engine.Identity;
+
+        identity.TenantId.ShouldBe(new TenantId("local"));
+        identity.SubjectKind.ShouldBe(ExecutionSubjectKind.Human);
+        engine.Identity.ShouldBe(identity);
+    }
+
+    [Fact]
     public void UseModel_WhenAliasIsDefault_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().UseModel(default)).ParamName.ShouldBe("alias");
 

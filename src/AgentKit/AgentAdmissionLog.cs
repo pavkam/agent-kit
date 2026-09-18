@@ -22,4 +22,12 @@ internal static partial class AgentAdmissionLog
     /// <param name="errorType">The normalized exception type.</param>
     [LoggerMessage(18002, LogLevel.Error, "Agent admission failed with error type {ErrorType}.")]
     internal static partial void Failed(ILogger logger, string errorType);
+
+    /// <summary>Logs that an engine-admitted turn created a new session for the agent.</summary>
+    [LoggerMessage(18003, LogLevel.Information, "Agent {AgentId} created session {SessionId} for an admitted turn.")]
+    internal static partial void SessionCreated(ILogger logger, AgentId agentId, SessionId sessionId);
+
+    /// <summary>Logs that a requested session was not visible to the requesting agent and identity.</summary>
+    [LoggerMessage(18004, LogLevel.Warning, "Agent {AgentId} rejected a turn: session {SessionId} is unavailable or not visible to the requesting identity.")]
+    internal static partial void SessionNotVisible(ILogger logger, AgentId agentId, SessionId sessionId);
 }
