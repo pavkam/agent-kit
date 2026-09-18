@@ -58,6 +58,21 @@ public sealed class AgentRunServicesTests
         services.ModelSelector.ShouldBeSameAs(modelSelector);
         services.ModelResolver.ShouldBeSameAs(modelResolver);
         services.ContinuationPolicy.ShouldBeSameAs(continuationPolicy);
+        services.Output.ShouldBeNull();
+        services.Compactor.ShouldBeNull();
+        services.Budgets.ShouldBeNull();
+        services.RunCoordinator.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenRunCoordinatorIsSupplied_RoundTripsProperty()
+    {
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var services = new AgentRunServices(
+            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            output: null, compactor: null, budgets: null, runCoordinator: runCoordinator);
+
+        services.RunCoordinator.ShouldBeSameAs(runCoordinator);
     }
 
     private static FakeSessionCoordinator Session() => new();
@@ -112,5 +127,10 @@ public sealed class AgentRunServicesTests
     private sealed class FakeContinuationPolicy: IRunContinuationPolicy
     {
         public ValueTask<RunContinuationDecision> DecideAsync(RunContinuationContext context, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeSessionRunCoordinator: ISessionRunCoordinator
+    {
+        public ValueTask<SessionRunLeaseResult> AcquireAsync(SessionRunLeaseRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

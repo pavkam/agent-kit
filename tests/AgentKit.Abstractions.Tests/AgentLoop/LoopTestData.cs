@@ -19,6 +19,7 @@ internal static class LoopTestData
     public static TurnId TurnId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-000000000005"));
     public static OperationId OperationId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-000000000006"));
     public static ModelRequestId ModelRequestId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-000000000007"));
+    public static ExecutionLaneId ExecutionLaneId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-00000000000c"));
 
     public static ExecutionIdentity Identity() =>
         TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);

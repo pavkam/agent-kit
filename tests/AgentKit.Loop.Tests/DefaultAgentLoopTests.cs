@@ -3505,6 +3505,128 @@ public sealed class DefaultAgentLoopTests
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
     }
 
+    [Fact]
+    public async Task RunAsync_WhenLaneAdmissionIsPresent_UsesTheAdmittedLaneForEverySessionOperation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, admission) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.ReceivedAppends.ShouldNotBeEmpty();
+        coordinator.ReceivedAppends.ShouldAllBe(
+            append => append.Context.ExecutionLaneId == admission.ExecutionLaneId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLaneAdmissionIsPresent_UsesTheAcceptedCorrelationsTurnIdForTheFirstTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, admission) = RequestWithLaneAdmission();
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var firstTurnAppend = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+        var correlation = firstTurnAppend.Context.Correlation.ShouldBeOfType<InRunOperationCorrelation>();
+        correlation.TurnId.ShouldBe(admission.AcceptedCorrelation.TurnId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLaneAdmissionIsPresentAndTheRunSettles_ReleasesTheAdmittedLane()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, admission) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var release = coordinator.ReceivedReleases.ShouldHaveSingleItem();
+        release.Context.ExecutionLaneId.ShouldBe(admission.ExecutionLaneId);
+        release.Context.Correlation.ShouldBe(admission.AcceptedCorrelation);
+        release.ExpectedStateRevision.ShouldBe(admission.OperationStateRevision);
+        release.ExpectedVersion.ShouldBe(result.FinalVersion!.Value);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoLaneAdmissionIsPresent_NeverAttemptsToReleaseALane()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.ReceivedReleases.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLaneAdmissionIsPresentButNoRunCoordinatorIsComposed_SkipsReleaseWithoutFailing()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.ReceivedReleases.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenReleasingTheLaneIsRejected_DoesNotChangeTheRunOutcome()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ReleaseOverride = static request => new SessionRunReleaseRejected(
+            SessionRunReleaseRejectionKind.Fenced, "not the current occupant");
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = coordinator.ReceivedReleases.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenReleasingTheLaneFaults_DoesNotChangeTheRunOutcome()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ReleaseOverride = static _ => throw new InvalidOperationException("simulated release fault");
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    private (AgentRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
+    {
+        var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+        var acceptedCorrelation = new InRunOperationCorrelation(
+            new OperationId(Guid.NewGuid()), baseline.RunId, new TurnId(Guid.NewGuid()));
+        var admission = new LoopLaneAdmission(
+            new ExecutionLaneId(Guid.NewGuid()), acceptedCorrelation, new OperationStateRevision(1));
+        return (baseline with { LaneAdmission = admission }, admission);
+    }
+
     private static BudgetLimit TurnLimit(int turns) => new(BudgetDimensions.Turns, turns, new BudgetUnit("count"), BudgetLimitKind.Hard);
 
     private static IBudgetAuthority Authority()
@@ -3542,7 +3664,8 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
         ICompactor? compactor = null,
-        IBudgetAuthority? budgets = null)
+        IBudgetAuthority? budgets = null,
+        ISessionRunCoordinator? runCoordinator = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3563,7 +3686,8 @@ public sealed class DefaultAgentLoopTests
             continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
             outputProcessor,
             compactor,
-            budgets);
+            budgets,
+            runCoordinator);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),

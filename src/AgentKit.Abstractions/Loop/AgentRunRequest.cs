@@ -399,6 +399,33 @@ public sealed record AgentRunRequest
     /// </remarks>
     public IAgentRunObserver? Observer { get; init; }
 
+    /// <summary>
+    /// Gets the durable lane a caller already admitted this run on, when one was admitted through the session
+    /// lane protocol.
+    /// </summary>
+    /// <value>
+    /// The lane, accepted correlation, and installed state revision the loop must honor and release, or
+    /// <see langword="null"/> when the caller committed this run's initial input directly and no lane exists to
+    /// release.
+    /// </value>
+    /// <exception cref="ArgumentException">
+    /// The initialized value's <see cref="LoopLaneAdmission.AcceptedCorrelation"/> names a different run than
+    /// <see cref="RunId"/>.
+    /// </exception>
+    public LoopLaneAdmission? LaneAdmission
+    {
+        get;
+        init
+        {
+            if (value is { } admission)
+            {
+                ArgumentException.ThrowIfNotEqual(admission.AcceptedCorrelation.RunId, RunId, nameof(LaneAdmission));
+            }
+
+            field = value;
+        }
+    }
+
     /// <inheritdoc/>
     public bool Equals(AgentRunRequest? other) =>
         other is not null
@@ -421,7 +448,8 @@ public sealed record AgentRunRequest
         && AttemptTimeout == other.AttemptTimeout
         && Equals(Output, other.Output)
         && BudgetLimits.SequenceEqual(other.BudgetLimits)
-        && Extensions.Equals(other.Extensions);
+        && Extensions.Equals(other.Extensions)
+        && Equals(LaneAdmission, other.LaneAdmission);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -459,6 +487,7 @@ public sealed record AgentRunRequest
         }
 
         hash.Add(Extensions);
+        hash.Add(LaneAdmission);
         return hash.ToHashCode();
     }
 

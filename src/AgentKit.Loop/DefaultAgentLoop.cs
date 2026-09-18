@@ -253,6 +253,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
         try
         {
             var result = await RunCoreAsync(request, services, operationId, activity, cancellationToken).ConfigureAwait(false);
+            if (request.LaneAdmission is { } admission && result.FinalVersion is { } finalVersion)
+            {
+                await ReleaseLaneAsync(request, services, admission, finalVersion).ConfigureAwait(false);
+            }
+
             var outcome = result.Outcome.GetType().Name;
             if (result.Outcome is AgentRunCompleted)
             {
@@ -282,6 +287,58 @@ public sealed class DefaultAgentLoop: IAgentLoop
             RecordRunMetrics("faulted", startedTimestamp);
             LoopLog.RunFaulted(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
             throw;
+        }
+    }
+
+    /// <summary>Releases a durably admitted run's lane once the run has settled.</summary>
+    /// <param name="request">The run request, carrying the exact <see cref="LoopLaneAdmission"/> to release.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="admission">The exact lane, accepted correlation, and installed state revision to release.</param>
+    /// <param name="finalVersion">The branch version this run's settlement observed, presented as the release's expected version.</param>
+    /// <remarks>
+    /// This is best-effort: release failure never changes the run's already-determined outcome. A lane the run
+    /// could not release stays durably accepted; nothing today reconciles it, matching the narrow scope of this
+    /// increment (see <c>docs/implementation-plan.md</c>, workstream 1). Uses <see cref="CancellationToken.None"/>
+    /// throughout so a caller's cancellation, already reflected in the settled outcome, cannot also prevent this
+    /// cleanup.
+    /// </remarks>
+    private async Task ReleaseLaneAsync(
+        AgentRunRequest request, AgentRunServices services, LoopLaneAdmission admission, SessionVersion finalVersion)
+    {
+        Debug.Assert(request is not null, "A validated run request is required to release its lane.");
+        Debug.Assert(admission is not null, "Lane-release evidence is required.");
+        if (services.RunCoordinator is not { } runCoordinator)
+        {
+            return;
+        }
+
+        try
+        {
+            var (authorization, failure) = await CaptureAuthorizationAsync(
+                request, services, admission.AcceptedCorrelation, CancellationToken.None).ConfigureAwait(false);
+            if (authorization is null)
+            {
+                Debug.Assert(failure is not null, "A failed capture always names a typed failure.");
+                LoopLog.LaneReleaseAuthorizationUnavailable(_logger, request.RunId);
+                return;
+            }
+
+            var releaseContext = new SessionOperationContext(
+                request.AgentId, request.SessionId, admission.ExecutionLaneId, admission.AcceptedCorrelation,
+                request.Identity, authorization);
+            var release = new SessionRunReleaseRequest(
+                releaseContext, admission.OperationStateRevision, finalVersion,
+                new IdempotencyKey($"agentkit.loop:{request.RunId}:release"));
+            var capability = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
+            var result = await services.Session.ReleaseRunAsync(release, capability, CancellationToken.None).ConfigureAwait(false);
+            if (result is not SessionRunReleased)
+            {
+                LoopLog.LaneReleaseRejected(_logger, request.RunId, result.GetType().Name);
+            }
+        }
+        catch (Exception exception)
+        {
+            LoopLog.LaneReleaseFaulted(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
         }
     }
 
@@ -317,7 +374,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var sessionContext = new SessionOperationContext(
             request.AgentId,
             request.SessionId,
-            executionLaneId: null,
+            executionLaneId: request.LaneAdmission?.ExecutionLaneId,
             runCorrelation,
             request.Identity,
             runAuthorization);
@@ -625,7 +682,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
     {
-        var turnId = _turnIds.Create();
+        var turnId = turn == 1 && request.LaneAdmission is { } firstTurnAdmission
+            ? firstTurnAdmission.AcceptedCorrelation.TurnId!.Value
+            : _turnIds.Create();
         var turnCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId);
         var (turnAuthorization, turnCaptureFailure) = await CaptureAuthorizationAsync(
             request, services, turnCorrelation, cancellationToken)
@@ -638,7 +697,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnSessionContext = new SessionOperationContext(
             request.AgentId,
             request.SessionId,
-            executionLaneId: null,
+            executionLaneId: request.LaneAdmission?.ExecutionLaneId,
             turnCorrelation,
             request.Identity,
             turnAuthorization);

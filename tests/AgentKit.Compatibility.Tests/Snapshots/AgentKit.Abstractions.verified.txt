@@ -457,6 +457,7 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
+        public AgentKit.LoopLaneAdmission? LaneAdmission { get; init; }
         public int MaxTurns { get; init; }
         public AgentKit.ModelSelectionPolicy ModelPolicy { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
@@ -477,7 +478,7 @@ namespace AgentKit
     }
     public sealed class AgentRunServices
     {
-        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null, AgentKit.IBudgetAuthority? budgets = null) { }
+        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null, AgentKit.IBudgetAuthority? budgets = null, AgentKit.ISessionRunCoordinator? runCoordinator = null) { }
         public AgentKit.IBudgetAuthority? Budgets { get; }
         public AgentKit.ICompactor? Compactor { get; }
         public AgentKit.IContextAssembler Context { get; }
@@ -486,6 +487,7 @@ namespace AgentKit
         public AgentKit.IModelSelector ModelSelector { get; }
         public AgentKit.IModelCatalog Models { get; }
         public AgentKit.IOutputProcessor? Output { get; }
+        public AgentKit.ISessionRunCoordinator? RunCoordinator { get; }
         public AgentKit.ISecurityProfileSelector SecurityProfileSelector { get; }
         public AgentKit.ISessionCoordinator Session { get; }
         public AgentKit.IToolInvoker Tools { get; }
@@ -4837,6 +4839,13 @@ namespace AgentKit
         public System.Text.Json.JsonElement ParametersSchema { get; init; }
         public bool Equals(AgentKit.LlmToolDefinition? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class LoopLaneAdmission : System.IEquatable<AgentKit.LoopLaneAdmission>
+    {
+        public LoopLaneAdmission(AgentKit.ExecutionLaneId executionLaneId, AgentKit.InRunOperationCorrelation acceptedCorrelation, AgentKit.OperationStateRevision operationStateRevision) { }
+        public AgentKit.InRunOperationCorrelation AcceptedCorrelation { get; }
+        public AgentKit.ExecutionLaneId ExecutionLaneId { get; }
+        public AgentKit.OperationStateRevision OperationStateRevision { get; }
     }
     public readonly struct MediaId : System.IEquatable<AgentKit.MediaId>
     {

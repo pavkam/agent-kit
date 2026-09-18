@@ -241,4 +241,16 @@ internal static partial class LoopLog
     /// <summary>Logs that a reservation was refused and the run or call stopped.</summary>
     [LoggerMessage(1103, LogLevel.Warning, "Run {RunId}: the {Dimension} budget is exhausted; no further work on it is attempted.")]
     internal static partial void BudgetExhausted(ILogger logger, RunId runId, BudgetDimension dimension);
+
+    /// <summary>Logs that fresh authorization for a durably admitted run's lane release could not be captured.</summary>
+    [LoggerMessage(1104, LogLevel.Warning, "Run {RunId}: authorization for releasing the admitted lane could not be captured; the lane was not released.")]
+    internal static partial void LaneReleaseAuthorizationUnavailable(ILogger logger, RunId runId);
+
+    /// <summary>Logs that releasing a durably admitted run's lane was rejected.</summary>
+    [LoggerMessage(1105, LogLevel.Warning, "Run {RunId}: releasing the admitted lane was rejected ({Outcome}); the lane was not released.")]
+    internal static partial void LaneReleaseRejected(ILogger logger, RunId runId, string outcome);
+
+    /// <summary>Logs that releasing a durably admitted run's lane faulted.</summary>
+    [LoggerMessage(1106, LogLevel.Error, "Run {RunId}: releasing the admitted lane faulted with {ErrorType}; the lane was not released.")]
+    internal static partial void LaneReleaseFaulted(ILogger logger, RunId runId, string errorType);
 }

@@ -269,4 +269,40 @@ public sealed class AgentRunRequestTests
         var action = () => request with { Instructions = [poisoned] };
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("Instructions");
     }
+
+    [Fact]
+    public void With_WhenLaneAdmissionNamesADifferentRun_ThrowsBeforeConstruction()
+    {
+        var request = LoopTestData.RunRequest();
+        var otherRun = new RunId(Guid.NewGuid());
+        var admission = new LoopLaneAdmission(
+            LoopTestData.ExecutionLaneId,
+            new InRunOperationCorrelation(LoopTestData.OperationId, otherRun, LoopTestData.TurnId),
+            new OperationStateRevision(1));
+        var action = () => request with { LaneAdmission = admission };
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("LaneAdmission");
+    }
+
+    [Fact]
+    public void With_WhenLaneAdmissionNamesTheSameRun_RoundTripsTheValue()
+    {
+        var request = LoopTestData.RunRequest();
+        var admission = new LoopLaneAdmission(
+            LoopTestData.ExecutionLaneId, LoopTestData.InRun(), new OperationStateRevision(1));
+        var updated = request with { LaneAdmission = admission };
+        updated.LaneAdmission.ShouldBe(admission);
+    }
+
+    [Fact]
+    public void Equals_WhenLaneAdmissionDiffers_ReturnsFalse()
+    {
+        var first = LoopTestData.RunRequest() with
+        {
+            LaneAdmission = new LoopLaneAdmission(
+                LoopTestData.ExecutionLaneId, LoopTestData.InRun(), new OperationStateRevision(1)),
+        };
+        var second = LoopTestData.RunRequest();
+
+        first.Equals(second).ShouldBeFalse();
+    }
 }

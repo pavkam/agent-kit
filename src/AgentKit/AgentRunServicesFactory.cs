@@ -61,7 +61,8 @@ internal static class AgentRunServicesFactory
                 AgentLoopComponentDefaults.ContinuationPolicyKey.Value),
             provider.GetService<IOutputProcessor>(),
             provider.GetService<ICompactor>(),
-            provider.GetService<IBudgetAuthority>());
+            provider.GetService<IBudgetAuthority>(),
+            provider.GetService<ISessionRunCoordinator>());
     }
 
     /// <summary>Resolves a collaborator keyed to the run's exact loop selection, falling back to the engine-wide unkeyed registration.</summary>

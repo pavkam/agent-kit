@@ -279,4 +279,21 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     public ValueTask<SessionDeleteResult> DeleteAsync(
         SessionDeleteRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake does not support deletion.");
+
+    /// <summary>Gets or sets an override invoked instead of the normal release behavior.</summary>
+    public Func<SessionRunReleaseRequest, SessionRunReleaseResult>? ReleaseOverride { get; set; }
+
+    /// <summary>Gets every lane-release request this fake received, in call order.</summary>
+    public List<SessionRunReleaseRequest> ReceivedReleases { get; } = [];
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+        SessionRunReleaseRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        ReceivedReleases.Add(request);
+        return ValueTask.FromResult(
+            ReleaseOverride?.Invoke(request) ?? new SessionRunReleased(request.ExpectedVersion, existing: false));
+    }
 }

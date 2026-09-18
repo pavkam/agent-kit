@@ -56,6 +56,12 @@ public sealed class AgentRunServices
     /// Creates the run's budget scope and serves its reservations when the request declares limits, or
     /// <see langword="null"/> when the composition selects no budget authority; a budgeted request then fails closed.
     /// </param>
+    /// <param name="runCoordinator">
+    /// Backs the local run-ownership lease the composed session store may require, and lets the loop release a
+    /// durably admitted run's lane through <see cref="ISessionCoordinator.ReleaseRunAsync"/> when the request
+    /// carries a <see cref="AgentRunRequest.LaneAdmission"/>. <see langword="null"/> when the composition selects
+    /// no run coordinator; a request that carries a lane admission then cannot release it.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -68,7 +74,8 @@ public sealed class AgentRunServices
         IRunContinuationPolicy continuationPolicy,
         IOutputProcessor? output = null,
         ICompactor? compactor = null,
-        IBudgetAuthority? budgets = null)
+        IBudgetAuthority? budgets = null,
+        ISessionRunCoordinator? runCoordinator = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -90,6 +97,7 @@ public sealed class AgentRunServices
         Output = output;
         Compactor = compactor;
         Budgets = budgets;
+        RunCoordinator = runCoordinator;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -127,4 +135,11 @@ public sealed class AgentRunServices
     /// <summary>Gets the budget authority the loop reserves a budgeted run's capacity through.</summary>
     /// <value><see langword="null"/> when the composition selects none; a request with budget limits then fails closed.</value>
     public IBudgetAuthority? Budgets { get; }
+
+    /// <summary>Gets the collaborator that lets the loop release a durably admitted run's lane on settlement.</summary>
+    /// <value>
+    /// <see langword="null"/> when the composition selects no run coordinator; a request carrying a
+    /// <see cref="AgentRunRequest.LaneAdmission"/> then settles without releasing its lane.
+    /// </value>
+    public ISessionRunCoordinator? RunCoordinator { get; }
 }
