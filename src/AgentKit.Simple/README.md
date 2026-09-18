@@ -39,13 +39,17 @@ engine is still the real engine: `GetAgentsAsync` lists the one published
 | Any first sugar call                                      | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its run-profile publication, and `AddConversationSession` |
 
 Calls chain in any order before `Build()`; the plan is read lazily when the
-provider is built. Every `ITool` registered on `builder.Services` is advertised
-to the model, and appears in the published `AgentDefinition`, with its exact
-captured descriptor. Nothing is chosen silently: storage, authority, and
-identity are external facts, so `UseLocalDevelopmentDefaults` is an explicit,
-named opt-in, and `Build()` fails with a diagnostic naming what is missing (the
-engine's own composition diagnostic for storage and security, a plan diagnostic
-for the model or identity).
+provider is built. Every `ITool` registered on `builder.Services` that the tool
+runtime allows (all of them under the local defaults, or the
+`AgentToolsOptions.AllowedToolIds` you name) is advertised to the model, and
+appears in the published `AgentDefinition`, with its exact captured descriptor;
+a registered tool the allow-list excludes is never shown, so the model cannot
+spend a turn on a call that is certain to be rejected. Nothing is chosen
+silently: storage, authority, and identity are external facts, so
+`UseLocalDevelopmentDefaults` is an explicit, named opt-in, and `Build()` fails
+with a diagnostic naming what is missing (the engine's own composition
+diagnostic for storage and security, a plan diagnostic for the model or
+identity).
 
 ## When the sugar runs out
 

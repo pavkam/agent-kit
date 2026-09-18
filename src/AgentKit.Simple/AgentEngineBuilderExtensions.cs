@@ -645,10 +645,10 @@ public static class AgentEngineBuilderExtensions
         // One conversation over the same plan, advertising every registered tool with its captured descriptor.
         _ = services.AddConversationSession(static _ => { });
         _ = services.AddOptions<ConversationSessionOptions>()
-            .Configure<SimpleAgentPlan, IEnumerable<ITool>>(static (options, current, tools) =>
+            .Configure<SimpleAgentPlan, IEnumerable<ITool>, IOptions<AgentToolsOptions>>(static (options, current, tools, toolOptions) =>
             {
                 current.Apply(options);
-                var descriptors = tools.Select(static tool => tool.Descriptor).ToImmutableArray();
+                var descriptors = SimpleAgentPlan.AdvertisedTools(tools, toolOptions.Value);
                 var definitions = descriptors.ToLlmToolDefinitions();
                 for (var index = 0; index < descriptors.Length; index++)
                 {

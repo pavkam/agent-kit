@@ -120,11 +120,12 @@ static AgentEngine CreateOrderAssistant(ExecutionIdentity customer, IOrderServic
 }
 ```
 
-Every `ITool` registered on `builder.Services` is collected into the tool
-catalog, added to the published agent definition, and presented to the model.
-The allow-list is a separate authorization step: a tool that is registered but
-not allowed is still visible to the model, and a call to it is rejected with a
-typed denied result before `InvokeAsync` runs.
+Every `ITool` registered on `builder.Services` enters the tool catalog, but only
+the allowed ones are added to the published agent definition and presented to
+the model, so the model never spends a turn on a tool whose call would be
+rejected. The allow-list is also enforced at call time: a call to an unlisted
+tool, however it got into the request, is rejected with a typed denied result
+before `InvokeAsync` runs.
 
 ## Use it
 

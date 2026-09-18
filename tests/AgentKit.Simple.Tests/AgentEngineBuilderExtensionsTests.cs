@@ -11,6 +11,8 @@ using AgentKit.Providers.AzureOpenAI;
 using AgentKit.Providers.Ollama;
 using AgentKit.Providers.OpenAI;
 using AgentKit.Session.InMemory;
+using AgentKit.Tools;
+using AgentKit.Tools.Glob;
 using AgentKit.Tools.Read;
 
 /// <summary>Verifies AgentEngineBuilderExtensions behavior and contracts.</summary>
@@ -542,6 +544,30 @@ public sealed class AgentEngineBuilderExtensionsTests
 
         handler.Bodies.Single().ShouldContain("\"name\":\"read_file\"");
         definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+    }
+
+    [Fact]
+    public async Task Build_WhenTheAllowListExcludesARegisteredTool_DoesNotAdvertiseItToTheModelOrTheDefinition()
+    {
+        var handler = new StubOpenAIHandler("done");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.AddGlobTool();
+        _ = builder.Services.Configure<AgentToolsOptions>(static o =>
+        {
+            o.AllowAllRegisteredTools = false;
+            _ = o.AllowedToolIds.Add(new ToolId("glob"));
+        });
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        handler.Bodies.Single().ShouldContain("\"name\":\"glob\"");
+        handler.Bodies.Single().ShouldNotContain("read_file");
+        definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("glob");
     }
 
     [Fact]

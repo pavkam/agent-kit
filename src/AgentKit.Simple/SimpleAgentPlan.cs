@@ -257,6 +257,26 @@ internal sealed class SimpleAgentPlan
         }
     }
 
+    /// <summary>
+    /// Selects the tools the model is offered: every registered tool when the tool runtime allows all of them,
+    /// otherwise only those on the allow-list, so the model never sees a tool whose call is certain to be rejected.
+    /// </summary>
+    /// <param name="tools">Every tool registered on the service collection.</param>
+    /// <param name="toolOptions">The tool runtime's authorization options.</param>
+    /// <returns>The advertised descriptors, in registration order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> or <paramref name="toolOptions"/> is null.</exception>
+    public static ImmutableArray<ToolDescriptor> AdvertisedTools(IEnumerable<ITool> tools, AgentToolsOptions toolOptions)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(toolOptions);
+        return
+        [
+            .. tools
+                .Select(static tool => tool.Descriptor)
+                .Where(descriptor => toolOptions.AllowAllRegisteredTools || toolOptions.AllowedToolIds.Contains(descriptor.Id)),
+        ];
+    }
+
     /// <summary>Builds the immutable definition of one additional agent over the plan's shared model, profiles, and tools.</summary>
     /// <param name="agentId">The additional agent's identity.</param>
     /// <param name="options">Its configured behavior.</param>
