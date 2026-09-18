@@ -53,6 +53,9 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// <summary>Gets the most recent append request observed, for asserting session/branch reuse.</summary>
     public SessionAppendRequest? LastAppendRequest { get; private set; }
 
+    /// <summary>Gets the most recent create request observed, for asserting idempotency-key derivation.</summary>
+    public SessionCreateRequest? LastCreateRequest { get; private set; }
+
     /// <summary>Gets the most recent history read request.</summary>
     public SessionReadRequest? LastReadRequest { get; private set; }
 
@@ -65,6 +68,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         CancellationToken cancellationToken = default)
     {
         CreateCallCount++;
+        LastCreateRequest = request;
         cancellationToken.ThrowIfCancellationRequested();
         if (CreateResult is not null)
         {

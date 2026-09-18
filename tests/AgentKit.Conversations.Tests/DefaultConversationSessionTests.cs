@@ -666,6 +666,31 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenCalled_DerivesIdempotencyKeysFromInjectedIdentitiesInsteadOfAmbientRandomness()
+    {
+        // Both session creation and the user-message append used new IdempotencyKey(Guid.NewGuid().ToString()),
+        // bypassing the class's own injected identifier generators. Deterministic creation must use an injected
+        // generator rather than ambient Guid.NewGuid, and a stable key derived from the same generated identity
+        // is required so a test (or a lower-layer retry of the exact same request) can observe a deterministic,
+        // reproducible key instead of fresh, unobservable randomness on every construction.
+        var coordinator = new FakeSessionCoordinator();
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request => new AgentLoopResult(
+                request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                new AgentRunCompleted(FakeMessages.Assistant(request, [])), [], new SessionVersion(1)),
+        };
+        using var session = CreateSession(coordinator: coordinator, loop: loop);
+
+        _ = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        var createKey = coordinator.LastCreateRequest.ShouldNotBeNull().IdempotencyKey.Value;
+        var appendKey = coordinator.LastAppendRequest.ShouldNotBeNull().IdempotencyKey.Value;
+        Guid.TryParse(createKey, out _).ShouldBeFalse();
+        Guid.TryParse(appendKey, out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAssistantResponseReportsUsage_ProjectsAUsageEventAfterItsContent()
     {
         var usage = new ModelUsage(ModelUsageReportState.Final, 120, 45, null, null, 0.002m, "USD", ExtensionData.Empty);

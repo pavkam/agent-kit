@@ -505,7 +505,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 new SessionOperationContext(_agentId, _sessionId.Value, null, correlation, _identity, appendAuthorization),
                 _branchId,
                 currentVersion,
-                new IdempotencyKey(Guid.NewGuid().ToString()),
+                new IdempotencyKey($"agentkit.conversation:{runId}:user"),
                 [userMessage]),
             _sessionProfile,
             cancellationToken).ConfigureAwait(false);
@@ -589,7 +589,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 _identity,
                 authorization,
                 null,
-                new IdempotencyKey(Guid.NewGuid().ToString()),
+                new IdempotencyKey($"agentkit.conversation:{_agentId}:create:{correlation.OperationId}"),
                 ExtensionData.Empty),
             _sessionProfile,
             cancellationToken).ConfigureAwait(false);

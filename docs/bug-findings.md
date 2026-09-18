@@ -1058,6 +1058,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   generator/`OperationId` for session creation) so a retry with the same `RunId`
   is idempotent and tests can control the value.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### L02 — Loop scope is disposed synchronously; an `IAsyncDisposable`-only scoped loop throws after the turn already committed
 
