@@ -282,11 +282,24 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
 
         for (var i = 0; i < request.Entries.Length; i++)
         {
-            var expectedSequence = tip.Value.TipSequence + i + 1;
-            if (request.Entries[i].Sequence.Value != expectedSequence)
+            var entry = request.Entries[i];
+            if (entry.Address != address)
             {
                 return new SessionAppendFailed(
-                    $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expectedSequence}.");
+                    $"Entry at position {i} declares address '{entry.Address}'; expected '{address}'.");
+            }
+
+            if (entry.BranchId != request.BranchId)
+            {
+                return new SessionAppendFailed(
+                    $"Entry at position {i} declares branch '{entry.BranchId}'; expected '{request.BranchId}'.");
+            }
+
+            var expectedSequence = tip.Value.TipSequence + i + 1;
+            if (entry.Sequence.Value != expectedSequence)
+            {
+                return new SessionAppendFailed(
+                    $"Entry at position {i} has sequence {entry.Sequence.Value}; expected {expectedSequence}.");
             }
         }
 

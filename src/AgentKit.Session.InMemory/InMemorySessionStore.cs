@@ -335,11 +335,24 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             for (var i = 0; i < request.Entries.Length; i++)
             {
-                var expectedSequence = branch.Entries.Count + i + 1;
-                if (request.Entries[i].Sequence.Value != expectedSequence)
+                var entry = request.Entries[i];
+                if (entry.Address != address)
                 {
                     return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
-                        $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expectedSequence}."));
+                        $"Entry at position {i} declares address '{entry.Address}'; expected '{address}'."));
+                }
+
+                if (entry.BranchId != request.BranchId)
+                {
+                    return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                        $"Entry at position {i} declares branch '{entry.BranchId}'; expected '{request.BranchId}'."));
+                }
+
+                var expectedSequence = branch.Entries.Count + i + 1;
+                if (entry.Sequence.Value != expectedSequence)
+                {
+                    return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                        $"Entry at position {i} has sequence {entry.Sequence.Value}; expected {expectedSequence}."));
                 }
             }
 

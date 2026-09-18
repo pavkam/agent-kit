@@ -311,6 +311,58 @@ public abstract class SessionStoreConformanceTests<TFixture>
         _ = result.ShouldBeOfType<SessionAppendFailed>();
     }
 
+    /// <summary>Verifies an appended entry whose self-declared branch differs from the request's target branch is a typed failure, not silently committed under the request's branch.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenAnEntryDeclaresADifferentBranchThanTheRequest_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(370));
+        var fork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("fork-empty-370"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        // The request targets the active branch, but the entry's self-declared BranchId names the sibling
+        // forked branch instead. This must be rejected rather than committed under the request's branch while
+        // the stored payload's own BranchId disagrees with where it actually lives.
+        var mismatched = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, new SessionVersion(1), new IdempotencyKey("branch-mismatch"),
+            [MessageEntry(descriptor, 371, 1, "mismatched-branch", forked.NewBranchId)]);
+
+        var result = await store.AppendAsync(
+            await AuthorizeAsync(fixture, mismatched, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
+    }
+
+    /// <summary>Verifies an appended entry whose self-declared address differs from the addressed session is a typed failure, not silently committed under the addressed session.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenAnEntryDeclaresADifferentAddressThanTheSession_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(375));
+        var foreignAddress = new SessionAddress(descriptor.Address.AgentId, new SessionId(Guid.NewGuid()));
+
+        // The entry's self-declared Address names a different session than the one this request addresses.
+        // This must be rejected rather than committed under the addressed session while the stored payload's
+        // own Address disagrees with where it actually lives.
+        var mismatched = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("address-mismatch"),
+            [MessageEntry(descriptor, 376, 1, "mismatched-address", address: foreignAddress)]);
+
+        var result = await store.AppendAsync(
+            await AuthorizeAsync(fixture, mismatched, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
+    }
+
     /// <summary>Verifies a caller cannot combine an issued old version with a later branch tip and present it as captured evidence.</summary>
     [Fact]
     public async Task ReadAsync_WhenSnapshotVersionAndUpperSequencePairWasNeverIssued_ReturnsTypedFailure()
@@ -1296,17 +1348,18 @@ public abstract class SessionStoreConformanceTests<TFixture>
     }
 
     private static MessageSessionEntry MessageEntry(
-        SessionDescriptor descriptor, int offset, long sequence, string text, BranchId? branchId = null)
+        SessionDescriptor descriptor, int offset, long sequence, string text, BranchId? branchId = null, SessionAddress? address = null)
     {
         var correlation = Correlation(offset);
         var branch = branchId ?? descriptor.ActiveBranchId;
+        var entryAddress = address ?? descriptor.Address;
         var message = new UserMessage(
             Identifier<MessageId>(offset + 1), descriptor.Address.AgentId,
             descriptor.Address.SessionId, descriptor.ConversationId, branch,
             correlation.RunId, null, Timestamp(offset), MessageState.Complete,
             [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         return new MessageSessionEntry(
-            Identifier<SessionEntryId>(offset + 2), descriptor.Address, correlation,
+            Identifier<SessionEntryId>(offset + 2), entryAddress, correlation,
             branch, new SessionSequence(sequence), null, Timestamp(offset),
             new SchemaVersion("1"), message);
     }

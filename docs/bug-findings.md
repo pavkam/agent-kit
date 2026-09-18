@@ -772,6 +772,7 @@ for (var i = 0; i < request.Entries.Length; i++)
   `SessionAppendFailed` any entry whose `Address != context.ToAddress()` or
   `BranchId != request.BranchId`; add a conformance test for each.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### S02 — Durable lane release CASes on a session version read in a separate transaction and never retries
 
