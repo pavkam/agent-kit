@@ -6,6 +6,34 @@ namespace AgentKit.Simple.Tests;
 /// <summary>Verifies SimpleAgentPlan behavior and contracts.</summary>
 public sealed class SimpleAgentPlanTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void SelectSugarModel_WhenMethodIsBlank_ThrowsArgumentException(string? method) =>
+        Should.Throw<ArgumentException>(() => new SimpleAgentPlan().SelectSugarModel(method!)).ParamName.ShouldBe("method");
+
+    [Fact]
+    public void SelectSugarModel_WhenFirstCalled_RecordsTheMethod()
+    {
+        var plan = new SimpleAgentPlan();
+
+        plan.SelectSugarModel("UseOpenAI");
+
+        plan.SugarProvider.ShouldBe("UseOpenAI");
+    }
+
+    [Fact]
+    public void SelectSugarModel_WhenCalledAgain_ThrowsInvalidOperationExceptionNamingTheFirstAndKeepsIt()
+    {
+        var plan = new SimpleAgentPlan();
+        plan.SelectSugarModel("UseOpenAI");
+
+        var exception = Should.Throw<InvalidOperationException>(() => plan.SelectSugarModel("UseAnthropic"));
+
+        exception.Message.ShouldContain("UseOpenAI");
+        plan.SugarProvider.ShouldBe("UseOpenAI");
+    }
+
     [Fact]
     public void Definition_AndApply_AgreeOnTheExactInstructionMessages()
     {

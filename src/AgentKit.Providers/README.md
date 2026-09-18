@@ -126,8 +126,11 @@ if (KnownModelCatalog.Default.TryFind(AnthropicProviderDefaults.ProviderId, new 
 
 `ToDescriptor` overlays the model's published facts (reasoning, vision, tool
 calls, limits, prices) on the provider package's protocol baseline (streaming,
-system instructions, parallel tool calls, structured output). Provider packages
-may add one-call forms such as `AddOpenAIKnownLlmModel`.
+system instructions, parallel tool calls, structured output). Every branded
+package whose provider appears in the catalog has the one-call form
+`Add<Provider>KnownLlmModel(alias, modelId)`, which registers the adapter and
+publishes the descriptor together, and every branded package accepts a complete
+descriptor through `Add<Provider>LlmModel(ModelDescriptor)`.
 
 The catalog is a generated vendor-feed snapshot, not runtime discovery: a status
 of `Available` records what the feed said at import time, and only the

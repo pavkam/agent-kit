@@ -26,8 +26,17 @@ namespace AgentKit.Simple;
 /// </remarks>
 public static class AgentEngineBuilderExtensions
 {
-    /// <summary>The alias <see cref="UseOpenAI"/> registers its model under.</summary>
+    /// <summary>The alias every <c>Use&lt;Provider&gt;</c> method registers its model under.</summary>
     internal static ModelAlias DefaultAlias { get; } = new("assistant");
+
+    /// <summary>The descriptor source the <c>Use&lt;Provider&gt;</c> methods publish an explicitly described model through.</summary>
+    internal static ModelDescriptorSourceId DescriptorSourceId { get; } = new("agentkit.simple.model");
+
+    /// <summary>
+    /// The placeholder <see cref="UseOllama"/> sends when the caller supplies no key. A local Ollama server ignores
+    /// the <c>Authorization</c> header, but the OpenAI-compatible transport requires one to be configured.
+    /// </summary>
+    internal const string OllamaPlaceholderApiKey = "ollama";
 
     /// <summary>The store identity <see cref="UseSqliteSessions"/> stamps into database files when the caller supplies none.</summary>
     internal static SqliteSessionStoreInstanceId DefaultSqliteInstanceId { get; } = new(Guid.Parse("5e1f0a9c-3b2d-4c7e-8f10-a1b2c3d4e5f6"));
@@ -83,9 +92,196 @@ public static class AgentEngineBuilderExtensions
             ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
 
             var plan = Plan(builder);
+            plan.SelectSugarModel(nameof(UseOpenAI));
             _ = builder.Services.AddOpenAI(configure);
             _ = builder.Services.AddOpenAIApiKeyCredential(apiKey);
             _ = builder.Services.AddOpenAIKnownLlmModel(DefaultAlias, new ModelId(modelId));
+            plan.ModelAlias = DefaultAlias;
+            return builder;
+        }
+
+        /// <summary>
+        /// Uses one Anthropic model: registers the adapter, the API key, and a catalog descriptor whose limits,
+        /// capabilities, and list prices come from the bundled <see cref="KnownModelCatalog"/>.
+        /// </summary>
+        /// <param name="apiKey">The Anthropic API key. Never read from the environment implicitly.</param>
+        /// <param name="modelId">Anthropic's model identifier, such as <c>"claude-sonnet-4-5"</c>; it must exist in <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <param name="configure">Optional adapter settings such as the base address or the Anthropic API version.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="apiKey"/> or <paramref name="modelId"/> is blank, or the model is not in the catalog.</exception>
+        /// <remarks>
+        /// Selects the model under the alias <c>assistant</c>. Every <c>Use&lt;Provider&gt;</c> method uses that alias,
+        /// so one builder calls at most one of them; a second produces a duplicate-alias composition error at build.
+        /// For a model the catalog does not know, register the provider's services on
+        /// <see cref="AgentEngineBuilder.Services"/> and call <see cref="UseModel"/> with the alias you registered.
+        /// </remarks>
+        public AgentEngineBuilder UseAnthropic(string apiKey, string modelId, Action<AnthropicProviderOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+
+            var plan = Plan(builder);
+            plan.SelectSugarModel(nameof(UseAnthropic));
+            _ = builder.Services.AddAnthropic(configure);
+            _ = builder.Services.AddAnthropicApiKeyCredential(apiKey);
+            _ = builder.Services.AddAnthropicKnownLlmModel(DefaultAlias, new ModelId(modelId));
+            plan.ModelAlias = DefaultAlias;
+            return builder;
+        }
+
+        /// <summary>
+        /// Uses one model served by a local or remote Ollama instance through its OpenAI-compatible endpoint:
+        /// registers the adapter, a credential, the model, and a catalog descriptor with the adapter's default
+        /// capabilities and no limits or prices.
+        /// </summary>
+        /// <param name="modelId">The Ollama model tag, such as <c>"llama3.1:8b"</c>.</param>
+        /// <param name="apiKey">
+        /// The bearer token to send, or <see langword="null"/> to send the placeholder <c>ollama</c>, which a local
+        /// server ignores. Supply a real key only for a remote server that enforces one.
+        /// </param>
+        /// <param name="configure">Optional adapter settings; set <see cref="OllamaProviderOptions.BaseAddress"/> for a non-default server.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="modelId"/> is blank, or <paramref name="apiKey"/> is empty or whitespace.</exception>
+        /// <remarks>
+        /// Ollama models are not in the known-model catalog, so the descriptor carries
+        /// <see cref="OllamaProviderDefaults.DefaultCapabilities"/> and <see cref="OllamaProviderDefaults.DefaultLimits"/>.
+        /// A model that cannot call tools, or whose context window you want enforced, is registered explicitly with
+        /// <c>AddOllamaLlmModel</c> and <c>AddModelDescriptors</c> followed by <see cref="UseModel"/>. Selects the model
+        /// under the alias <c>assistant</c>.
+        /// </remarks>
+        public AgentEngineBuilder UseOllama(string modelId, string? apiKey = null, Action<OllamaProviderOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+            if (apiKey is not null)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+            }
+
+            var plan = Plan(builder);
+            plan.SelectSugarModel(nameof(UseOllama));
+            var descriptor = new ModelDescriptor(
+                DefaultAlias,
+                OllamaProviderDefaults.ProviderId,
+                OllamaProviderDefaults.ApiFamily,
+                new ModelId(modelId),
+                deploymentId: null,
+                OllamaProviderDefaults.DefaultCapabilities,
+                OllamaProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty);
+            _ = builder.Services.AddOllama(configure);
+            _ = builder.Services.AddOllamaApiKeyCredential(apiKey ?? OllamaPlaceholderApiKey);
+            _ = builder.Services.AddOllamaLlmModel(descriptor);
+            _ = builder.Services.AddModelDescriptors(DescriptorSourceId, [descriptor]);
+            plan.ModelAlias = DefaultAlias;
+            return builder;
+        }
+
+        /// <summary>
+        /// Uses one model routed through OpenRouter: registers the adapter, the API key, the model, and a catalog
+        /// descriptor with the adapter's default capabilities and no limits or prices.
+        /// </summary>
+        /// <param name="apiKey">The OpenRouter API key. Never read from the environment implicitly.</param>
+        /// <param name="modelId">OpenRouter's namespaced model identifier, such as <c>"openai/gpt-4o-mini"</c>.</param>
+        /// <param name="configure">Optional adapter settings such as the application title or referer OpenRouter attributes usage to.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="apiKey"/> or <paramref name="modelId"/> is blank.</exception>
+        /// <remarks>
+        /// OpenRouter routes to many vendors, so its models are not in the known-model catalog; the descriptor carries
+        /// <see cref="OpenRouterProviderDefaults.DefaultCapabilities"/> and <see cref="OpenRouterProviderDefaults.DefaultLimits"/>.
+        /// Register the model explicitly with <c>AddOpenRouterLlmModel</c> and <c>AddModelDescriptors</c> followed by
+        /// <see cref="UseModel"/> to declare limits, prices, or narrower capabilities. Selects the model under the alias
+        /// <c>assistant</c>.
+        /// </remarks>
+        public AgentEngineBuilder UseOpenRouter(string apiKey, string modelId, Action<OpenRouterProviderOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+
+            var plan = Plan(builder);
+            plan.SelectSugarModel(nameof(UseOpenRouter));
+            var descriptor = new ModelDescriptor(
+                DefaultAlias,
+                OpenRouterProviderDefaults.ProviderId,
+                OpenRouterProviderDefaults.ApiFamily,
+                new ModelId(modelId),
+                deploymentId: null,
+                OpenRouterProviderDefaults.DefaultCapabilities,
+                OpenRouterProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty);
+            _ = builder.Services.AddOpenRouter(configure);
+            _ = builder.Services.AddOpenRouterApiKeyCredential(apiKey);
+            _ = builder.Services.AddOpenRouterLlmModel(descriptor);
+            _ = builder.Services.AddModelDescriptors(DescriptorSourceId, [descriptor]);
+            plan.ModelAlias = DefaultAlias;
+            return builder;
+        }
+
+        /// <summary>
+        /// Uses one Azure OpenAI deployment: registers the adapter against the resource endpoint, the API key, the
+        /// deployment, and a catalog descriptor whose limits, capabilities, and list prices come from the bundled
+        /// <see cref="KnownModelCatalog"/> entry for the underlying OpenAI model when it has one.
+        /// </summary>
+        /// <param name="resourceEndpoint">The absolute <c>https</c> endpoint of the Azure OpenAI resource.</param>
+        /// <param name="apiKey">The resource's API key. Never read from the environment implicitly.</param>
+        /// <param name="deploymentId">The deployment name configured in the resource.</param>
+        /// <param name="modelId">The OpenAI model the deployment serves, such as <c>"gpt-4o-mini"</c>; used for capabilities, limits, and prices.</param>
+        /// <param name="configure">Optional adapter settings such as the API version.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="resourceEndpoint"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="apiKey"/>, <paramref name="deploymentId"/>, or <paramref name="modelId"/> is blank.</exception>
+        /// <remarks>
+        /// When <paramref name="modelId"/> is a known OpenAI model, its published capabilities, limits, and prices are
+        /// overlaid on the Azure adapter's baseline; otherwise the adapter defaults apply. Selects the model under the
+        /// alias <c>assistant</c>.
+        /// </remarks>
+        public AgentEngineBuilder UseAzureOpenAI(
+            Uri resourceEndpoint,
+            string apiKey,
+            string deploymentId,
+            string modelId,
+            Action<AzureOpenAIProviderOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(resourceEndpoint);
+            ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+            ArgumentException.ThrowIfNullOrWhiteSpace(deploymentId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+
+            var plan = Plan(builder);
+            plan.SelectSugarModel(nameof(UseAzureOpenAI));
+            var typedModelId = new ModelId(modelId);
+            var descriptor = KnownModelCatalog.Default.TryFind(OpenAIProviderDefaults.ProviderId, typedModelId, out var known)
+                ? known.ToDescriptor(DefaultAlias, AzureOpenAIProviderDefaults.ApiFamily, AzureOpenAIProviderDefaults.DefaultCapabilities) with
+                {
+                    ProviderId = AzureOpenAIProviderDefaults.ProviderId,
+                    DeploymentId = new DeploymentId(deploymentId),
+                }
+                : new ModelDescriptor(
+                    DefaultAlias,
+                    AzureOpenAIProviderDefaults.ProviderId,
+                    AzureOpenAIProviderDefaults.ApiFamily,
+                    typedModelId,
+                    new DeploymentId(deploymentId),
+                    AzureOpenAIProviderDefaults.DefaultCapabilities,
+                    AzureOpenAIProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+            _ = builder.Services.AddAzureOpenAI(o =>
+            {
+                o.ResourceEndpoint = resourceEndpoint;
+                configure?.Invoke(o);
+            });
+            _ = builder.Services.AddAzureOpenAIApiKeyCredential(apiKey);
+            _ = builder.Services.AddAzureOpenAILlmModel(descriptor);
+            _ = builder.Services.AddModelDescriptors(DescriptorSourceId, [descriptor]);
             plan.ModelAlias = DefaultAlias;
             return builder;
         }

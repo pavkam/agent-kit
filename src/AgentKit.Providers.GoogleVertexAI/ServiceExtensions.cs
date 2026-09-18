@@ -16,7 +16,7 @@ using Microsoft.Extensions.Options;
 /// deliberately separate calls: <see cref="AddGoogleVertexAI"/> configures
 /// the project, region, and wire-behavior options,
 /// <see cref="AddGoogleVertexAIOAuthCredential{TProvider}"/> configures
-/// authentication, and <see cref="AddGoogleVertexAILlmModel"/> is called
+/// authentication, and <c>AddGoogleVertexAILlmModel</c> is called
 /// once per model an application wants to use. No default fabricates a
 /// project, region, or credential an account may not actually have. Unlike
 /// every other AgentKit provider package, there is no
@@ -55,7 +55,7 @@ public static class ServiceExtensions
         /// configuration pipeline. The authentication and model
         /// registrations are independent calls documented on
         /// <see cref="AddGoogleVertexAIOAuthCredential{TProvider}"/> and
-        /// <see cref="AddGoogleVertexAILlmModel"/>.
+        /// <c>AddGoogleVertexAILlmModel</c>.
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="configureOptions"/> is null.</exception>
         public IServiceCollection AddGoogleVertexAI(Action<GoogleVertexAIProviderOptions> configureOptions)
@@ -169,20 +169,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddGoogleVertexAILlmModel(new ModelDescriptor(
+                alias,
+                GoogleVertexAIProviderDefaults.ProviderId,
+                GoogleVertexAIProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId,
+                capabilities ?? GoogleVertexAIProviderDefaults.DefaultCapabilities,
+                limits ?? GoogleVertexAIProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one Google Vertex AI conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the Google Vertex AI provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddGoogleVertexAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddGoogleVertexAILlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != GoogleVertexAIProviderDefaults.ProviderId || descriptor.ApiFamily != GoogleVertexAIProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the Google Vertex AI provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    GoogleVertexAIProviderDefaults.ProviderId,
-                    GoogleVertexAIProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId,
-                    capabilities ?? GoogleVertexAIProviderDefaults.DefaultCapabilities,
-                    limits ?? GoogleVertexAIProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new GoogleVertexAILlmModel(
                     descriptor,

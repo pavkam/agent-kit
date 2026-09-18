@@ -24,7 +24,11 @@
     <ProjectReference Include="../AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <ProjectReference Include="../AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Providers/AgentKit.Providers.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.Anthropic/AgentKit.Providers.Anthropic.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.AzureOpenAI/AgentKit.Providers.AzureOpenAI.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.Ollama/AgentKit.Providers.Ollama.csproj"/>
     <ProjectReference Include="../AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.OpenRouter/AgentKit.Providers.OpenRouter.csproj"/>
     <ProjectReference Include="../AgentKit.Session/AgentKit.Session.csproj"/>
     <ProjectReference Include="../AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>

@@ -81,6 +81,7 @@ namespace AgentKit.Providers.GoogleVertexAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAILlmModel(AgentKit.ModelDescriptor descriptor) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }

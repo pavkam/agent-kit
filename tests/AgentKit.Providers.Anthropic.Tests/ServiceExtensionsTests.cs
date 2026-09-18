@@ -121,6 +121,119 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddAnthropicLlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAnthropic();
+        _ = services.AddAnthropicApiKeyCredential("sk-ant-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            AnthropicProviderDefaults.ProviderId,
+            AnthropicProviderDefaults.ApiFamily,
+            new ModelId("claude-sonnet-4-5"),
+            deploymentId: null,
+            AnthropicProviderDefaults.DefaultCapabilities,
+            AnthropicProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddAnthropicLlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AnthropicLlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddAnthropicLlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddAnthropicLlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddAnthropicLlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            AnthropicProviderDefaults.ApiFamily,
+            new ModelId("claude-sonnet-4-5"),
+            deploymentId: null,
+            AnthropicProviderDefaults.DefaultCapabilities,
+            AnthropicProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddAnthropicLlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddAnthropicKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddAnthropic();
+        _ = services.AddAnthropicApiKeyCredential("sk-ant-test-key");
+
+        _ = services.AddAnthropicKnownLlmModel(new ModelAlias("known"), new ModelId("claude-sonnet-4-5"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AnthropicLlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("known"));
+        published.ProviderId.ShouldBe(AnthropicProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(AnthropicProviderDefaults.ApiFamily);
+        published.ModelId.ShouldBe(new ModelId("claude-sonnet-4-5"));
+        _ = published.Limits.MaxContextTokens.ShouldNotBeNull();
+        model.Alias.ShouldBe(published.Alias);
+        provider.GetRequiredService<ILlmModelResolver>().Resolve(published).ShouldBeSameAs(model);
+    }
+
+    [Fact]
+    public void AddAnthropicKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelIdBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddAnthropicKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddAnthropicKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddAnthropicKnownLlmModel(new ModelAlias("x"), new ModelId("claude-sonnet-4-5"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddAnthropicKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddAnthropicKnownLlmModel(default, new ModelId("claude-sonnet-4-5"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddAnthropicKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddAnthropicKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

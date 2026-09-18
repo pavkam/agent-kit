@@ -186,20 +186,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddGoogleGeminiLlmModel(new ModelDescriptor(
+                alias,
+                GoogleGeminiProviderDefaults.ProviderId,
+                GoogleGeminiProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId: null,
+                capabilities ?? GoogleGeminiProviderDefaults.DefaultCapabilities,
+                limits ?? GoogleGeminiProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one Google Gemini conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the Google Gemini provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddGoogleGemini"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddGoogleGeminiLlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != GoogleGeminiProviderDefaults.ProviderId || descriptor.ApiFamily != GoogleGeminiProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the Google Gemini provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GoogleGeminiProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    GoogleGeminiProviderDefaults.ProviderId,
-                    GoogleGeminiProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? GoogleGeminiProviderDefaults.DefaultCapabilities,
-                    limits ?? GoogleGeminiProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new GoogleGeminiLlmModel(
                     descriptor,
@@ -211,6 +236,56 @@ public static class ServiceExtensions
                     provider.GetRequiredService<TimeProvider>());
             });
 
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one Google Gemini conversational model from the bundled <see cref="KnownModelCatalog"/>: both the
+        /// <see cref="ILlmModel"/> adapter and the matching catalog descriptor, built from the model's published
+        /// limits, capabilities, and list prices.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">The vendor's own model identifier; it must exist in the catalog under the Google Gemini provider.</param>
+        /// <param name="catalog">The catalog to consult, or <see langword="null"/> for <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="alias"/> or <paramref name="modelId"/> is blank, or <paramref name="modelId"/> is not a known
+        /// Google Gemini model.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// This is the one-call form of <c>AddGoogleGeminiLlmModel(ModelDescriptor)</c> followed by <c>AddModelDescriptors</c>
+        /// with an identical descriptor. Both registrations are additive; the descriptor source is keyed
+        /// <c>googlegemini.known/{alias}</c>. <see cref="AddGoogleGemini"/> must be called first and <c>AddAgentProviders</c>
+        /// must be registered for the descriptor to be published.
+        /// </para>
+        /// <para>
+        /// The catalog is reference data with stated provenance, not runtime discovery. A model the catalog does not
+        /// know can still be registered explicitly with <c>AddGoogleGeminiLlmModel(alias, modelId, capabilities, limits)</c>
+        /// followed by <c>AddModelDescriptors</c>.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddGoogleGeminiKnownLlmModel(
+            ModelAlias alias,
+            ModelId modelId,
+            KnownModelCatalog? catalog = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(alias.Value, nameof(alias));
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId.Value, nameof(modelId));
+
+            catalog ??= KnownModelCatalog.Default;
+            if (!catalog.TryFind(GoogleGeminiProviderDefaults.ProviderId, modelId, out var known))
+            {
+                throw new ArgumentException(
+                    $"'{modelId.Value}' is not a Google Gemini model in the known-model catalog; register it explicitly with {nameof(AddGoogleGeminiLlmModel)}.",
+                    nameof(modelId));
+            }
+
+            var descriptor = known.ToDescriptor(alias, GoogleGeminiProviderDefaults.ApiFamily, GoogleGeminiProviderDefaults.DefaultCapabilities);
+            _ = services.AddGoogleGeminiLlmModel(descriptor);
+            _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"googlegemini.known/{alias.Value}"), [descriptor]);
             return services;
         }
 

@@ -39,6 +39,32 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets the selected model alias, when one was chosen.</summary>
     public ModelAlias? ModelAlias { get; set; }
 
+    /// <summary>
+    /// Gets the name of the <c>Use&lt;Provider&gt;</c> method that registered a model under the shared sugar alias,
+    /// or <see langword="null"/> when none has. Every sugar method uses the same alias, so a second one would publish
+    /// a duplicate descriptor; this lets the second call fail immediately instead of at the first turn.
+    /// </summary>
+    public string? SugarProvider { get; private set; }
+
+    /// <summary>
+    /// Records that <paramref name="method"/> selected the shared sugar alias, rejecting a second selection.
+    /// </summary>
+    /// <param name="method">The sugar method's name, used in the diagnostic.</param>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is blank.</exception>
+    /// <exception cref="InvalidOperationException">Another sugar method already selected a model.</exception>
+    public void SelectSugarModel(string method)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        if (SugarProvider is { } existing)
+        {
+            throw new InvalidOperationException(
+                $"{existing} already selected the model; a builder selects one model through the Use<Provider> methods. " +
+                "Register further providers on Services and pick one with UseModel.");
+        }
+
+        SugarProvider = method;
+    }
+
     /// <summary>Gets or sets an explicitly supplied identity.</summary>
     public ExecutionIdentity? Identity { get; set; }
 

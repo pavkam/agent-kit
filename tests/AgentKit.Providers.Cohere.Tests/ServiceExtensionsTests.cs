@@ -136,6 +136,119 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddCohereLlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddCohere();
+        _ = services.AddCohereApiKeyCredential("cohere-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            CohereProviderDefaults.ProviderId,
+            CohereProviderDefaults.ApiFamily,
+            new ModelId("command-a-03-2025"),
+            deploymentId: null,
+            CohereProviderDefaults.DefaultCapabilities,
+            CohereProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddCohereLlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<CohereLlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddCohereLlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddCohereLlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddCohereLlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            CohereProviderDefaults.ApiFamily,
+            new ModelId("command-a-03-2025"),
+            deploymentId: null,
+            CohereProviderDefaults.DefaultCapabilities,
+            CohereProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddCohereLlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddCohereKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddCohere();
+        _ = services.AddCohereApiKeyCredential("cohere-test-key");
+
+        _ = services.AddCohereKnownLlmModel(new ModelAlias("known"), new ModelId("command-a-03-2025"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<CohereLlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("known"));
+        published.ProviderId.ShouldBe(CohereProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(CohereProviderDefaults.ApiFamily);
+        published.ModelId.ShouldBe(new ModelId("command-a-03-2025"));
+        _ = published.Limits.MaxContextTokens.ShouldNotBeNull();
+        model.Alias.ShouldBe(published.Alias);
+        provider.GetRequiredService<ILlmModelResolver>().Resolve(published).ShouldBeSameAs(model);
+    }
+
+    [Fact]
+    public void AddCohereKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelIdBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddCohereKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddCohereKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddCohereKnownLlmModel(new ModelAlias("x"), new ModelId("command-a-03-2025"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddCohereKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddCohereKnownLlmModel(default, new ModelId("command-a-03-2025"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddCohereKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddCohereKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

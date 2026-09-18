@@ -186,6 +186,59 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddOllamaLlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOllama();
+        _ = services.AddOllamaApiKeyCredential("test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            OllamaProviderDefaults.ProviderId,
+            OllamaProviderDefaults.ApiFamily,
+            new ModelId("llama3.3"),
+            deploymentId: null,
+            OllamaProviderDefaults.DefaultCapabilities,
+            OllamaProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddOllamaLlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OllamaLlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddOllamaLlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddOllamaLlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddOllamaLlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            OllamaProviderDefaults.ApiFamily,
+            new ModelId("llama3.3"),
+            deploymentId: null,
+            OllamaProviderDefaults.DefaultCapabilities,
+            OllamaProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddOllamaLlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

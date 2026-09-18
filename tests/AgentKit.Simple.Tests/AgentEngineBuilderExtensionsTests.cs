@@ -6,6 +6,9 @@ namespace AgentKit.Simple.Tests;
 using AgentKit.FileSystem.InMemory;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
+using AgentKit.Providers.Anthropic;
+using AgentKit.Providers.AzureOpenAI;
+using AgentKit.Providers.Ollama;
 using AgentKit.Providers.OpenAI;
 using AgentKit.Session.InMemory;
 using AgentKit.Tools.Read;
@@ -34,6 +37,211 @@ public sealed class AgentEngineBuilderExtensionsTests
     [Fact]
     public void UseOpenAI_WhenModelIsUnknown_ThrowsArgumentException() =>
         Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseOpenAI("sk-test", "gpt-imaginary")).ParamName.ShouldBe("modelId");
+
+    [Theory]
+    [InlineData(null, "claude-sonnet-4-5", "apiKey")]
+    [InlineData(" ", "claude-sonnet-4-5", "apiKey")]
+    [InlineData("sk-ant", null, "modelId")]
+    [InlineData("sk-ant", "", "modelId")]
+    public void UseAnthropic_WhenAnArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseAnthropic(apiKey!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public void UseAnthropic_WhenModelIsUnknown_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseAnthropic("sk-ant", "claude-imaginary")).ParamName.ShouldBe("modelId");
+
+    [Fact]
+    public async Task UseAnthropic_WhenBuilt_SendsToAnthropicWithTheKeyHeaderAndPublishesTheKnownDescriptor()
+    {
+        var handler = new ThrowingHandler();
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAnthropic("sk-ant-test", "claude-sonnet-4-5");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hello", TestContext.Current.CancellationToken));
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().Host.ShouldBe("api.anthropic.com");
+        request.Headers.GetValues("x-api-key").ShouldBe(["sk-ant-test"]);
+        definition.Models.Candidates.ShouldBe([new ModelAlias("assistant")]);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(AnthropicProviderDefaults.ProviderId);
+        published.ModelId.ShouldBe(new ModelId("claude-sonnet-4-5"));
+        _ = published.Pricing.ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData(null, "modelId")]
+    [InlineData("  ", "modelId")]
+    public void UseOllama_WhenModelIdIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseOllama(modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void UseOllama_WhenApiKeyIsSuppliedButBlank_ThrowsArgumentException(string apiKey) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseOllama("llama3.1:8b", apiKey)).ParamName.ShouldBe("apiKey");
+
+    [Fact]
+    public async Task UseOllama_WhenBuilt_SendsToTheConfiguredServerWithThePlaceholderTokenAndCompletesATurn()
+    {
+        var handler = new StubOpenAIHandler("local reply");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOllama("llama3.1:8b", configure: o => o.BaseAddress = new Uri("http://127.0.0.1:11434/v1/"));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("local reply");
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().GetLeftPart(UriPartial.Authority).ShouldBe("http://127.0.0.1:11434");
+        request.Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("ollama");
+        handler.Bodies.Single().ShouldContain("\"model\":\"llama3.1:8b\"");
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(OllamaProviderDefaults.ProviderId);
+        published.Pricing.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task UseOllama_WhenAKeyIsSupplied_SendsThatKey()
+    {
+        var handler = new StubOpenAIHandler("ok");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOllama("llama3.1:8b", "remote-key");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        handler.Requests.Single().Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("remote-key");
+    }
+
+    [Theory]
+    [InlineData(null, "openai/gpt-4o-mini", "apiKey")]
+    [InlineData(" ", "openai/gpt-4o-mini", "apiKey")]
+    [InlineData("sk-or", null, "modelId")]
+    [InlineData("sk-or", "", "modelId")]
+    public void UseOpenRouter_WhenAnArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseOpenRouter(apiKey!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task UseOpenRouter_WhenBuilt_SendsToOpenRouterWithTheBearerKeyAndCompletesATurn()
+    {
+        var handler = new StubOpenAIHandler("routed");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenRouter("sk-or-test", "openai/gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("routed");
+        var request = handler.Requests.ShouldHaveSingleItem();
+        request.RequestUri.ShouldNotBeNull().Host.ShouldBe("openrouter.ai");
+        request.Headers.Authorization.ShouldNotBeNull().Parameter.ShouldBe("sk-or-test");
+        handler.Bodies.Single().ShouldContain("\"model\":\"openai/gpt-4o-mini\"");
+    }
+
+    [Fact]
+    public void UseAzureOpenAI_WhenEndpointIsNull_ThrowsArgumentNullExceptionBeforeRegisteringTheProvider()
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentNullException>(() => builder.UseAzureOpenAI(null!, "key", "dep", "gpt-4o-mini")).ParamName.ShouldBe("resourceEndpoint");
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Theory]
+    [InlineData(null, "dep", "gpt-4o-mini", "apiKey")]
+    [InlineData("key", " ", "gpt-4o-mini", "deploymentId")]
+    [InlineData("key", "dep", "", "modelId")]
+    public void UseAzureOpenAI_WhenAStringArgumentIsBlank_ThrowsArgumentExceptionBeforeRegisteringTheProvider(string? apiKey, string? deploymentId, string? modelId, string parameter)
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var before = builder.Services.Count;
+
+        Should.Throw<ArgumentException>(() => builder.UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), apiKey!, deploymentId!, modelId!)).ParamName.ShouldBe(parameter);
+        builder.Services.Count.ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task UseAzureOpenAI_WhenTheModelIsKnown_OverlaysTheOpenAIFactsOntoTheDeploymentDescriptor()
+    {
+        var handler = new StubOpenAIHandler("azure reply");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), "azure-key", "chat-deployment", "gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("azure reply");
+        handler.Requests.Single().RequestUri.ShouldNotBeNull().Host.ShouldBe("acme.openai.azure.com");
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ProviderId.ShouldBe(AzureOpenAIProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(AzureOpenAIProviderDefaults.ApiFamily);
+        published.DeploymentId.ShouldBe(new DeploymentId("chat-deployment"));
+        published.Limits.MaxContextTokens.ShouldBe(128000);
+        _ = published.Pricing.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task UseAzureOpenAI_WhenTheModelIsUnknown_UsesTheAdapterDefaults()
+    {
+        await using var engine = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseAzureOpenAI(new Uri("https://acme.openai.azure.com/"), "azure-key", "custom-deployment", "my-finetune")
+            .Build();
+
+        var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ModelId.ShouldBe(new ModelId("my-finetune"));
+        published.DeploymentId.ShouldBe(new DeploymentId("custom-deployment"));
+        published.Pricing.ShouldBeNull();
+        published.Limits.ShouldBe(AzureOpenAIProviderDefaults.DefaultLimits);
+    }
+
+    [Fact]
+    public void UseOpenRouter_WhenAnotherSugarMethodAlreadySelectedAModel_ThrowsInvalidOperationExceptionNamingIt()
+    {
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini");
+        var before = builder.Services.Count;
+
+        var exception = Should.Throw<InvalidOperationException>(() => builder.UseOpenRouter("sk-or", "openai/gpt-4o-mini"));
+
+        exception.Message.ShouldContain("UseOpenAI");
+        exception.Message.ShouldContain("UseModel");
+        builder.Services.Count.ShouldBe(before);
+    }
 
     [Fact]
     public void UseModel_WhenAliasIsDefault_ThrowsArgumentNullException() =>
@@ -413,6 +621,17 @@ public sealed class AgentEngineBuilderExtensionsTests
             {
                 yield return inner;
             }
+        }
+    }
+
+    private sealed class ThrowingHandler: HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            throw new HttpRequestException("connection refused");
         }
     }
 }

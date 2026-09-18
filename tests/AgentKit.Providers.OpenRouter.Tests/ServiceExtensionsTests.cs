@@ -160,6 +160,59 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddOpenRouterLlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenRouter();
+        _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            OpenRouterProviderDefaults.ProviderId,
+            OpenRouterProviderDefaults.ApiFamily,
+            new ModelId("openai/gpt-4o-mini"),
+            deploymentId: null,
+            OpenRouterProviderDefaults.DefaultCapabilities,
+            OpenRouterProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddOpenRouterLlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenRouterLlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddOpenRouterLlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddOpenRouterLlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddOpenRouterLlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            OpenRouterProviderDefaults.ApiFamily,
+            new ModelId("openai/gpt-4o-mini"),
+            deploymentId: null,
+            OpenRouterProviderDefaults.DefaultCapabilities,
+            OpenRouterProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddOpenRouterLlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

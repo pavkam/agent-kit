@@ -26,13 +26,17 @@ engine is still the real engine: `GetAgentsAsync` lists the one published
 
 ## What each call registers
 
-| Call                            | Registers                                                                                                                                                                                                                                                              |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()` | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile` with best-effort audit, `AddAllowAllSecurityPolicy`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools(AllowAllRegisteredTools)`, and a basic-assurance local identity          |
-| `UseSqliteSessions(path)`       | `AddSqliteSessionStore` and `AddSqliteSessionDirectory` at that file (created on demand) and a durable session profile; see [Storing conversations](../../docs/guides/storage.md)                                                                                      |
-| `UseWorkspace(root)`            | `AddSandboxedFileSystem(root)` plus `AddReadTool`, `AddWriteTool`, `AddEditTool`, `AddGlobTool`, `AddSearchTool`, `AddListTool`; see [Working with files](../../docs/guides/file-system.md)                                                                            |
-| `UseOpenAI(apiKey, modelId)`    | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                                       |
-| Any first sugar call            | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its run-profile publication, and `AddConversationSession` |
+| Call                                                      | Registers                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()`                           | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile` with best-effort audit, `AddAllowAllSecurityPolicy`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools(AllowAllRegisteredTools)`, and a basic-assurance local identity          |
+| `UseSqliteSessions(path)`                                 | `AddSqliteSessionStore` and `AddSqliteSessionDirectory` at that file (created on demand) and a durable session profile; see [Storing conversations](../../docs/guides/storage.md)                                                                                      |
+| `UseWorkspace(root)`                                      | `AddSandboxedFileSystem(root)` plus `AddReadTool`, `AddWriteTool`, `AddEditTool`, `AddGlobTool`, `AddSearchTool`, `AddListTool`; see [Working with files](../../docs/guides/file-system.md)                                                                            |
+| `UseOpenAI(apiKey, modelId)`                              | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                                       |
+| `UseAnthropic(apiKey, modelId)`                           | The same shape for Anthropic: `AddAnthropic`, `AddAnthropicApiKeyCredential`, `AddAnthropicKnownLlmModel`                                                                                                                                                              |
+| `UseOllama(modelId)`                                      | `AddOllama`, a placeholder credential a local server ignores (or the key you pass), `AddOllamaLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults; models are not in the catalog                                                                 |
+| `UseOpenRouter(apiKey, modelId)`                          | `AddOpenRouter`, `AddOpenRouterApiKeyCredential`, `AddOpenRouterLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults                                                                                                                              |
+| `UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)` | `AddAzureOpenAI` at the endpoint, `AddAzureOpenAIApiKeyCredential`, `AddAzureOpenAILlmModel(descriptor)` and `AddModelDescriptors`; a known OpenAI model's limits and prices are overlaid on the deployment                                                            |
+| Any first sugar call                                      | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its run-profile publication, and `AddConversationSession` |
 
 Calls chain in any order before `Build()`; the plan is read lazily when the
 provider is built. Every `ITool` registered on `builder.Services` is advertised
@@ -51,7 +55,9 @@ escape hatch is the ordinary AgentKit API:
 - **Tools:** `builder.Services.AddSandboxedFileSystem(root).AddReadTool();` and
   the model sees `read_file` on the next turn.
 - **Another provider or an unknown model:** register the provider package's
-  services on `builder.Services`, then `builder.UseModel(alias)`.
+  services on `builder.Services`, then `builder.UseModel(alias)`. The
+  `Use<Provider>` methods share the alias `assistant`, so a builder calls one of
+  them; a second throws immediately and names the first.
 - **Durable sessions:** skip `UseLocalDevelopmentDefaults`, register
   `AddSqliteSessionStore`/`AddSqliteSessionDirectory` plus your security
   services, and call `WithIdentity`.

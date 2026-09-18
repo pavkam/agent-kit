@@ -187,6 +187,80 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddAzureOpenAILlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
+        _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            AzureOpenAIProviderDefaults.ProviderId,
+            AzureOpenAIProviderDefaults.ApiFamily,
+            new ModelId("gpt-4o-mini"),
+            deploymentId: new DeploymentId("test-deployment"),
+            AzureOpenAIProviderDefaults.DefaultCapabilities,
+            AzureOpenAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddAzureOpenAILlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AzureOpenAILlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddAzureOpenAILlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddAzureOpenAILlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddAzureOpenAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            AzureOpenAIProviderDefaults.ApiFamily,
+            new ModelId("gpt-4o-mini"),
+            deploymentId: new DeploymentId("test-deployment"),
+            AzureOpenAIProviderDefaults.DefaultCapabilities,
+            AzureOpenAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddAzureOpenAILlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddAzureOpenAILlmModel_WhenDescriptorHasNoDeployment_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("no-deployment"),
+            AzureOpenAIProviderDefaults.ProviderId,
+            AzureOpenAIProviderDefaults.ApiFamily,
+            new ModelId("gpt-4o-mini"),
+            deploymentId: null,
+            AzureOpenAIProviderDefaults.DefaultCapabilities,
+            AzureOpenAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddAzureOpenAILlmModel(descriptor));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

@@ -135,6 +135,119 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
+    [Fact]
+    public void AddMistralAILlmModel_WhenGivenADescriptor_RegistersAnAdapterServingThatExactDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMistralAI();
+        _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"),
+            MistralAIProviderDefaults.ProviderId,
+            MistralAIProviderDefaults.ApiFamily,
+            new ModelId("codestral-latest"),
+            deploymentId: null,
+            MistralAIProviderDefaults.DefaultCapabilities,
+            MistralAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        _ = services.AddMistralAILlmModel(descriptor);
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MistralAILlmModel>();
+        model.Alias.ShouldBe(descriptor.Alias);
+    }
+
+    [Fact]
+    public void AddMistralAILlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddMistralAILlmModel(null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddMistralAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("foreign"),
+            new ProviderId("someone-else"),
+            MistralAIProviderDefaults.ApiFamily,
+            new ModelId("codestral-latest"),
+            deploymentId: null,
+            MistralAIProviderDefaults.DefaultCapabilities,
+            MistralAIProviderDefaults.DefaultLimits,
+            pricing: null,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddMistralAILlmModel(foreign));
+
+        exception.ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddMistralAIKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddMistralAI();
+        _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
+
+        _ = services.AddMistralAIKnownLlmModel(new ModelAlias("known"), new ModelId("codestral-latest"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MistralAILlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("known"));
+        published.ProviderId.ShouldBe(MistralAIProviderDefaults.ProviderId);
+        published.ApiFamily.ShouldBe(MistralAIProviderDefaults.ApiFamily);
+        published.ModelId.ShouldBe(new ModelId("codestral-latest"));
+        _ = published.Limits.MaxContextTokens.ShouldNotBeNull();
+        model.Alias.ShouldBe(published.Alias);
+        provider.GetRequiredService<ILlmModelResolver>().Resolve(published).ShouldBeSameAs(model);
+    }
+
+    [Fact]
+    public void AddMistralAIKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelIdBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddMistralAIKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddMistralAIKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddMistralAIKnownLlmModel(new ModelAlias("x"), new ModelId("codestral-latest"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddMistralAIKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddMistralAIKnownLlmModel(default, new ModelId("codestral-latest"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddMistralAIKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddMistralAIKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

@@ -185,20 +185,45 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            return services.AddZAILlmModel(new ModelDescriptor(
+                alias,
+                ZAIProviderDefaults.ProviderId,
+                ZAIProviderDefaults.ApiFamily,
+                modelId,
+                deploymentId: null,
+                capabilities ?? ZAIProviderDefaults.DefaultCapabilities,
+                limits ?? ZAIProviderDefaults.DefaultLimits,
+                pricing: null,
+                ExtensionData.Empty));
+        }
+
+        /// <summary>
+        /// Registers one Z.AI conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">
+        /// The exact descriptor the adapter will serve; it must name the Z.AI provider and API family.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was registered with, so
+        /// publish this same instance to the catalog (for example through <c>AddModelDescriptors</c>) rather than
+        /// rebuilding an equivalent one. Additive; <see cref="AddZAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddZAILlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != ZAIProviderDefaults.ProviderId || descriptor.ApiFamily != ZAIProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the Z.AI provider and API family.", nameof(descriptor));
+            }
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<ZAIProviderOptions>>().Value;
-
-                var descriptor = new ModelDescriptor(
-                    alias,
-                    ZAIProviderDefaults.ProviderId,
-                    ZAIProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? ZAIProviderDefaults.DefaultCapabilities,
-                    limits ?? ZAIProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
 
                 return new ZAILlmModel(
                     descriptor,
@@ -210,6 +235,56 @@ public static class ServiceExtensions
                     provider.GetRequiredService<TimeProvider>());
             });
 
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one Z.AI conversational model from the bundled <see cref="KnownModelCatalog"/>: both the
+        /// <see cref="ILlmModel"/> adapter and the matching catalog descriptor, built from the model's published
+        /// limits, capabilities, and list prices.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">The vendor's own model identifier; it must exist in the catalog under the Z.AI provider.</param>
+        /// <param name="catalog">The catalog to consult, or <see langword="null"/> for <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="alias"/> or <paramref name="modelId"/> is blank, or <paramref name="modelId"/> is not a known
+        /// Z.AI model.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// This is the one-call form of <c>AddZAILlmModel(ModelDescriptor)</c> followed by <c>AddModelDescriptors</c>
+        /// with an identical descriptor. Both registrations are additive; the descriptor source is keyed
+        /// <c>zai.known/{alias}</c>. <see cref="AddZAI"/> must be called first and <c>AddAgentProviders</c>
+        /// must be registered for the descriptor to be published.
+        /// </para>
+        /// <para>
+        /// The catalog is reference data with stated provenance, not runtime discovery. A model the catalog does not
+        /// know can still be registered explicitly with <c>AddZAILlmModel(alias, modelId, capabilities, limits)</c>
+        /// followed by <c>AddModelDescriptors</c>.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddZAIKnownLlmModel(
+            ModelAlias alias,
+            ModelId modelId,
+            KnownModelCatalog? catalog = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(alias.Value, nameof(alias));
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId.Value, nameof(modelId));
+
+            catalog ??= KnownModelCatalog.Default;
+            if (!catalog.TryFind(ZAIProviderDefaults.ProviderId, modelId, out var known))
+            {
+                throw new ArgumentException(
+                    $"'{modelId.Value}' is not a Z.AI model in the known-model catalog; register it explicitly with {nameof(AddZAILlmModel)}.",
+                    nameof(modelId));
+            }
+
+            var descriptor = known.ToDescriptor(alias, ZAIProviderDefaults.ApiFamily, ZAIProviderDefaults.DefaultCapabilities);
+            _ = services.AddZAILlmModel(descriptor);
+            _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"zai.known/{alias.Value}"), [descriptor]);
             return services;
         }
     }

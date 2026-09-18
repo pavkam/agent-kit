@@ -7,7 +7,8 @@ outbound request: the model runs locally through Ollama, the files stay in a
 sandbox, and the agent has no network tool at all.
 
 This page is also the pattern for using any provider other than OpenAI: the
-sugar has `UseOpenAI`, and every other provider goes through `builder.Services`
+builder has `UseAnthropic`, `UseOllama`, `UseOpenRouter`, and `UseAzureOpenAI`
+next to `UseOpenAI`, and every other provider goes through `builder.Services`
 followed by `UseModel(alias)`.
 
 ## What the agent needs
@@ -24,35 +25,12 @@ followed by `UseModel(alias)`.
 ```csharp
 static AgentEngine CreatePrivateAssistant(string notesRoot, string sessionsPath)
 {
-    var alias = new ModelAlias("local");
-    var modelId = new ModelId("llama3.1:8b");
-
     var builder = AgentEngine.CreateBuilder()
         .UseLocalDevelopmentDefaults()
         .UseWorkspace(notesRoot)
         .UseSqliteSessions(sessionsPath)
-        .UseModel(alias)
+        .UseOllama("llama3.1:8b", configure: o => o.BaseAddress = new Uri("http://127.0.0.1:11434/v1/"))
         .WithInstructions("You answer questions using only the notes in this folder. Cite the file you used.");
-
-    // The provider block: adapter, credential, model, and catalog descriptor.
-    builder.Services.AddAgentProviders();
-    builder.Services.AddOllama(o => o.BaseAddress = new Uri("http://127.0.0.1:11434"));
-    builder.Services.AddOllamaApiKeyCredential("ollama");   // local Ollama ignores it; the slot must not be empty
-    builder.Services.AddOllamaLlmModel(alias, modelId, OllamaProviderDefaults.DefaultCapabilities, OllamaProviderDefaults.DefaultLimits);
-    builder.Services.AddModelDescriptors(
-        new ModelDescriptorSourceId("private-assistant"),
-        [
-            new ModelDescriptor(
-                alias,
-                OllamaProviderDefaults.ProviderId,
-                OllamaProviderDefaults.ApiFamily,
-                modelId,
-                deploymentId: null,
-                OllamaProviderDefaults.DefaultCapabilities,
-                OllamaProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty)
-        ]);
 
     builder.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>();
 
@@ -60,13 +38,38 @@ static AgentEngine CreatePrivateAssistant(string notesRoot, string sessionsPath)
 }
 ```
 
-Two registrations are needed for the model because they answer different
-questions. `AddOllamaLlmModel` says _how to call it_; `AddModelDescriptors` says
-_what it is_ (capabilities, limits, price) so the selector can match it against
-the agent's requirements. `UseOpenAI` does both for you; other providers leave
-the descriptor to you. When the model is in the bundled known-model catalog,
-`KnownModelCatalog.Default.TryFind(providerId, modelId, out var known)` and
-`known.ToDescriptor(alias, apiFamily, baselineCapabilities)` fill it in.
+`UseOllama` registers the adapter, a placeholder bearer token a local server
+ignores (pass a real key as the second argument for a remote server that
+enforces one), the model, and a catalog descriptor. Ollama models are not in the
+bundled known-model catalog, so that descriptor carries the adapter's default
+capabilities and no context-window limit or prices. When you need the selector
+to know more, for example that a small model cannot call tools, write the two
+registrations yourself and pick the alias with `UseModel`:
+
+```csharp
+var alias = new ModelAlias("local");
+var descriptor = new ModelDescriptor(
+    alias,
+    OllamaProviderDefaults.ProviderId,
+    OllamaProviderDefaults.ApiFamily,
+    new ModelId("llama3.1:8b"),
+    deploymentId: null,
+    OllamaProviderDefaults.DefaultCapabilities with { SupportsToolCalls = false },
+    new ModelLimits(maxContextTokens: 8_192, maxOutputTokens: null),
+    pricing: null,
+    ExtensionData.Empty);
+
+builder.Services.AddOllama(o => o.BaseAddress = new Uri("http://127.0.0.1:11434/v1/"));
+builder.Services.AddOllamaApiKeyCredential("ollama");
+builder.Services.AddOllamaLlmModel(descriptor);
+builder.Services.AddModelDescriptors(new ModelDescriptorSourceId("private-assistant"), [descriptor]);
+builder.UseModel(alias);
+```
+
+The two registrations answer different questions. `AddOllamaLlmModel` says _how
+to call it_; `AddModelDescriptors` says _what it is_ so the selector can match
+it against the agent's requirements. For providers the catalog covers,
+`Add<Provider>KnownLlmModel(alias, modelId)` does both from the published facts.
 
 `ReadOnlyWorkspacePolicy` is the one from
 [Read-only code review in CI](code-review-in-ci.md); it denies `FileWrite`,
@@ -108,12 +111,14 @@ conversation with `engine.Conversation.ListAsync` and `OpenAsync`, as
 
 ## Switching providers later
 
-The same shape works for `AgentKit.Providers.Anthropic`, `.OpenRouter`,
-`.AzureOpenAI`, `.GoogleGemini`, and the rest of the
-[provider catalog](../packages/index.md#model-providers): register the
-provider's `Add<Provider>`, credential, and `Add<Provider>LlmModel`, publish a
-descriptor for the alias, and call `UseModel`. Nothing in the agent definition
-changes.
+`UseAnthropic(apiKey, modelId)`, `UseOpenRouter(apiKey, modelId)`, and
+`UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)` are one-line swaps for
+`UseOllama`. For the rest of the
+[provider catalog](../packages/index.md#model-providers), register the
+provider's `Add<Provider>`, its credential, and either
+`Add<Provider>KnownLlmModel(alias, modelId)` when the catalog covers it or
+`Add<Provider>LlmModel(descriptor)` plus `AddModelDescriptors`, then call
+`UseModel(alias)`. Nothing in the agent definition changes.
 
 ## What lives where
 

@@ -73,6 +73,7 @@ namespace AgentKit.Providers.AwsBedrock
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockCredentialSource<TSource>()
                 where TSource :  class, AgentKit.Providers.AwsBedrock.IAwsCredentialSource { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockLlmModel(AgentKit.ModelDescriptor descriptor) { }
         }
     }
     public sealed class StaticAwsCredentialSource : AgentKit.Providers.AwsBedrock.IAwsCredentialSource

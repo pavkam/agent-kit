@@ -12,6 +12,8 @@ namespace AgentKit.Providers.ZAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAILlmModel(AgentKit.ModelDescriptor descriptor) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAIKnownLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.Providers.KnownModelCatalog? catalog = null) { }
         }
     }
     public sealed class ZAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
