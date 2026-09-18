@@ -21,6 +21,7 @@ public sealed class ToolTerminalStatusExtensionsTests
     [InlineData(ToolTerminalStatus.ResultNormalizationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(ToolTerminalStatus.ResultSerializationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(ToolTerminalStatus.ProtocolFailed, ToolCallOutcomeKind.Failed)]
+    [InlineData(ToolTerminalStatus.ResourceLimitExceeded, ToolCallOutcomeKind.Rejected)]
     public void ToOutcomeKind_WhenStatusIsKnown_MapsItsTerminalStage(ToolTerminalStatus status, ToolCallOutcomeKind expected) =>
         status.ToOutcomeKind().ShouldBe(expected);
 
@@ -28,7 +29,7 @@ public sealed class ToolTerminalStatusExtensionsTests
     [InlineData(int.MinValue)]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(15)]
+    [InlineData(16)]
     [InlineData(int.MaxValue)]
     public void ToOutcomeKind_WhenStatusIsUnknown_MapsToFailure(int rawStatus) =>
         ((ToolTerminalStatus) rawStatus).ToOutcomeKind().ShouldBe(ToolCallOutcomeKind.Failed);

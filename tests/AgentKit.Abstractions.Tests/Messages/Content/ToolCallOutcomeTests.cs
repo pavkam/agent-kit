@@ -23,6 +23,7 @@ public sealed class ToolCallOutcomeTests
     [InlineData(ToolTerminalStatus.ResultNormalizationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(ToolTerminalStatus.ResultSerializationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(ToolTerminalStatus.ProtocolFailed, ToolCallOutcomeKind.Failed)]
+    [InlineData(ToolTerminalStatus.ResourceLimitExceeded, ToolCallOutcomeKind.Rejected)]
     public void Constructor_WhenKindContradictsSourceStatus_RejectsEveryIncorrectCategory(ToolTerminalStatus status, ToolCallOutcomeKind expected)
     {
         // Arrange / Act / Assert
@@ -47,7 +48,7 @@ public sealed class ToolCallOutcomeTests
     [InlineData(int.MinValue)]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(15)]
+    [InlineData(16)]
     [InlineData(int.MaxValue)]
     public void Constructor_WhenSourceStatusIsUnknown_PreservesNumericEvidenceAndRequiresFailure(int rawStatus)
     {
