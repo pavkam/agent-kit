@@ -33,4 +33,11 @@ internal static partial class ConversationLog
     /// <summary>Logs an unexpected bounded history-read failure without stored content or exception text.</summary>
     [LoggerMessage(24006, LogLevel.Warning, "Conversation history read for agent {AgentId} faulted with error type {ErrorType}.")]
     internal static partial void HistoryReadFaulted(ILogger logger, AgentId agentId, string errorType);
+
+    /// <summary>
+    /// Logs that the user's message was admitted but the agent-loop run itself did not settle with a completed
+    /// outcome, distinct from <see cref="TurnAdmissionFailed"/> (admission itself failing).
+    /// </summary>
+    [LoggerMessage(24007, LogLevel.Information, "Conversational turn for agent {AgentId} admitted the message but the run did not complete (outcome {OutcomeType}).")]
+    internal static partial void TurnRunNotCompleted(ILogger logger, AgentId agentId, string outcomeType);
 }

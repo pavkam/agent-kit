@@ -1173,6 +1173,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   `ConversationTurnResult` or a side channel so the metric/terminal event
   reflects the real outcome.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### L05 — Runtime-type deserialization only catches `JsonException`; unsupported runtime types escape as run faults
 

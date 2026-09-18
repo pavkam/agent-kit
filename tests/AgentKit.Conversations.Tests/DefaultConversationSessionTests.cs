@@ -792,6 +792,36 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenLoopOutcomeIsNotCompleted_LogsTurnRunNotCompletedInsteadOfTurnAdmissionFailed()
+    {
+        // The message was successfully admitted (session load, read, and append all succeeded); only the run
+        // itself did not settle with a completed outcome. This must not be indistinguishable from a rejected
+        // append: it needs its own log event and outcome token, not TurnAdmissionFailed/"admission_failed".
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request => new AgentLoopResult(
+                request.AgentId,
+                request.SessionId,
+                request.BranchId,
+                request.RunId,
+                new AgentRunTurnLimitReached(request.MaxTurns),
+                [],
+                new SessionVersion(1)),
+        };
+        using var session = CreateSession(loop: loop, logger: logger);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        logger.Snapshot().ShouldNotContain(static entry => entry.EventId.Id == 24002);
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24007);
+        entry.Level.ShouldBe(LogLevel.Information);
+        entry.State["AgentId"].ShouldBe(ConversationSessionOptionsFactory.AgentId);
+        entry.State["OutcomeType"].ShouldBe(nameof(AgentRunTurnLimitReached));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenLoopFailsWithProviderFailureCarryingDiagnosticCause_DoesNotExposeItInEvents()
     {
         // ProviderFailure.DiagnosticCause "may carry sensitive transport detail and is intended for logs and diagnostics only".

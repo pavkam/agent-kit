@@ -401,8 +401,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         {
             await _turnLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             lockAcquired = true;
-            var result = await SendCoreAsync(userText, observer, cancellationToken).ConfigureAwait(false);
-            var outcome = result.Succeeded ? "settled" : "admission_failed";
+            var (result, outcome) = await SendCoreAsync(userText, observer, cancellationToken).ConfigureAwait(false);
             await ObserveAsync(observer, new ConversationTurnCompletedEvent(result.Succeeded, outcome), cancellationToken)
                 .ConfigureAwait(false);
             activity.SetSuccessful(outcome);
@@ -442,7 +441,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         }
     }
 
-    private async Task<ConversationTurnResult> SendCoreAsync(
+    private async Task<(ConversationTurnResult Result, string Outcome)> SendCoreAsync(
         string userText,
         IConversationEventObserver? observer,
         CancellationToken cancellationToken)
@@ -462,7 +461,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             cancellationToken).ConfigureAwait(false);
         if (loadResult is not SessionLoaded loaded)
         {
-            return new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session could not be loaded.")]);
+            return (
+                new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session could not be loaded.")]),
+                "admission_failed");
         }
 
         var readResult = await _sessionCoordinator.ReadAsync(
@@ -471,7 +472,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             cancellationToken).ConfigureAwait(false);
         if (readResult is not SessionPage { Snapshot: { } snapshot })
         {
-            return new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session history snapshot could not be captured.")]);
+            return (
+                new ConversationTurnResult(false, [new ConversationAssistantTextEvent("The session history snapshot could not be captured.")]),
+                "admission_failed");
         }
 
         var currentVersion = snapshot.Version;
@@ -512,9 +515,11 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         if (appendResult is not SessionAppended)
         {
             ConversationLog.TurnAdmissionFailed(_logger, _agentId);
-            return new ConversationTurnResult(
-                false,
-                [new ConversationAssistantTextEvent($"Could not record the message: {DescribeAppendResult(appendResult)}")]);
+            return (
+                new ConversationTurnResult(
+                    false,
+                    [new ConversationAssistantTextEvent($"Could not record the message: {DescribeAppendResult(appendResult)}")]),
+                "admission_failed");
         }
 
         var runAuthorization = await CaptureAuthorizationAsync(_sessionId, correlation, cancellationToken).ConfigureAwait(false);
@@ -565,13 +570,35 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         var events = ProjectEvents(loopResult);
         if (loopResult.Outcome is AgentRunCompleted)
         {
-            return new ConversationTurnResult(true, events);
+            return (new ConversationTurnResult(true, events), "settled");
         }
 
-        ConversationLog.TurnAdmissionFailed(_logger, _agentId);
+        // The message was admitted; the run itself settled without completing. This is distinct from admission
+        // failing outright (session load/read/append rejection above), which is the only case that legitimately
+        // warrants TurnAdmissionFailed/"admission_failed".
+        ConversationLog.TurnRunNotCompleted(_logger, _agentId, loopResult.Outcome.GetType().Name);
         var description = DescribeIncompleteOutcome(loopResult.Outcome);
-        return new ConversationTurnResult(false, [.. events, new ConversationAssistantTextEvent(description)]);
+        return (
+            new ConversationTurnResult(false, [.. events, new ConversationAssistantTextEvent(description)]),
+            RunOutcomeKind(loopResult.Outcome));
     }
+
+    /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>
+    /// <param name="outcome">The run's terminal outcome, which is not <see cref="AgentRunCompleted"/>.</param>
+    /// <returns>A stable, low-cardinality token distinguishing why the run did not complete.</returns>
+    private static string RunOutcomeKind(AgentRunOutcome outcome) => outcome switch
+    {
+        AgentRunTurnLimitReached => "turn_limit",
+        AgentRunCancelled => "cancelled",
+        AgentRunFailed => "provider_failed",
+        AgentRunSessionOperationFailed => "session_operation_failed",
+        AgentRunModelSelectionFailed => "model_selection_failed",
+        AgentRunContextPreparationFailed => "context_preparation_failed",
+        AgentRunInvalidState => "invalid_state",
+        AgentRunOutputRejected => "output_rejected",
+        AgentRunIdle => "idle",
+        _ => "run_not_completed",
+    };
 
     private async Task EnsureSessionAsync(CancellationToken cancellationToken)
     {
