@@ -198,7 +198,22 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
         }
     }
 
-    /// <summary>Attempts one durable release of the lane's installed accepted run state through the protected session coordinator.</summary>
+    /// <summary>
+    /// The maximum number of load+release attempts <see cref="ReleaseDurableStateAsync"/> makes when the store
+    /// rejects a release only because the whole-session version read in an earlier attempt has since advanced.
+    /// </summary>
+    /// <remarks>
+    /// The whole-session <see cref="SessionVersion"/> advances on every mutation of any branch or lane, not just
+    /// the lane being released, so ordinary concurrent activity on a sibling lane between the version read and
+    /// the release call is expected under normal multi-lane load, not a rare race. The release's real fence is
+    /// <see cref="SessionRunReleaseRequest.ExpectedStateRevision"/> together with the operation/run correlation
+    /// (see <see cref="SessionRunReleaseRejectionKind.Fenced"/>): a stale caller can never release a different,
+    /// newer occupant of the same lane regardless of how many times the whole-session version is re-read and
+    /// retried here.
+    /// </remarks>
+    private const int _releaseVersionRetryLimit = 5;
+
+    /// <summary>Attempts a durable release of the lane's installed accepted run state through the protected session coordinator.</summary>
     /// <param name="session">The exact compiled capability the disposing lease was acquired through.</param>
     /// <param name="context">The lane-bound in-run context of the accepted operation being released.</param>
     /// <param name="expectedStateRevision">The accepted state's positive total-state revision.</param>
@@ -206,9 +221,14 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
     /// <param name="cancellationToken">Bounds the durable release attempt; failures and cancellation are logged, never thrown.</param>
     /// <remarks>
     /// This is a best-effort background cleanup, not a request the caller is waiting on: every failure mode —
-    /// a stale session version, a store outage, cancellation, or an unexpected exception — is logged and
-    /// swallowed. A failed attempt leaves the lane busy until a later successful release or store-level recovery;
-    /// it never surfaces as an exception from lease disposal.
+    /// a store outage, cancellation, or an unexpected exception — is logged and swallowed. A failed attempt
+    /// leaves the lane busy until a later successful release or store-level recovery; it never surfaces as an
+    /// exception from lease disposal. A rejection whose kind is
+    /// <see cref="SessionRunReleaseRejectionKind.SessionVersion"/> is retried up to
+    /// <see cref="_releaseVersionRetryLimit"/> times with a freshly reloaded version, since it reflects only a
+    /// stale read of the whole-session token — unrelated activity on a sibling lane — and not a conflict over
+    /// the lane actually being released; the idempotency key is stable across retries and the store never
+    /// records a receipt for a rejected attempt, so retrying is safe. Every other rejection kind is terminal.
     /// </remarks>
     internal async ValueTask ReleaseDurableStateAsync(SessionExecutionCapability session,
         SessionOperationContext context, OperationStateRevision expectedStateRevision, SessionLeaseId leaseId,
@@ -219,27 +239,39 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
         var correlation = (InRunOperationCorrelation) context.Correlation;
         try
         {
-            var loaded = await session.Coordinator.LoadAsync(context, session.Profile, cancellationToken)
-                .ConfigureAwait(false);
-            if (loaded is not SessionLoaded sessionLoaded)
-            {
-                ObserveReleaseOutcome(context, leaseId, "load_failed");
-                return;
-            }
-
             var idempotencyKey = new IdempotencyKey(
                 $"agentkit.session.lane-release:{context.ExecutionLaneId}:{correlation.OperationId}:{correlation.RunId}");
-            var release = new SessionRunReleaseRequest(
-                context, expectedStateRevision, sessionLoaded.Descriptor.Version, idempotencyKey);
-            var result = await session.Coordinator.ReleaseRunAsync(release, session, cancellationToken)
-                .ConfigureAwait(false);
-            var outcome = result switch
+
+            for (var attempt = 1; attempt <= _releaseVersionRetryLimit; attempt++)
             {
-                SessionRunReleased => "released",
-                SessionRunReleaseRejected rejected => $"rejected:{rejected.Kind}",
-                _ => "unsupported",
-            };
-            ObserveReleaseOutcome(context, leaseId, outcome);
+                var loaded = await session.Coordinator.LoadAsync(context, session.Profile, cancellationToken)
+                    .ConfigureAwait(false);
+                if (loaded is not SessionLoaded sessionLoaded)
+                {
+                    ObserveReleaseOutcome(context, leaseId, "load_failed");
+                    return;
+                }
+
+                var release = new SessionRunReleaseRequest(
+                    context, expectedStateRevision, sessionLoaded.Descriptor.Version, idempotencyKey);
+                var result = await session.Coordinator.ReleaseRunAsync(release, session, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (result is SessionRunReleaseRejected { Kind: SessionRunReleaseRejectionKind.SessionVersion }
+                    && attempt < _releaseVersionRetryLimit)
+                {
+                    continue;
+                }
+
+                var outcome = result switch
+                {
+                    SessionRunReleased => "released",
+                    SessionRunReleaseRejected rejected => $"rejected:{rejected.Kind}",
+                    _ => "unsupported",
+                };
+                ObserveReleaseOutcome(context, leaseId, outcome);
+                return;
+            }
         }
         catch (OperationCanceledException)
         {

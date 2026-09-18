@@ -558,8 +558,36 @@ public sealed class DefaultSessionRunCoordinatorTests
     }
 
     [Fact]
-    public async Task ReleaseAsync_WhenStoreRejectsRelease_DoesNotThrowAndStillFreesTheLaneLocally()
+    public async Task ReleaseAsync_WhenStoreRejectsReleaseForAReasonOtherThanStaleVersion_DoesNotThrowAndStillFreesTheLaneLocally()
     {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        var descriptor = TestFactory.Descriptor(scenario.Request.Context.ToAddress(), version: 3);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) =>
+            ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(descriptor));
+        scenario.SessionCoordinator.OnReleaseRun = (_, _, _) =>
+            ValueTask.FromResult<SessionRunReleaseResult>(
+                new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Fenced, "not the current occupant"));
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        // A Fenced rejection means a different, newer occupant already holds the lane's accepted state; retrying
+        // would never help and must not be attempted.
+        _ = scenario.SessionCoordinator.ReleaseCalls.ShouldHaveSingleItem();
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenStoreRejectsReleaseWithStaleSessionVersionOnEveryAttempt_RetriesUpToTheLimitThenGivesUp()
+    {
+        // The whole-session version advances on every mutation of any branch or lane, not just the lane being
+        // released, so unrelated concurrent activity on a sibling lane between the version read and the release
+        // call is expected under ordinary multi-lane load. This must be retried with a freshly reloaded version
+        // rather than the durable release being abandoned on the first stale read.
         var scenario = Scenario.Create();
         var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
             scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
@@ -574,7 +602,37 @@ public sealed class DefaultSessionRunCoordinatorTests
         var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
             TestContext.Current.CancellationToken);
 
-        _ = scenario.SessionCoordinator.ReleaseCalls.ShouldHaveSingleItem();
+        // Each retry reloads the session before releasing again, so the release-call count is also the
+        // load+release retry count: exactly the configured retry limit, then the coordinator gives up.
+        scenario.SessionCoordinator.ReleaseCalls.Count.ShouldBe(5);
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenStoreRejectsReleaseWithStaleSessionVersionOnlyOnce_SucceedsOnRetry()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        var descriptor = TestFactory.Descriptor(scenario.Request.Context.ToAddress(), version: 3);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) =>
+            ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(descriptor));
+        var releaseAttempts = 0;
+        scenario.SessionCoordinator.OnReleaseRun = (request, _, _) =>
+        {
+            releaseAttempts++;
+            return ValueTask.FromResult<SessionRunReleaseResult>(
+                releaseAttempts == 1
+                    ? new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.SessionVersion, "stale")
+                    : new SessionRunReleased(request.ExpectedVersion, existing: false));
+        };
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        scenario.SessionCoordinator.ReleaseCalls.Count.ShouldBe(2);
         _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
         await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
     }

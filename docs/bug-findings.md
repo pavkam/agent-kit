@@ -810,6 +810,7 @@ var result = await session.Coordinator.ReleaseRunAsync(release, session, cancell
   lane-revision/state-revision fence instead of the whole-session version, which
   the release already validates via `ExpectedStateRevision`).
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### S03 — Lane slots are never removed from `_slots`, so the coordinator grows without bound
 
