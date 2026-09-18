@@ -22,11 +22,13 @@ public sealed class BudgetLedgerBatchReserveRequestTests
     [Fact]
     public void BudgetLedgerBatchReserveRequest_WhenCopiedRequestIsInvalid_RejectsBeforePropertyAssignment()
     {
+        // BudgetReservationRequest.Amount now validates at its own boundary (see A14), so an item with a
+        // non-positive amount can no longer be assembled into a batch at all; the request-level `with` mutation
+        // is rejected before BudgetLedgerBatchReserveRequest's own construction could ever observe it.
         var scope = Scope();
         var requests = Requests(scope.Id);
-        requests = requests.SetItem(0, requests[0] with { Amount = 0m });
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetLedgerBatchReserveRequest(scope, requests));
-        exception.ParamName.ShouldBe("originalRequests");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => requests.SetItem(0, requests[0] with { Amount = 0m }));
+        exception.ParamName.ShouldBe("Amount");
     }
 
     [Fact]

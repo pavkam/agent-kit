@@ -594,6 +594,7 @@ findings).
 - **Suggested fix:** Give `Amount` a validating `init` accessor mirroring
   `BudgetLimit.Value`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A15 — `MediaReference` equality ignores URI fragments and inline size consistency
 

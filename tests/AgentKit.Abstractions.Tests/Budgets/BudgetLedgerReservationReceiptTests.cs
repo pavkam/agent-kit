@@ -22,14 +22,12 @@ public sealed class BudgetLedgerReservationReceiptTests
     [Fact]
     public void BudgetLedgerReservationReceipt_WhenCopiedRequestIsInvalid_RejectsBeforePropertyAssignment()
     {
+        // BudgetReservationRequest.Amount now validates at its own boundary (see A14), so an instance with a
+        // non-positive amount can no longer be assembled at all; the request-level `with` mutation is rejected
+        // before BudgetLedgerReservationReceipt's own construction could ever observe it.
         var scope = Scope();
-        var originalRequest = Request(scope.Id) with
-        {
-            Amount = 0m
-        };
-        var reservation = new BudgetLedgerReservationReference(scope, ReservationId());
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetLedgerReservationReceipt(reservation, originalRequest, new BudgetEffectiveReservation(DateTimeOffset.UnixEpoch)));
-        exception.ParamName.ShouldBe("originalRequest");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => _ = Request(scope.Id) with { Amount = 0m });
+        exception.ParamName.ShouldBe("Amount");
     }
 
     [Fact]

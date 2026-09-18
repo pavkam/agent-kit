@@ -1077,11 +1077,11 @@ public sealed class ArgumentExceptionExtensionsTests
     [InlineData(-1)]
     public void ThrowIfInvalidBudgetLedgerReservationRequest_WhenAmountIsNotPositive_ThrowsArgumentOutOfRangeException(int amount)
     {
-        var request = Request(Scope().Id) with
-        {
-            Amount = amount
-        };
-        AssertInvalidReservationRequest<ArgumentOutOfRangeException>(request);
+        // BudgetReservationRequest.Amount now validates at its own boundary (see A14), so an instance with a
+        // non-positive amount can no longer be assembled at all; the request-level `with` mutation is rejected
+        // before ThrowIfInvalidBudgetLedgerReservationRequest could ever observe it.
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => _ = Request(Scope().Id) with { Amount = amount });
+        exception.ParamName.ShouldBe("Amount");
     }
 
     [Fact]

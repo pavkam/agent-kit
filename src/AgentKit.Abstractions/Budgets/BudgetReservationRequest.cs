@@ -59,7 +59,16 @@ public sealed record BudgetReservationRequest
     public BudgetDimension Dimension { get; init; }
 
     /// <summary>Gets the amount of capacity to reserve.</summary>
-    public decimal Amount { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a non-positive amount.</exception>
+    public decimal Amount
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(Amount));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the unit <see cref="Amount"/> is expressed in.</summary>
     public BudgetUnit Unit { get; init; }

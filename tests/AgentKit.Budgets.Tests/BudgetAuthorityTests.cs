@@ -117,11 +117,11 @@ public sealed class BudgetAuthorityTests
         (await Should.ThrowAsync<ArgumentNullException>(async () => await scope.ReserveAsync(null!))).ParamName.ShouldBe("request");
         (await Should.ThrowAsync<ArgumentException>(async () => await scope.ReserveBatchAsync([]))).ParamName.ShouldBe("originalRequests");
         (await Should.ThrowAsync<ArgumentException>(async () => await scope.ReserveBatchAsync(default))).ParamName.ShouldBe("originalRequests");
-        var copiedInvalid = TestFactory.ReservationRequest(scope.Id) with
-        {
-            Amount = -1m
-        };
-        (await Should.ThrowAsync<ArgumentOutOfRangeException>(async () => await scope.ReserveAsync(copiedInvalid))).ParamName.ShouldBe("originalRequests");
+        // BudgetReservationRequest.Amount now validates at its own boundary (see A14), so an instance with a
+        // non-positive amount can no longer be assembled at all; the request-level `with` mutation is rejected
+        // before scope.ReserveAsync's own validation could ever observe it.
+        Should.Throw<ArgumentOutOfRangeException>(() => _ = TestFactory.ReservationRequest(scope.Id) with { Amount = -1m })
+            .ParamName.ShouldBe("Amount");
         ledger.Calls.ShouldBe(0);
     }
 
