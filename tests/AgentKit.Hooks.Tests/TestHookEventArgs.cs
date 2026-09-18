@@ -7,14 +7,15 @@ namespace AgentKit.Hooks.Tests;
 /// A synthetic hook event-argument type used only by this test project to
 /// exercise <see cref="DefaultHookDispatcher"/> ordering, mutation
 /// validation, and short-circuiting without depending on any real hook
-/// point defined by a product package.
+/// point defined by a product package. It deliberately derives from
+/// <see cref="AgentHookEventArgs"/> directly rather than
+/// <see cref="AgentScopedHookEventArgs"/>, exercising an earlier-stage hook
+/// point that has not resolved an agent yet.
 /// </summary>
 internal sealed class TestHookEventArgs: AgentHookEventArgs, IShortCircuitingHookArgs
 {
     public TestHookEventArgs()
         : base(
-            new AgentId(Guid.NewGuid()),
-            new SessionId(Guid.NewGuid()),
             new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
             DateTimeOffset.UnixEpoch,
             new HookInvocationId(Guid.NewGuid()))

@@ -19,7 +19,7 @@ namespace AgentKit;
 /// failure fails the turn rather than sending a request whose settings are in an unknown state.
 /// </para>
 /// </remarks>
-public sealed class BeforeModelRequestEventArgs: AgentHookEventArgs
+public sealed class BeforeModelRequestEventArgs: AgentScopedHookEventArgs
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="agentId">The agent being run.</param>
@@ -42,11 +42,10 @@ public sealed class BeforeModelRequestEventArgs: AgentHookEventArgs
         LlmRequestContext request)
         : base(agentId, sessionId, correlation, timestamp, invocationId)
     {
+        ArgumentNullException.ThrowIfNull(correlation);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(turn);
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNotEqual(correlation.TurnId.HasValue, true, nameof(correlation));
-        RunId = correlation.RunId;
-        TurnId = correlation.TurnId!.Value;
         Turn = turn;
         Request = request;
         OriginalSettings = request.Settings;
@@ -54,10 +53,12 @@ public sealed class BeforeModelRequestEventArgs: AgentHookEventArgs
     }
 
     /// <summary>Gets the run identity.</summary>
-    public RunId RunId { get; }
+    /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>
+    public RunId RunId => ((InRunOperationCorrelation) Correlation).RunId;
 
     /// <summary>Gets the turn identity.</summary>
-    public TurnId TurnId { get; }
+    /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to name a turn; never a second stored copy.</value>
+    public TurnId TurnId => ((InRunOperationCorrelation) Correlation).TurnId!.Value;
 
     /// <summary>Gets the one-based turn number within the run.</summary>
     public int Turn { get; }

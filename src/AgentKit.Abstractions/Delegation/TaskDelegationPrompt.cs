@@ -10,7 +10,7 @@ public sealed record TaskDelegationPrompt
     /// <param name="id">The idempotent delegation identity.</param>
     /// <param name="parentAgentId">The delegating agent.</param>
     /// <param name="parentSessionId">The parent session.</param>
-    /// <param name="parentRunId">The active parent run.</param>
+    /// <param name="parentRunId">The active parent run; must equal <paramref name="correlation"/>'s run.</param>
     /// <param name="correlation">The exact in-run causal correlation.</param>
     /// <param name="toolCallId">The model tool call.</param>
     /// <param name="identity">The authenticated execution identity.</param>
@@ -21,7 +21,10 @@ public sealed record TaskDelegationPrompt
     /// <param name="budget">The requested child ceilings.</param>
     /// <param name="deadline">The absolute child settlement deadline.</param>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
-    /// <exception cref="ArgumentException">Text is blank or an array is default, empty, or contains invalid values.</exception>
+    /// <exception cref="ArgumentException">
+    /// Text is blank, an array is default, empty, or contains invalid values, or
+    /// <paramref name="parentRunId"/> does not equal <paramref name="correlation"/>'s run.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">An identity is empty.</exception>
     public TaskDelegationPrompt(
         DelegationId id,
@@ -43,6 +46,7 @@ public sealed record TaskDelegationPrompt
         ArgumentOutOfRangeException.ThrowIfEqual(parentSessionId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(parentRunId, default);
         ArgumentNullException.ThrowIfNull(correlation);
+        ArgumentException.ThrowIfNotEqual(parentRunId, correlation.RunId, nameof(correlation));
         ArgumentOutOfRangeException.ThrowIfEqual(toolCallId, default);
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentOutOfRangeException.ThrowIfEqual(targetAgentId, default);
@@ -54,7 +58,6 @@ public sealed record TaskDelegationPrompt
         Id = id;
         ParentAgentId = parentAgentId;
         ParentSessionId = parentSessionId;
-        ParentRunId = parentRunId;
         Correlation = correlation;
         ToolCallId = toolCallId;
         Identity = identity;
@@ -73,7 +76,8 @@ public sealed record TaskDelegationPrompt
     /// <summary>Gets the parent session.</summary>
     public SessionId ParentSessionId { get; init; }
     /// <summary>Gets the parent run.</summary>
-    public RunId ParentRunId { get; init; }
+    /// <value>Read through <see cref="Correlation"/>'s bound run; the constructor requires them to be equal, so this is never a second stored copy.</value>
+    public RunId ParentRunId => Correlation.RunId;
     /// <summary>Gets the exact in-run causal correlation.</summary>
     public InRunOperationCorrelation Correlation { get; init; }
     /// <summary>Gets the requesting tool call.</summary>

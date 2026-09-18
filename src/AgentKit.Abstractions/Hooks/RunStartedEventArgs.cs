@@ -11,7 +11,7 @@ namespace AgentKit;
 /// Raised after admission, session load, and model resolution succeeded, so the run, branch, and selected model are
 /// established facts. Hooks at this point observe; they cannot change the run.
 /// </remarks>
-public sealed class RunStartedEventArgs: AgentHookEventArgs
+public sealed class RunStartedEventArgs: AgentScopedHookEventArgs
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="agentId">The agent being run.</param>
@@ -41,7 +41,6 @@ public sealed class RunStartedEventArgs: AgentHookEventArgs
         ArgumentNullException.ThrowIfNull(model);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTurns);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(attemptTimeout, TimeSpan.Zero);
-        RunId = correlation.RunId;
         BranchId = branchId;
         Model = model;
         MaxTurns = maxTurns;
@@ -49,7 +48,8 @@ public sealed class RunStartedEventArgs: AgentHookEventArgs
     }
 
     /// <summary>Gets the run identity.</summary>
-    public RunId RunId { get; }
+    /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>
+    public RunId RunId => ((InRunOperationCorrelation) Correlation).RunId;
 
     /// <summary>Gets the branch the run appends to.</summary>
     public BranchId BranchId { get; }

@@ -48,26 +48,26 @@ public sealed record ToolExecutionContext
         ArgumentException.ThrowIfInvalidOperationAuthorization(identity, agentId, sessionId, correlation,
             authorization);
 
-        AgentId = agentId;
-        SessionId = sessionId;
         ToolCallId = toolCallId;
-        Correlation = correlation;
         Identity = identity;
         Authorization = authorization;
         SessionProfile = sessionProfile;
     }
 
     /// <summary>Gets the agent this invocation occurred for.</summary>
-    public AgentId AgentId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public AgentId AgentId => Authorization.Scope.AgentId;
 
     /// <summary>Gets the session this invocation occurred within, when applicable.</summary>
-    public SessionId? SessionId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public SessionId? SessionId => Authorization.Scope.SessionId;
 
     /// <summary>Gets the call this invocation answers.</summary>
     public ToolCallId ToolCallId { get; }
 
     /// <summary>Gets the causal operation performing this invocation.</summary>
-    public OperationCorrelation Correlation { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope; never a second stored copy.</value>
+    public OperationCorrelation Correlation => Authorization.Scope.Correlation;
 
     /// <summary>Gets the identity on whose behalf this invocation is performed.</summary>
     public ExecutionIdentity Identity { get; }

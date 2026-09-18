@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Diagnostics;
+
 /// <summary>One complete, immutable request to run an agent loop for one run.</summary>
 /// <remarks>
 /// <para>
@@ -89,10 +91,7 @@ public sealed record AgentRunRequest
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(attemptTimeout, TimeSpan.Zero);
         ArgumentNullException.ThrowIfNull(extensions);
 
-        AgentId = agentId;
-        SessionId = sessionId;
         BranchId = branchId;
-        RunId = runId;
         Identity = identity;
         Authorization = authorization;
         SessionProfile = sessionProfile;
@@ -163,20 +162,23 @@ public sealed record AgentRunRequest
     }
 
     /// <summary>Gets the agent this run belongs to.</summary>
-    public AgentId AgentId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope, which every constructor validates against the supplied or derived agent identity; this request never stores a second, independently mutable copy of it.</value>
+    public AgentId AgentId => Authorization.Scope.AgentId;
 
     /// <summary>Gets the exact admitted agent definition when supplied by the evidence-aware constructor.</summary>
     /// <value>The immutable definition, or null for a legacy reduced request.</value>
     public AgentDefinition? Agent { get; }
 
     /// <summary>Gets the session this run reads from and commits to.</summary>
-    public SessionId SessionId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound scope. Every constructor requires the scope's session to be present and equal to the supplied session, so this is never a second stored copy.</value>
+    public SessionId SessionId => Authorization.Scope.SessionId!.Value;
 
     /// <summary>Gets the branch this run reads from and commits to.</summary>
     public BranchId BranchId { get; init; }
 
     /// <summary>Gets the stable identity of this run.</summary>
-    public RunId RunId { get; }
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation, which every constructor requires to carry this exact run; this request never stores a second copy of it.</value>
+    public RunId RunId => RunCorrelation.RunId;
 
     /// <summary>Gets the identity on whose behalf this run is performed.</summary>
     public ExecutionIdentity Identity { get; }
@@ -464,5 +466,18 @@ public sealed record AgentRunRequest
     {
         ArgumentNullException.ThrowIfNull(agent);
         return agent.Id;
+    }
+
+    /// <summary>Gets the validated in-run correlation bound by <see cref="Authorization"/>'s scope.</summary>
+    /// <value>Every constructor requires the scope's correlation to be this exact kind before assignment.</value>
+    private InRunOperationCorrelation RunCorrelation
+    {
+        get
+        {
+            Debug.Assert(
+                Authorization.Scope.Correlation is InRunOperationCorrelation,
+                "Constructor validation guarantees an in-run correlation.");
+            return (InRunOperationCorrelation) Authorization.Scope.Correlation;
+        }
     }
 }

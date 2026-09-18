@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Diagnostics;
+
 /// <summary>Records the complete durable fact that a resolved call was accepted before invocation.</summary>
 /// <remarks>This historical evidence is not a reusable grant and does not itself invoke or authorize a tool.</remarks>
 public sealed record AcceptedToolCall
@@ -43,22 +45,26 @@ public sealed record AcceptedToolCall
         ArgumentNullException.ThrowIfNull(projectionPolicy);
         ArgumentException.ThrowIfNotEqual(projectionPolicy, normalization.ProjectionPolicy);
 
-        AgentId = agentId; SessionId = sessionId; RunId = runId; TurnId = turnId; OperationId = operationId;
         CallId = callId; Authorization = authorization; Acceptance = acceptance; ProviderAlias = providerAlias;
         ToolId = toolId; ToolVersion = toolVersion; Effects = effects; ExternalIdempotencyKey = externalIdempotencyKey;
         Admission = admission; Normalization = normalization; ProjectionPolicy = projectionPolicy; RequestedAt = requestedAt;
     }
 
-    /// <summary>Gets the owning agent.</summary><value>A nondefault identity.</value>
-    public AgentId AgentId { get; }
-    /// <summary>Gets the owning session.</summary><value>A nondefault identity.</value>
-    public SessionId SessionId { get; }
-    /// <summary>Gets the owning run.</summary><value>A nondefault identity.</value>
-    public RunId RunId { get; }
-    /// <summary>Gets the owning turn.</summary><value>A nondefault identity.</value>
-    public TurnId TurnId { get; }
-    /// <summary>Gets the operation.</summary><value>A nondefault identity.</value>
-    public OperationId OperationId { get; }
+    /// <summary>Gets the owning agent.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound scope, which the constructor validates against the supplied identity; never a second stored copy.</value>
+    public AgentId AgentId => Authorization.Scope.AgentId;
+    /// <summary>Gets the owning session.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound scope, which the constructor requires to be present and equal to the supplied identity; never a second stored copy.</value>
+    public SessionId SessionId => Authorization.Scope.SessionId!.Value;
+    /// <summary>Gets the owning run.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public RunId RunId => RequireCorrelation(Authorization).RunId;
+    /// <summary>Gets the owning turn.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public TurnId TurnId => RequireCorrelation(Authorization).TurnId!.Value;
+    /// <summary>Gets the operation.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public OperationId OperationId => RequireCorrelation(Authorization).OperationId;
     /// <summary>Gets the call.</summary><value>A nondefault identity.</value>
     public ToolCallId CallId { get; }
     /// <summary>Gets historical authorization.</summary><value>Exact correlated evidence, not a grant.</value>
@@ -139,6 +145,17 @@ public sealed record AcceptedToolCall
         ArgumentException.ThrowIfNotEqual(correlation.RunId, runId, nameof(authorization));
         ArgumentException.ThrowIfNotEqual(correlation.TurnId, turnId, nameof(authorization));
         ArgumentException.ThrowIfNotEqual(correlation.OperationId, operationId, nameof(authorization));
+    }
+
+    /// <summary>Reads the in-run correlation that <see cref="ValidateAuthorization"/> already guaranteed is present.</summary>
+    /// <param name="authorization">Authorization evidence previously validated by <see cref="ValidateAuthorization"/>.</param>
+    /// <returns>The exact in-run correlation bound to <paramref name="authorization"/>'s scope.</returns>
+    internal static InRunOperationCorrelation RequireCorrelation(SecurityAuthorizationContext authorization)
+    {
+        Debug.Assert(
+            authorization.Scope.Correlation is InRunOperationCorrelation,
+            "ValidateAuthorization guarantees an in-run correlation before this accessor runs.");
+        return (InRunOperationCorrelation) authorization.Scope.Correlation;
     }
 
     /// <summary>Validates exact external-key evidence against the descriptor's idempotency classification.</summary>

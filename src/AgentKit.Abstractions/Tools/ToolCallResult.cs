@@ -108,7 +108,6 @@ public sealed record ToolCallResult
             ArgumentException.ThrowIfNotEqual(safe, true, nameof(retryable));
         }
 
-        AgentId = agentId; SessionId = sessionId; RunId = runId; TurnId = turnId; OperationId = operationId;
         CallId = callId; Authorization = authorization; GrantId = grantId; Acceptance = acceptance;
         ProviderAlias = providerAlias; ToolId = toolId; ToolVersion = toolVersion; Effects = effects;
         ExternalIdempotencyKey = externalIdempotencyKey; Admission = admission; Status = status; Content = content;
@@ -117,16 +116,21 @@ public sealed record ToolCallResult
         RequestedAt = requestedAt; InvocationStartedAt = invocationStartedAt; CompletedAt = completedAt; Extensions = extensions;
     }
 
-    /// <summary>Gets the owning agent.</summary><value>A nondefault identity.</value>
-    public AgentId AgentId { get; }
-    /// <summary>Gets the owning session.</summary><value>A nondefault identity.</value>
-    public SessionId SessionId { get; }
-    /// <summary>Gets the owning run.</summary><value>A nondefault identity.</value>
-    public RunId RunId { get; }
-    /// <summary>Gets the owning turn.</summary><value>A nondefault identity.</value>
-    public TurnId TurnId { get; }
-    /// <summary>Gets the operation.</summary><value>A nondefault identity.</value>
-    public OperationId OperationId { get; }
+    /// <summary>Gets the owning agent.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound scope, which the constructor validates against the supplied identity; never a second stored copy.</value>
+    public AgentId AgentId => Authorization.Scope.AgentId;
+    /// <summary>Gets the owning session.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound scope, which the constructor requires to be present and equal to the supplied identity; never a second stored copy.</value>
+    public SessionId SessionId => Authorization.Scope.SessionId!.Value;
+    /// <summary>Gets the owning run.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public RunId RunId => AcceptedToolCall.RequireCorrelation(Authorization).RunId;
+    /// <summary>Gets the owning turn.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public TurnId TurnId => AcceptedToolCall.RequireCorrelation(Authorization).TurnId!.Value;
+    /// <summary>Gets the operation.</summary>
+    /// <value>Read through <see cref="Authorization"/>'s bound in-run correlation; never a second stored copy.</value>
+    public OperationId OperationId => AcceptedToolCall.RequireCorrelation(Authorization).OperationId;
     /// <summary>Gets the call.</summary><value>A nondefault identity.</value>
     public ToolCallId CallId { get; }
     /// <summary>Gets historical authorization evidence.</summary><value>Exact correlation that grants no current authority.</value>

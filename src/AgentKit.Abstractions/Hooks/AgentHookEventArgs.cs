@@ -4,18 +4,25 @@
 namespace AgentKit;
 
 /// <summary>
-/// The immutable, read-only identity and causality shared by every
-/// boundary-specific hook event-argument type.
+/// The immutable, read-only causality and dispatch identity shared by every
+/// boundary-specific hook event-argument type, regardless of whether that
+/// boundary's stage has resolved an agent yet.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Every concrete hook point defines its own <see cref="EventArgs"/>-derived
-/// type deriving from this class, adding writable properties only for its
-/// own documented transformations. This base class exposes stable agent,
-/// session, causal-operation, timestamp, and hook-invocation identity; it
-/// deliberately never exposes a mutable engine, unrestricted history, a
-/// credential store, or a general service provider, so a hook cannot reach
-/// outside the bounded surface its point was designed to expose.
+/// type deriving from this class (typically through the intermediate
+/// <see cref="AgentScopedHookEventArgs"/> once its stage has an agent),
+/// adding writable properties only for its own documented transformations.
+/// This base class deliberately omits an agent or session identity, because
+/// engine construction can precede an <see cref="AgentId"/>, agent
+/// registration can precede a <see cref="SessionId"/>, and
+/// admission can precede a <see cref="RunId"/>; a base that
+/// required them would force an earlier-stage hook point to fabricate a
+/// value it does not truthfully have. It also never exposes a mutable
+/// engine, unrestricted history, a credential store, or a general service
+/// provider, so a hook cannot reach outside the bounded surface its point
+/// was designed to expose.
 /// </para>
 /// <para>
 /// This type carries no mutable state of its own and is safe to share
@@ -27,33 +34,21 @@ namespace AgentKit;
 public abstract class AgentHookEventArgs: EventArgs
 {
     /// <summary>Initializes a new instance of the <see cref="AgentHookEventArgs"/> class.</summary>
-    /// <param name="agentId">The agent this hook invocation occurred for.</param>
-    /// <param name="sessionId">The session this hook invocation relates to, when applicable.</param>
     /// <param name="correlation">The causal operation this hook invocation occurred within.</param>
     /// <param name="timestamp">The time this dispatch began, from the injected <see cref="TimeProvider"/>.</param>
     /// <param name="invocationId">The stable identity of this specific dispatch.</param>
     /// <exception cref="ArgumentNullException"><paramref name="correlation"/> is null.</exception>
     protected AgentHookEventArgs(
-        AgentId agentId,
-        SessionId? sessionId,
         OperationCorrelation correlation,
         DateTimeOffset timestamp,
         HookInvocationId invocationId)
     {
         ArgumentNullException.ThrowIfNull(correlation);
 
-        AgentId = agentId;
-        SessionId = sessionId;
         Correlation = correlation;
         Timestamp = timestamp;
         InvocationId = invocationId;
     }
-
-    /// <summary>Gets the agent this hook invocation occurred for.</summary>
-    public AgentId AgentId { get; }
-
-    /// <summary>Gets the session this hook invocation relates to, when applicable.</summary>
-    public SessionId? SessionId { get; }
 
     /// <summary>Gets the causal operation this hook invocation occurred within.</summary>
     public OperationCorrelation Correlation { get; }
