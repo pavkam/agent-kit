@@ -261,6 +261,19 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                         "The candidate could not be deserialized into the declared runtime type.",
                         [new OutputValidationIssue("deserialization-error", exception.Message, null)]));
             }
+            catch (Exception exception) when (exception is NotSupportedException or InvalidOperationException)
+            {
+                // System.Text.Json reports configuration-class problems this way: NotSupportedException for an
+                // interface/abstract RuntimeType, a type without a usable constructor, or an unsupported
+                // collection shape; InvalidOperationException for property-name collisions under
+                // PropertyNameCaseInsensitive or an invalid converter. These are definition-authoring mistakes
+                // discovered only once a candidate is actually deserialized, not a model-attributable
+                // deserialization failure worth spending a repair attempt on, and must not crash the run.
+                return new OutputConfigurationRejected(new OutputSchemaConfigurationFailure(
+                    OutputSchemaConfigurationFailureKind.UnsupportedRuntimeType,
+                    "The declared runtime type could not be used to deserialize a candidate.",
+                    [new OutputValidationIssue("unsupported-runtime-type", exception.Message, null)]));
+            }
         }
 
         var candidate = new ValidatedOutput(definition.Mode, extraction.Text, extraction.Json, deserialized);

@@ -5570,6 +5570,7 @@ namespace AgentKit
         UnresolvedReference = 3,
         ResourceLimitExceeded = 4,
         PreflightEvidenceMismatch = 5,
+        UnsupportedRuntimeType = 6,
     }
     public sealed class OutputSchemaEngineProfile : System.IEquatable<AgentKit.OutputSchemaEngineProfile>
     {

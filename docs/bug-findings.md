@@ -1211,6 +1211,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   model-attributable `DeserializationFailed` retry path), and/or preflight
   `RuntimeType` at registration via `JsonSerializerOptions.GetTypeInfo`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### L06 — Zero-effect caller cancellation is surfaced two different ways depending on adapter behaviour
 

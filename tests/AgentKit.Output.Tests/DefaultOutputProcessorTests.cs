@@ -412,6 +412,25 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_WhenRuntimeTypeIsAnInterface_ReturnsConfigurationRejectedInsteadOfThrowing()
+    {
+        // System.Text.Json reports configuration-class problems with NotSupportedException (an interface/abstract
+        // RuntimeType, a type without a usable constructor, unsupported collections) and InvalidOperationException
+        // (property-name collisions, invalid converters), not JsonException. Only JsonException was caught, so
+        // these escaped ProcessAsync as an unhandled fault instead of the typed OutputConfigurationRejected every
+        // other definition-authoring mistake in this class uses.
+        var processor = CreateProcessor();
+        var schema = TestFactory.Schema( /*lang=json,strict*/"""{"type":"object"}""");
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: schema, runtimeType: typeof(IDisposable));
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson( /*lang=json,strict*/"""{"name":"agent"}"""));
+
+        var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<OutputConfigurationRejected>();
+        rejected.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedRuntimeType);
+    }
+
+    [Fact]
     public async Task ProcessAsync_WhenCandidateExceedsMaximumBytes_ReturnsOversizedCandidateFailure()
     {
         var processor = CreateProcessor(options => options.MaximumCandidateBytes = 4);

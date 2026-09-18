@@ -18,4 +18,6 @@ public enum OutputSchemaConfigurationFailureKind
     ResourceLimitExceeded,
     /// <summary>Captured preflight evidence does not describe the evaluated schema.</summary>
     PreflightEvidenceMismatch,
+    /// <summary>The declared runtime deserialization type cannot be constructed by the JSON serializer.</summary>
+    UnsupportedRuntimeType,
 }
