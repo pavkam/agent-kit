@@ -113,12 +113,6 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>The longest single backoff between settlement retries.</summary>
     private static readonly TimeSpan _settlementRetryMaxDelay = TimeSpan.FromSeconds(2);
 
-    /// <summary>
-    /// The single immutable run-policy version of this reduced loop. Its continuation-relevant behaviour is fixed
-    /// in code rather than compiled from a per-agent policy snapshot, so every evaluation names the same version.
-    /// </summary>
-    private static readonly RunPolicyVersion _policyVersion = new(1);
-
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
@@ -1497,6 +1491,19 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ConfigureAwait(false);
     }
 
+    /// <summary>Rebuilds the <see cref="AgentLoopOptions"/> this instance resolved at construction, for policy-version computation.</summary>
+    /// <returns>A fresh options instance carrying exactly this instance's captured resolved values.</returns>
+    private AgentLoopOptions EffectiveLoopOptions() => new()
+    {
+        HistoryReadPageSize = _historyReadPageSize,
+        AppendConflictRetryLimit = _appendConflictRetryLimit,
+        DisableToolsOnFinalTurn = _disableToolsOnFinalTurn,
+        SettlementTimeout = _settlementTimeout,
+        ObserverDeliveryTimeout = _observerDeliveryTimeout,
+        ContextPressureThreshold = _contextPressureThreshold,
+        EstimatedCharactersPerToken = _estimatedCharactersPerToken,
+    };
+
     /// <summary>
     /// Asks the selected <see cref="IRunContinuationPolicy"/> what happens after one committed turn and maps its
     /// proposal onto the loop's own transition.
@@ -1530,8 +1537,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <para>
     /// This reduced loop drives one implicit execution lane per branch, so the lane identity is the branch
     /// identity; its operation-state revision is the turn number, which advances with every committed turn; and
-    /// its policy version is <see cref="_policyVersion"/>, the single immutable snapshot of the loop's fixed
-    /// behaviour. The reduced loop projects every result of a batch into one tool message entry, so there is
+    /// its policy version is computed by <see cref="RunPolicyVersioning.Compute"/> from the run's effective turn
+    /// limit and attempt timeout, the selected continuation policy key, and this instance's resolved
+    /// <see cref="AgentLoopOptions"/>, so a change to any of those — including a live options reload that never
+    /// advances the owning <see cref="AgentDefinition"/>'s revision — names a different version. The reduced loop
+    /// projects every result of a batch into one tool message entry, so there is
     /// exactly one real <see cref="SessionEntryId"/> for a batch of any size. Because
     /// <see cref="CommittedTurnContinuationBoundary"/> requires a distinct <see cref="SessionEntryId"/> per
     /// reference, every entry in <paramref name="toolResults"/> for a batch of more than one call already
@@ -1560,6 +1570,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(turnCorrelation.TurnId is not null, "Continuation is decided for one committed turn.");
         Debug.Assert(assistantMessage.State == MessageState.Complete, "Only a committed complete response reaches continuation.");
         var turnId = turnCorrelation.TurnId.Value;
+        var policyVersion = RunPolicyVersioning.Compute(
+            request.MaxTurns, request.AttemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey, EffectiveLoopOptions());
 
         RunContinuationContext context;
         try
@@ -1575,7 +1587,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new SessionBranchCursor(request.BranchId, lastEntryId),
                 nextCursor.Sequence,
                 request.Authorization.ConfigurationVersion,
-                _policyVersion,
+                policyVersion,
                 new CommittedTurnContinuationBoundary(
                     assistantMessage, toolResults, outputDecision, requiresOutputValidation: outputDecision is not null),
                 requiredStopOutcome: null,
