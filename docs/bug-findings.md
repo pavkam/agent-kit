@@ -1453,6 +1453,7 @@ foreach (var candidate in selection.Aliases.Values)
   add a test that binds an authored alias to another existing identity and
   expects `InvalidOperationException`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T03 — Patch hunks with a `\ No newline at end of file` tail are not end-anchored and can match a line prefix
 

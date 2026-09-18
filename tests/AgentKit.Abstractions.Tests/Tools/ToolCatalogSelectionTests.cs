@@ -40,6 +40,25 @@ public sealed class ToolCatalogSelectionTests
     }
 
     [Fact]
+    public void Constructor_WhenAnAuthoredAliasIsRedirectedToADifferentTool_RejectsExactParameter()
+    {
+        // A custom IToolCatalogMergePolicy is a replaceable DI service and could otherwise return
+        // { "read": <candidate for tool Y> } when "read" was authored only for tool X - alias redirection to a
+        // different tool, which the invariants forbid ("explicit alias evidence must remain coherent", "cannot
+        // ... infer aliases"). This must be rejected here, at construction, before a selection carrying it can
+        // ever reach ToolCatalogMergeGraph.Apply: Aliases has no init accessor and this is the only public
+        // constructor, so there is no way to produce a ToolCatalogSelection that disagrees with this check.
+        var toolX = ToolCatalogMergeTestData.Candidate(id: "tool.x", alias: "read");
+        var toolY = ToolCatalogMergeTestData.Candidate(key: "tools2", source: "source2", id: "tool.y", alias: "write");
+
+        Exact<ArgumentException>(
+            () => _ = new ToolCatalogSelection(
+                [toolX, toolY],
+                ImmutableDictionary<ToolAlias, ToolCatalogCandidate>.Empty.Add(new ToolAlias("read"), toolY)),
+            "aliases");
+    }
+
+    [Fact]
     public void Constructor_WhenComparerWeakensAliasIdentity_RejectsNormalizedCollisionsAndWrongCase()
     {
         var candidate = ToolCatalogMergeTestData.Candidate();
