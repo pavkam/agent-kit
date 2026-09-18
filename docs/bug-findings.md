@@ -1616,6 +1616,7 @@ return new WebContentProjection(
   `char.IsHighSurrogate(text[max - 1])`, or enumerate runes as `ToolPresenter`
   does).
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T08 — `AddAgentTools` and `AddTool<TTool>` omit the `services` null guard required at public boundaries
 

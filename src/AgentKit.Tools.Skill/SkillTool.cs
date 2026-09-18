@@ -164,9 +164,16 @@ public sealed class SkillTool: ITool
             bytes = snapshot.Content.Length,
             truncated,
             instruction_authority = false,
-            content = truncated ? content[.._maximumCharacters] : content,
+            content = truncated ? content[..TruncationLength(content, _maximumCharacters)] : content,
         }), "Activated");
     }
+
+    /// <summary>
+    /// Backs off one UTF-16 code unit from <paramref name="maximum"/> when the cut would otherwise land
+    /// between a high and low surrogate, so truncation never emits a lone surrogate.
+    /// </summary>
+    private static int TruncationLength(string value, int maximum) =>
+        maximum > 0 && char.IsHighSurrogate(value[maximum - 1]) ? maximum - 1 : maximum;
 
     private static bool TryArguments(JsonElement arguments, out string? action, out SkillId id)
     {

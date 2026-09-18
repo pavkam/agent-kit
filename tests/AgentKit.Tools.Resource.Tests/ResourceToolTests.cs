@@ -103,6 +103,26 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
+    {
+        // text[..maximumCharacters] sliced on UTF-16 code units. "ab\U0001F600" is ['a','b',HighSurrogate,
+        // LowSurrogate] (4 code units); a maximum of 3 lands exactly between the high and low surrogate. Cutting
+        // there must back off to 2 instead of emitting a lone high surrogate.
+        var options = OptionsForTool();
+        options.MaximumCharacters = 3;
+        var reader = new RecordingSnapshotReader
+        {
+            Result = RecordingSnapshotReader.Success("ab\U0001F600cd")
+        };
+
+        var result = await Tool(reader, new RecordingSecurityAuthority(), options).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
+
+        using var json = Json(result);
+        json.RootElement.GetProperty("content").GetString().ShouldBe("ab");
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenIntegrityPinDiffers_ReturnsFailureWithoutContent()
     {
         var options = OptionsForTool(expectedHash: new ContentHash("sha256:wrong"));

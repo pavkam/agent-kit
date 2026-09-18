@@ -51,7 +51,7 @@ internal static class WebContentProjector
         var text = IsHtml(mediaType) ? HtmlToText(decoded) : decoded;
         var truncated = text.Length > maximumCharacters;
         return new WebContentProjection(
-            truncated ? text[..maximumCharacters] : text,
+            truncated ? text[..TruncationLength(text, maximumCharacters)] : text,
             mediaType,
             declared,
             sniffed,
@@ -59,6 +59,22 @@ internal static class WebContentProjector
             transform,
             truncated);
     }
+
+    /// <summary>
+    /// Backs off one UTF-16 code unit from <paramref name="maximumCharacters"/> when the cut would otherwise
+    /// land between a high and low surrogate.
+    /// </summary>
+    /// <param name="text">The text a caller intends to slice at <paramref name="maximumCharacters"/> code units.</param>
+    /// <param name="maximumCharacters">The requested, positive UTF-16 code-unit boundary; less than <paramref name="text"/>'s length.</param>
+    /// <returns>
+    /// <paramref name="maximumCharacters"/> unchanged, or one less when slicing there would split a surrogate
+    /// pair and emit a lone surrogate that a strict UTF-8 consumer or <see cref="System.Text.Json.JsonSerializer"/>
+    /// would then render as replacement or escaped garbage.
+    /// </returns>
+    private static int TruncationLength(string text, int maximumCharacters) =>
+        maximumCharacters > 0 && char.IsHighSurrogate(text[maximumCharacters - 1])
+            ? maximumCharacters - 1
+            : maximumCharacters;
 
     private static string? ParseContentType(string? value, out string? charset)
     {

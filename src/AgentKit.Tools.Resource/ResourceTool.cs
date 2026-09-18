@@ -185,10 +185,17 @@ public sealed class ResourceTool: ITool
             bytes = snapshot.Content.Length,
             instruction_authority = false,
             truncated,
-            content = truncated ? text[.._maximumCharacters] : text,
+            content = truncated ? text[..TruncationLength(text, _maximumCharacters)] : text,
         });
         return Success(projection, "Read");
     }
+
+    /// <summary>
+    /// Backs off one UTF-16 code unit from <paramref name="maximum"/> when the cut would otherwise land
+    /// between a high and low surrogate, so truncation never emits a lone surrogate.
+    /// </summary>
+    private static int TruncationLength(string value, int maximum) =>
+        maximum > 0 && char.IsHighSurrogate(value[maximum - 1]) ? maximum - 1 : maximum;
 
     private ToolInvocationResult List()
     {

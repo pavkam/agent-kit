@@ -38,6 +38,21 @@ public sealed class WebContentProjectorTests
         Should.Throw<ArgumentOutOfRangeException>(() => WebContentProjector.Project([0x41], "text/plain", 0));
 
     [Fact]
+    public void Project_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
+    {
+        // text[..maximumCharacters] slices on UTF-16 code units. "hi\U0001F600" is ['h','i',HighSurrogate,
+        // LowSurrogate] (4 code units); a maximumCharacters of 3 lands exactly between the high and low
+        // surrogate. Cutting there must back off to 2 instead of emitting a lone high surrogate that
+        // JsonSerializer would render as replacement or escaped garbage.
+        var bytes = Encoding.UTF8.GetBytes("hi\U0001F600");
+
+        var projection = WebContentProjector.Project(bytes, "text/plain; charset=utf-8", 3);
+
+        projection.Text.ShouldBe("hi");
+        projection.Truncated.ShouldBeTrue();
+    }
+
+    [Fact]
     public void Project_WhenMediaTypeUnsupported_ThrowsTypedContentFailure()
     {
         var action = () => WebContentProjector.Project(Encoding.UTF8.GetBytes("binary-ish"), "image/png", 100);

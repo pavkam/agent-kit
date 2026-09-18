@@ -142,6 +142,33 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
+    {
+        // Truncate sliced on UTF-16 code units. "AB\U0001F600" is ['A','B',HighSurrogate,LowSurrogate] (4 code
+        // units); a maximum of 3 lands exactly between the high and low surrogate. Cutting there must back off
+        // to 2 instead of emitting a lone high surrogate that JsonSerializer would render as replacement or
+        // escaped garbage.
+        var provider = new EnforcingSearchProvider
+        {
+            Result = static request => new WebSearchSucceeded(
+                request.Id, [new WebSearchItem("AB\U0001F600", new Uri("https://example.com/1"), "s", null)], true),
+        };
+        var options = new WebSearchToolOptions
+        {
+            DefaultMaximumResults = 1,
+            MaximumResults = 1,
+            MaximumTitleCharacters = 3,
+            MaximumSnippetCharacters = 3,
+        };
+
+        var result = await Tool(provider, new RecordingSecurityAuthority(), options: options).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"query\":\"q\"}"), TestContext.Current.CancellationToken);
+
+        using var json = Json(result);
+        json.RootElement.GetProperty("results")[0].GetProperty("title").GetString().ShouldBe("AB");
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenProviderReturnsDifferentRequest_FailsClosed()
     {
         var provider = new EnforcingSearchProvider

@@ -370,7 +370,14 @@ public sealed class WebSearchTool: ITool
     }
 
     private static string Truncate(string value, int maximum) =>
-        value.Length <= maximum ? value : value[..maximum];
+        value.Length <= maximum ? value : value[..TruncationLength(value, maximum)];
+
+    /// <summary>
+    /// Backs off one UTF-16 code unit from <paramref name="maximum"/> when the cut would otherwise land
+    /// between a high and low surrogate, so truncation never emits a lone surrogate.
+    /// </summary>
+    private static int TruncationLength(string value, int maximum) =>
+        maximum > 0 && char.IsHighSurrogate(value[maximum - 1]) ? maximum - 1 : maximum;
 
     private static DateTimeOffset Min(DateTimeOffset first, DateTimeOffset second) => first <= second ? first : second;
 
