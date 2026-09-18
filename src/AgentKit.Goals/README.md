@@ -15,6 +15,15 @@ Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).
 
+## First-party channel
+
+`AgentKit` (the facade) provides `EngineDelegationChannel`, registered with
+`AddEngineDelegationChannel()`: it runs a delegated task as one turn of the
+target agent on the same engine, in a new session under the delegating identity,
+and returns the child's real session and run identities with a bounded summary.
+`AgentKit.Simple.WithDelegation()` composes the tool, the broker, and that
+channel together.
+
 ## Related projects
 
 - [AgentKit.Tools.Task](../AgentKit.Tools.Task/README.md) — request bounded task

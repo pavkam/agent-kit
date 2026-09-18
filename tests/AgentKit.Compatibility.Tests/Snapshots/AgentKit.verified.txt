@@ -85,11 +85,22 @@ namespace AgentKit
         public AgentKit.AgentId AgentId { get; }
         public AgentKit.SessionId SessionId { get; }
     }
+    public sealed class EngineDelegationChannel : AgentKit.ITaskDelegationChannel
+    {
+        public EngineDelegationChannel(System.IServiceProvider services, System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.GoalId> goalIds, Microsoft.Extensions.Options.IOptions<AgentKit.EngineDelegationChannelOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.EngineDelegationChannel>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationPrompt prompt, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class EngineDelegationChannelOptions
+    {
+        public EngineDelegationChannelOptions() { }
+        public int MaximumSummaryCharacters { get; set; }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKit() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEngineDelegationChannel(System.Action<AgentKit.EngineDelegationChannelOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgent(AgentKit.AgentDefinition definition, int precedence = 0) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentRunProfilePublication(AgentKit.AgentRunProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSnapshot(AgentKit.AgentDefinitionSourceSnapshot snapshot) { }

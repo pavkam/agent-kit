@@ -36,6 +36,12 @@ run concurrently; a `Reject` profile fails a contender with
 `AgentSessionBusyException`. `Agent.RunAsync(AgentRunOptions)` remains for a
 caller that already admitted input into an existing session and branch.
 
+`AddEngineDelegationChannel()` registers the engine-backed
+`ITaskDelegationChannel`: with `AgentKit.Goals`'s broker and the `task` tool,
+one hosted agent can delegate a bounded task to another, which runs as one turn
+in its own session and returns a summary with its real session and run
+identities.
+
 In a .NET host, `AddAgentKit()` registers the same engine and validation into
 the host's `IServiceCollection` and leaves provider disposal to the host. Start
 with `AddAgentKit`, `AddAgent`, and `AddAgentRunProfilePublication` in

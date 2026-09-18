@@ -617,6 +617,48 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public void WithDelegation_WhenBuilderIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithDelegation()).ParamName.ShouldBe("builder");
+
+    [Fact]
+    public async Task WithDelegation_WhenTheLeadDelegates_TheSpecialistRunsOnTheSameEngineAndItsAnswerReturnsThroughTheTool()
+    {
+        var specialist = new AgentId(Guid.Parse("7a000000-0000-0000-0000-000000000009"));
+        var delegation = $$"""tool:task:{"target_agent_id":"{{specialist.Value}}","objective":"Find the retry policy.","acceptance_criteria":["Name the file."],"allowed_tools":[]}""";
+        // Turn 1 of the lead: call task. The specialist's single turn answers. Turn 2 of the lead: final answer.
+        var handler = new StubOpenAIHandler(delegation, "It is in RetryPolicy.cs.", "The specialist found it in RetryPolicy.cs.");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithInstructions("You are the lead.")
+            .AddAgent(specialist, static o =>
+            {
+                o.DisplayName = "specialist";
+                o.Instructions.Add("You are the specialist.");
+                o.IncludeRegisteredTools = false;
+            })
+            .WithDelegation();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("Where is the retry policy?", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResult = result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem();
+        toolResult.ToolName.ShouldBe("task");
+        toolResult.Succeeded.ShouldBeTrue();
+        handler.Bodies.Count.ShouldBe(3);
+        handler.Bodies[0].ShouldContain("\"name\":\"task\"");
+        handler.Bodies[1].ShouldContain("You are the specialist.");
+        handler.Bodies[1].ShouldContain("Find the retry policy.");
+        handler.Bodies[1].ShouldNotContain("\"name\":\"task\"");
+        handler.Bodies[2].ShouldContain("RetryPolicy.cs");
+        var specialistSessions = await (await engine.GetAgentAsync(specialist, TestContext.Current.CancellationToken))!
+            .SendAsync(new AgentSendRequest(engine.Identity, "and now?"), TestContext.Current.CancellationToken);
+        _ = specialistSessions.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
     public async Task Build_WhenAnotherProviderIsRegisteredOnServices_UseModelSelectsIt()
     {
         var handler = new StubOpenAIHandler("via alias");

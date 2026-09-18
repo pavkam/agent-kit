@@ -9,6 +9,7 @@ global using AgentKit.Context;
 global using AgentKit.Context.Compaction;
 global using AgentKit.Conversations;
 global using AgentKit.FileSystem;
+global using AgentKit.Goals;
 global using AgentKit.Hooks;
 global using AgentKit.Identity;
 global using AgentKit.Loop;
@@ -30,6 +31,7 @@ global using AgentKit.Tools.Glob;
 global using AgentKit.Tools.List;
 global using AgentKit.Tools.Read;
 global using AgentKit.Tools.Search;
+global using AgentKit.Tools.Task;
 global using AgentKit.Tools.Write;
 
 global using Microsoft.Extensions.DependencyInjection;

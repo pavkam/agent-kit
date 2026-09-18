@@ -75,6 +75,36 @@ public static class ServiceExtensions
         }
 
         /// <summary>
+        /// Registers <see cref="EngineDelegationChannel"/> as the <see cref="ITaskDelegationChannel"/> the delegation
+        /// broker hands authorized prompts to, so a delegated task runs as one turn of the target agent on this
+        /// engine.
+        /// </summary>
+        /// <param name="configure">Optional channel bounds.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Idempotent (<c>TryAdd</c>). Pair with <c>AddAgentDelegation</c> from <c>AgentKit.Goals</c> and
+        /// <c>AddTaskTool</c> from <c>AgentKit.Tools.Task</c>; the target agents must be published on the same engine.
+        /// A <see cref="GoalId"/> generator is registered when absent.
+        /// </remarks>
+        public IServiceCollection AddEngineDelegationChannel(Action<EngineDelegationChannelOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            var options = services.AddOptions<EngineDelegationChannelOptions>()
+                .Validate(static o => o.MaximumSummaryCharacters > 0, "MaximumSummaryCharacters must be positive.");
+            if (configure is not null)
+            {
+                _ = options.Configure(configure);
+            }
+
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IIdentifierGenerator<GoalId>>(
+                new DelegateIdentifierGenerator<GoalId>(static () => new GoalId(Guid.NewGuid())));
+            services.TryAddSingleton<ITaskDelegationChannel, EngineDelegationChannel>();
+            return services;
+        }
+
+        /// <summary>
         /// Publishes one agent definition to the engine-wide catalog.
         /// </summary>
         /// <param name="definition">The immutable definition to publish.</param>

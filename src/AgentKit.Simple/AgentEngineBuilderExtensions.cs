@@ -517,6 +517,31 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
+        /// Lets agents on this engine delegate work to one another: registers the <c>task</c> tool, the delegation
+        /// broker, and the engine-backed channel that runs a delegated task as one turn of the target agent in a new
+        /// session under the delegating identity.
+        /// </summary>
+        /// <param name="configure">Optional ceilings for the <c>task</c> tool's model-facing arguments.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <remarks>
+        /// Every agent the tool is advertised to may delegate to any agent published on the engine (the default one
+        /// and each <see cref="AddAgent"/>). To keep a specialist from delegating further, give it
+        /// <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> <c>false</c> or exclude <c>task</c> through
+        /// <c>AgentToolsOptions.AllowedToolIds</c>. The child's turn budget is the narrower of the request and the
+        /// target's own limit, and only its final answer, bounded, flows back to the parent.
+        /// </remarks>
+        public AgentEngineBuilder WithDelegation(Action<TaskToolOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            _ = Plan(builder);
+            _ = builder.Services.AddEngineDelegationChannel();
+            _ = builder.Services.AddAgentDelegation();
+            _ = builder.Services.AddTaskTool(configure);
+            return builder;
+        }
+
+        /// <summary>
         /// Keeps long conversations inside the model's context window: when the history the loop is about to send
         /// exceeds a fraction of the selected model's declared window, older entries are summarized into a durable
         /// compaction checkpoint and the request is rebuilt from it.

@@ -34,6 +34,7 @@
     <ProjectReference Include="../AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>
     <ProjectReference Include="../AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <ProjectReference Include="../AgentKit.Goals/AgentKit.Goals.csproj"/>
     <ProjectReference Include="../AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <ProjectReference Include="../AgentKit.Identity/AgentKit.Identity.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
@@ -41,6 +42,7 @@
     <ProjectReference Include="../AgentKit.Tools.Edit/AgentKit.Tools.Edit.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Glob/AgentKit.Tools.Glob.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Search/AgentKit.Tools.Search.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Task/AgentKit.Tools.Task.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.List/AgentKit.Tools.List.csproj"/>
     <ProjectReference Include="../AgentKit.Tools/AgentKit.Tools.csproj"/>
   </ItemGroup>

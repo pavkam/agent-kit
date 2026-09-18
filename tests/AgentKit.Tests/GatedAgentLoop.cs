@@ -26,6 +26,9 @@ internal sealed class GatedAgentLoop: IAgentLoop
     /// <summary>Gets the highest number of runs that were inside the loop at the same time.</summary>
     public int PeakConcurrency { get; private set; }
 
+    /// <summary>Gets or sets a factory that replaces the completed outcome, for settlement tests.</summary>
+    public Func<AgentRunRequest, AgentRunOutcome>? OutcomeOverride { get; init; }
+
     private int _active;
 
     /// <inheritdoc/>
@@ -69,7 +72,10 @@ internal sealed class GatedAgentLoop: IAgentLoop
                     ModelUsage.NotReported,
                     ExtensionData.Empty),
                 ExtensionData.Empty);
-            return new AgentLoopResult(request.AgentId, request.SessionId, request.BranchId, request.RunId, new AgentRunCompleted(assistant), [assistant], new SessionVersion(1));
+            var outcome = OutcomeOverride?.Invoke(request) ?? new AgentRunCompleted(assistant);
+            return new AgentLoopResult(
+                request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome,
+                outcome is AgentRunCompleted ? [assistant] : [], new SessionVersion(1));
         }
         finally
         {

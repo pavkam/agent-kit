@@ -49,10 +49,8 @@ static AgentEngine CreateTeam(string repoRoot, string designRoot, string apiKey)
             o.MaxTurns = 15;
         });
 
-    // The lead delegates through the task tool; the channel resolves the target on this same engine.
-    builder.Services.AddSingleton<ITaskDelegationChannel>(sp => new SpecialistChannel(sp.GetRequiredService<AgentEngine>()));
-    builder.Services.AddAgentDelegation();
-    builder.Services.AddTaskTool(o =>
+    // The task tool, the delegation broker, and the engine-backed channel that runs the child.
+    builder.WithDelegation(o =>
     {
         o.DefaultMaximumTurns = 15;
         o.DefaultMaximumToolCalls = 40;
@@ -70,57 +68,25 @@ The `task` tool exposes `target_agent_id`, `objective`, `acceptance_criteria`,
 `allowed_tools`, `max_turns`, `max_tool_calls`, and `timeout_seconds` to the
 model, clamps them to the configured ceilings, and asks the broker to delegate.
 The broker issues a `SecurityRequest` of kind `Delegation` and forwards the
-prompt with the grant to your channel. Registering the engine itself as a
-singleton service is what lets the channel find the specialists; a standalone
-`AgentEngine` owns its provider, so resolve it lazily as shown rather than
-capturing it before `Build()`.
+prompt with the grant to the channel.
 
-## Write the channel
+## What the channel does
 
-The channel turns a delegation into one turn of the target agent on the same
-engine. The child runs in its own session under the parent's identity, deadline,
-and turn budget, and only its summary flows back:
+`WithDelegation` registers `EngineDelegationChannel`, the first-party
+`ITaskDelegationChannel`. It resolves the target through
+`engine.GetAgentAsync(prompt.TargetAgentId)`, so only agents published on this
+engine can be delegated to; sends the objective and acceptance criteria as one
+turn of that agent in a new session under the parent's identity, bounded by the
+prompt's deadline and the narrower of its turn budget and the target's own
+limit; and returns a `TaskDelegationChildResult` carrying the child's real
+`SessionId` and `RunId`, a status mapped from the run outcome, the child's final
+answer bounded to `MaximumSummaryCharacters`, and a side-effect certainty
+derived from the child's tool results. An unknown target, an expired deadline,
+or a rejected admission is a typed `TaskDelegationRejected`.
 
-```csharp
-sealed class SpecialistChannel(AgentEngine engine) : ITaskDelegationChannel
-{
-    public async ValueTask<TaskDelegationResult> DelegateAsync(TaskDelegationPrompt prompt, CancellationToken cancellationToken = default)
-    {
-        var specialist = await engine.GetAgentAsync(prompt.TargetAgentId, cancellationToken);
-        if (specialist is null)
-        {
-            return new TaskDelegationRejected(prompt.Id, "Unknown specialist.");
-        }
-
-        using var deadline = new CancellationTokenSource(prompt.Deadline - DateTimeOffset.UtcNow);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-
-        var objective = $"{prompt.Objective}\n\nAcceptance criteria:\n- {string.Join("\n- ", prompt.AcceptanceCriteria)}";
-        var result = await specialist.SendAsync(
-            new AgentSendRequest(prompt.Identity, objective, maxTurns: prompt.Budget.MaximumTurns),
-            linked.Token);
-
-        var summary = string.Concat(result.NewMessages.OfType<AssistantMessage>()
-            .SelectMany(m => m.Parts.OfType<TextPart>()).Select(p => p.Text));
-
-        return new TaskDelegationChildResult(
-            prompt.Id,
-            new GoalId(Guid.NewGuid()),
-            prompt.TargetAgentId,
-            result.SessionId,                 // the child's real session on this engine
-            childAttemptId: null,
-            result.RunId,
-            result.Outcome switch
-            {
-                AgentRunCompleted => TaskDelegationStatus.Succeeded,
-                AgentRunCancelled => TaskDelegationStatus.Cancelled,
-                _ => TaskDelegationStatus.Failed,
-            },
-            summary.Length <= 16_000 ? summary : summary[..16_000],
-            SideEffectCertainty.DefinitelyNotPerformed);
-    }
-}
-```
+To write your own channel (for example to run children on another engine or
+through a queue), implement `ITaskDelegationChannel` and register it before
+calling `WithDelegation`; the sugar's `TryAdd` keeps yours.
 
 The specialists have no `task` tool, so a specialist cannot delegate again, and
 the shared `ReadOnlyWorkspacePolicy` (from
@@ -182,10 +148,10 @@ sessions are visible through the engine's session directory.
 
 ## Status
 
-The broker (`AgentKit.Goals`), the `task` tool, and multi-agent hosting on one
-engine are implemented; the channel is the host's, as shown. What the
-architecture describes beyond this, durable goal and attempt records, joins over
-several children, and worker hosting for detached child work, is tracked in the
+The broker, the `task` tool, multi-agent hosting on one engine, and the
+engine-backed channel are implemented. What the architecture describes beyond
+this, durable goal and attempt records, joins over several children, and worker
+hosting for detached child work, is tracked in the
 [implementation ledger](../implementation-progress.md#component-coverage). Until
 then a child is a synchronous run inside the parent's tool call, bounded by the
 deadline it was given.
