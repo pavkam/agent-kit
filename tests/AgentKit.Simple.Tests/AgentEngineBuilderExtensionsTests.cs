@@ -265,7 +265,7 @@ public sealed class AgentEngineBuilderExtensionsTests
 
     [Fact]
     public void WithOutputOfT_WhenSchemaIsNotJson_ThrowsJsonException() =>
-        _ = Should.Throw<System.Text.Json.JsonException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{not json"));
+        _ = Should.Throw<JsonException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{not json"));
 
     [Fact]
     public void WithOutputOfT_WhenNameIsWhitespace_ThrowsArgumentException() =>
@@ -281,7 +281,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         await using var engine = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
-            .WithOutput<int>("""{"type":"object","properties":{"n":{"type":"integer"}}}""", name: "count", maximumRepairAttempts: 3)
+            .WithOutput<int>(/*lang=json,strict*/ """{"type":"object","properties":{"n":{"type":"integer"}}}""", name: "count", maximumRepairAttempts: 3)
             .Build();
 
         var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();

@@ -1249,8 +1249,8 @@ public sealed class DefaultConversationSessionTests
         {
             ResultFactory = request => new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                new AgentRunCompleted(FakeMessages.Assistant(request, "{\"ok\":\"yes\"}")) { Output = output },
-                [FakeMessages.Assistant(request, "{\"ok\":\"yes\"}")],
+                new AgentRunCompleted(FakeMessages.Assistant(request, /*lang=json,strict*/ "{\"ok\":\"yes\"}")) { Output = output },
+                [FakeMessages.Assistant(request, /*lang=json,strict*/ "{\"ok\":\"yes\"}")],
                 new SessionVersion(1)),
         };
         var observer = new RecordingConversationEventObserver();
@@ -1339,7 +1339,7 @@ public sealed class DefaultConversationSessionTests
 
     private static OutputDefinition TestOutputDefinition() => new(
         new OutputDefinitionId("answer"), new OutputDefinitionVersion("1"), "answer", OutputMode.Prompted,
-        new JsonSchemaDocument("answer", new SchemaVersion("1"), System.Text.Json.JsonDocument.Parse("""{"type":"object"}""").RootElement),
+        new JsonSchemaDocument("answer", new SchemaVersion("1"), JsonDocument.Parse("""{"type":"object"}""").RootElement),
         typeof(Answer), alternatives: [], validators: [],
         OutputValidationPolicy.RejectOnFirstFailure, new OutputRetryPolicy(1), OutputEndStrategy.Graceful);
 

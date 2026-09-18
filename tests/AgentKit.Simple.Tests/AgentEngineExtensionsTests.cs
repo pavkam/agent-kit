@@ -30,11 +30,11 @@ public sealed class AgentEngineExtensionsTests
     [Fact]
     public async Task AskAsyncOfT_WhenTheModelAnswersWithValidJson_ReturnsTheDeserializedValue()
     {
-        var handler = new StubOpenAIHandler("""{"category":"billing","priority":2}""");
+        var handler = new StubOpenAIHandler(/*lang=json,strict*/ """{"category":"billing","priority":2}""");
         var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
-            .WithOutput<Triage>("""{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"],"additionalProperties":false}""");
+            .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"],"additionalProperties":false}""");
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -49,11 +49,11 @@ public sealed class AgentEngineExtensionsTests
     [Fact]
     public async Task AskAsyncOfT_WhenTheFirstAnswerIsInvalid_AsksTheModelToRepairAndReturnsTheSecond()
     {
-        var handler = new StubOpenAIHandler("not json at all", """{"category":"billing","priority":1}""");
+        var handler = new StubOpenAIHandler("not json at all", /*lang=json,strict*/ """{"category":"billing","priority":1}""");
         var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
-            .WithOutput<Triage>("""{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"]}""");
+            .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"]}""");
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -73,7 +73,7 @@ public sealed class AgentEngineExtensionsTests
         var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
-            .WithOutput<Triage>("""{"type":"object"}""", maximumRepairAttempts: 1);
+            .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object"}""", maximumRepairAttempts: 1);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -98,11 +98,11 @@ public sealed class AgentEngineExtensionsTests
     [Fact]
     public async Task AskAsyncOfT_WhenTheOutputIsAnotherType_ThrowsSimpleAgentException()
     {
-        var handler = new StubOpenAIHandler("""{"category":"x","priority":1}""");
+        var handler = new StubOpenAIHandler(/*lang=json,strict*/ """{"category":"x","priority":1}""");
         var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
-            .WithOutput<Triage>("""{"type":"object"}""");
+            .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object"}""");
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 

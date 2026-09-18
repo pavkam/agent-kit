@@ -26,7 +26,7 @@ internal static class HookPointEventArgsTestData
     public static LlmRequestContext Request(LlmRequestSettings? settings = null) => new(
         new ModelRequestId(Guid.NewGuid()), Model, [], [], LlmToolChoice.Auto, settings ?? LlmRequestSettings.Default, ExtensionData.Empty);
 
-    public static ToolCallPart Call(string argumentsJson = """{"path":"a.txt"}""") => new(
+    public static ToolCallPart Call(string argumentsJson = /*lang=json,strict*/ """{"path":"a.txt"}""") => new(
         new ToolCallId(Guid.NewGuid()),
         new ToolReference(new ToolAlias("read_file"), null, null),
         JsonDocument.Parse(argumentsJson).RootElement.Clone(),

@@ -142,7 +142,7 @@ public sealed class SimpleAgentPlanTests
     {
         public ToolDescriptor Descriptor { get; } = new(
             new ToolId(name), new ToolVersion("1.0"), name, $"Tool {name}.",
-            new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), System.Text.Json.JsonDocument.Parse("{}").RootElement),
+            new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), JsonDocument.Parse("{}").RootElement),
             outputSchema: null,
             new ToolEffects(ToolEffect.ReadOnly, null, null),
             new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),

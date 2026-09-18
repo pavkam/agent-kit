@@ -2827,7 +2827,7 @@ public sealed class DefaultAgentLoopTests
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var processor = new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request, value: 42));
-        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId, """{"ok":true}"""), outputProcessor: processor);
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId, /*lang=json,strict*/ """{"ok":true}"""), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var definition = ScriptedOutputProcessor.Definition();
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = definition };
@@ -2854,7 +2854,7 @@ public sealed class DefaultAgentLoopTests
         var assembler = new RecordingContextAssembler();
         var loop = CreateLoop(
             out var coordinator, out _,
-            _ => TestFactory.CompletedWithText(requestId, ++modelCalls == 1 ? "not json" : """{"ok":true}"""),
+            _ => TestFactory.CompletedWithText(requestId, ++modelCalls == 1 ? "not json" : /*lang=json,strict*/ """{"ok":true}"""),
             contextAssembler: assembler,
             outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
@@ -3008,7 +3008,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => { modelCalls++; hook.ModelCallsWhenInvoked ??= modelCalls; return TestFactory.CompletedWithText(requestId); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(), runStartedHooks: [hook]);
+            hookDispatcher: new Hooks.DefaultHookDispatcher(), runStartedHooks: [hook]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
@@ -3029,7 +3029,7 @@ public sealed class DefaultAgentLoopTests
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(
             out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             runStartedHooks: [new RecordingRunStartedHook { Throw = true }]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
@@ -3047,7 +3047,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(), beforeModelRequestHooks: [hook]);
+            hookDispatcher: new Hooks.DefaultHookDispatcher(), beforeModelRequestHooks: [hook]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
 
@@ -3067,7 +3067,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeModelRequestHooks: [new SettingsHook(settings => settings with { MaxOutputTokens = 1_000 })]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
@@ -3086,7 +3086,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeModelRequestHooks: [new SettingsHook(_ => throw new InvalidOperationException("boom"))]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
@@ -3107,7 +3107,7 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out _,
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             toolHandler: call => { invoked = call; return TestFactory.SuccessResult(); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeToolInvocationHooks: [new ToolHook(args => args.Arguments = System.Text.Json.JsonDocument.Parse("""{"rewritten":true}""").RootElement.Clone())]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
@@ -3128,7 +3128,7 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out _,
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeToolInvocationHooks: [new ToolHook(args => args.Veto = new ToolInvocationVeto("blocked by policy"))]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
@@ -3154,7 +3154,7 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out _,
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeToolInvocationHooks: [new ToolHook(_ => throw new InvalidOperationException("boom"))]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
@@ -3174,7 +3174,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
-            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher());
+            hookDispatcher: new Hooks.DefaultHookDispatcher());
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { Temperature = 0.7 } };
 
