@@ -156,6 +156,47 @@ exist.
 - Loop drains steering input at the turn boundary and follow-up input after
   settlement, per the state-machine specification (`PromotingInput`).
 
+**Prerequisites discovered while implementing this workstream.** Wiring real
+admission through `ProvisionLaneAsync`/`AdmitInputAsync`/`AcceptRunAsync`
+uncovered three blocking gaps in currently-specified contracts, closed or
+tracked as follows:
+
+1. No query existed to discover an already-provisioned, currently idle lane's
+   revision and branch cursor (every lane method requires one as an expected
+   value, and `LoadRunStateAsync` only serves a lane with an _accepted_ run).
+   **Closed**: `ISessionStore.LoadLaneStateAsync` /
+   `ISessionCoordinator.LoadLaneStateAsync` (commit `fc540a98`), returning
+   `SessionLaneState` / `SessionLaneStateNotProvisioned` /
+   `SessionLaneStateUnavailable`, with conformance coverage on `.InMemory` and
+   `.Sqlite`.
+2. `InputAdmissionRequest`/`InputPromotionRequest` (the fixed shape every
+   `IInputQueue` implementation receives) carry no `BranchId`,
+   `SessionProfileReference`, or `RunConfigurationReference` — the exact facts a
+   durable implementation needs to provision a lane or accept a run. A generic,
+   swappable `IInputQueue` cannot be built against today's shape. **Open**:
+   extend both request records with these fields, or accept that a
+   session-backed queue is agent/definition-scoped (resolved per loop key)
+   rather than one engine-wide singleton. Revisit before finishing this
+   workstream's `SessionBackedInputQueue` deliverable.
+3. `RunConfigurationReference` requires a `RunPolicyVersion`, but no first-party
+   component ever produces one — every call site in the repository, production
+   and test, passes a hardcoded `new RunPolicyVersion(1)`. Compounding this,
+   `AgentRunProfilePublication .Configuration`
+   (`EffectiveConfigurationSnapshot?`) is nullable for "legacy reduced
+   publications", so many compositions carry no effective configuration snapshot
+   to derive a fingerprint from either. **Open**: a real run-policy-versioning
+   owner (likely part of workstream 18's `AgentDefinition`/composition sweep,
+   since `RunPolicyDefaults` already lives there) must exist before
+   `AcceptRunAsync` can be called from the engine with honest evidence instead
+   of a fabricated constant.
+
+Given (2) and (3), replacing `AgentEngine.SendAgentAsync`'s direct
+`sessions.AppendAsync` and the process-local `SessionLaneRegistry` with the full
+lane protocol is sequenced after a run-policy-version owner exists (pull forward
+part of workstream 18) or after accepting an explicitly documented placeholder
+policy version for compositions with no effective configuration snapshot. Do not
+fabricate a real-looking version silently.
+
 **Deliverables.** Abstractions: `AgentRunInvocation`, extended
 `AgentRunServices`, unified outcome family, `IRunEventSink`,
 `RunEventSinkRegistration`, `IAgentRunScopeFactory`, `IAgentRunScopeValidator`.
