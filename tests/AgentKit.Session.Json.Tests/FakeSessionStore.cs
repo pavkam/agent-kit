@@ -32,6 +32,11 @@ internal sealed class FakeSessionStore: ISessionStore
         throw new NotSupportedException("This fake store is never invoked.");
 
     /// <inheritdoc/>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+        AuthorizedSessionStoreRequest<SessionLaneStateRequest> request, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This fake store is never invoked.");
+
+    /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(
         AuthorizedSessionStoreRequest<SessionAppendRequest> request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake store is never invoked.");
