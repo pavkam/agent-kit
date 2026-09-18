@@ -459,6 +459,7 @@ findings).
   private-address classifier to unwrap `64:ff9b::/96` (and optionally
   `64:ff9b:1::/48`) before classification.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### A10 — `ProcessEnvironmentVariable` accepts names containing `=`
 

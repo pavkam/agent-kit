@@ -3,6 +3,7 @@
 
 namespace AgentKit;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 
@@ -67,6 +68,11 @@ public sealed record NetworkDestinationPolicy
                 nameof(allowedHosts));
         }
 
+        foreach (var scheme in allowedSchemes)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(scheme, nameof(allowedSchemes));
+        }
+
         AllowedSchemes = [.. allowedSchemes.Select(static scheme => scheme.ToLowerInvariant())];
         AllowedHosts = allowedHosts;
         AllowPrivateAddresses = allowPrivateAddresses;
@@ -115,18 +121,47 @@ public sealed record NetworkDestinationPolicy
         return AllowPrivateAddresses || !IsPrivateOrLoopback(address);
     }
 
+    /// <summary>The NAT64 well-known prefix (RFC 6052 <c>64:ff9b::/96</c>): the first 12 bytes of an address in this range are fixed, and the last 4 bytes carry the embedded IPv4 target.</summary>
+    private static readonly byte[] _nat64WellKnownPrefix = [0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0];
+
     // An IPv4-mapped IPv6 address (::ffff:a.b.c.d) connects to the embedded IPv4 target on dual-stack
-    // hosts, so it must be classified by that embedded address rather than by its IPv6 spelling.
+    // hosts, so it must be classified by that embedded address rather than by its IPv6 spelling. A NAT64
+    // well-known-prefix address (64:ff9b::/96) likewise connects to its embedded IPv4 target through the
+    // NAT64 gateway, so it must be unwrapped the same way before classification.
     private static bool IsPrivateOrLoopback(IPAddress address) =>
         address.IsIPv4MappedToIPv6
             ? IsPrivateOrLoopback(address.MapToIPv4())
-            : IPAddress.IsLoopback(address)
-              || address.Equals(IPAddress.IPv6Any)
-              || address.IsIPv6LinkLocal
-              || address.IsIPv6SiteLocal
-              || address.IsIPv6UniqueLocal
-              || address.IsIPv6Multicast
-              || (address.AddressFamily == AddressFamily.InterNetwork && IsPrivateOrSpecialUseIPv4(address.GetAddressBytes()));
+            : TryGetNat64EmbeddedIPv4(address, out var embedded)
+                ? IsPrivateOrLoopback(embedded)
+                : IPAddress.IsLoopback(address)
+                  || address.Equals(IPAddress.IPv6Any)
+                  || address.IsIPv6LinkLocal
+                  || address.IsIPv6SiteLocal
+                  || address.IsIPv6UniqueLocal
+                  || address.IsIPv6Multicast
+                  || (address.AddressFamily == AddressFamily.InterNetwork && IsPrivateOrSpecialUseIPv4(address.GetAddressBytes()));
+
+    /// <summary>Extracts the IPv4 address embedded in a NAT64 well-known-prefix (<c>64:ff9b::/96</c>) IPv6 address.</summary>
+    /// <param name="address">The candidate address to inspect.</param>
+    /// <param name="embedded">The embedded IPv4 address, when <paramref name="address"/> is in the NAT64 well-known prefix.</param>
+    /// <returns><see langword="true"/> when <paramref name="address"/> is an IPv6 address whose first 12 bytes are the NAT64 well-known prefix.</returns>
+    private static bool TryGetNat64EmbeddedIPv4(IPAddress address, [NotNullWhen(true)] out IPAddress? embedded)
+    {
+        embedded = null;
+        if (address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        if (!bytes.AsSpan(0, 12).SequenceEqual(_nat64WellKnownPrefix))
+        {
+            return false;
+        }
+
+        embedded = new IPAddress(bytes.AsSpan(12, 4));
+        return true;
+    }
 
     /// <summary>
     /// Classifies non-routable or special-use IPv4 ranges: RFC 1918 private space, loopback, link-local

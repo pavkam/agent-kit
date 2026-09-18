@@ -43,6 +43,22 @@ public sealed class NetworkDestinationPolicyTests
     public void AllowsAddress_WhenAddressIsPublic_ReturnsTrue(string literal) =>
         NetworkDestinationPolicy.Default.AllowsAddress(IPAddress.Parse(literal)).ShouldBeTrue();
 
+    [Theory]
+    [InlineData("64:ff9b::a00:5")] // 64:ff9b::10.0.0.5 (RFC 1918)
+    [InlineData("64:ff9b::7f00:1")] // 64:ff9b::127.0.0.1 (loopback)
+    [InlineData("64:ff9b::a9fe:a9fe")] // 64:ff9b::169.254.169.254 (link-local metadata)
+    public void AllowsAddress_WhenAddressIsNat64EmbeddedPrivateIPv4_ReturnsFalseByDefault(string literal) =>
+        // IsPrivateOrLoopback correctly unwraps IPv4-mapped IPv6 (::ffff:a.b.c.d) but previously did not unwrap
+        // NAT64 well-known-prefix addresses (64:ff9b::/96, RFC 6052), which also connect to the embedded IPv4
+        // target through the NAT64 gateway. A private RFC1918 address embedded via NAT64 must not pass with
+        // AllowPrivateAddresses == false.
+        NetworkDestinationPolicy.Default.AllowsAddress(IPAddress.Parse(literal)).ShouldBeFalse(literal);
+
+    [Fact]
+    public void AllowsAddress_WhenAddressIsNat64EmbeddedPublicIPv4_ReturnsTrue() =>
+        // 64:ff9b::93.184.216.34
+        NetworkDestinationPolicy.Default.AllowsAddress(IPAddress.Parse("64:ff9b::5db8:d822")).ShouldBeTrue();
+
     [Fact]
     public void AllowsAddress_WhenAddressIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => NetworkDestinationPolicy.Default.AllowsAddress(null!)).ParamName.ShouldBe("address");
@@ -64,6 +80,19 @@ public sealed class NetworkDestinationPolicyTests
     [Fact]
     public void Constructor_WhenAllowedHostsIsDefault_ThrowsExactParameter() =>
         Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy(["https"], default(ImmutableArray<NormalizedHost>), false)).ParamName.ShouldBe("allowedHosts");
+
+    [Fact]
+    public void Constructor_WhenAnAllowedSchemeIsNull_ThrowsExactParameterInsteadOfNullReferenceException() =>
+        // allowedSchemes was checked only for default/empty; a null element reached scheme.ToLowerInvariant()
+        // and surfaced as NullReferenceException instead of an ArgumentException.
+        Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy([null!], null, false)).ParamName.ShouldBe("allowedSchemes");
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Constructor_WhenAnAllowedSchemeIsBlank_ThrowsExactParameter(string scheme) =>
+        // A blank scheme was previously accepted and never matched anything, silently useless.
+        Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy([scheme], null, false)).ParamName.ShouldBe("allowedSchemes");
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
