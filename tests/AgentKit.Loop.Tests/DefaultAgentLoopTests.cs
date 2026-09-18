@@ -3368,6 +3368,159 @@ public sealed class DefaultAgentLoopTests
         }
     }
 
+
+    [Fact]
+    public async Task RunAsync_WhenBudgetLimitsAreDeclaredWithoutAnAuthority_FailsClosedBeforeAnyTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { BudgetLimits = [TurnLimit(5)] };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("budget authority");
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheTurnBudgetIsSmallerThanMaxTurns_SettlesAsBudgetExhaustedOnTheTurnThatWouldExceedIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 5 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8) with { BudgetLimits = [TurnLimit(2)] };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var exhausted = result.Outcome.ShouldBeOfType<AgentRunBudgetExhausted>();
+        exhausted.Dimension.ShouldBe(BudgetDimensions.Turns);
+        _ = exhausted.Failure.ShouldNotBeNull();
+        modelCalls.ShouldBe(2);
+        result.NewMessages.OfType<ToolMessage>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolCallBudgetIsExhausted_RejectsTheCallWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 3 ? TestFactory.CompletedWithToolCall(requestId, new ToolCallId(Guid.NewGuid())) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits = [new BudgetLimit(BudgetDimensions.AttemptedToolCalls, 1m, new BudgetUnit("count"), BudgetLimitKind.Hard)],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        toolInvocations.ShouldBe(1);
+        var results = result.NewMessages.OfType<ToolMessage>().SelectMany(static m => m.Parts.OfType<ToolResultPart>()).ToList();
+        results.Count.ShouldBe(2);
+        results[1].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        results[1].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.ResourceLimitExceeded);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenReportedUsageExceedsTheTokenBudget_KeepsTheCommittedResponseAndSettlesAsExhausted()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => new ModelAttemptCompleted(TestFactory.Response(
+                requestId,
+                ++modelCalls == 1
+                    ? [new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty)]
+                    : [new TextPart("done", TextSemantics.Plain, ExtensionData.Empty)],
+                modelCalls == 1 ? NormalizedStopReason.ToolUse : NormalizedStopReason.Completed) with
+            {
+                Usage = new ModelUsage(ModelUsageReportState.Final, 700, 50, null, null, null, null, ExtensionData.Empty),
+            }),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits = [new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard)],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var exhausted = result.Outcome.ShouldBeOfType<AgentRunBudgetExhausted>();
+        exhausted.Dimension.ShouldBe(BudgetDimensions.InputTokens);
+        modelCalls.ShouldBe(2);
+        result.NewMessages.OfType<AssistantMessage>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenUsageStaysWithinTheBudget_CompletesNormally()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => new ModelAttemptCompleted(TestFactory.Response(requestId, [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Completed) with
+            {
+                Usage = new ModelUsage(ModelUsageReportState.Final, 10, 5, null, null, 0.001m, "USD", ExtensionData.Empty),
+            }),
+            budgets: Authority());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
+        {
+            BudgetLimits =
+            [
+                TurnLimit(3),
+                new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard),
+                new BudgetLimit(BudgetDimensions.Cost, 0.05m, new BudgetUnit("usd"), BudgetLimitKind.Hard),
+            ],
+        };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoBudgetLimitsAreDeclared_NeverTouchesTheAuthority()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var authority = new ThrowingBudgetAuthority();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), budgets: authority);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    private static BudgetLimit TurnLimit(int turns) => new(BudgetDimensions.Turns, turns, new BudgetUnit("count"), BudgetLimitKind.Hard);
+
+    private static IBudgetAuthority Authority()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentBudgets();
+        _ = services.AddInMemoryBudgetLedger();
+        return services.BuildServiceProvider().GetRequiredService<IBudgetAuthority>();
+    }
+
+    private sealed class ThrowingBudgetAuthority: IBudgetAuthority
+    {
+        public ValueTask<BudgetScopeResult> CreateChildScopeAsync(BudgetScopeRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The authority must not be touched by an unbudgeted run.");
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
@@ -3388,7 +3541,8 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
-        ICompactor? compactor = null)
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3408,7 +3562,8 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(adapter),
             continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
             outputProcessor,
-            compactor);
+            compactor,
+            budgets);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),

@@ -67,11 +67,16 @@ escape hatch is the ordinary AgentKit API:
   services, and call `WithIdentity`.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
-- **Several agents:** `AddAgent(agentId, o => ...)` publishes another
-  definition on the same engine; drive it with `engine.GetAgentAsync(agentId)`
-  and `Agent.SendAsync`. `WithDelegation()` adds the `task` tool so agents can
-  hand work to one another; the child runs on the same engine in its own
-  session and only its bounded answer flows back.
+- **Several agents:** `AddAgent(agentId, o => ...)` publishes another definition
+  on the same engine; drive it with `engine.GetAgentAsync(agentId)` and
+  `Agent.SendAsync`. `WithDelegation()` adds the `task` tool so agents can hand
+  work to one another; the child runs on the same engine in its own session and
+  only its bounded answer flows back.
+- **Spending caps:**
+  `WithBudget(o => { o.MaxToolCalls = 10; o.MaxCostUsd = 0.05m; })` makes every
+  run reserve against hard limits; a refused reservation ends the turn naming
+  the exhausted dimension. Accounting is in-memory unless you register a SQLite
+  ledger first.
 - **Long conversations:** `WithCompaction()` registers the extractive compactor;
   when the history nears the model's declared context window the loop
   checkpoints older entries and rebuilds the request from the summary.

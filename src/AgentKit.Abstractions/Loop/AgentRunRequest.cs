@@ -158,6 +158,7 @@ public sealed record AgentRunRequest
         ArgumentException.ThrowIfNotEqual(configuration.Fingerprint, sessionProfile.ConfigurationFingerprint);
         Agent = agent;
         Output = agent.Output;
+        BudgetLimits = agent.BudgetLimits;
         Configuration = configuration;
     }
 
@@ -367,6 +368,28 @@ public sealed record AgentRunRequest
         }
     }
 
+    /// <summary>Gets the budget limits this run reserves against, when any are selected.</summary>
+    /// <value>Empty for an unbudgeted run. A pinned <see cref="Agent"/> supplies them; a record copy may select them.</value>
+    /// <exception cref="ArgumentException">
+    /// An initializer assigns a default array or one containing null, or a record copy diverges from the pinned <see cref="Agent"/>'s own.
+    /// </exception>
+    public ImmutableArray<BudgetLimit> BudgetLimits
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(BudgetLimits));
+            ArgumentException.ThrowIfContainsNull(value, nameof(BudgetLimits));
+            if (Agent is not null && !Agent.BudgetLimits.SequenceEqual(value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own budget limits.", nameof(BudgetLimits));
+            }
+
+            field = value;
+        }
+    } = [];
+
     /// <summary>Gets the optional best-effort observer for provisional model and tool progress.</summary>
     /// <remarks>
     /// The observer is operational wiring rather than semantic request data, so it does not participate in
@@ -395,6 +418,7 @@ public sealed record AgentRunRequest
         && MaxTurns == other.MaxTurns
         && AttemptTimeout == other.AttemptTimeout
         && Equals(Output, other.Output)
+        && BudgetLimits.SequenceEqual(other.BudgetLimits)
         && Extensions.Equals(other.Extensions);
 
     /// <inheritdoc/>
@@ -427,6 +451,11 @@ public sealed record AgentRunRequest
         hash.Add(MaxTurns);
         hash.Add(AttemptTimeout);
         hash.Add(Output);
+        foreach (var limit in BudgetLimits)
+        {
+            hash.Add(limit);
+        }
+
         hash.Add(Extensions);
         return hash.ToHashCode();
     }

@@ -52,6 +52,10 @@ public sealed class AgentRunServices
     /// Produces and activates a compaction checkpoint over older history when the loop detects context pressure,
     /// or <see langword="null"/> when the composition selects no compactor; the loop then never compacts.
     /// </param>
+    /// <param name="budgets">
+    /// Creates the run's budget scope and serves its reservations when the request declares limits, or
+    /// <see langword="null"/> when the composition selects no budget authority; a budgeted request then fails closed.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -63,7 +67,8 @@ public sealed class AgentRunServices
         ILlmModelResolver modelResolver,
         IRunContinuationPolicy continuationPolicy,
         IOutputProcessor? output = null,
-        ICompactor? compactor = null)
+        ICompactor? compactor = null,
+        IBudgetAuthority? budgets = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -84,6 +89,7 @@ public sealed class AgentRunServices
         ContinuationPolicy = continuationPolicy;
         Output = output;
         Compactor = compactor;
+        Budgets = budgets;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -117,4 +123,8 @@ public sealed class AgentRunServices
     /// <summary>Gets the compactor the loop asks to checkpoint older history under context pressure.</summary>
     /// <value><see langword="null"/> when the composition selects no compactor; the loop then never compacts.</value>
     public ICompactor? Compactor { get; }
+
+    /// <summary>Gets the budget authority the loop reserves a budgeted run's capacity through.</summary>
+    /// <value><see langword="null"/> when the composition selects none; a request with budget limits then fails closed.</value>
+    public IBudgetAuthority? Budgets { get; }
 }

@@ -27,7 +27,7 @@ namespace AgentKit;
 /// reduced loop consults one replaceable, engine-wide policy rather than a policy selected per keyed loop.
 /// </para>
 /// <para>
-/// The output processor and the compactor are optional and resolved unkeyed from the run scope:
+/// The output processor, the compactor, and the budget authority are optional and resolved unkeyed from the run scope:
 /// <c>AddAgentOutput</c> forwards the default keyed processor to that unkeyed registration, and
 /// <c>AddContextCompaction</c> registers the compactor. A definition that selects an output contract without a
 /// composed processor fails closed inside the loop rather than at compilation; a composition without a compactor
@@ -60,7 +60,8 @@ internal static class AgentRunServicesFactory
             provider.GetRequiredKeyedService<IRunContinuationPolicy>(
                 AgentLoopComponentDefaults.ContinuationPolicyKey.Value),
             provider.GetService<IOutputProcessor>(),
-            provider.GetService<ICompactor>());
+            provider.GetService<ICompactor>(),
+            provider.GetService<IBudgetAuthority>());
     }
 
     /// <summary>Resolves a collaborator keyed to the run's exact loop selection, falling back to the engine-wide unkeyed registration.</summary>

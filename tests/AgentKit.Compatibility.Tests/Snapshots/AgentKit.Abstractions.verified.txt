@@ -114,6 +114,7 @@ namespace AgentKit
     {
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public string DisplayName { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.AgentId Id { get; init; }
@@ -310,6 +311,14 @@ namespace AgentKit
         public AgentRunAuthorizationUnavailable(string safeReason) { }
         public string SafeReason { get; init; }
     }
+    public sealed class AgentRunBudgetExhausted : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunBudgetExhausted>
+    {
+        public AgentRunBudgetExhausted(AgentKit.BudgetLimitFailure failure) { }
+        public AgentRunBudgetExhausted(AgentKit.BudgetDimension dimension, string safeMessage) { }
+        public AgentKit.BudgetDimension Dimension { get; }
+        public AgentKit.BudgetLimitFailure? Failure { get; }
+        public string SafeMessage { get; }
+    }
     public sealed class AgentRunCancelled : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunCancelled>
     {
         public AgentRunCancelled(string safeMessage) { }
@@ -445,6 +454,7 @@ namespace AgentKit
         public System.TimeSpan AttemptTimeout { get; init; }
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
         public AgentKit.BranchId BranchId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; }
@@ -469,7 +479,8 @@ namespace AgentKit
     }
     public sealed class AgentRunServices
     {
-        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null) { }
+        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null, AgentKit.IBudgetAuthority? budgets = null) { }
+        public AgentKit.IBudgetAuthority? Budgets { get; }
         public AgentKit.ICompactor? Compactor { get; }
         public AgentKit.IContextAssembler Context { get; }
         public AgentKit.IRunContinuationPolicy ContinuationPolicy { get; }

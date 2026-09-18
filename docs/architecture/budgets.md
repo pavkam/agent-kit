@@ -570,6 +570,23 @@ the authority during delivery. Hooks may tighten a proposed amount before the
 reservation boundary but cannot commit, release, or widen a limit. This keeps
 the service graph one-way: consumer → budget abstraction → ledger/policy/sinks.
 
+### Loop consumption
+
+`AgentDefinition.BudgetLimits` and `AgentRunRequest.BudgetLimits` carry a run's
+limits; `AgentRunServices.Budgets` carries the authority the run scope resolved.
+When limits are declared, `DefaultAgentLoop` creates one run scope addressed by
+tenant, principal, agent, session, and run, then reserves before it commits to
+each turn (`agentkit.turns`), model request (`agentkit.model.requests`), and
+tool call (`agentkit.tools.attempted`), and accounts provider-reported input,
+output, and reasoning tokens and USD cost after each response. A refused or held
+reservation settles the run as `AgentRunBudgetExhausted` naming the dimension; a
+refused tool-call reservation settles that call as a rejected result with
+`ToolTerminalStatus.ResourceLimitExceeded`. A budgeted request without a
+composed authority fails closed. Pre-effect estimation of unknown token cost,
+parent host/tenant scopes, and named budget profiles remain to be wired;
+`AgentKit.Simple.WithBudget` composes the authority, the in-memory ledger when
+no other is registered, and the default agent's limits.
+
 ## Validation and unsupported behavior
 
 Composition rejects incompatible units, negative values, hierarchy cycles, child

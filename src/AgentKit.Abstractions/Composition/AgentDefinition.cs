@@ -211,6 +211,25 @@ public sealed record AgentDefinition
     /// </remarks>
     public OutputDefinition? Output { get; init; }
 
+    /// <summary>Gets the budget limits every run of this definition reserves against.</summary>
+    /// <value>
+    /// Hard or soft limits over first-party or host dimensions, or empty when runs are bounded only by turns and
+    /// timeouts. When non-empty the composition must select an <see cref="IBudgetAuthority"/>; the loop creates one
+    /// run scope with these limits, reserves before each turn, model request, and tool call, accounts reported usage,
+    /// and settles the run as <see cref="AgentRunBudgetExhausted"/> when a reservation is refused.
+    /// </value>
+    /// <exception cref="ArgumentException">An initializer assigns a default array or one containing a null element.</exception>
+    public ImmutableArray<BudgetLimit> BudgetLimits
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(BudgetLimits));
+            ArgumentException.ThrowIfContainsNull(value, nameof(BudgetLimits));
+            field = value;
+        }
+    } = [];
+
     /// <summary>Gets the human-readable name used in diagnostics.</summary>
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set null, empty, or whitespace-only text.
@@ -361,6 +380,7 @@ public sealed record AgentDefinition
         && SessionProfile.Equals(other.SessionProfile)
         && LoopKey.Equals(other.LoopKey)
         && Equals(Output, other.Output)
+        && BudgetLimits.SequenceEqual(other.BudgetLimits)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -387,6 +407,11 @@ public sealed record AgentDefinition
         hash.Add(SessionProfile);
         hash.Add(LoopKey);
         hash.Add(Output);
+        foreach (var limit in BudgetLimits)
+        {
+            hash.Add(limit);
+        }
+
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);

@@ -659,6 +659,68 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public void WithBudget_WhenConfigureIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().WithBudget(null!)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void WithBudget_WhenNoLimitIsConfigured_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithBudget(static _ => { })).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public void WithBudget_WhenALimitIsNotPositive_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithBudget(static o => o.MaxCostUsd = 0m)).ParamName.ShouldBe("configure");
+
+    [Fact]
+    public async Task WithBudget_WhenTheToolCallBudgetIsExhausted_TheTurnFailsNamingTheDimensionAndTheToolIsNotInvoked()
+    {
+        var handler = new StubOpenAIHandler(
+            "tool:read_file:{\"path\":\"a.txt\"}",
+            "tool:read_file:{\"path\":\"b.txt\"}",
+            "done");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithBudget(static o => o.MaxToolCalls = 1);
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("b.txt"), "B");
+
+        var result = await engine.SendAsync("read both", TestContext.Current.CancellationToken);
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResults = result.Events.OfType<ConversationToolResultEvent>().ToList();
+        toolResults.Count.ShouldBe(2);
+        toolResults[0].Succeeded.ShouldBeTrue();
+        toolResults[1].Succeeded.ShouldBeFalse();
+        handler.Bodies[2].ShouldContain("not attempted");
+        definition.BudgetLimits.ShouldHaveSingleItem().Dimension.ShouldBe(BudgetDimensions.AttemptedToolCalls);
+    }
+
+    [Fact]
+    public async Task WithBudget_WhenTheTurnBudgetIsExhausted_AskAsyncThrowsNamingTheDimension()
+    {
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"a.txt\"}", "done");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithBudget(static o => o.MaxTurns = 1);
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+        engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
+
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("read it", TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("agentkit.turns");
+        handler.Bodies.Count.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task Build_WhenAnotherProviderIsRegisteredOnServices_UseModelSelectsIt()
     {
         var handler = new StubOpenAIHandler("via alias");

@@ -17,6 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <ProjectReference Include="../AgentKit/AgentKit.csproj"/>
+    <ProjectReference Include="../AgentKit.Budgets/AgentKit.Budgets.csproj"/>
+    <ProjectReference Include="../AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
     <ProjectReference Include="../AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>

@@ -83,6 +83,9 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets the structured-output contract every turn must satisfy, or <see langword="null"/> for free text.</summary>
     public OutputDefinition? Output { get; set; }
 
+    /// <summary>Gets or sets the budget limits every run of the default agent reserves against; empty for none.</summary>
+    public ImmutableArray<BudgetLimit> BudgetLimits { get; set; } = [];
+
     /// <summary>Gets the additional agents hosted next to the default one, keyed by their pinned identities.</summary>
     public Dictionary<AgentId, SimpleAgentOptions> AdditionalAgents { get; } = [];
 
@@ -233,6 +236,7 @@ internal sealed class SimpleAgentPlan
         SessionProfileKey)
     {
         Output = Output,
+        BudgetLimits = BudgetLimits,
     };
 
     /// <summary>Applies the plan to the conversation options.</summary>
@@ -249,6 +253,11 @@ internal sealed class SimpleAgentPlan
         options.ModelSelectionPolicy = new ModelSelectionPolicy([RequireModelAlias()]);
         options.RequestSettings = RequestSettings;
         options.Output = Output;
+        foreach (var limit in BudgetLimits)
+        {
+            options.BudgetLimits.Add(limit);
+        }
+
         options.MaxTurns = MaxTurns;
         options.AttemptTimeout = AttemptTimeout;
         foreach (var instruction in InstructionMessages())

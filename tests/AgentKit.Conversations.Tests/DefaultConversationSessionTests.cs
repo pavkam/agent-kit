@@ -1286,6 +1286,35 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenBudgetLimitsAreConfigured_PassesThemToTheLoop()
+    {
+        var loop = new FakeAgentLoop();
+        var limit = new BudgetLimit(BudgetDimensions.Cost, 0.5m, new BudgetUnit("usd"), BudgetLimitKind.Hard);
+        using var session = CreateSession(loop: loop, configureOptions: o => o.BudgetLimits.Add(limit));
+
+        _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        loop.LastRequest.ShouldNotBeNull().BudgetLimits.ShouldBe([limit]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheRunSettlesBudgetExhausted_DescribesTheDimensionSafely()
+    {
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request => new AgentLoopResult(
+                request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                new AgentRunBudgetExhausted(BudgetDimensions.Cost, "cost cap reached"), [], new SessionVersion(1)),
+        };
+        using var session = CreateSession(loop: loop);
+
+        var result = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Events.OfType<ConversationAssistantTextEvent>().Single().Text.ShouldContain("agentkit.cost");
+    }
+
+    [Fact]
     public async Task SendAsync_WhenNoOutputDefinitionIsConfigured_LeavesTheRequestAndServicesOutputNull()
     {
         var loop = new FakeAgentLoop();

@@ -83,6 +83,7 @@ namespace AgentKit.Conversations
         public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; set; }
         public AgentKit.AgentId AgentId { get; set; }
         public System.TimeSpan AttemptTimeout { get; set; }
+        public System.Collections.Generic.IList<AgentKit.BudgetLimit> BudgetLimits { get; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; set; }
         public AgentKit.ConfigurationVersion ConfigurationVersion { get; set; }
         public AgentKit.ExecutionIdentity? Identity { get; set; }
@@ -177,7 +178,8 @@ namespace AgentKit.Conversations
                     System.TimeProvider timeProvider,
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
                     Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null,
-                    AgentKit.ICompactor? compactor = null) { }
+                    AgentKit.ICompactor? compactor = null,
+                    AgentKit.IBudgetAuthority? budgets = null) { }
         public DefaultConversationSession(
                     AgentKit.ISessionCoordinator sessionCoordinator,
                     AgentKit.ISecurityProfileSelector securityProfileSelector,
@@ -196,7 +198,8 @@ namespace AgentKit.Conversations
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
                     Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
                     AgentKit.IToolPresenter? toolPresenter,
-                    AgentKit.ICompactor? compactor = null) { }
+                    AgentKit.ICompactor? compactor = null,
+                    AgentKit.IBudgetAuthority? budgets = null) { }
         public AgentKit.BranchId? BranchId { get; }
         public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }

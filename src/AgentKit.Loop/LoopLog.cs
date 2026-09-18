@@ -229,4 +229,16 @@ internal static partial class LoopLog
     /// <summary>Logs that a checkpoint was activated and the model-facing history was rebuilt from it.</summary>
     [LoggerMessage(1100, LogLevel.Information, "Run {RunId}: compaction {CompactionId} applied; model-facing history went from {MessagesBefore} to {MessagesAfter} messages.")]
     internal static partial void CompactionApplied(ILogger logger, RunId runId, CompactionId compactionId, int messagesBefore, int messagesAfter);
+
+    /// <summary>Logs that a budgeted run found no budget authority and failed closed.</summary>
+    [LoggerMessage(1101, LogLevel.Error, "Run {RunId} declares budget limits but no budget authority is composed; the run fails closed.")]
+    internal static partial void BudgetAuthorityMissing(ILogger logger, RunId runId);
+
+    /// <summary>Logs that the run's budget scope could not be created.</summary>
+    [LoggerMessage(1102, LogLevel.Error, "Run {RunId}: the budget scope could not be created ({Outcome}); the run fails closed.")]
+    internal static partial void BudgetScopeNotCreated(ILogger logger, RunId runId, string outcome);
+
+    /// <summary>Logs that a reservation was refused and the run or call stopped.</summary>
+    [LoggerMessage(1103, LogLevel.Warning, "Run {RunId}: the {Dimension} budget is exhausted; no further work on it is attempted.")]
+    internal static partial void BudgetExhausted(ILogger logger, RunId runId, BudgetDimension dimension);
 }

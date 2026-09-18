@@ -517,6 +517,70 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
+        /// Bounds every run of the default agent with hard per-run limits enforced by the budget authority: turns,
+        /// model requests, and tool calls are refused before the attempt, and reported tokens and cost stop the run
+        /// before the next request once a limit is crossed.
+        /// </summary>
+        /// <param name="configure">Sets the limits; unset members impose nothing.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configure"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A configured limit is not positive.</exception>
+        /// <exception cref="ArgumentException">No limit was configured.</exception>
+        /// <remarks>
+        /// Registers the budget authority and, unless a ledger is already registered, the in-memory ledger, which
+        /// accounts within this process only; register <c>AddSqliteBudgetLedger</c> on
+        /// <see cref="AgentEngineBuilder.Services"/> before this call for durable accounting. An exhausted limit ends
+        /// the turn with a failed completion naming the dimension; <c>AskAsync</c> surfaces it as
+        /// <see cref="SimpleAgentException"/>.
+        /// </remarks>
+        public AgentEngineBuilder WithBudget(Action<SimpleBudgetOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(configure);
+            var options = new SimpleBudgetOptions();
+            configure(options);
+
+            var count = new BudgetUnit("count");
+            var tokens = new BudgetUnit("tokens");
+            var limits = ImmutableArray.CreateBuilder<BudgetLimit>();
+            Add(BudgetDimensions.Turns, options.MaxTurns, count, nameof(SimpleBudgetOptions.MaxTurns));
+            Add(BudgetDimensions.ModelRequests, options.MaxModelRequests, count, nameof(SimpleBudgetOptions.MaxModelRequests));
+            Add(BudgetDimensions.AttemptedToolCalls, options.MaxToolCalls, count, nameof(SimpleBudgetOptions.MaxToolCalls));
+            Add(BudgetDimensions.InputTokens, options.MaxInputTokens, tokens, nameof(SimpleBudgetOptions.MaxInputTokens));
+            Add(BudgetDimensions.OutputTokens, options.MaxOutputTokens, tokens, nameof(SimpleBudgetOptions.MaxOutputTokens));
+            Add(BudgetDimensions.Cost, options.MaxCostUsd, new BudgetUnit("usd"), nameof(SimpleBudgetOptions.MaxCostUsd));
+            if (limits.Count == 0)
+            {
+                throw new ArgumentException("WithBudget requires at least one limit.", nameof(configure));
+            }
+
+            var plan = Plan(builder);
+            plan.BudgetLimits = limits.ToImmutable();
+            _ = builder.Services.AddAgentBudgets();
+            if (!builder.Services.Any(static descriptor => descriptor.ServiceType == typeof(IBudgetLedger)))
+            {
+                _ = builder.Services.AddInMemoryBudgetLedger();
+            }
+
+            return builder;
+
+            void Add(BudgetDimension dimension, decimal? value, BudgetUnit unit, string member)
+            {
+                if (value is not { } limit)
+                {
+                    return;
+                }
+
+                if (limit <= 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(configure), limit, $"{member} must be positive.");
+                }
+
+                limits.Add(new BudgetLimit(dimension, limit, unit, BudgetLimitKind.Hard));
+            }
+        }
+
+        /// <summary>
         /// Lets agents on this engine delegate work to one another: registers the <c>task</c> tool, the delegation
         /// broker, and the engine-backed channel that runs a delegated task as one turn of the target agent in a new
         /// session under the delegating identity.

@@ -23,6 +23,7 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder WithAttemptTimeout(System.TimeSpan timeout) { }
             public AgentKit.AgentEngineBuilder WithRequestSettings(AgentKit.LlmRequestSettings settings) { }
             public AgentKit.AgentEngineBuilder AddAgent(AgentKit.AgentId agentId, System.Action<AgentKit.Simple.SimpleAgentOptions> configure) { }
+            public AgentKit.AgentEngineBuilder WithBudget(System.Action<AgentKit.Simple.SimpleBudgetOptions> configure) { }
             public AgentKit.AgentEngineBuilder WithDelegation(System.Action<AgentKit.Tools.Task.TaskToolOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
@@ -56,5 +57,15 @@ namespace AgentKit.Simple
         public int MaxTurns { get; set; }
         public AgentKit.OutputDefinition? Output { get; set; }
         public AgentKit.LlmRequestSettings RequestSettings { get; set; }
+    }
+    public sealed class SimpleBudgetOptions
+    {
+        public SimpleBudgetOptions() { }
+        public decimal? MaxCostUsd { get; set; }
+        public long? MaxInputTokens { get; set; }
+        public int? MaxModelRequests { get; set; }
+        public long? MaxOutputTokens { get; set; }
+        public int? MaxToolCalls { get; set; }
+        public int? MaxTurns { get; set; }
     }
 }

@@ -76,7 +76,13 @@ sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, AgentEngine en
                 """)
             .WithRequestSettings(LlmRequestSettings.Default with { Temperature = 0.2, MaxOutputTokens = 1_500 })
             .WithMaxTurns(4)
-            .WithAttemptTimeout(TimeSpan.FromSeconds(60));
+            .WithAttemptTimeout(TimeSpan.FromSeconds(60))
+            .WithBudget(o =>
+            {
+                o.MaxModelRequests = 4;
+                o.MaxInputTokens = 20_000;
+                o.MaxCostUsd = 0.02m;
+            });
 
         builder.Services.AddSqliteSecurityGrantStore(new SqliteSecurityGrantStoreTarget(
             "/var/lib/triage/grants.db", GrantStoreInstanceId,
@@ -154,19 +160,21 @@ outcome rather than an exception from the engine.
   never left mid-append.
 - **Usage is exact or unknown.** `ModelUsage` numbers are `null` when the
   provider did not report them; the cost sum above under-reports rather than
-  inventing a value.
+  inventing a value, and the budget never charges an unreported dimension.
+- **A cap is a typed stop.** When a reservation is refused the run settles as
+  `AgentRunBudgetExhausted` naming the dimension; the worker sees a failed
+  outcome and dead-letters the ticket instead of an exception.
 
 ## Status
 
-One engine, many concurrent sessions, and typed output are all in place. One
-designed capability that would tighten this worker is not yet wired into the
-turn loop and is tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage):
-`AgentKit.Budgets` provides hierarchical atomic reservations with typed
-exhaustion (`BudgetRejected` carrying a `BudgetLimitFailure`), backed by
-`AddInMemoryBudgetLedger` / `AddSqliteBudgetLedger`, but the loop and providers
-do not reserve through it yet, so today a cost cap is the token arithmetic above
-plus `MaxOutputTokens` and `MaxTurns`.
+One engine, many concurrent sessions, typed output, and per-run budgets are all
+in place. `WithBudget` counts turns, model requests, and tool calls before each
+attempt and accounts reported tokens and cost after each response, so a single
+response may cross a token or cost cap before the run stops; pre-effect
+estimation of unknown token cost is tracked in the
+[implementation ledger](../implementation-progress.md#component-coverage). The
+in-memory ledger accounts within this process; register `AddSqliteBudgetLedger`
+before `WithBudget` for durable accounting.
 
 ## What lives where
 
