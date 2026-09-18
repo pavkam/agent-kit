@@ -284,19 +284,13 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             return new SessionDirectoryListUnavailable(denied.SafeMessage);
         }
 
-        var candidates = await _database.RunReadAsync(
-            (uow, token) => uow.ListCandidateLocationsAsync(scan.Identity.TenantId, scan.AgentId, token), cancellationToken)
-            .ConfigureAwait(false);
-        var ordered = candidates
-            .Where(candidate => candidate.Owner == scan.Identity.PrincipalId
-                && (scan.AfterSessionId is null
-                    || candidate.Location.Address.SessionId.Value.CompareTo(scan.AfterSessionId.Value.Value) > 0))
-            .Select(static candidate => candidate.Location)
-            .OrderBy(static location => location.Address.SessionId.Value)
-            .Take(scan.MaximumResults + 1)
-            .ToArray();
+        var ordered = await _database.RunReadAsync(
+            (uow, token) => uow.ListCandidateLocationsAsync(
+                scan.Identity.TenantId, scan.AgentId, scan.Identity.PrincipalId, scan.AfterSessionId,
+                scan.MaximumResults + 1, token),
+            cancellationToken).ConfigureAwait(false);
         var hasMore = ordered.Length > scan.MaximumResults;
-        var page = ordered.Take(scan.MaximumResults).ToImmutableArray();
+        var page = hasMore ? ordered.RemoveAt(ordered.Length - 1) : ordered;
         var next = hasMore ? page[^1].Address.SessionId : (SessionId?) null;
         return new SessionDirectoryPage(page, next);
     }

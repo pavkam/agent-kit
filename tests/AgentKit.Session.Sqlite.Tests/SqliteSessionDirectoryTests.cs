@@ -459,6 +459,53 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     [Fact]
+    public async Task ListAsync_WhenMoreRoutesExistThanOnePage_PagesEntirelyThroughSqlOrderingAndTheCursor()
+    {
+        // ListCandidateLocationsAsync used to select every route for the (tenant, agent) unfiltered and
+        // unbounded, filtering by owner, applying the cursor, sorting, and taking MaximumResults + 1 entirely in
+        // process. This must instead be pushed into SQL (WHERE owner_principal_id, WHERE session_id > $after,
+        // ORDER BY session_id, LIMIT), and the SQL ordinal TEXT order must agree exactly with the cursor
+        // comparison so consecutive pages neither skip nor duplicate a row.
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+
+        var first = CreateRequest("first");
+        var second = CreateRequest("second");
+        var third = CreateRequest("third");
+        var locationA = Location("a0000000-0000-0000-0000-000000000001", "store-a");
+        var locationB = Location("10000000-0000-0000-0000-000000000002", "store-a");
+        var locationC = Location("20000000-0000-0000-0000-000000000003", "store-a");
+        _ = await directory.RecordCreateAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+            new SessionDirectoryCreateRecordRequest(first, locationA),
+            Grant(first, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()), TestContext.Current.CancellationToken);
+        _ = await directory.RecordCreateAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+            new SessionDirectoryCreateRecordRequest(second, locationB),
+            Grant(second, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()), TestContext.Current.CancellationToken);
+        _ = await directory.RecordCreateAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+            new SessionDirectoryCreateRecordRequest(third, locationC),
+            Grant(third, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()), TestContext.Current.CancellationToken);
+
+        var firstPageRequest = ListRequest(maximumResults: 2);
+        var firstPageResult = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                firstPageRequest, Grant(firstPageRequest), Intent()), TestContext.Current.CancellationToken);
+        var firstPage = firstPageResult.ShouldBeOfType<SessionDirectoryPage>();
+
+        firstPage.Locations.Select(static location => location.Address.SessionId)
+            .ShouldBe([locationB.Address.SessionId, locationC.Address.SessionId]);
+        var cursor = firstPage.NextCursor.ShouldNotBeNull();
+
+        var secondPageRequest = ListRequest(cursor, maximumResults: 2);
+        var secondPageResult = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                secondPageRequest, Grant(secondPageRequest), Intent()), TestContext.Current.CancellationToken);
+        var secondPage = secondPageResult.ShouldBeOfType<SessionDirectoryPage>();
+
+        secondPage.Locations.Select(static location => location.Address.SessionId)
+            .ShouldBe([locationA.Address.SessionId]);
+        secondPage.NextCursor.ShouldBeNull();
+    }
+
+    [Fact]
     public void Constructor_WhenSchemaModeIsValidateExactAndTableMissing_Throws()
     {
         // ValidateExact must never install schema; a database without the directory table is rejected with the store's typed failure.
@@ -703,14 +750,14 @@ public sealed class SqliteSessionDirectoryTests
             new IdempotencyKey(idempotencyKey), extensions ?? ExtensionData.Empty);
     }
 
-    private static SessionDirectoryListRequest ListRequest()
+    private static SessionDirectoryListRequest ListRequest(SessionId? afterSessionId = null, int maximumResults = 1)
     {
         var identity = TestExecutionIdentity.Create(
             new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var correlation = new BeforeRunOperationCorrelation(GuidOperation(), null);
         return new SessionDirectoryListRequest(
-            agentId, identity, Authorization(agentId, null, correlation, identity), null, 1);
+            agentId, identity, Authorization(agentId, null, correlation, identity), afterSessionId, maximumResults);
     }
 
     private static OperationId GuidOperation() =>

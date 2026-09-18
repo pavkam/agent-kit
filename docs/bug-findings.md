@@ -913,6 +913,7 @@ var ordered = candidates
   switch the cursor comparison to ordinal string order so SQL and in-process
   ordering agree.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### S06 — Corrupt persisted value objects surface as `TargetInvocationException` instead of `JsonException`
 

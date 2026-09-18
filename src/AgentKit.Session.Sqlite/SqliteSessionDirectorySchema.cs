@@ -40,7 +40,7 @@ internal static class SqliteSessionDirectorySchema
             PRIMARY KEY (agent_id, session_id)
         );
         CREATE INDEX IF NOT EXISTS ix_agentkit_session_directory_locations_owner
-            ON {LocationsTable} (tenant_id, agent_id, owner_principal_id);
+            ON {LocationsTable} (tenant_id, agent_id, owner_principal_id, session_id);
 
         CREATE TABLE IF NOT EXISTS {CreationRoutesTable} (
             tenant_id TEXT NOT NULL,

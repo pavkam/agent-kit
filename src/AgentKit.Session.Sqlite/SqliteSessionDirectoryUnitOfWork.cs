@@ -164,29 +164,55 @@ internal sealed class SqliteSessionDirectoryUnitOfWork
         _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Loads every routed location for one tenant and agent, for in-process ordering and pagination.</summary>
+    /// <summary>
+    /// Loads one already-ordered, already-bounded page of routed locations owned by <paramref name="owner"/>
+    /// for one tenant and agent.
+    /// </summary>
     /// <param name="tenantId">The isolating tenant.</param>
     /// <param name="agentId">The owning agent.</param>
+    /// <param name="owner">The exact owning principal a caller may list.</param>
+    /// <param name="afterSessionId">
+    /// The exclusive cursor: only session identities that sort strictly after this one, in the same ordinal
+    /// text order as <see cref="SessionId.Value"/>'s <c>"D"</c>-format string, are returned. <see langword="null"/>
+    /// to start from the beginning.
+    /// </param>
+    /// <param name="limit">
+    /// The maximum number of rows to return. Callers pass one more than the page size requested so they can
+    /// detect a further page without a second round trip.
+    /// </param>
     /// <param name="cancellationToken">Cancels the read.</param>
-    /// <returns>Every matching location and its owner, in no particular order.</returns>
-    internal async ValueTask<ImmutableArray<(SessionLocation Location, PrincipalId Owner)>> ListCandidateLocationsAsync(
-        TenantId tenantId, AgentId agentId, CancellationToken cancellationToken)
+    /// <returns>
+    /// At most <paramref name="limit"/> matching locations, ordered ascending by <see cref="SessionId.Value"/>'s
+    /// <c>"D"</c>-format text (SQLite's default <c>BINARY</c> collation on an ASCII string is byte-ordinal, so
+    /// this SQL order agrees exactly with <see cref="string.CompareOrdinal(string?, string?)"/> over the same
+    /// text, which every cursor comparison against this method's result must use).
+    /// </returns>
+    internal async ValueTask<ImmutableArray<SessionLocation>> ListCandidateLocationsAsync(
+        TenantId tenantId, AgentId agentId, PrincipalId owner, SessionId? afterSessionId, int limit,
+        CancellationToken cancellationToken)
     {
+        Debug.Assert(limit > 0, "A caller always requests at least one row.");
         await using var command = CreateCommand($"""
-            SELECT session_id, store_key, directory_revision, recorded_at, schema_version, owner_principal_id
-            FROM {SqliteSessionDirectorySchema.LocationsTable} WHERE tenant_id = $tenant AND agent_id = $agent;
+            SELECT session_id, store_key, directory_revision, recorded_at, schema_version
+            FROM {SqliteSessionDirectorySchema.LocationsTable}
+            WHERE tenant_id = $tenant AND agent_id = $agent AND owner_principal_id = $owner
+                AND ($after IS NULL OR session_id > $after)
+            ORDER BY session_id
+            LIMIT $limit;
             """);
         _ = command.Parameters.AddWithValue("$tenant", tenantId.Value);
         _ = command.Parameters.AddWithValue("$agent", ToText(agentId.Value));
-        var builder = ImmutableArray.CreateBuilder<(SessionLocation, PrincipalId)>();
+        _ = command.Parameters.AddWithValue("$owner", owner.Value);
+        _ = command.Parameters.AddWithValue("$after", (object?) afterSessionId?.Value.ToString("D") ?? DBNull.Value);
+        _ = command.Parameters.AddWithValue("$limit", limit);
+        var builder = ImmutableArray.CreateBuilder<SessionLocation>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var address = new SessionAddress(agentId, new SessionId(Guid.Parse(reader.GetString(0))));
-            var location = new SessionLocation(
+            builder.Add(new SessionLocation(
                 address, tenantId, new SessionStoreKey(reader.GetString(1)), new SessionDirectoryRevision(reader.GetInt64(2)),
-                ParseTimestamp(reader.GetString(3)), new SchemaVersion(reader.GetString(4)));
-            builder.Add((location, new PrincipalId(reader.GetString(5))));
+                ParseTimestamp(reader.GetString(3)), new SchemaVersion(reader.GetString(4))));
         }
 
         return builder.ToImmutable();
