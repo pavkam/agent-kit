@@ -38,6 +38,8 @@ public sealed class AgentEngine: IAsyncDisposable
     private readonly ImmutableDictionary<(AgentId, AgentDefinitionRevision), AgentRunProfilePublication> _pinnedRunProfiles;
     private readonly IIdentifierGenerator<MessageId> _messageIds;
     private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
+    private readonly IIdentifierGenerator<TurnId> _turnIds;
+    private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
     private readonly SessionLaneRegistry _lanes = new();
     private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
@@ -83,6 +85,8 @@ public sealed class AgentEngine: IAsyncDisposable
         _securityProfiles = services.GetRequiredService<ISecurityProfileSelector>();
         _messageIds = services.GetRequiredService<IIdentifierGenerator<MessageId>>();
         _entryIds = services.GetRequiredService<IIdentifierGenerator<SessionEntryId>>();
+        _turnIds = services.GetRequiredService<IIdentifierGenerator<TurnId>>();
+        _admissionIds = services.GetRequiredService<IIdentifierGenerator<AdmissionId>>();
         ComponentRegistrations = validatedComposition.ComponentRegistrations;
         _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
             static publication => (
@@ -280,54 +284,118 @@ public sealed class AgentEngine: IAsyncDisposable
             var branchId = descriptor.ActiveBranchId;
             _ = activity?.SetTag(AgentKitTagNames.SessionId, sessionId.ToString());
 
+            var runCoordinator = scope.ServiceProvider.GetRequiredService<ISessionRunCoordinator>();
+            var executionLaneId = new ExecutionLaneId(sessionId.Value);
+            var capability = new SessionExecutionCapability(sessionProfile, sessions, runCoordinator);
+
             var runId = _runIds.Create();
             using var lane = await _lanes.EnterAsync(definition.Id, sessionId, runId, sessionProfile.BusyBehavior, cancellationToken)
                 .ConfigureAwait(false);
-            var runCorrelation = new InRunOperationCorrelation(_operationIds.Create(), runId, turnId: null);
-            var authorization = await CaptureAsync(
-                definition, catalogVersion, security, sessionId, runCorrelation, request.Identity, cancellationToken).ConfigureAwait(false);
-            var context = new SessionOperationContext(definition.Id, sessionId, null, runCorrelation, request.Identity, authorization);
 
-            var readResult = await sessions.ReadAsync(
-                new SessionReadRequest(context, branchId, new SessionSequence(0), pageSize: 1), sessionProfile, cancellationToken)
+            var beforeRunCorrelation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
+            var beforeRunAuthorization = await CaptureAsync(
+                definition, catalogVersion, security, sessionId, beforeRunCorrelation, request.Identity, cancellationToken).ConfigureAwait(false);
+            var beforeRunContext = new SessionOperationContext(
+                definition.Id, sessionId, executionLaneId, beforeRunCorrelation, request.Identity, beforeRunAuthorization);
+
+            var tip = await LoadBranchTipAsync(definition, catalogVersion, sessions, sessionProfile, beforeRunContext, branchId, cancellationToken)
                 .ConfigureAwait(false);
-            if (readResult is not SessionPage { Snapshot: { } snapshot })
-            {
-                throw AdmissionRejected(definition, catalogVersion, "The session's current history snapshot could not be captured.");
-            }
+            var laneState = await sessions.LoadLaneStateAsync(new SessionLaneStateRequest(beforeRunContext), capability, cancellationToken)
+                .ConfigureAwait(false);
 
             var now = TimeProvider.GetUtcNow();
-            var userMessage = new UserMessage(
-                _messageIds.Create(), definition.Id, sessionId, descriptor.ConversationId, branchId, runId, null, now,
-                MessageState.Complete, request.Parts, ExtensionData.Empty);
-            var appendResult = await sessions.AppendAsync(
-                new SessionAppendRequest(
-                    context,
-                    branchId,
-                    snapshot.Version,
-                    new IdempotencyKey($"agentkit.engine:{runId}:user"),
-                    [
-                        new MessageSessionEntry(
-                            _entryIds.Create(), new SessionAddress(definition.Id, sessionId), runCorrelation, branchId,
-                            new SessionSequence(snapshot.UpperSequence.Value + 1), null, now, new SchemaVersion("1"), userMessage),
-                    ]),
-                sessionProfile,
-                cancellationToken).ConfigureAwait(false);
-            if (appendResult is not SessionAppended)
+            var policyVersion = RunPolicyVersioning.Compute(maxTurns, attemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey);
+            var configuration = new RunConfigurationReference(
+                beforeRunAuthorization.ConfigurationVersion, policyVersion, sessionProfile.ConfigurationFingerprint);
+
+            SessionLaneRevision laneRevision;
+            SessionBranchCursor branchCursor;
+            SessionVersion sessionVersion;
+            switch (laneState)
             {
-                throw AdmissionRejected(definition, catalogVersion, $"The user message could not be recorded: {appendResult.GetType().Name}.");
+                case SessionLaneStateLoaded { State.AcceptedState: not null }:
+                    throw AdmissionRejected(
+                        definition, catalogVersion, "The session's execution lane is occupied by an unreleased prior run.");
+                case SessionLaneStateLoaded loaded:
+                    laneRevision = loaded.State.Revision;
+                    branchCursor = loaded.State.BranchCursor;
+                    sessionVersion = tip.Version;
+                    break;
+                case SessionLaneStateNotProvisioned:
+                    var provisionResult = await sessions.ProvisionLaneAsync(
+                        new SessionExecutionLaneProvisionRequest(
+                            beforeRunContext, tip.Cursor, tip.Version, _entryIds.Create(), sessionProfile.Reference,
+                            configuration, now, new IdempotencyKey($"agentkit.engine:{sessionId}:lane:{executionLaneId}")),
+                        capability, cancellationToken).ConfigureAwait(false);
+                    if (provisionResult is not SessionExecutionLaneProvisioned provisioned)
+                    {
+                        throw AdmissionRejected(
+                            definition, catalogVersion, $"The session's execution lane could not be provisioned: {provisionResult.GetType().Name}.");
+                    }
+
+                    laneRevision = provisioned.LaneRevision;
+                    branchCursor = provisioned.BranchCursor;
+                    sessionVersion = provisioned.SessionVersion;
+                    break;
+                default:
+                    throw AdmissionRejected(definition, catalogVersion, "The session's execution lane could not be discovered.");
             }
 
+            var admissionId = _admissionIds.Create();
+            var admissionEntryId = _entryIds.Create();
+            var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.Steer, request.Parts, ExtensionData.Empty);
+            var fingerprint = InputPayloadFingerprint.Create(input);
+            var preprocessing = new InputPreprocessingManifest(new ConfigurationVersion(1), fingerprint, fingerprint);
+            var admissionResult = await sessions.AdmitInputAsync(
+                new SessionInputAdmissionRequest(
+                    beforeRunContext, admissionId, admissionEntryId, input, input, preprocessing, now, sessionVersion,
+                    laneRevision, branchCursor, new IdempotencyKey($"agentkit.engine:{runId}:admit"), maximumPendingInputs: 8),
+                capability, cancellationToken).ConfigureAwait(false);
+            if (admissionResult is not AcceptedInput accepted)
+            {
+                throw AdmissionRejected(definition, catalogVersion, $"The user input could not be admitted: {admissionResult.GetType().Name}.");
+            }
+
+            var initialTurnId = _turnIds.Create();
+            var acceptedCorrelation = new InRunOperationCorrelation(beforeRunCorrelation.OperationId, runId, initialTurnId);
+            var acceptedAuthorization = await CaptureAsync(
+                definition, catalogVersion, security, sessionId, acceptedCorrelation, request.Identity, cancellationToken).ConfigureAwait(false);
+            var messageId = _messageIds.Create();
+            var admittedCursor = new SessionBranchCursor(branchId, admissionEntryId);
+            var startResult = await sessions.AcceptRunAsync(
+                new SessionRunStartRequest(
+                    beforeRunContext, admissionId, [admissionId], accepted.Receipt.AdmittedSequence,
+                    new SessionLaneRevision(laneRevision.Value + 1), new SessionVersion(sessionVersion.Value + 1),
+                    admittedCursor, expectedFencingToken: null, runId, initialTurnId, _entryIds.Create(),
+                    [_entryIds.Create()], [messageId], _entryIds.Create(), new OperationStateRevision(1),
+                    sessionProfile.Reference, configuration, acceptedAuthorization, now,
+                    new IdempotencyKey($"agentkit.engine:{runId}:accept")),
+                capability, cancellationToken).ConfigureAwait(false);
+            if (startResult is not SessionRunAccepted)
+            {
+                throw AdmissionRejected(definition, catalogVersion, $"The run could not be accepted: {startResult.GetType().Name}.");
+            }
+
+            var laneAdmission = new LoopLaneAdmission(executionLaneId, acceptedCorrelation, new OperationStateRevision(1));
             var runRequest = BuildRunRequest(
-                definition, pinnedPublication, sessionId, branchId, runId, request.Identity, authorization, maxTurns, attemptTimeout) with
+                definition, pinnedPublication, sessionId, branchId, runId, request.Identity, acceptedAuthorization, maxTurns, attemptTimeout) with
             {
                 Observer = request.Observer,
+                LaneAdmission = laneAdmission,
             };
 
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;
             admissionCompleted = true;
-            return await loop.RunAsync(runRequest, runServices, cancellationToken).ConfigureAwait(false);
+            var loopResult = await loop.RunAsync(runRequest, runServices, cancellationToken).ConfigureAwait(false);
+            if (loopResult.FinalVersion is { } finalVersion)
+            {
+                await ReleaseLaneAsync(
+                    sessions, capability, definition.Id, sessionId, executionLaneId, acceptedCorrelation,
+                    request.Identity, acceptedAuthorization, finalVersion, runId).ConfigureAwait(false);
+            }
+
+            return loopResult;
         }
         catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
         {
@@ -502,6 +570,78 @@ public sealed class AgentEngine: IAsyncDisposable
             && Matches(captured.Authorization, security, correlation, sessionId, identity)
             ? captured.Authorization
             : throw AdmissionRejected(definition, catalogVersion, "Fresh authorization did not match the pinned security publication.");
+    }
+
+    /// <summary>Reads the current whole-session version and exact branch tip needed to provision or reuse an execution lane.</summary>
+    private static async Task<(SessionVersion Version, SessionBranchCursor Cursor)> LoadBranchTipAsync(
+        AgentDefinition definition,
+        AgentCatalogVersion catalogVersion,
+        ISessionCoordinator sessions,
+        SessionProfileSnapshot sessionProfile,
+        SessionOperationContext context,
+        BranchId branchId,
+        CancellationToken cancellationToken)
+    {
+        var head = await sessions.ReadAsync(
+            new SessionReadRequest(context, branchId, new SessionSequence(0), pageSize: 1), sessionProfile, cancellationToken)
+            .ConfigureAwait(false);
+        if (head is not SessionPage { Snapshot: { } snapshot })
+        {
+            throw AdmissionRejected(definition, catalogVersion, "The session's current history snapshot could not be captured.");
+        }
+
+        if (snapshot.UpperSequence.Value == 0)
+        {
+            return (snapshot.Version, new SessionBranchCursor(branchId, null));
+        }
+
+        var tail = await sessions.ReadAsync(
+            new SessionReadRequest(
+                context, branchId, new SessionSequence(snapshot.UpperSequence.Value - 1), pageSize: 1, snapshot),
+            sessionProfile, cancellationToken).ConfigureAwait(false);
+        return tail is SessionPage { Entries.Length: > 0 } page
+            ? (snapshot.Version, new SessionBranchCursor(branchId, page.Entries[^1].Id))
+            : throw AdmissionRejected(definition, catalogVersion, "The session's current branch tip could not be captured.");
+    }
+
+    /// <summary>Releases a durably admitted run's lane once the loop has returned, regardless of which <see cref="IAgentLoop"/> drove it.</summary>
+    /// <remarks>
+    /// This is best-effort and never changes the already-determined loop result: a rejection or fault is logged
+    /// and swallowed. Release happens here, at the same admission boundary that accepted the run, rather than
+    /// relying solely on the driving loop to release it — a scripted or third-party <see cref="IAgentLoop"/> that
+    /// never learned about the lane protocol would otherwise leave every session's lane permanently occupied
+    /// after its first run. The first-party <c>DefaultAgentLoop</c> also attempts this release itself once it
+    /// settles; the second attempt here then finds no accepted run and is a harmless no-op.
+    /// </remarks>
+    private async Task ReleaseLaneAsync(
+        ISessionCoordinator sessions,
+        SessionExecutionCapability capability,
+        AgentId agentId,
+        SessionId sessionId,
+        ExecutionLaneId executionLaneId,
+        InRunOperationCorrelation acceptedCorrelation,
+        ExecutionIdentity identity,
+        SecurityAuthorizationContext acceptedAuthorization,
+        SessionVersion finalVersion,
+        RunId runId)
+    {
+        try
+        {
+            var releaseContext = new SessionOperationContext(
+                agentId, sessionId, executionLaneId, acceptedCorrelation, identity, acceptedAuthorization);
+            var release = new SessionRunReleaseRequest(
+                releaseContext, new OperationStateRevision(1), finalVersion,
+                new IdempotencyKey($"agentkit.engine:{runId}:release"));
+            var result = await sessions.ReleaseRunAsync(release, capability, CancellationToken.None).ConfigureAwait(false);
+            if (result is not SessionRunReleased)
+            {
+                AgentAdmissionLog.LaneReleaseRejected(_logger, agentId, sessionId, result.GetType().Name);
+            }
+        }
+        catch (Exception exception)
+        {
+            AgentAdmissionLog.LaneReleaseFaulted(_logger, agentId, sessionId, exception.GetType().FullName ?? exception.GetType().Name);
+        }
     }
 
     /// <summary>Creates a new session owned by <paramref name="identity"/> for the agent.</summary>

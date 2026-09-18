@@ -7,8 +7,9 @@ using System.Collections.Immutable;
 
 /// <summary>
 /// A minimal stateful <see cref="ISessionCoordinator"/> double: creates sessions with fresh identities, loads them by
-/// address, reports an exact single-branch snapshot, and appends contiguous entries. Enough to drive an engine
-/// admission end to end without a store adapter; branching, deletion, and lane operations are unsupported.
+/// address, reports an exact single-branch snapshot, appends contiguous entries, and supports the full lane
+/// admission protocol (provisioning, discovery, input admission, run acceptance, and release) so the engine's
+/// admission boundary can drive a run end to end without a store adapter. Branching and deletion are unsupported.
 /// </summary>
 /// <remarks>
 /// Every member records its request so tests can assert on identities, idempotency keys, and ordering. Access is
@@ -34,8 +35,14 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
     /// <summary>Gets or sets a result that replaces every append, or <see langword="null"/> to append normally.</summary>
     public SessionAppendResult? AppendOverride { get; set; }
 
+    /// <summary>Gets or sets a result that replaces the next run acceptance, or <see langword="null"/> to accept normally.</summary>
+    public SessionRunStartResult? AcceptRunOverride { get; set; }
+
     /// <summary>Gets or sets a gate every append awaits before committing, for concurrency tests.</summary>
     public TaskCompletionSource? AppendGate { get; set; }
+
+    /// <summary>Gets or sets a gate every run acceptance awaits before committing, for concurrency tests.</summary>
+    public TaskCompletionSource? AcceptRunGate { get; set; }
 
     /// <summary>Seeds an existing session the coordinator will load.</summary>
     /// <param name="descriptor">The session's descriptor.</param>
@@ -174,6 +181,232 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
     public ValueTask<SessionDeleteResult> DeleteAsync(SessionDeleteRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Deletion is outside this double's scope.");
 
+    /// <inheritdoc/>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+        SessionLaneStateRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored))
+            {
+                return ValueTask.FromResult<SessionLaneStateResult>(new SessionLaneStateUnavailable("The session is unavailable."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            return ValueTask.FromResult<SessionLaneStateResult>(
+                stored.Lanes.TryGetValue(laneId, out var lane)
+                    ? new SessionLaneStateLoaded(new SessionLaneState(laneId, lane.Revision, lane.BranchCursor, lane.AcceptedState))
+                    : new SessionLaneStateNotProvisioned("The execution lane has not been provisioned."));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(
+        SessionExecutionLaneProvisionRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(new SessionExecutionLaneProvisionRejected("The session is unavailable."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (stored.Lanes.ContainsKey(laneId))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(new SessionExecutionLaneProvisionConflict("The execution lane is already provisioned."));
+            }
+
+            if (stored.Version != request.ExpectedVersion)
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(new SessionExecutionLaneProvisionConflict("The expected session version is stale."));
+            }
+
+            var revision = new SessionLaneRevision(1);
+            stored.Lanes[laneId] = new LaneRecord(request.BranchCursor, revision);
+            return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                new SessionExecutionLaneProvisioned(laneId, request.BranchCursor, revision, stored.Version, existing: false));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<InputAdmissionResult> AdmitInputAsync(
+        SessionInputAdmissionRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.AddressNotFound, "The session is unavailable.")));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!stored.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.AddressNotFound, "The execution lane is not provisioned.")));
+            }
+
+            if (stored.Version != request.ExpectedVersion || lane.Revision != request.ExpectedLaneRevision || lane.BranchCursor != request.BranchCursor)
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.StaleVersion, "The expected lane revision, branch cursor, or session version is stale.")));
+            }
+
+            var sequence = new SessionSequence(stored.Entries.Count + 1);
+            stored.Admissions[request.AdmissionId] = request.EffectivePayload;
+            lane.BranchCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, request.EntryId);
+            lane.Revision = new SessionLaneRevision(lane.Revision.Value + 1);
+            stored.Version = new SessionVersion(stored.Version.Value + 1);
+            var receipt = new AdmissionReceipt(
+                request.AdmissionId, request.OriginalPayload.Id, request.Context.AgentId, request.Context.SessionId,
+                laneId, sequence, existing: false);
+            return ValueTask.FromResult<InputAdmissionResult>(new AcceptedInput(receipt));
+        }
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<SessionRunStartResult> AcceptRunAsync(
+        SessionRunStartRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (AcceptRunGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
+        lock (_gate)
+        {
+            if (AcceptRunOverride is { } scripted)
+            {
+                AcceptRunOverride = null;
+                return scripted;
+            }
+
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored))
+            {
+                return new SessionRunStartRejected("The session is unavailable.");
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!stored.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return new SessionRunStartRejected("The execution lane is not provisioned.");
+            }
+
+            if (lane.AcceptedState is { } active)
+            {
+                return new SessionRunStartBusy(active.Correlation.OperationId, active.Correlation.RunId);
+            }
+
+            if (lane.Revision != request.ExpectedLaneRevision || stored.Version != request.ExpectedVersion)
+            {
+                return new SessionRunStartConflict(
+                    SessionRunStartConflictKind.LaneRevision, "The expected lane revision or session version is stale.");
+            }
+
+            var correlation = new InRunOperationCorrelation(request.Context.Correlation.OperationId, request.RunId, request.InitialTurnId);
+            var appended = new List<SessionEntry>(request.SelectedAdmissionIds.Length);
+            SessionEntryId? parent = stored.Entries.Count == 0 ? null : stored.Entries[^1].Id;
+            for (var index = 0; index < request.SelectedAdmissionIds.Length; index++)
+            {
+                var payload = stored.Admissions[request.SelectedAdmissionIds[index]];
+                var message = new UserMessage(
+                    request.MessageIds[index], request.Context.AgentId, request.Context.SessionId, stored.Descriptor.ConversationId,
+                    lane.BranchCursor.BranchId, request.RunId, request.InitialTurnId, request.AcceptedAt, MessageState.Complete,
+                    payload.Parts, payload.Extensions);
+                var entry = new MessageSessionEntry(
+                    request.EntryIds[index], request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                    new SessionSequence(stored.Entries.Count + appended.Count + 1), parent, request.AcceptedAt,
+                    new SchemaVersion("1"), message);
+                appended.Add(entry);
+                parent = entry.Id;
+            }
+
+            var installedRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+            var newVersion = new SessionVersion(stored.Version.Value + 1);
+            var committedCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, request.AcceptedEntryId);
+            var state = new SessionAcceptedRunState(
+                request.Context.ToAddress(), laneId, installedRevision, correlation, request.OperationStateRevision,
+                request.Context.Identity, request.InRunAuthorization, request.SessionProfile, request.Configuration,
+                lane.BranchCursor, committedCursor, request.PromotionCutoff, request.InitiatingAdmissionId,
+                request.SelectedAdmissionIds, request.EntryIds, request.MessageIds, request.InitialTurnId, request.AcceptedAt);
+
+            stored.Entries.AddRange(appended);
+            stored.Version = newVersion;
+            lane.Revision = installedRevision;
+            lane.BranchCursor = committedCursor;
+            lane.AcceptedState = state;
+            return new SessionRunAccepted(state, newVersion, existing: false);
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunStateResult> LoadRunStateAsync(
+        SessionRunStateRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            return !_sessions.TryGetValue(request.Context.SessionId, out var stored)
+                || !stored.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane)
+                || lane.AcceptedState is not { } state
+                || state.Correlation != request.Context.Correlation
+                ? ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable("The requested operation state is unavailable."))
+                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+        SessionRunReleaseRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored)
+                || !stored.Lanes.TryGetValue(request.ExecutionLaneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(
+                    new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.LaneNotFound, "The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is not { } active)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(
+                    new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.NoAcceptedRun, "The selected lane holds no accepted run."));
+            }
+
+            if (active.Correlation.OperationId != request.OperationId
+                || active.Correlation.RunId != request.RunId
+                || active.OperationStateRevision != request.ExpectedStateRevision)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(
+                    new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Fenced, "The lane's installed accepted run does not match the requested operation, run, and state revision."));
+            }
+
+            if (stored.Version != request.ExpectedVersion)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(
+                    new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.SessionVersion, "The expected session version is stale."));
+            }
+
+            lane.AcceptedState = null;
+            stored.Version = new SessionVersion(stored.Version.Value + 1);
+            return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleased(stored.Version, existing: false));
+        }
+    }
+
     private sealed class StoredSession(SessionDescriptor descriptor)
     {
         public SessionDescriptor Descriptor { get; } = descriptor;
@@ -181,5 +414,18 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
         public SessionVersion Version { get; set; } = descriptor.Version;
 
         public List<SessionEntry> Entries { get; } = [];
+
+        public Dictionary<ExecutionLaneId, LaneRecord> Lanes { get; } = [];
+
+        public Dictionary<AdmissionId, AgentInput> Admissions { get; } = [];
+    }
+
+    private sealed class LaneRecord(SessionBranchCursor branchCursor, SessionLaneRevision revision)
+    {
+        public SessionBranchCursor BranchCursor { get; set; } = branchCursor;
+
+        public SessionLaneRevision Revision { get; set; } = revision;
+
+        public SessionAcceptedRunState? AcceptedState { get; set; }
     }
 }

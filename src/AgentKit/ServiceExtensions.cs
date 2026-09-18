@@ -62,6 +62,10 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<MessageId>(static () => new MessageId(Guid.NewGuid())));
             services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
                 new DelegateIdentifierGenerator<SessionEntryId>(static () => new SessionEntryId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<TurnId>>(
+                new DelegateIdentifierGenerator<TurnId>(static () => new TurnId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<AdmissionId>>(
+                new DelegateIdentifierGenerator<AdmissionId>(static () => new AdmissionId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddSingleton(

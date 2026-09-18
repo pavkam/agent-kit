@@ -87,6 +87,7 @@ internal static class CompositionTestData
     public static void AddRunServicesFakes(IServiceCollection services)
     {
         services.TryAddSingleton<ISessionCoordinator, TestSupport.UnsupportedSessionCoordinator>();
+        services.TryAddSingleton<ISessionRunCoordinator, TestSupport.UnsupportedSessionRunCoordinator>();
         services.TryAddSingleton<IContextAssembler, TestSupport.UnsupportedContextAssembler>();
         services.TryAddSingleton<IToolInvoker, TestSupport.CaptureTestToolInvoker>();
         services.TryAddSingleton<IModelCatalog>(

@@ -73,9 +73,10 @@ internal sealed class GatedAgentLoop: IAgentLoop
                     ExtensionData.Empty),
                 ExtensionData.Empty);
             var outcome = OutcomeOverride?.Invoke(request) ?? new AgentRunCompleted(assistant);
+            var finalVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
             return new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome,
-                outcome is AgentRunCompleted ? [assistant] : [], new SessionVersion(1));
+                outcome is AgentRunCompleted ? [assistant] : [], finalVersion);
         }
         finally
         {
@@ -84,5 +85,22 @@ internal sealed class GatedAgentLoop: IAgentLoop
                 _active--;
             }
         }
+    }
+
+    /// <summary>
+    /// Reads the session's actual current version, since this fake commits nothing itself: the real admission
+    /// path may have already advanced the version through provisioning, admission, and acceptance before this
+    /// loop was ever entered, so a fixed version would be stale and fail a caller's later lane release.
+    /// </summary>
+    private static async Task<SessionVersion?> CurrentVersionAsync(
+        AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken)
+    {
+        var context = new SessionOperationContext(
+            request.AgentId, request.SessionId, executionLaneId: null, request.Authorization.Scope.Correlation,
+            request.Identity, request.Authorization);
+        var page = await services.Session.ReadAsync(
+            new SessionReadRequest(context, request.BranchId, new SessionSequence(0), pageSize: 1),
+            request.SessionProfile, cancellationToken).ConfigureAwait(false);
+        return page is SessionPage { Snapshot: { } snapshot } ? snapshot.Version : null;
     }
 }

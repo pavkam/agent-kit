@@ -30,4 +30,12 @@ internal static partial class AgentAdmissionLog
     /// <summary>Logs that a requested session was not visible to the requesting agent and identity.</summary>
     [LoggerMessage(18004, LogLevel.Warning, "Agent {AgentId} rejected a turn: session {SessionId} is unavailable or not visible to the requesting identity.")]
     internal static partial void SessionNotVisible(ILogger logger, AgentId agentId, SessionId sessionId);
+
+    /// <summary>Logs that releasing a durably admitted run's lane was rejected.</summary>
+    [LoggerMessage(18005, LogLevel.Warning, "Agent {AgentId} session {SessionId}: releasing the admitted lane was rejected ({Outcome}); the lane was not released.")]
+    internal static partial void LaneReleaseRejected(ILogger logger, AgentId agentId, SessionId sessionId, string outcome);
+
+    /// <summary>Logs that releasing a durably admitted run's lane faulted.</summary>
+    [LoggerMessage(18006, LogLevel.Error, "Agent {AgentId} session {SessionId}: releasing the admitted lane faulted with {ErrorType}; the lane was not released.")]
+    internal static partial void LaneReleaseFaulted(ILogger logger, AgentId agentId, SessionId sessionId, string errorType);
 }

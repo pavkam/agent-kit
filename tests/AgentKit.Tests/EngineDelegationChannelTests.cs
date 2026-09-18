@@ -74,7 +74,7 @@ public sealed class EngineDelegationChannelTests
         child.ChildSessionId.ShouldBe(request.SessionId);
         child.ChildRunId.ShouldBe(request.RunId);
         sessions.CreateRequests.ShouldHaveSingleItem().AgentId.ShouldBe(_specialist);
-        var user = sessions.AppendRequests.Single().Entries.Single().ShouldBeOfType<MessageSessionEntry>().Message.ShouldBeOfType<UserMessage>();
+        var user = sessions.EntriesOf(request.SessionId).OfType<MessageSessionEntry>().Single().Message.ShouldBeOfType<UserMessage>();
         var text = user.Parts.OfType<TextPart>().Single().Text;
         text.ShouldContain("Find the retry policy.");
         text.ShouldContain("- Cite files.");
