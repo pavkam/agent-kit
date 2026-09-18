@@ -56,6 +56,9 @@ public sealed class DefaultSessionStoreCatalogTests
         public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(
             AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+            AuthorizedSessionStoreRequest<SessionLaneStateRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionPageResult> ReadAsync(AuthorizedSessionStoreRequest<SessionReadRequest> request,

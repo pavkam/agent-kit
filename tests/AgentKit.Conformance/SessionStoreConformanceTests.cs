@@ -520,6 +520,68 @@ public abstract class SessionStoreConformanceTests<TFixture>
             .ShouldBeEquivalentTo(accepted.State);
     }
 
+    /// <summary>Verifies discovery of a lane that was never provisioned reports a typed not-provisioned result.</summary>
+    [Fact]
+    public async Task LoadLaneStateAsync_WhenLaneWasNeverProvisioned_ReturnsNotProvisioned()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = LaneContext(
+            descriptor.Address, Identifier<ExecutionLaneId>(600), Identity(),
+            new BeforeRunOperationCorrelation(Identifier<OperationId>(601), null));
+        var load = new SessionLaneStateRequest(context);
+
+        var result = await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionLaneStateNotProvisioned>();
+    }
+
+    /// <summary>Verifies discovery of a freshly provisioned, still idle lane reports the revision and cursor advanced by its one pending admission.</summary>
+    [Fact]
+    public async Task LoadLaneStateAsync_WhenLaneIsProvisionedAndIdle_ReturnsRevisionAndCursorWithoutAcceptedRun()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context, provisioned, admission, _) =
+            await ProvisionAndAdmitAsync(fixture, store, 610, "lane-state-idle");
+        var load = new SessionLaneStateRequest(context);
+
+        var loaded = (SessionLaneStateLoaded) await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.State.ExecutionLaneId.ShouldBe(context.ExecutionLaneId!.Value);
+        loaded.State.Revision.ShouldBe(new SessionLaneRevision(provisioned.LaneRevision.Value + 1));
+        loaded.State.BranchCursor.ShouldBe(new SessionBranchCursor(descriptor.ActiveBranchId, admission.EntryId));
+        loaded.State.AcceptedState.ShouldBeNull();
+    }
+
+    /// <summary>Verifies discovery of a lane holding an accepted run reports its current revision, cursor, and the exact accepted state.</summary>
+    [Fact]
+    public async Task LoadLaneStateAsync_WhenLaneHoldsAnAcceptedRun_ReturnsMatchingAcceptedState()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 620, "lane-state-accepted");
+        var start = StartRequest(prepared, 630);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var load = new SessionLaneStateRequest(prepared.Context);
+
+        var loaded = (SessionLaneStateLoaded) await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.State.ExecutionLaneId.ShouldBe(prepared.Context.ExecutionLaneId!.Value);
+        loaded.State.Revision.ShouldBe(accepted.State.LaneRevision);
+        loaded.State.BranchCursor.ShouldBe(accepted.State.CommittedCursor);
+        loaded.State.AcceptedState.ShouldBeEquivalentTo(accepted.State);
+    }
+
     /// <summary>Verifies a lane-owned append advances the lane cursor so a later run acceptance can name the real branch tip.</summary>
     [Fact]
     public async Task AcceptRunAsync_AfterAppendOnLaneBranch_UsesAdvancedCursor()

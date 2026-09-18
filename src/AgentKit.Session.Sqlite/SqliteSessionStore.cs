@@ -799,6 +799,25 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             : new SessionRunStateLoaded(state);
     }
 
+    private static async ValueTask<SessionLaneStateResult> LoadLaneStateCoreAsync(
+        SqliteSessionUnitOfWork uow, SessionLaneStateRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var address = request.Context.ToAddress();
+        var record = await uow.GetSessionAsync(address, cancellationToken).ConfigureAwait(false);
+        if (record is null || record.TenantId != request.Context.Identity.TenantId)
+        {
+            return new SessionLaneStateUnavailable("The session is unavailable.");
+        }
+
+        var laneId = request.Context.ExecutionLaneId!.Value;
+        var lane = await uow.GetLaneAsync(address, laneId, cancellationToken).ConfigureAwait(false);
+        return lane is null
+            ? new SessionLaneStateNotProvisioned("The execution lane has not been provisioned.")
+            : new SessionLaneStateLoaded(new SessionLaneState(laneId, lane.Revision, lane.BranchCursor, lane.AcceptedState));
+    }
+
     /// <summary>Atomically clears one lane's installed accepted run state, or reconciles a repeated identical release.</summary>
     /// <param name="uow">The transaction-scoped repository.</param>
     /// <param name="request">The exact protected release request naming the lane and the accepted run it owns.</param>

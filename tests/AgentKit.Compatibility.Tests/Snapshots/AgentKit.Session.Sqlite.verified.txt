@@ -47,6 +47,7 @@ namespace AgentKit.Session.Sqlite
         public System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionDeleteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLaneStateResult> LoadLaneStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionLaneStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }

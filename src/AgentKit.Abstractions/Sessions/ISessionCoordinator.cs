@@ -137,6 +137,25 @@ public interface ISessionCoordinator
             new SessionExecutionLaneProvisionRejected("The coordinator does not support protected lane provisioning."));
     }
 
+    /// <summary>Loads one provisioned execution lane's current durable revision, branch cursor, and optional accepted run.</summary>
+    /// <param name="request">The exact lane-state discovery request.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing the lane's current state, a typed not-provisioned result, or typed unavailability.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+        SessionLaneStateRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionLaneStateResult>(
+            new SessionLaneStateUnavailable("The coordinator does not support protected lane-state discovery."));
+    }
+
     /// <summary>Atomically admits one preprocessed input into durable pending state.</summary>
     /// <param name="request">The complete input admission transaction.</param>
     /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>

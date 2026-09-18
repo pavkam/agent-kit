@@ -59,6 +59,12 @@ public interface ISessionStore
         AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Loads one provisioned execution lane's current durable revision, branch cursor, and optional accepted run.</summary>
+    /// <param name="request">The exact protected lane-state discovery request.</param><param name="cancellationToken">Cancels before protected access begins.</param><returns>The lane's current state, a typed not-provisioned result, or a typed unavailable result.</returns>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+        AuthorizedSessionStoreRequest<SessionLaneStateRequest> request,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Appends one or more entries to a branch, conditioned on an expected
     /// version.

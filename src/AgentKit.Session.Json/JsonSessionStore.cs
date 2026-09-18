@@ -814,6 +814,22 @@ public sealed partial class JsonSessionStore: ISessionStore, IDisposable
         }
     }
 
+    private SessionLaneStateResult LoadLaneStateCore(
+        SessionLaneStateRequest request, CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "The public boundary validates the lane-state request.");
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            return !TryGetAuthorizedRecord(request.Context, out var record)
+                ? new SessionLaneStateUnavailable("The session is unavailable.")
+                : !record.Lanes.TryGetValue(laneId, out var lane)
+                    ? new SessionLaneStateNotProvisioned("The execution lane has not been provisioned.")
+                    : new SessionLaneStateLoaded(new SessionLaneState(laneId, lane.Revision, lane.BranchCursor, lane.AcceptedState));
+        }
+    }
+
     /// <summary>Atomically clears one lane's installed accepted run, or reconciles a repeated identical release.</summary>
     /// <param name="request">The exact protected release request naming the lane and the accepted run it owns.</param>
     /// <param name="committedAt">The clock-derived instant stamped on the session's last-updated time.</param>

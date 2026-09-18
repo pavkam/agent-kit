@@ -4126,6 +4126,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.SessionDeleteRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.SessionDirectoryListRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.SessionOperationContext context, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionLaneStateResult> LoadLaneStateAsync(AgentKit.SessionLaneStateRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.SessionRunStateRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.SessionInputLookupRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.SessionExecutionLaneProvisionRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
@@ -4189,6 +4190,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> CreateBranchAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionBranchRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionDeleteRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionLaneStateResult> LoadLaneStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionLaneStateRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default);
@@ -7548,6 +7550,35 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class SessionLaneState : System.IEquatable<AgentKit.SessionLaneState>
+    {
+        public SessionLaneState(AgentKit.ExecutionLaneId executionLaneId, AgentKit.SessionLaneRevision revision, AgentKit.SessionBranchCursor branchCursor, AgentKit.SessionAcceptedRunState? acceptedState) { }
+        public AgentKit.SessionAcceptedRunState? AcceptedState { get; }
+        public AgentKit.SessionBranchCursor BranchCursor { get; }
+        public AgentKit.ExecutionLaneId ExecutionLaneId { get; }
+        public AgentKit.SessionLaneRevision Revision { get; }
+    }
+    public sealed class SessionLaneStateLoaded : AgentKit.SessionLaneStateResult, System.IEquatable<AgentKit.SessionLaneStateLoaded>
+    {
+        public SessionLaneStateLoaded(AgentKit.SessionLaneState state) { }
+        public AgentKit.SessionLaneState State { get; }
+    }
+    public sealed class SessionLaneStateNotProvisioned : AgentKit.SessionLaneStateResult, System.IEquatable<AgentKit.SessionLaneStateNotProvisioned>
+    {
+        public SessionLaneStateNotProvisioned(string safeReason) { }
+        public string SafeReason { get; }
+    }
+    public sealed class SessionLaneStateRequest : System.IEquatable<AgentKit.SessionLaneStateRequest>
+    {
+        public SessionLaneStateRequest(AgentKit.SessionOperationContext context) { }
+        public AgentKit.SessionOperationContext Context { get; }
+    }
+    public abstract class SessionLaneStateResult : System.IEquatable<AgentKit.SessionLaneStateResult> { }
+    public sealed class SessionLaneStateUnavailable : AgentKit.SessionLaneStateResult, System.IEquatable<AgentKit.SessionLaneStateUnavailable>
+    {
+        public SessionLaneStateUnavailable(string safeReason) { }
+        public string SafeReason { get; }
+    }
     public readonly struct SessionLeaseId : System.IEquatable<AgentKit.SessionLeaseId>
     {
         public SessionLeaseId(System.Guid value) { }
@@ -7950,6 +7981,7 @@ namespace AgentKit
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionExecutionLaneProvisionRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionInputAdmissionRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionInputLookupRequest request) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionLaneStateRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionOperationContext request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionReadRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionRunReleaseRequest request) { }

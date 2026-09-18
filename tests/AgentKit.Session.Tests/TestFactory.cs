@@ -130,6 +130,8 @@ internal static class TestFactory
 
     public static SessionRunStateRequest RunStateRequest(SessionOperationContext inRunContext) => new(inRunContext);
 
+    public static SessionLaneStateRequest LaneStateRequest(SessionOperationContext beforeRunContext) => new(beforeRunContext);
+
     public static SessionRunReleaseRequest RunReleaseRequest(SessionOperationContext inRunContext) => new(
         inRunContext, new OperationStateRevision(1), new SessionVersion(1), new IdempotencyKey("release"));
 

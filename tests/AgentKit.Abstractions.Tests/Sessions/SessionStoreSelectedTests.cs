@@ -48,6 +48,7 @@ public sealed class SessionStoreSelectedTests
         public ValueTask<SessionCreateResult> CreateAsync(AuthorizedSessionStoreRequest<SessionStoreCreateRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionLoadResult> LoadAsync(AuthorizedSessionStoreRequest<SessionOperationContext> context, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(AuthorizedSessionStoreRequest<SessionLaneStateRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionPageResult> ReadAsync(AuthorizedSessionStoreRequest<SessionReadRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionBranchResult> CreateBranchAsync(AuthorizedSessionStoreRequest<SessionBranchRequest> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

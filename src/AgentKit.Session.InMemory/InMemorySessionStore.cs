@@ -846,6 +846,32 @@ public sealed partial class InMemorySessionStore: ISessionStore
         }
     }
 
+    private ValueTask<SessionLaneStateResult> LoadLaneStateCoreAsync(
+        SessionLaneStateRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionLaneStateResult>(
+                    new SessionLaneStateUnavailable("The session is unavailable."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionLaneStateResult>(
+                    new SessionLaneStateNotProvisioned("The execution lane has not been provisioned."));
+            }
+
+            var state = new SessionLaneState(laneId, lane.Revision, lane.BranchCursor, lane.AcceptedState);
+            return ValueTask.FromResult<SessionLaneStateResult>(new SessionLaneStateLoaded(state));
+        }
+    }
+
     private ValueTask<SessionRunStateResult> LoadRunStateCoreAsync(
         SessionRunStateRequest request,
         CancellationToken cancellationToken)

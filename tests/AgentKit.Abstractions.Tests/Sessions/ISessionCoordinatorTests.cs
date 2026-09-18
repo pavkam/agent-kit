@@ -15,11 +15,13 @@ public sealed class ISessionCoordinatorTests
         var requests = Requests(coordinator);
         Should.Throw<ArgumentNullException>(() => _ = coordinator.LookupInputAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.ProvisionLaneAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
+        Should.Throw<ArgumentNullException>(() => _ = coordinator.LoadLaneStateAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.AdmitInputAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.AcceptRunAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.LoadRunStateAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.LookupInputAsync(requests.Lookup, null!).AsTask()).ParamName.ShouldBe("session");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.ProvisionLaneAsync(requests.Provision, null!).AsTask()).ParamName.ShouldBe("session");
+        Should.Throw<ArgumentNullException>(() => _ = coordinator.LoadLaneStateAsync(requests.LaneState, null!).AsTask()).ParamName.ShouldBe("session");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.AdmitInputAsync(requests.Admission, null!).AsTask()).ParamName.ShouldBe("session");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.AcceptRunAsync(requests.Start, null!).AsTask()).ParamName.ShouldBe("session");
         Should.Throw<ArgumentNullException>(() => _ = coordinator.LoadRunStateAsync(requests.Load, null!).AsTask()).ParamName.ShouldBe("session");
@@ -34,6 +36,7 @@ public sealed class ISessionCoordinatorTests
         cancellation.Cancel();
         Should.Throw<OperationCanceledException>(() => _ = coordinator.LookupInputAsync(requests.Lookup, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
         Should.Throw<OperationCanceledException>(() => _ = coordinator.ProvisionLaneAsync(requests.Provision, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
+        Should.Throw<OperationCanceledException>(() => _ = coordinator.LoadLaneStateAsync(requests.LaneState, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
         Should.Throw<OperationCanceledException>(() => _ = coordinator.AdmitInputAsync(requests.Admission, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
         Should.Throw<OperationCanceledException>(() => _ = coordinator.AcceptRunAsync(requests.Start, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
         Should.Throw<OperationCanceledException>(() => _ = coordinator.LoadRunStateAsync(requests.Load, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
@@ -67,6 +70,7 @@ public sealed class ISessionCoordinatorTests
         _ = (await coordinator.ListAsync(ListRequest(), token)).ShouldBeOfType<SessionDirectoryListUnavailable>();
         _ = (await coordinator.LookupInputAsync(requests.Lookup, requests.Capability, token)).ShouldBeOfType<SessionInputLookupRejected>();
         _ = (await coordinator.ProvisionLaneAsync(requests.Provision, requests.Capability, token)).ShouldBeOfType<SessionExecutionLaneProvisionRejected>();
+        _ = (await coordinator.LoadLaneStateAsync(requests.LaneState, requests.Capability, token)).ShouldBeOfType<SessionLaneStateUnavailable>();
         var admission = await coordinator.AdmitInputAsync(requests.Admission, requests.Capability, token);
         _ = admission.ShouldBeOfType<RejectedInput>();
         ((RejectedInput) admission).Rejection.Kind.ShouldBe(InputRejectionKind.Unauthorized);
@@ -103,6 +107,7 @@ public sealed class ISessionCoordinatorTests
         var admissionId = new AdmissionId(Guid.NewGuid());
         var lookup = new SessionInputLookupRequest(before, input, preprocessing.OriginalFingerprint);
         var provision = new SessionExecutionLaneProvisionRequest(before, cursor, new SessionVersion(0), new SessionEntryId(Guid.NewGuid()), profile.Reference, configuration, DateTimeOffset.UnixEpoch, new IdempotencyKey("provision"));
+        var laneState = new SessionLaneStateRequest(before);
         var admission = new SessionInputAdmissionRequest(before, admissionId, new SessionEntryId(Guid.NewGuid()), input, input, preprocessing, DateTimeOffset.UnixEpoch, new SessionVersion(1), new SessionLaneRevision(2), cursor, new IdempotencyKey("admit"), 8);
         var runId = new RunId(Guid.NewGuid());
         var turnId = new TurnId(Guid.NewGuid());
@@ -113,10 +118,10 @@ public sealed class ISessionCoordinatorTests
         var load = new SessionRunStateRequest(inRun);
         var release = new SessionRunReleaseRequest(inRun, new OperationStateRevision(1), new SessionVersion(2), new IdempotencyKey("release"));
         var runCoordinator = new UnsupportedRunCoordinator();
-        return new RequestSet(lookup, provision, admission, start, load, release, new SessionExecutionCapability(profile, coordinator, runCoordinator));
+        return new RequestSet(lookup, provision, laneState, admission, start, load, release, new SessionExecutionCapability(profile, coordinator, runCoordinator));
     }
 
-    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionRunReleaseRequest Release, SessionExecutionCapability Capability);
+    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionLaneStateRequest LaneState, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionRunReleaseRequest Release, SessionExecutionCapability Capability);
     private sealed class UnsupportedCoordinator: ISessionCoordinator
     {
         public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();

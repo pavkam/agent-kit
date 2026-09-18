@@ -725,6 +725,46 @@ public sealed class DefaultSessionCoordinatorTests
     }
 
     [Fact]
+    public async Task LoadLaneStateAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.BeforeRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadLaneStateAsync(TestFactory.LaneStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionLaneStateUnavailable>();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadLaneStateAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadLaneStateAsync(TestFactory.LaneStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionLaneStateUnavailable>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task ReleaseRunAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
     {
         var harness = new Harness();
@@ -964,6 +1004,26 @@ public sealed class DefaultSessionCoordinatorTests
             TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<SessionRunStateUnavailable>().SafeReason
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task LoadLaneStateAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadLaneStateAsync(TestFactory.LaneStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLaneStateUnavailable>().SafeReason
             .ShouldBe("Session route lookup was not authorized.");
     }
 
@@ -1706,6 +1766,8 @@ public sealed class DefaultSessionCoordinatorTests
         public ValueTask<SessionLoadResult> LoadAsync(AuthorizedSessionStoreRequest<SessionOperationContext> context,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(AuthorizedSessionStoreRequest<SessionLaneStateRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();

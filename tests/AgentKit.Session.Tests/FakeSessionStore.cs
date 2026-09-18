@@ -88,6 +88,11 @@ internal sealed class FakeSessionStore: ISessionStore
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<SessionExecutionLaneProvisionResult>(new SessionExecutionLaneProvisionRejected("not configured"));
 
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(
+        AuthorizedSessionStoreRequest<SessionLaneStateRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SessionLaneStateResult>(new SessionLaneStateUnavailable("not configured"));
+
     public ValueTask<SessionInputLookupResult> LookupInputAsync(
         AuthorizedSessionStoreRequest<SessionInputLookupRequest> request,
         CancellationToken cancellationToken = default) =>

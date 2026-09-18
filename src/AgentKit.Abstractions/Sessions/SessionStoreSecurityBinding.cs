@@ -46,6 +46,9 @@ public static class SessionStoreSecurityBinding
     /// <summary>Fingerprints one exact lane-provision transaction, including branch, profile, configuration, time, and authority evidence.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public static InputFingerprint Fingerprint(SessionExecutionLaneProvisionRequest request) => SecurityCanonicalFingerprint.Create(request);
 
+    /// <summary>Fingerprints one exact lane-state discovery request.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public static InputFingerprint Fingerprint(SessionLaneStateRequest request) => SecurityCanonicalFingerprint.Create(request);
+
     /// <summary>Fingerprints one exact append request, including every entry and content byte.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public static InputFingerprint Fingerprint(SessionAppendRequest request) => SecurityCanonicalFingerprint.Create(request);
 

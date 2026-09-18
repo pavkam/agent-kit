@@ -27,6 +27,13 @@ public sealed partial class InMemorySessionStore
             static reason => new SessionExecutionLaneProvisionRejected(reason), cancellationToken);
 
     /// <inheritdoc/>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(AuthorizedSessionStoreRequest<SessionLaneStateRequest> request, CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
+            token => LoadLaneStateCoreAsync(request.Request, token),
+            static result => result is SessionLaneStateLoaded or SessionLaneStateNotProvisioned,
+            static reason => new SessionLaneStateUnavailable(reason), cancellationToken);
+
+    /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Append,
             token => AppendCoreAsync(request.Request, token), static result => result is SessionAppended,
@@ -232,6 +239,7 @@ public sealed partial class InMemorySessionStore
         SessionStoreCreateRequest => "create",
         SessionOperationContext => "load",
         SessionExecutionLaneProvisionRequest => "lane_provision",
+        SessionLaneStateRequest => "lane_state_load",
         SessionAppendRequest => "append",
         SessionReadRequest => "read",
         SessionBranchRequest => "branch",
@@ -254,6 +262,7 @@ public sealed partial class InMemorySessionStore
     {
         SessionOperationContext value => value,
         SessionExecutionLaneProvisionRequest value => value.Context,
+        SessionLaneStateRequest value => value.Context,
         SessionAppendRequest value => value.Context,
         SessionReadRequest value => value.Context,
         SessionBranchRequest value => value.Context,
@@ -270,6 +279,7 @@ public sealed partial class InMemorySessionStore
     {
         SessionOperationContext value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionExecutionLaneProvisionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+        SessionLaneStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionAppendRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionReadRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionBranchRequest value => SessionStoreSecurityBinding.Fingerprint(value),

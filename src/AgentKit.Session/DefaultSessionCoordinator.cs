@@ -270,6 +270,23 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
     }
 
     /// <inheritdoc/>
+    public ValueTask<SessionLaneStateResult> LoadLaneStateAsync(SessionLaneStateRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionLaneStateLoad, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionLaneStateResult>(new SessionLaneStateUnavailable(
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateRead, SecurityEffect.Observe,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.LoadLaneStateAsync(wrapper, token),
+                    static reason => new SessionLaneStateUnavailable(reason), cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public ValueTask<InputAdmissionResult> AdmitInputAsync(SessionInputAdmissionRequest request,
         SessionExecutionCapability session, CancellationToken cancellationToken = default)
     {
@@ -678,7 +695,8 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
     {
         SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted or
             SessionInputReplayFound or SessionInputNotFound or SessionExecutionLaneProvisioned or AcceptedInput or
-            SessionRunAccepted or SessionRunStateLoaded or SessionRunReleased or SessionDirectoryPage =>
+            SessionRunAccepted or SessionRunStateLoaded or SessionRunReleased or SessionDirectoryPage or
+            SessionLaneStateLoaded =>
             "success",
         SessionCreateFailed or SessionNotFound or SessionLoadFailed or SessionAppendConflict or
             SessionAppendNotFound or SessionAppendFailed or SessionReadNotFound or SessionReadFailed or
@@ -686,7 +704,8 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             SessionInputLookupConflict or SessionInputLookupRejected or SessionExecutionLaneProvisionConflict or
             SessionExecutionLaneProvisionRejected or RejectedInput or SessionRunStartConflict or
             SessionRunStartBusy or SessionRunStartFenced or SessionRunStartRejected or SessionRunStateUnavailable or
-            SessionRunReleaseRejected or SessionDirectoryListUnavailable =>
+            SessionRunReleaseRejected or SessionDirectoryListUnavailable or SessionLaneStateNotProvisioned or
+            SessionLaneStateUnavailable =>
             "failed",
         _ => "unknown",
     };

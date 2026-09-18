@@ -154,6 +154,9 @@ public static class AgentKitActivityNames
     /// <summary>Names protected execution-lane provisioning.</summary>
     public const string SessionLaneProvision = "session.lane.provision";
 
+    /// <summary>Names protected execution-lane state discovery.</summary>
+    public const string SessionLaneStateLoad = "session.lane.state.load";
+
     /// <summary>Names protected input admission.</summary>
     public const string SessionInputAdmit = "session.input.admit";
 
