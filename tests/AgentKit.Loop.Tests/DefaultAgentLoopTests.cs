@@ -2572,6 +2572,31 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenModelAttemptCancelledWithNoPartialOutputAndTokenIsCancelled_ThrowsOperationCanceledExceptionInsteadOfSettling()
+    {
+        // The documented contract: caller cancellation propagates as OperationCanceledException while the run
+        // has committed nothing. An adapter that throws OCE directly already honors this (see the sibling test
+        // below), but an adapter that instead honors the same caller token by returning ModelAttemptCancelled
+        // with zero partial parts must not be treated differently: settling with a typed AgentRunCancelled
+        // outcome here would make the same zero-effect user cancellation throw for one adapter and return for
+        // another.
+        using var cts = new CancellationTokenSource();
+        var cancellation = TestFactory.Cancellation();
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            cts.Cancel();
+            return new ModelAttemptCancelled(cancellation, [], null);
+        });
+        coordinator.HonorCancellation = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token));
+
+        coordinator.Entries.Count.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenCancelledBeforeAnyCommit_ThrowsOperationCanceledException()
     {
         using var cts = new CancellationTokenSource();

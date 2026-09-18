@@ -1254,6 +1254,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   zero-effect contract (or, if the typed outcome is preferred, update the
   remarks and make the `RunCoreAsync` catch unconditional).
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### L07 — Dangling-tool-call recovery derives its idempotency key and causal parent from the wrong assistant message
 

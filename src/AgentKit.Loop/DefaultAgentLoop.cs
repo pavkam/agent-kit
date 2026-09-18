@@ -646,6 +646,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new AgentRunFailed(failed.Failure), committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
+            // A cancelled attempt with no partial parts and no earlier turn commit is a zero-effect
+            // cancellation: the documented contract (see the class remarks) is that caller cancellation
+            // propagates as OperationCanceledException while the run has committed nothing, exactly like the
+            // top-level catch around RunTurnAsync already enforces for an adapter that throws OCE directly
+            // instead of returning ModelAttemptCancelled. Settling with a typed AgentRunCancelled outcome here
+            // instead would make the same user cancellation throw for one adapter and return for another.
+            ModelAttemptCancelled { PartialParts.IsEmpty: true } cancelled
+                when cancellationToken.IsCancellationRequested && committedMessages.Count == 0 =>
+                throw new OperationCanceledException(cancellationToken),
+
             ModelAttemptCancelled cancelled => await SettleInterruptedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 cancelled.PartialParts, cancelled.Usage, NormalizedStopReason.Cancelled,
