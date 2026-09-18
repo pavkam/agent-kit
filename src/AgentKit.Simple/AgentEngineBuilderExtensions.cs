@@ -517,6 +517,29 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
+        /// Keeps long conversations inside the model's context window: when the history the loop is about to send
+        /// exceeds a fraction of the selected model's declared window, older entries are summarized into a durable
+        /// compaction checkpoint and the request is rebuilt from it.
+        /// </summary>
+        /// <param name="configure">Optional compaction settings such as the checkpoint size ceiling.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <remarks>
+        /// Registers the deterministic extractive compactor; no second model is involved. The trigger fraction is
+        /// <c>AgentLoopOptions.ContextPressureThreshold</c> (0.8 by default) on the loop's named options, and the loop
+        /// compacts at most once per run. Models whose descriptor declares no context window are never compacted.
+        /// For model-written summaries register <c>AddModelBackedContextCompaction</c> on
+        /// <see cref="AgentEngineBuilder.Services"/> instead of calling this method.
+        /// </remarks>
+        public AgentEngineBuilder WithCompaction(Action<CompactionOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            _ = Plan(builder);
+            _ = builder.Services.AddContextCompaction(configure);
+            return builder;
+        }
+
+        /// <summary>
         /// Requires every final answer to satisfy a structured-output contract: the loop validates each terminal
         /// response through the composed output processor, asks the model to correct a rejected candidate within
         /// the definition's retry policy, and surfaces the accepted value on the turn result.

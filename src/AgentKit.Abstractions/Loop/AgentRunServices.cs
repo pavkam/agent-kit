@@ -48,6 +48,10 @@ public sealed class AgentRunServices
     /// <see langword="null"/> when the composition selects no output processor. A run whose request names an
     /// output definition fails closed when this is <see langword="null"/>.
     /// </param>
+    /// <param name="compactor">
+    /// Produces and activates a compaction checkpoint over older history when the loop detects context pressure,
+    /// or <see langword="null"/> when the composition selects no compactor; the loop then never compacts.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -58,7 +62,8 @@ public sealed class AgentRunServices
         IModelSelector modelSelector,
         ILlmModelResolver modelResolver,
         IRunContinuationPolicy continuationPolicy,
-        IOutputProcessor? output = null)
+        IOutputProcessor? output = null,
+        ICompactor? compactor = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -78,6 +83,7 @@ public sealed class AgentRunServices
         ModelResolver = modelResolver;
         ContinuationPolicy = continuationPolicy;
         Output = output;
+        Compactor = compactor;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -107,4 +113,8 @@ public sealed class AgentRunServices
     /// <summary>Gets the processor that validates terminal responses against a selected output definition.</summary>
     /// <value><see langword="null"/> when the composition selects no output processor; runs with an output definition then fail closed.</value>
     public IOutputProcessor? Output { get; }
+
+    /// <summary>Gets the compactor the loop asks to checkpoint older history under context pressure.</summary>
+    /// <value><see langword="null"/> when the composition selects no compactor; the loop then never compacts.</value>
+    public ICompactor? Compactor { get; }
 }

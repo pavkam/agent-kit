@@ -37,6 +37,23 @@ agent definition, grant security authority, translate provider wire formats, or
 delete covered history. A checkpoint affects only later context views on the
 same applicable branch.
 
+### Loop trigger
+
+`AgentKit.Loop` is the first-party caller. When `AgentRunServices.Compactor` is
+composed and the selected model declares `ModelLimits.MaxContextTokens`, the
+loop estimates the model-facing history before each turn
+(`AgentLoopOptions.EstimatedCharactersPerToken`, 4.0 by default) and, once the
+estimate exceeds `AgentLoopOptions.ContextPressureThreshold` (0.8) of the
+window, issues one `CompactionRequest` per run with
+`CompactionTriggerKind.ContextPressure`, the run's correlation as the cause, the
+branch's exact source version and tip as `SourceVersion`/`SourceThrough`, and
+the attempt timeout as the deadline. On `CompactionSucceeded` the loop reloads
+history from the newest checkpoint; on any other outcome, or a thrown compactor,
+it logs and continues with the history it had, leaving the provider as the
+authority on fit. `AgentKit.Simple.WithCompaction()` registers the extractive
+compactor. Provider-overflow retry (`ProviderOverflow`) and the
+instruction-epoch trigger remain to be wired.
+
 ## Normative identities and correlation
 
 The following C# 14 shapes are normative and minimal rather than exhaustive.

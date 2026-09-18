@@ -6,6 +6,7 @@ global using System.Diagnostics;
 
 global using AgentKit;
 global using AgentKit.Context;
+global using AgentKit.Context.Compaction;
 global using AgentKit.Conversations;
 global using AgentKit.FileSystem;
 global using AgentKit.Hooks;

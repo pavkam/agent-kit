@@ -18,6 +18,7 @@
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <ProjectReference Include="../AgentKit/AgentKit.csproj"/>
     <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
+    <ProjectReference Include="../AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <ProjectReference Include="../AgentKit.Loop/AgentKit.Loop.csproj"/>
     <ProjectReference Include="../AgentKit.Output/AgentKit.Output.csproj"/>

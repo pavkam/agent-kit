@@ -213,4 +213,20 @@ internal static partial class LoopLog
     /// <summary>Logs that a before-tool-invocation hook vetoed a call, which settled as rejected without invocation.</summary>
     [LoggerMessage(1096, LogLevel.Information, "Run {RunId}: tool call {ToolCallId} was vetoed by a hook and settled as rejected without invocation.")]
     internal static partial void ToolCallVetoed(ILogger logger, RunId runId, ToolCallId toolCallId);
+
+    /// <summary>Logs that estimated history size crossed the pressure threshold and a compaction was requested.</summary>
+    [LoggerMessage(1097, LogLevel.Information, "Run {RunId}: history estimated at {EstimatedTokens} tokens against a {ContextWindow}-token window; requesting compaction {CompactionId}.")]
+    internal static partial void CompactionTriggered(ILogger logger, RunId runId, CompactionId compactionId, long estimatedTokens, long contextWindow);
+
+    /// <summary>Logs that a requested compaction did not yield a checkpoint and the run continues uncompacted.</summary>
+    [LoggerMessage(1098, LogLevel.Warning, "Run {RunId}: compaction {CompactionId} was not applied ({Outcome}); continuing with the current history.")]
+    internal static partial void CompactionNotApplied(ILogger logger, RunId runId, CompactionId compactionId, string outcome);
+
+    /// <summary>Logs that the compactor threw; the run continues uncompacted.</summary>
+    [LoggerMessage(1099, LogLevel.Error, "Run {RunId}: compaction {CompactionId} faulted with {ErrorType}; continuing with the current history.")]
+    internal static partial void CompactionFaulted(ILogger logger, RunId runId, CompactionId compactionId, string errorType);
+
+    /// <summary>Logs that a checkpoint was activated and the model-facing history was rebuilt from it.</summary>
+    [LoggerMessage(1100, LogLevel.Information, "Run {RunId}: compaction {CompactionId} applied; model-facing history went from {MessagesBefore} to {MessagesAfter} messages.")]
+    internal static partial void CompactionApplied(ILogger logger, RunId runId, CompactionId compactionId, int messagesBefore, int messagesAfter);
 }

@@ -219,6 +219,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="timeProvider">The clock used to timestamp committed messages and entries.</param>
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional logger that receives safe turn diagnostics; a null logger is used when omitted.</param>
+    /// <param name="compactor">The optional compactor the loop asks to checkpoint older history under context pressure.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <see cref="ConversationSessionOptions.AgentId"/> or <see cref="ConversationSessionOptions.SecurityProfileKey"/>
@@ -242,7 +243,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         IIdentifierGenerator<SessionEntryId> sessionEntryIds,
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
-        ILogger<DefaultConversationSession>? logger = null)
+        ILogger<DefaultConversationSession>? logger = null,
+        ICompactor? compactor = null)
         : this(
             sessionCoordinator,
             securityProfileSelector,
@@ -260,7 +262,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             timeProvider,
             options,
             logger,
-            toolPresenter: null)
+            toolPresenter: null,
+            compactor)
     {
     }
 
@@ -286,6 +289,10 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional content-safe diagnostics logger.</param>
     /// <param name="toolPresenter">The optional observational presenter used for bounded live tool rendering.</param>
+    /// <param name="compactor">
+    /// The optional compactor the loop asks to checkpoint older history under context pressure; <see langword="null"/>
+    /// when the composition selects none, in which case turns never compact.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An identity, limit, or timeout option is invalid.</exception>
     public DefaultConversationSession(
@@ -305,7 +312,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
         ILogger<DefaultConversationSession>? logger,
-        IToolPresenter? toolPresenter)
+        IToolPresenter? toolPresenter,
+        ICompactor? compactor = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -350,7 +358,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _loopScopeFactory = loopScopeFactory;
         _runServices = new AgentRunServices(
             sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
-            modelCatalog, modelSelector, llmModelResolver, continuationPolicy);
+            modelCatalog, modelSelector, llmModelResolver, continuationPolicy, output: null, compactor);
         _runIds = runIds;
         _operationIds = operationIds;
         _messageIds = messageIds;
@@ -645,7 +653,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             services.ModelSelector,
             services.ModelResolver,
             services.ContinuationPolicy,
-            processor);
+            processor,
+            services.Compactor);
     }
 
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>

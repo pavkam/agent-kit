@@ -61,4 +61,21 @@ public sealed class AgentLoopOptions
     /// </summary>
     /// <value>A positive duration. Delivery that exceeds it is dropped and logged like any other observer failure.</value>
     public TimeSpan ObserverDeliveryTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Gets or sets the fraction of the selected model's context window at which the loop asks the composed
+    /// <see cref="ICompactor"/> to checkpoint older history before sending the next request.
+    /// </summary>
+    /// <value>
+    /// A value in the open interval (0, 1]; 0.8 by default. Applies only when an <see cref="ICompactor"/> is composed
+    /// and the model declares <see cref="ModelLimits.MaxContextTokens"/>; otherwise no pressure trigger runs.
+    /// </value>
+    public double ContextPressureThreshold { get; set; } = 0.8;
+
+    /// <summary>
+    /// Gets or sets the characters-per-token ratio the loop uses to estimate the size of the history it is about to
+    /// send when deciding whether to trigger compaction.
+    /// </summary>
+    /// <value>A positive ratio; 4.0 by default. Estimation is advisory and never blocks a request on its own.</value>
+    public double EstimatedCharactersPerToken { get; set; } = 4.0;
 }

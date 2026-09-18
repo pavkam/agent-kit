@@ -23,6 +23,7 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder WithAttemptTimeout(System.TimeSpan timeout) { }
             public AgentKit.AgentEngineBuilder WithRequestSettings(AgentKit.LlmRequestSettings settings) { }
             public AgentKit.AgentEngineBuilder AddAgent(AgentKit.AgentId agentId, System.Action<AgentKit.Simple.SimpleAgentOptions> configure) { }
+            public AgentKit.AgentEngineBuilder WithCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
             public AgentKit.AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2) { }
         }

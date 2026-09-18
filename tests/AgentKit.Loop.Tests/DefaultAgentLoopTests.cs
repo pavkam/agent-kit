@@ -3226,6 +3226,148 @@ public sealed class DefaultAgentLoopTests
         }
     }
 
+
+    [Fact]
+    public async Task RunAsync_WhenHistoryIsBelowThePressureThreshold_DoesNotAskTheCompactor()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "short")]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenHistoryExceedsThePressureThreshold_CompactsOnceAndSendsTheCheckpointedHistory()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        FakeSessionCoordinator? store = null;
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request =>
+            {
+                // A successful compaction is a durable checkpoint on the branch; the loop reloads from it.
+                var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3, "summary");
+                store!.SimulateConcurrentAppend([checkpoint]);
+                return new CompactionSucceeded(request.Context, checkpoint.Record);
+            },
+        };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, compactor: compactor);
+        store = coordinator;
+        var big = new string('x', 4 * 2000);   // ~2000 tokens each at 4 chars/token; the model window is 4096
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, big),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, big),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "latest"),
+        ]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var compaction = compactor.Requests.ShouldHaveSingleItem();
+        compaction.Trigger.Kind.ShouldBe(CompactionTriggerKind.ContextPressure);
+        _ = compaction.Trigger.CausalOperationId.ShouldNotBeNull();
+        compaction.Context.AgentId.ShouldBe(_agentId);
+        compaction.Context.SessionId.ShouldBe(_sessionId);
+        compaction.BranchId.ShouldBe(_branchId);
+        compaction.SourceThrough.ShouldBe(new SessionSequence(3));
+        compaction.Deadline.ShouldBeGreaterThan(compaction.RequestedAt);
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        _ = history[0].ShouldBeOfType<RuntimeMessage>();
+        history.OfType<UserMessage>().Select(static m => ((TextPart) m.Parts[0]).Text).ShouldBe(["latest"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCompactorDoesNotReduce_ContinuesWithTheFullHistoryAndDoesNotRetryThisRun()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request => new CompactionNotReducing(
+                request.Context, new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(10, 10, 1), 0.1),
+        };
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler, compactor: compactor);
+        var big = new string('x', 4 * 4000);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, big)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        modelCalls.ShouldBe(2);
+        compactor.Requests.Count.ShouldBe(1);
+        _ = assembler.Requests[0].History.OfType<UserMessage>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCompactorThrows_ContinuesWithTheFullHistory()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor { OnRequest = _ => throw new InvalidOperationException("boom") };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledDuringCompaction_PropagatesCancellation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        using var cancellation = new CancellationTokenSource();
+        var compactor = new ScriptedCompactor { OnRequest = _ => { cancellation.Cancel(); throw new OperationCanceledException(cancellation.Token); } };
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cancellation.Token));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheModelDeclaresNoContextWindow_DoesNotAskTheCompactor()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var compactor = new ScriptedCompactor();
+        var descriptor = TestFactory.Model() with { Limits = new ModelLimits(null, null) };
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+        var loop = CreateLoopWith(
+            coordinator, new FakeModelCatalog(TestFactory.Catalog(descriptor)), FakeModelSelector.Selecting(descriptor),
+            new FakeLlmModelResolver(new RespondingLlmModel(new ModelAlias("chat"), _ => TestFactory.CompletedWithText(requestId))),
+            compactor: compactor);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        compactor.Requests.ShouldBeEmpty();
+    }
+
+    private sealed class ScriptedCompactor: ICompactor
+    {
+        public List<CompactionRequest> Requests { get; } = [];
+
+        public Func<CompactionRequest, CompactionResult>? OnRequest { get; init; }
+
+        public Task<CompactionResult> CompactAsync(CompactionRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(OnRequest?.Invoke(request) ?? throw new InvalidOperationException("No compaction was scripted."));
+        }
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
@@ -3245,7 +3387,8 @@ public sealed class DefaultAgentLoopTests
         IHookDispatcher? hookDispatcher = null,
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
-        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null)
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        ICompactor? compactor = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3264,7 +3407,8 @@ public sealed class DefaultAgentLoopTests
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
             continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
-            outputProcessor);
+            outputProcessor,
+            compactor);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
@@ -3288,7 +3432,8 @@ public sealed class DefaultAgentLoopTests
         IModelSelector selector,
         ILlmModelResolver resolver,
         IContextAssembler? contextAssembler = null,
-        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null)
+        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
+        ICompactor? compactor = null)
     {
         _services = new AgentRunServices(
             coordinator,
@@ -3298,7 +3443,9 @@ public sealed class DefaultAgentLoopTests
             catalog,
             selector,
             resolver,
-            new DefaultRunContinuationPolicy(TimeProvider.System));
+            new DefaultRunContinuationPolicy(TimeProvider.System),
+            output: null,
+            compactor);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),

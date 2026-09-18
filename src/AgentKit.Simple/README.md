@@ -67,6 +67,9 @@ escape hatch is the ordinary AgentKit API:
   services, and call `WithIdentity`.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
+- **Long conversations:** `WithCompaction()` registers the extractive compactor;
+  when the history nears the model's declared context window the loop
+  checkpoints older entries and rebuilds the request from the summary.
 - **Hooks:** `builder.Services.AddBeforeToolInvocationHook<MyHook>()` (or the
   run-started and before-model-request variants) runs your hook at that
   boundary; the dispatcher is already registered.

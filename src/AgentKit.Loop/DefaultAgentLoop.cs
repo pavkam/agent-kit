@@ -99,6 +99,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>Whether the final permitted turn is requested without tools; see <see cref="AgentLoopOptions.DisableToolsOnFinalTurn"/>.</summary>
     private readonly bool _disableToolsOnFinalTurn;
+    private readonly double _contextPressureThreshold;
+    private readonly double _estimatedCharactersPerToken;
+    private readonly IIdentifierGenerator<CompactionId> _compactionIds;
 
     /// <summary>
     /// The first backoff before a required terminal commit that the store reported as failed is retried under its
@@ -148,12 +151,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="beforeModelRequestHooks">The registered <see cref="IBeforeModelRequestHook"/> implementations, or <see langword="null"/> for none.</param>
     /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
     /// <param name="hookInvocationIds">The generator for hook invocation identities, or <see langword="null"/> for a GUID generator.</param>
+    /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
     /// <see cref="AgentLoopOptions.HistoryReadPageSize"/>, a negative
     /// <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
-    /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.
+    /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>, a
+    /// <see cref="AgentLoopOptions.ContextPressureThreshold"/> outside (0, 1], or a non-positive
+    /// <see cref="AgentLoopOptions.EstimatedCharactersPerToken"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
     /// Hooks are registered but <paramref name="hookDispatcher"/> is <see langword="null"/>; the loop fails closed
@@ -173,7 +179,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
-        IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null)
+        IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null,
+        IIdentifierGenerator<CompactionId>? compactionIds = null)
     {
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
@@ -201,6 +208,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _settlementTimeout = loopOptions.SettlementTimeout;
         _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
         _disableToolsOnFinalTurn = loopOptions.DisableToolsOnFinalTurn;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.ContextPressureThreshold, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(loopOptions.ContextPressureThreshold, 1, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.EstimatedCharactersPerToken, nameof(optionsMonitor));
+        _contextPressureThreshold = loopOptions.ContextPressureThreshold;
+        _estimatedCharactersPerToken = loopOptions.EstimatedCharactersPerToken;
+        _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
         _runStartedHooks = [.. runStartedHooks ?? []];
         _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
         _beforeToolInvocationHooks = [.. beforeToolInvocationHooks ?? []];
@@ -387,8 +400,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var outputValidation = new OutputValidationTracker();
+        var compactionAttempted = false;
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
+            if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
+            {
+                var estimatedTokens = EstimateTokens(history.Messages);
+                var threshold = contextWindow * _contextPressureThreshold;
+                if (estimatedTokens > threshold)
+                {
+                    compactionAttempted = true;
+                    history = await CompactUnderPressureAsync(
+                        request, services, compactor, sessionContext, runCorrelation, runAuthorization, history,
+                        estimatedTokens, contextWindow, threshold, cancellationToken).ConfigureAwait(false);
+                    currentVersion = history.SourceCursor.Version;
+                }
+            }
+
             TurnOutcome result;
             try
             {
@@ -2388,6 +2416,127 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var tags = new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome);
         LoopMetrics.Runs.Add(1, tags);
         LoopMetrics.RunDuration.Record(_timeProvider.GetElapsedTime(startedTimestamp).TotalSeconds, tags);
+    }
+
+    /// <summary>
+    /// Estimates the tokens the model-facing history occupies from the UTF-16 length of its text-bearing parts.
+    /// </summary>
+    /// <param name="messages">The history about to be sent.</param>
+    /// <returns>An advisory estimate; never used to block a request on its own.</returns>
+    private long EstimateTokens(ImmutableArray<AgentMessage> messages)
+    {
+        long characters = 0;
+        foreach (var message in messages)
+        {
+            foreach (var part in message.Parts)
+            {
+                characters += part switch
+                {
+                    TextPart text => text.Text.Length,
+                    ToolCallPart call => call.Arguments.ValueKind == System.Text.Json.JsonValueKind.Undefined ? 0 : call.Arguments.GetRawText().Length,
+                    ToolResultPart result => result.Content.OfType<TextPart>().Sum(static inner => (long) inner.Text.Length),
+                    ReasoningPart { Content.Text: { } reasoning } => reasoning.Length,
+                    _ => 0,
+                };
+            }
+        }
+
+        return (long) Math.Ceiling(characters / _estimatedCharactersPerToken);
+    }
+
+    /// <summary>
+    /// Asks the composed compactor to checkpoint older history and, when it succeeds, reloads the model-facing history
+    /// from the newest checkpoint; on any other outcome the run continues with the history it had.
+    /// </summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="compactor">The composed compactor.</param>
+    /// <param name="sessionContext">The run-scoped session context used to reload history.</param>
+    /// <param name="runCorrelation">The run's correlation, recorded as the compaction's cause.</param>
+    /// <param name="authorization">The run's captured authorization.</param>
+    /// <param name="history">The history under pressure.</param>
+    /// <param name="estimatedTokens">The estimate that crossed the threshold.</param>
+    /// <param name="contextWindow">The model's declared context window.</param>
+    /// <param name="threshold">The token count at which pressure was declared.</param>
+    /// <param name="cancellationToken">Cancels the compaction; cancellation propagates.</param>
+    /// <returns>The reloaded history after a successful checkpoint, otherwise <paramref name="history"/>.</returns>
+    /// <remarks>
+    /// Compaction runs at most once per run and is advisory: a compactor that rejects, fails, conflicts, or finds
+    /// nothing to reduce leaves the request as it was, and the provider remains the authority on whether the
+    /// request fits. The checkpoint is a durable session entry, so later runs benefit even when this one does not.
+    /// </remarks>
+    private async Task<HistoryView> CompactUnderPressureAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        ICompactor compactor,
+        SessionOperationContext sessionContext,
+        InRunOperationCorrelation runCorrelation,
+        SecurityAuthorizationContext authorization,
+        HistoryView history,
+        long estimatedTokens,
+        long contextWindow,
+        double threshold,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(history is not null, "Pressure is evaluated over a loaded history.");
+        var compactionId = _compactionIds.Create();
+        LoopLog.CompactionTriggered(_logger, request.RunId, compactionId, estimatedTokens, contextWindow);
+        var now = _timeProvider.GetUtcNow();
+        CompactionResult outcome;
+        try
+        {
+            outcome = await compactor.CompactAsync(
+                new CompactionRequest(
+                    new CompactionOperationContext(
+                        compactionId, request.AgentId, request.SessionId, runCorrelation, request.Identity, authorization, request.SessionProfile),
+                    request.BranchId,
+                    history.SourceCursor.Version,
+                    history.SourceCursor.Sequence,
+                    new ContextEpoch(0),
+                    new CompactionTrigger(
+                        CompactionTriggerKind.ContextPressure,
+                        $"Estimated {estimatedTokens} tokens exceed {threshold:F0} of a {contextWindow}-token window.",
+                        runCorrelation.OperationId),
+                    targetInputTokens: (int) Math.Min(int.MaxValue, Math.Max(1, threshold / 2)),
+                    minimumReductionRatio: 0.1,
+                    minimumRetainedEntries: 1,
+                    now,
+                    now + request.AttemptTimeout,
+                    ExtensionData.Empty),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LoopLog.CompactionFaulted(_logger, request.RunId, compactionId, exception.GetType().FullName ?? exception.GetType().Name);
+            return history;
+        }
+
+        if (outcome is not CompactionSucceeded)
+        {
+            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, outcome.GetType().Name);
+            return history;
+        }
+
+        var reloaded = await LoadHistoryAsync(
+            request.RunId, services, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
+        if (reloaded is not { } loaded)
+        {
+            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, "history_reload_failed");
+            return history;
+        }
+
+        var messages = ToMessages(loaded.Entries);
+        if (loaded.Checkpoint is { } checkpoint)
+        {
+            messages = messages.Insert(0, CompactionCheckpointProjector.Project(checkpoint, loaded.Cursor));
+        }
+
+        LoopLog.CompactionApplied(_logger, request.RunId, compactionId, history.Messages.Length, messages.Length);
+        return new HistoryView(loaded.Cursor, messages, []);
     }
 
     private static ImmutableArray<AgentMessage> ToMessages(ImmutableArray<SessionEntry> entries)

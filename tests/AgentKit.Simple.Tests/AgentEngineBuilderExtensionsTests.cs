@@ -3,6 +3,7 @@
 
 namespace AgentKit.Simple.Tests;
 
+using AgentKit.Context.Compaction;
 using AgentKit.FileSystem.InMemory;
 using AgentKit.Hooks;
 using AgentKit.Permissions;
@@ -15,6 +16,8 @@ using AgentKit.Session.InMemory;
 using AgentKit.Tools;
 using AgentKit.Tools.Glob;
 using AgentKit.Tools.Read;
+
+using Microsoft.Extensions.Options;
 
 /// <summary>Verifies AgentEngineBuilderExtensions behavior and contracts.</summary>
 public sealed class AgentEngineBuilderExtensionsTests
@@ -589,6 +592,28 @@ public sealed class AgentEngineBuilderExtensionsTests
         toolResult.Succeeded.ShouldBeFalse();
         handler.Bodies.Count.ShouldBe(2);
         handler.Bodies[1].ShouldContain("secrets stay secret");
+    }
+
+    [Fact]
+    public void WithCompaction_WhenBuilderIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithCompaction()).ParamName.ShouldBe("builder");
+
+    [Fact]
+    public async Task WithCompaction_WhenBuilt_RegistersACompactorAndTurnsStillComplete()
+    {
+        var handler = new StubOpenAIHandler("fine");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithCompaction(o => o.MaximumCheckpointCharacters = 8_000);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("fine");
+        _ = engine.Services.GetRequiredService<ICompactor>().ShouldNotBeNull();
+        engine.Services.GetRequiredService<IOptions<CompactionOptions>>().Value.MaximumCheckpointCharacters.ShouldBe(8_000);
     }
 
     [Fact]

@@ -176,7 +176,8 @@ namespace AgentKit.Conversations
                     AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
                     System.TimeProvider timeProvider,
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null,
+                    AgentKit.ICompactor? compactor = null) { }
         public DefaultConversationSession(
                     AgentKit.ISessionCoordinator sessionCoordinator,
                     AgentKit.ISecurityProfileSelector securityProfileSelector,
@@ -194,7 +195,8 @@ namespace AgentKit.Conversations
                     System.TimeProvider timeProvider,
                     Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
                     Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
-                    AgentKit.IToolPresenter? toolPresenter) { }
+                    AgentKit.IToolPresenter? toolPresenter,
+                    AgentKit.ICompactor? compactor = null) { }
         public AgentKit.BranchId? BranchId { get; }
         public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }
