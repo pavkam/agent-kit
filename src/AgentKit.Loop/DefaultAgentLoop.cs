@@ -66,6 +66,11 @@ using Microsoft.Extensions.Options;
 /// </remarks>
 public sealed class DefaultAgentLoop: IAgentLoop
 {
+    private readonly IHookDispatcher? _hookDispatcher;
+    private readonly ImmutableArray<IRunStartedHook> _runStartedHooks;
+    private readonly ImmutableArray<IBeforeModelRequestHook> _beforeModelRequestHooks;
+    private readonly ImmutableArray<IBeforeToolInvocationHook> _beforeToolInvocationHooks;
+    private readonly IIdentifierGenerator<HookInvocationId> _hookInvocationIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
@@ -135,12 +140,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// The optional logger that receives safe run-lifecycle diagnostics; a
     /// Microsoft null logger is used when omitted.
     /// </param>
-    /// <exception cref="ArgumentNullException">Any parameter other than <paramref name="logger"/> is null.</exception>
+    /// <param name="hookDispatcher">
+    /// The typed dispatch kernel the first-party hook points run through, or <see langword="null"/> when the
+    /// composition registers no hooks. Required as soon as any hook collection below is non-empty.
+    /// </param>
+    /// <param name="runStartedHooks">The registered <see cref="IRunStartedHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="beforeModelRequestHooks">The registered <see cref="IBeforeModelRequestHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="hookInvocationIds">The generator for hook invocation identities, or <see langword="null"/> for a GUID generator.</param>
+    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
     /// <see cref="AgentLoopOptions.HistoryReadPageSize"/>, a negative
     /// <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
     /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Hooks are registered but <paramref name="hookDispatcher"/> is <see langword="null"/>; the loop fails closed
+    /// rather than silently skipping registered hooks.
     /// </exception>
     public DefaultAgentLoop(
         IIdentifierGenerator<OperationId> operationIds,
@@ -151,7 +168,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
         TimeProvider timeProvider,
         IOptionsMonitor<AgentLoopOptions> optionsMonitor,
         [ServiceKey] string loopKey,
-        ILogger<DefaultAgentLoop>? logger = null)
+        ILogger<DefaultAgentLoop>? logger = null,
+        IHookDispatcher? hookDispatcher = null,
+        IEnumerable<IRunStartedHook>? runStartedHooks = null,
+        IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null)
     {
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
@@ -179,6 +201,21 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _settlementTimeout = loopOptions.SettlementTimeout;
         _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
         _disableToolsOnFinalTurn = loopOptions.DisableToolsOnFinalTurn;
+        _runStartedHooks = [.. runStartedHooks ?? []];
+        _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
+        _beforeToolInvocationHooks = [.. beforeToolInvocationHooks ?? []];
+        ArgumentException.ThrowIfContainsNull(_runStartedHooks, nameof(runStartedHooks));
+        ArgumentException.ThrowIfContainsNull(_beforeModelRequestHooks, nameof(beforeModelRequestHooks));
+        ArgumentException.ThrowIfContainsNull(_beforeToolInvocationHooks, nameof(beforeToolInvocationHooks));
+        if (hookDispatcher is null
+            && (!_runStartedHooks.IsEmpty || !_beforeModelRequestHooks.IsEmpty || !_beforeToolInvocationHooks.IsEmpty))
+        {
+            throw new InvalidOperationException(
+                "Hooks are registered but no IHookDispatcher is composed; register AddAgentHooks so registered hooks are dispatched rather than silently skipped.");
+        }
+
+        _hookDispatcher = hookDispatcher;
+        _hookInvocationIds = hookInvocationIds ?? new GuidIdentifierGenerator<HookInvocationId>(static value => new HookInvocationId(value));
     }
 
     /// <inheritdoc/>
@@ -333,6 +370,21 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var llmModel = modelResolution.Adapter!;
         _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
+
+        if (_hookDispatcher is not null && !_runStartedHooks.IsEmpty)
+        {
+            // Read-only point: failures are isolated by default, cancellation still propagates.
+            await _hookDispatcher.DispatchAsync(
+                AgentHookPoints.RunStarted,
+                _runStartedHooks,
+                new RunStartedEventArgs(
+                    request.AgentId, request.SessionId, runCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(),
+                    request.BranchId, model, request.MaxTurns, request.AttemptTimeout),
+                static (hook, args, _, token) => hook.OnRunStartedAsync(args, token).AsTask(),
+                HookDispatchScope.Root,
+                HookFailureMode.Isolate,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
 
         var outputValidation = new OutputValidationTracker();
         for (var turn = 1; turn <= request.MaxTurns; turn++)
@@ -593,6 +645,39 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var context = ((ContextReady) assembleResult).Context;
+        if (_hookDispatcher is not null && !_beforeModelRequestHooks.IsEmpty)
+        {
+            var hookArgs = new BeforeModelRequestEventArgs(
+                request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), turn, context);
+            try
+            {
+                await _hookDispatcher.DispatchAsync(
+                    AgentHookPoints.BeforeModelRequest,
+                    _beforeModelRequestHooks,
+                    hookArgs,
+                    static (hook, args, _, token) => hook.OnBeforeModelRequestAsync(args, token).AsTask(),
+                    HookDispatchScope.Root,
+                    HookFailureMode.FailOperation,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.BeforeModelRequest, exception.GetType().FullName ?? exception.GetType().Name);
+                turnActivity.SetFailed("hook_failed", exception.GetType().Name);
+                return TurnOutcome.Settled(
+                    new AgentRunInvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
+            }
+
+            if (hookArgs.SettingsChanged)
+            {
+                context = context with { Settings = hookArgs.Settings };
+            }
+        }
+
         var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
         var chatRequest = new LlmModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
 
@@ -1184,8 +1269,34 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     new AgentRunToolCallStarted(turnId, toolCall),
                     cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
+
+                var arguments = toolCall.Arguments;
+                if (_hookDispatcher is not null && !_beforeToolInvocationHooks.IsEmpty)
+                {
+                    var hookArgs = new BeforeToolInvocationEventArgs(
+                        request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), toolCall);
+                    await _hookDispatcher.DispatchAsync(
+                        AgentHookPoints.BeforeToolInvocation,
+                        _beforeToolInvocationHooks,
+                        hookArgs,
+                        static (hook, args, _, token) => hook.OnBeforeToolInvocationAsync(args, token).AsTask(),
+                        HookDispatchScope.Root,
+                        HookFailureMode.FailOperation,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                    if (hookArgs.Veto is { } veto)
+                    {
+                        LoopLog.ToolCallVetoed(_logger, request.RunId, toolCall.CallId);
+                        resultPart = VetoedResultPart(toolCall, veto);
+                        resultParts.Add(resultPart);
+                        await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    arguments = hookArgs.Arguments;
+                }
+
                 var resolved = await services.Tools.InvokeAsync(
-                    new ToolCallRequest(toolCall.Tool, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
+                    new ToolCallRequest(toolCall.Tool, toolContext, arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
                 resultPart = new ToolResultPart(
@@ -1521,6 +1632,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
             statusCode: null, providerCode: null, retryAfter: null, safeMessage, diagnosticCause: null, ExtensionData.Empty));
     }
+
+    /// <summary>Builds the rejected terminal result a hook veto produces; the veto's safe reason is what the model sees.</summary>
+    /// <param name="toolCall">The vetoed call.</param>
+    /// <param name="veto">The hook's typed refusal.</param>
+    /// <returns>A rejected, not-performed result correlated to the call.</returns>
+    private static ToolResultPart VetoedResultPart(ToolCallPart toolCall, ToolInvocationVeto veto) => new(
+        toolCall.CallId,
+        toolCall.Tool,
+        new ToolCallOutcome(
+            ToolCallOutcomeKind.Rejected,
+            ToolTerminalStatus.Unsupported,
+            SideEffectCertainty.DefinitelyNotPerformed,
+            retryable: false,
+            $"The call was vetoed before invocation: {veto.SafeReason}",
+            ExtensionData.Empty),
+        [new TextPart($"The call was vetoed before invocation: {veto.SafeReason}", TextSemantics.Plain, ExtensionData.Empty)],
+        DefaultProjection(ToolTerminalStatus.Unsupported),
+        ExtensionData.Empty);
 
     /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>
     /// <param name="toolCall">The requested call to settle.</param>

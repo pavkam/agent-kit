@@ -205,4 +205,12 @@ internal static partial class LoopLog
     /// <summary>Logs that the output processor threw instead of returning a typed decision.</summary>
     [LoggerMessage(1094, LogLevel.Error, "Run {RunId} turn {TurnId} output validation for {OutputDefinitionId} attempt {Attempt} faulted with {ErrorType}.")]
     internal static partial void OutputValidationFaulted(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string errorType);
+
+    /// <summary>Logs that a transform hook point failed and the turn settled without sending the request.</summary>
+    [LoggerMessage(1095, LogLevel.Error, "Run {RunId} turn {TurnId}: hook point {HookPoint} failed with {ErrorType}; the turn did not proceed.")]
+    internal static partial void HookFailedTurn(ILogger logger, RunId runId, TurnId turnId, HookPointId hookPoint, string errorType);
+
+    /// <summary>Logs that a before-tool-invocation hook vetoed a call, which settled as rejected without invocation.</summary>
+    [LoggerMessage(1096, LogLevel.Information, "Run {RunId}: tool call {ToolCallId} was vetoed by a hook and settled as rejected without invocation.")]
+    internal static partial void ToolCallVetoed(ILogger logger, RunId runId, ToolCallId toolCallId);
 }

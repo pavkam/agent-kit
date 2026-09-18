@@ -605,6 +605,31 @@ definition, validator, optional-adapter, and conformance contract. It cannot
 register an arbitrary event name and object payload or ask the dispatch kernel
 to infer a point's semantics at runtime.
 
+### Implemented points
+
+The compiled base shape today is
+`AgentHookEventArgs(agentId, sessionId, correlation, timestamp, invocationId)`
+with `Validate`, `CaptureMutableState`, and `RestoreMutableState`; the
+`HookDispatchMetadata`, `HookInvocationContext`, and profile/catalog types shown
+earlier in this page are the target shape and remain to be introduced.
+`AgentKit.Loop` dispatches three first-party points through `IHookDispatcher`,
+each defined in `AgentKit.Abstractions` under `AgentHookPoints`:
+
+| Point                  | Interface and arguments                                      | Writable                             | Failure mode    |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------ | --------------- |
+| `RunStarted`           | `IRunStartedHook`, `RunStartedEventArgs`                     | nothing                              | `Isolate`       |
+| `BeforeModelRequest`   | `IBeforeModelRequestHook`, `BeforeModelRequestEventArgs`     | `Settings`; may only narrow the cap  | `FailOperation` |
+| `BeforeToolInvocation` | `IBeforeToolInvocationHook`, `BeforeToolInvocationEventArgs` | `Arguments` (same JSON kind), `Veto` | `FailOperation` |
+
+A veto short-circuits later hooks and settles the call as a rejected,
+not-performed terminal result carrying the veto's safe reason; it is not a
+security decision. Rewritten arguments still pass schema validation and the
+security authority. A transform-point failure settles the turn as
+`AgentRunInvalidState` without sending the request or invoking the tool. A loop
+that finds registered hooks without a dispatcher fails closed at construction.
+`AgentKit.Hooks` registers hooks per point through `AddRunStartedHook<T>`,
+`AddBeforeModelRequestHook<T>`, and `AddBeforeToolInvocationHook<T>`.
+
 ## Ordering and dispatch
 
 Mutating hooks execute sequentially. Registration order is the deterministic

@@ -38,6 +38,40 @@ Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).
 
+## First-party hook points
+
+`AgentKit.Loop` dispatches three points through the registered dispatcher:
+
+| Point                                  | Interface                   | Writable                     | Failure mode    |
+| -------------------------------------- | --------------------------- | ---------------------------- | --------------- |
+| `AgentHookPoints.RunStarted`           | `IRunStartedHook`           | nothing                      | `Isolate`       |
+| `AgentHookPoints.BeforeModelRequest`   | `IBeforeModelRequestHook`   | `Settings` (may only narrow) | `FailOperation` |
+| `AgentHookPoints.BeforeToolInvocation` | `IBeforeToolInvocationHook` | `Arguments`, `Veto`          | `FailOperation` |
+
+```csharp
+services.AddBeforeToolInvocationHook<BlockDeleteCommands>();
+
+sealed class BlockDeleteCommands : IBeforeToolInvocationHook
+{
+    public HookId Id { get; } = new("acme.block-delete");
+
+    public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken ct = default)
+    {
+        if (args.Tool.ProviderAlias.Value == "command" && args.Arguments.GetProperty("command").GetString()!.Contains("rm -rf"))
+        {
+            args.Veto = new ToolInvocationVeto("Recursive deletes are not allowed from the agent.");
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+A veto produces a rejected terminal result carrying the safe reason; it is not a
+security decision and grants nothing. Rewritten arguments still pass schema
+validation and the security authority. A loop that finds registered hooks but no
+dispatcher fails closed at construction.
+
 ## Related projects
 
 - [AgentKit.Abstractions](../AgentKit.Abstractions/README.md) — implement

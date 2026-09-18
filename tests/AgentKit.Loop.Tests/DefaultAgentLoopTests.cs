@@ -2994,6 +2994,238 @@ public sealed class DefaultAgentLoopTests
         _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
     }
 
+
+    [Fact]
+    public void Constructor_WhenHooksAreRegisteredWithoutADispatcher_ThrowsInvalidOperationException() =>
+        _ = Should.Throw<InvalidOperationException>(() => CreateLoop(out _, out _, _ => throw new InvalidOperationException("unused"), runStartedHooks: [new RecordingRunStartedHook()]));
+
+    [Fact]
+    public async Task RunAsync_WhenARunStartedHookIsRegistered_ObservesTheRunOnceBeforeTheFirstTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var hook = new RecordingRunStartedHook();
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; hook.ModelCallsWhenInvoked ??= modelCalls; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(), runStartedHooks: [hook]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var args = hook.Invocations.ShouldHaveSingleItem();
+        args.RunId.ShouldBe(request.RunId);
+        args.BranchId.ShouldBe(_branchId);
+        args.MaxTurns.ShouldBe(request.MaxTurns);
+        args.Model.Alias.ShouldBe(new ModelAlias("chat"));
+        hook.ModelCallsWhenInvoked.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARunStartedHookThrows_IsIsolatedAndTheRunProceeds()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            runStartedHooks: [new RecordingRunStartedHook { Throw = true }]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookNarrowsSettings_SendsTheNarrowedSettings()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        LlmModelRequest? received = null;
+        var hook = new SettingsHook(settings => settings with { Temperature = 0.1, MaxOutputTokens = 50 });
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(), beforeModelRequestHooks: [hook]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        received.ShouldNotBeNull().Context.Settings.Temperature.ShouldBe(0.1);
+        received.Context.Settings.MaxOutputTokens.ShouldBe(50);
+        hook.Invocations.ShouldHaveSingleItem().Turn.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookWidensTheCap_FailsTheTurnWithoutSendingTheRequest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            beforeModelRequestHooks: [new SettingsHook(settings => settings with { MaxOutputTokens = 1_000 })]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain("hook");
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeModelRequestHookThrows_FailsTheTurnWithoutSendingTheRequest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            beforeModelRequestHooks: [new SettingsHook(_ => throw new InvalidOperationException("boom"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookRewritesArguments_InvokesTheToolWithTheRewrittenArguments()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        ToolCallRequest? invoked = null;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: call => { invoked = call; return TestFactory.SuccessResult(); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(args => args.Arguments = System.Text.Json.JsonDocument.Parse("""{"rewritten":true}""").RootElement.Clone())]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoked.ShouldNotBeNull().Arguments.GetProperty("rewritten").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookVetoes_SettlesTheCallAsRejectedWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(args => args.Veto = new ToolInvocationVeto("blocked by policy"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        toolInvocations.ShouldBe(0);
+        var toolResult = result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single();
+        toolResult.CallId.ShouldBe(callId);
+        toolResult.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        toolResult.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        toolResult.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("blocked by policy");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABeforeToolInvocationHookThrows_TheCallFaultsWithoutInvokingTheTool()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var toolInvocations = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher(),
+            beforeToolInvocationHooks: [new ToolHook(_ => throw new InvalidOperationException("boom"))]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        toolInvocations.ShouldBe(0);
+        var toolResult = result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single();
+        toolResult.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        toolResult.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoHooksAreRegistered_BehavesAsBefore()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        LlmModelRequest? received = null;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
+            hookDispatcher: new AgentKit.Hooks.DefaultHookDispatcher());
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { Temperature = 0.7 } };
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        received.ShouldNotBeNull().Context.Settings.Temperature.ShouldBe(0.7);
+    }
+
+    private sealed class RecordingRunStartedHook: IRunStartedHook
+    {
+        public HookId Id { get; } = new("test.run-started");
+
+        public List<RunStartedEventArgs> Invocations { get; } = [];
+
+        public bool Throw { get; init; }
+
+        public int? ModelCallsWhenInvoked { get; set; }
+
+        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default)
+        {
+            Invocations.Add(args);
+            ModelCallsWhenInvoked ??= 1;
+            return Throw ? throw new InvalidOperationException("observer failed") : ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class SettingsHook(Func<LlmRequestSettings, LlmRequestSettings> transform): IBeforeModelRequestHook
+    {
+        public HookId Id { get; } = new("test.settings");
+
+        public List<BeforeModelRequestEventArgs> Invocations { get; } = [];
+
+        public ValueTask OnBeforeModelRequestAsync(BeforeModelRequestEventArgs args, CancellationToken cancellationToken = default)
+        {
+            Invocations.Add(args);
+            args.Settings = transform(args.Settings);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ToolHook(Action<BeforeToolInvocationEventArgs> act): IBeforeToolInvocationHook
+    {
+        public HookId Id { get; } = new("test.tool");
+
+        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        {
+            act(args);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
@@ -3009,7 +3241,11 @@ public sealed class DefaultAgentLoopTests
         AgentLoopOptions? options = null,
         TimeProvider? timeProvider = null,
         Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
-        IOutputProcessor? outputProcessor = null)
+        IOutputProcessor? outputProcessor = null,
+        IHookDispatcher? hookDispatcher = null,
+        IEnumerable<IRunStartedHook>? runStartedHooks = null,
+        IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3039,7 +3275,11 @@ public sealed class DefaultAgentLoopTests
             timeProvider ?? TimeProvider.System,
             new FakeOptionsMonitor<AgentLoopOptions>(options ?? new AgentLoopOptions()),
             TestLoopKey,
-            logger);
+            logger,
+            hookDispatcher,
+            runStartedHooks,
+            beforeModelRequestHooks,
+            beforeToolInvocationHooks);
     }
 
     private DefaultAgentLoop CreateLoopWith(

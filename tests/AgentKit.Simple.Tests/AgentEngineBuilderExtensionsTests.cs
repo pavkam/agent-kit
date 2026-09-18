@@ -4,6 +4,7 @@
 namespace AgentKit.Simple.Tests;
 
 using AgentKit.FileSystem.InMemory;
+using AgentKit.Hooks;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
 using AgentKit.Providers.Anthropic;
@@ -571,6 +572,26 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public async Task Build_WhenABeforeToolInvocationHookVetoesACall_TheModelSeesARejectedResultAndTheToolNeverRuns()
+    {
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"secret.txt\"}", "understood");
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.AddInMemoryFileSystem();
+        _ = builder.Services.AddReadTool();
+        _ = builder.Services.AddBeforeToolInvocationHook<VetoSecretsHook>();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("read the secret", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var toolResult = result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem();
+        toolResult.Succeeded.ShouldBeFalse();
+        handler.Bodies.Count.ShouldBe(2);
+        handler.Bodies[1].ShouldContain("secrets stay secret");
+    }
+
+    [Fact]
     public async Task Build_WhenAnotherProviderIsRegisteredOnServices_UseModelSelectsIt()
     {
         var handler = new StubOpenAIHandler("via alias");
@@ -813,6 +834,21 @@ public sealed class AgentEngineBuilderExtensionsTests
         {
             Requests.Add(request);
             throw new HttpRequestException("connection refused");
+        }
+    }
+
+    private sealed class VetoSecretsHook: IBeforeToolInvocationHook
+    {
+        public HookId Id { get; } = new("test.veto-secrets");
+
+        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        {
+            if (args.Arguments.TryGetProperty("path", out var path) && path.GetString()!.Contains("secret", StringComparison.Ordinal))
+            {
+                args.Veto = new ToolInvocationVeto("secrets stay secret");
+            }
+
+            return ValueTask.CompletedTask;
         }
     }
 }

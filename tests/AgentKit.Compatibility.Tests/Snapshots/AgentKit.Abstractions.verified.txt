@@ -249,6 +249,12 @@ namespace AgentKit
         public virtual void RestoreMutableState(object? snapshot) { }
         public virtual void Validate() { }
     }
+    public static class AgentHookPoints
+    {
+        public static AgentKit.HookPointId BeforeModelRequest { get; }
+        public static AgentKit.HookPointId BeforeToolInvocation { get; }
+        public static AgentKit.HookPointId RunStarted { get; }
+    }
     public readonly struct AgentId : System.IEquatable<AgentKit.AgentId>
     {
         public AgentId(System.Guid value) { }
@@ -1199,10 +1205,40 @@ namespace AgentKit
         public TRequest Request { get; }
         public AgentKit.SessionStoreKey StoreKey { get; }
     }
+    public sealed class BeforeModelRequestEventArgs : AgentKit.AgentHookEventArgs
+    {
+        public BeforeModelRequestEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, int turn, AgentKit.LlmRequestContext request) { }
+        public AgentKit.LlmRequestSettings OriginalSettings { get; }
+        public AgentKit.LlmRequestContext Request { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.LlmRequestSettings Settings { get; set; }
+        public bool SettingsChanged { get; }
+        public int Turn { get; }
+        public AgentKit.TurnId TurnId { get; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+        public override void Validate() { }
+    }
     public sealed class BeforeRunOperationCorrelation : AgentKit.OperationCorrelation, System.IEquatable<AgentKit.BeforeRunOperationCorrelation>
     {
         public BeforeRunOperationCorrelation(AgentKit.OperationId operationId, AgentKit.AdmissionId? admissionId) { }
         public AgentKit.AdmissionId? AdmissionId { get; init; }
+    }
+    public sealed class BeforeToolInvocationEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IShortCircuitingHookArgs
+    {
+        public BeforeToolInvocationEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, AgentKit.ToolCallPart call) { }
+        public System.Text.Json.JsonElement Arguments { get; set; }
+        public bool ArgumentsChanged { get; }
+        public AgentKit.ToolCallPart Call { get; }
+        public AgentKit.ToolCallId CallId { get; }
+        public bool IsShortCircuited { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.ToolReference Tool { get; }
+        public AgentKit.TurnId TurnId { get; }
+        public AgentKit.ToolInvocationVeto? Veto { get; set; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+        public override void Validate() { }
     }
     public readonly struct BranchId : System.IEquatable<AgentKit.BranchId>
     {
@@ -3704,6 +3740,14 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IBeforeModelRequestHook : AgentKit.IHook
+    {
+        System.Threading.Tasks.ValueTask OnBeforeModelRequestAsync(AgentKit.BeforeModelRequestEventArgs args, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IBeforeToolInvocationHook : AgentKit.IHook
+    {
+        System.Threading.Tasks.ValueTask OnBeforeToolInvocationAsync(AgentKit.BeforeToolInvocationEventArgs args, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IBudgetAuthority
     {
         System.Threading.Tasks.ValueTask<AgentKit.BudgetScopeResult> CreateChildScopeAsync(AgentKit.BudgetScopeRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -4016,6 +4060,10 @@ namespace AgentKit
     public interface IRunContinuationPolicy
     {
         System.Threading.Tasks.ValueTask<AgentKit.RunContinuationDecision> DecideAsync(AgentKit.RunContinuationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IRunStartedHook : AgentKit.IHook
+    {
+        System.Threading.Tasks.ValueTask OnRunStartedAsync(AgentKit.RunStartedEventArgs args, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISecurityAuditDispatcher
     {
@@ -6540,6 +6588,15 @@ namespace AgentKit
         public RunSettlementRecoveryRequired(AgentKit.AgentError failure) { }
         public AgentKit.AgentError Failure { get; }
     }
+    public sealed class RunStartedEventArgs : AgentKit.AgentHookEventArgs
+    {
+        public RunStartedEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, AgentKit.BranchId branchId, AgentKit.ModelDescriptor model, int maxTurns, System.TimeSpan attemptTimeout) { }
+        public System.TimeSpan AttemptTimeout { get; }
+        public AgentKit.BranchId BranchId { get; }
+        public int MaxTurns { get; }
+        public AgentKit.ModelDescriptor Model { get; }
+        public AgentKit.RunId RunId { get; }
+    }
     public sealed class RunSucceeded : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunSucceeded>
     {
         public RunSucceeded() { }
@@ -8410,6 +8467,11 @@ namespace AgentKit
         public AgentKit.ToolCallOutcome Outcome { get; init; }
         public bool Equals(AgentKit.ToolInvocationResult? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolInvocationVeto : System.IEquatable<AgentKit.ToolInvocationVeto>
+    {
+        public ToolInvocationVeto(string safeReason) { }
+        public string SafeReason { get; }
     }
     public sealed class ToolInvokerAcquired : AgentKit.ToolInvokerLeaseResult, System.IEquatable<AgentKit.ToolInvokerAcquired>
     {

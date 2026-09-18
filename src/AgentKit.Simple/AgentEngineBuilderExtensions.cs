@@ -624,6 +624,7 @@ public static class AgentEngineBuilderExtensions
         _ = services.AddAgentContext();
         _ = services.AddAgentOutput();
         _ = services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+        _ = services.AddAgentHooks();
         _ = services.AddAgentTools();
 
         // Security: the standalone-profile pieces, with the policy snapshot and publication read from the plan so

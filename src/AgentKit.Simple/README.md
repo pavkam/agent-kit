@@ -67,6 +67,9 @@ escape hatch is the ordinary AgentKit API:
   services, and call `WithIdentity`.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
+- **Hooks:** `builder.Services.AddBeforeToolInvocationHook<MyHook>()` (or the
+  run-started and before-model-request variants) runs your hook at that
+  boundary; the dispatcher is already registered.
 - **Structured answers:** `WithOutput<T>(schemaJson)` requires every final
   answer to be JSON matching the schema and deserializable to `T`, adds the
   instruction that tells the model so, and `AskAsync<T>` returns the value. A

@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Loop/AgentKit.Loop.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Context/AgentKit.Context.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
