@@ -539,6 +539,7 @@ findings).
   constructor and the `Parts` `init` accessor, and update the `<exception>`
   documentation.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A13 — `NormalizedHost` surfaces `IdnMapping` failures with a foreign `ParamName`
 

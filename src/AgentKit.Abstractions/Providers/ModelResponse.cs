@@ -38,7 +38,7 @@ public sealed record ModelResponse
     /// <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="parts"/> is a default, uninitialized array.
+    /// <paramref name="parts"/> is a default, uninitialized array, or contains <see langword="null"/>.
     /// </exception>
     public ModelResponse(
         ModelRequestId requestId,
@@ -49,7 +49,7 @@ public sealed record ModelResponse
         ExtensionData extensions)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        ArgumentException.ThrowIfDefault(parts);
+        ArgumentException.ThrowIfContainsNull(parts);
         ArgumentNullException.ThrowIfNull(usage);
         ArgumentNullException.ThrowIfNull(extensions);
 
@@ -68,7 +68,19 @@ public sealed record ModelResponse
     public ProviderResponseIdentity Identity { get; init; }
 
     /// <summary>Gets the ordered, complete content of the response.</summary>
-    public ImmutableArray<ContentPart> Parts { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default, uninitialized array,
+    /// or contains <see langword="null"/>.
+    /// </exception>
+    public ImmutableArray<ContentPart> Parts
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the normalized, portable stop reason.</summary>
     public NormalizedStopReason StopReason { get; init; }
