@@ -35,16 +35,28 @@ public readonly record struct NormalizedHost
     /// </summary>
     /// <param name="value">The non-empty hostname or IP-address literal text.</param>
     /// <exception cref="ArgumentException">
-    /// <paramref name="value"/> is null, empty, or consists only of
-    /// whitespace.
+    /// <paramref name="value"/> is null, empty, consists only of
+    /// whitespace, or is not a canonicalizable DNS host (for example, an
+    /// undecodable Punycode label).
     /// </exception>
     public NormalizedHost(string value)
     {
         ArgumentException.ThrowIfInvalidNetworkHost(value);
         var candidate = value.Trim().TrimEnd('.');
-        Value = IPAddress.TryParse(candidate, out var address)
-            ? address.ToString().ToLowerInvariant()
-            : new IdnMapping().GetAscii(candidate).ToLowerInvariant();
+        if (IPAddress.TryParse(candidate, out var address))
+        {
+            Value = address.ToString().ToLowerInvariant();
+            return;
+        }
+
+        try
+        {
+            Value = new IdnMapping().GetAscii(candidate).ToLowerInvariant();
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ArgumentException("Value must be a canonicalizable DNS host.", nameof(value), exception);
+        }
     }
 
     /// <summary>Gets the canonicalized, lowercase host text.</summary>

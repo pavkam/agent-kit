@@ -22,6 +22,18 @@ public sealed class NormalizedHostTests: Conformance.StringIdentityConformanceTe
     }
 
     [Fact]
+    public void NormalizedHost_WhenPunycodeLabelIsUndecodable_ThrowsWithExactParameter()
+    {
+        // Uri.CheckHostName accepts xn--prefixed labels without verifying Punycode, so ThrowIfInvalidNetworkHost
+        // does not reject "xn--zzzz". IdnMapping.GetAscii then throws its own ArgumentException with
+        // ParamName == "unicode" (a BCL implementation detail), which previously propagated unwrapped and broke
+        // the repository convention that a NormalizedHost constructor failure attributes ParamName to "value".
+        var exception = Should.Throw<ArgumentException>(() => _ = new NormalizedHost("xn--zzzz"));
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
     public void NormalizedHost_WhenUnicodeAndTrailingDot_CanonicalizesToAsciiDnsIdentity()
     {
         var host = new NormalizedHost("BÜCHER.example.");

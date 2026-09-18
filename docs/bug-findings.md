@@ -567,6 +567,7 @@ findings).
   with `nameof(value)` as the parameter name and the original as inner, or move
   the IDN check into `ThrowIfInvalidNetworkHost`.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### A14 — `BudgetReservationRequest.Amount` `init` bypasses the positive-amount invariant
 
