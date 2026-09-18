@@ -42,6 +42,8 @@ internal sealed class FakeSessionStore: ISessionStore
 
     public Func<SessionReadRequest, SessionPageResult>? OnRead { get; set; }
 
+    public Func<SessionRunReleaseRequest, SessionRunReleaseResult>? OnReleaseRun { get; set; }
+
     public List<SessionAppendRequest> ReceivedAppends { get; } = [];
 
     public List<AuthorizedSessionStoreRequest<SessionStoreCreateRequest>> ReceivedCreates { get; } = [];
@@ -110,6 +112,6 @@ internal sealed class FakeSessionStore: ISessionStore
     public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
         AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
         CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<SessionRunReleaseResult>(
-            new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, "not configured"));
+        ValueTask.FromResult(OnReleaseRun?.Invoke(request.Request)
+            ?? new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, "not configured"));
 }

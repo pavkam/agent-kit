@@ -678,14 +678,15 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
     {
         SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted or
             SessionInputReplayFound or SessionInputNotFound or SessionExecutionLaneProvisioned or AcceptedInput or
-            SessionRunAccepted or SessionRunStateLoaded =>
+            SessionRunAccepted or SessionRunStateLoaded or SessionRunReleased or SessionDirectoryPage =>
             "success",
         SessionCreateFailed or SessionNotFound or SessionLoadFailed or SessionAppendConflict or
             SessionAppendNotFound or SessionAppendFailed or SessionReadNotFound or SessionReadFailed or
             SessionBranchParentNotFound or SessionBranchFailed or SessionDeleteFailed or
             SessionInputLookupConflict or SessionInputLookupRejected or SessionExecutionLaneProvisionConflict or
             SessionExecutionLaneProvisionRejected or RejectedInput or SessionRunStartConflict or
-            SessionRunStartBusy or SessionRunStartFenced or SessionRunStartRejected or SessionRunStateUnavailable =>
+            SessionRunStartBusy or SessionRunStartFenced or SessionRunStartRejected or SessionRunStateUnavailable or
+            SessionRunReleaseRejected or SessionDirectoryListUnavailable =>
             "failed",
         _ => "unknown",
     };

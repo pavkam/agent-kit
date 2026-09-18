@@ -408,6 +408,42 @@ public sealed class DefaultSessionCoordinatorTests
     }
 
     [Fact]
+    public async Task ListAsync_WhenAuthorized_RecordsTheActivityAsSuccessful()
+    {
+        // The Outcome classifier omitted SessionDirectoryPage entirely, so every successful list fell through to
+        // "unknown" and the activity was recorded as a failure even though the list succeeded.
+        using var parent = new Activity("list-parent").Start();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = static (ref options) =>
+                options.Name == AgentKitActivityNames.SessionDirectoryList
+                    ? ActivitySamplingResult.AllData
+                    : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionDirectoryList
+                    && activity.TraceId == parent.TraceId)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var harness = new Harness();
+        var page = new SessionDirectoryPage([], null);
+        harness.Directory.OnList = _ => page;
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.ListAsync(TestFactory.DirectoryListRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(page);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+    }
+
+    [Fact]
     public async Task ListAsync_WhenAuthorizationIsDenied_ReturnsUnavailableWithoutCallingDirectory()
     {
         var harness = new Harness();
@@ -728,6 +764,50 @@ public sealed class DefaultSessionCoordinatorTests
 
         _ = result.ShouldBeOfType<SessionRunReleaseRejected>();
         _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenTheStoreReleasesTheLane_RecordsTheActivityAsSuccessful()
+    {
+        // The Outcome classifier omitted SessionRunReleased entirely, so every successful release fell through
+        // to "unknown" and the activity was recorded as a failure even though the release succeeded.
+        using var parent = new Activity("release-parent").Start();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = static (ref options) =>
+                options.Name == AgentKitActivityNames.SessionRunRelease
+                    ? ActivitySamplingResult.AllData
+                    : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionRunRelease
+                    && activity.TraceId == parent.TraceId)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnReleaseRun = request => new SessionRunReleased(request.ExpectedVersion, existing: false);
+        var context = TestFactory.InRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.ReleaseRunAsync(TestFactory.RunReleaseRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunReleased>();
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
     }
 
     [Fact]

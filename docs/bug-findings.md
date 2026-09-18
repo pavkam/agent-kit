@@ -874,6 +874,7 @@ _ => "unknown",
   to the failed arm; add tests asserting the activity status for release and
   list.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### S05 — Directory listing loads every route for the tenant/agent per page; `MaximumResults` and `AfterSessionId` are not pushed into SQL
 
