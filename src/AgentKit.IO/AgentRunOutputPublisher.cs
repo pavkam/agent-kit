@@ -120,12 +120,15 @@ public sealed class AgentRunOutputPublisher: IOutputPublisher, IAsyncDisposable
             }
             _outputType = typeof(TOutput);
             _finalResult = result;
+
+            // Sealing the event stream and exposing the envelope happen inside the same critical section that
+            // recorded _finalResult, so a concurrent DisposeAsync can never observe _finalResult set without
+            // _completion already carrying that same result: a settlement that already happened is never
+            // replaced by a disposal-triggered cancellation.
+            _hub.Complete();
+            _ = _completion.TrySetResult(result);
         }
 
-        // Sealing the event stream before exposing the envelope lets a consumer that observed
-        // the final result still drain its already accepted, consumer-owned event prefix.
-        _hub.Complete();
-        _ = _completion.TrySetResult(result);
         SafeLogCompleted(result.Outcome.GetType().Name);
         return ValueTask.CompletedTask;
     }
@@ -135,7 +138,14 @@ public sealed class AgentRunOutputPublisher: IOutputPublisher, IAsyncDisposable
     /// <remarks>Disposal before a final envelope was exposed cancels every pending final-result wait rather than fabricating an outcome. It never changes a settlement that already happened.</remarks>
     public ValueTask DisposeAsync()
     {
-        _ = _completion.TrySetCanceled();
+        lock (_gate)
+        {
+            if (_finalResult is null)
+            {
+                _ = _completion.TrySetCanceled();
+            }
+        }
+
         return _hub.DisposeAsync();
     }
 

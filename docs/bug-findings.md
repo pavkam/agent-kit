@@ -1132,6 +1132,7 @@ deserialization. Counts: **High 0, Medium 2, Low 5** (7 total).
   `DisposeAsync` take `_gate` and skip `TrySetCanceled` when `_finalResult` is
   already set.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### L04 — Non-completed run outcomes are logged/metered as "admission failed"
 

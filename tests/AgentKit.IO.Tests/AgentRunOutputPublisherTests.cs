@@ -280,6 +280,37 @@ public sealed class AgentRunOutputPublisherTests
     }
 
     [Fact]
+    public async Task CompleteAsync_WhenRacingConcurrentDisposeAsync_NeverLeavesCompletionCancelledAfterExposingTheEnvelope()
+    {
+        // CompleteAsync used to record _finalResult under _gate, release the lock, seal the hub, and only then
+        // call _completion.TrySetResult(result); DisposeAsync called _completion.TrySetCanceled() without
+        // touching _gate at all. If disposal interleaved between the lock release and TrySetResult, the first
+        // CompleteAsync call still recorded _finalResult (so a later identical call silently no-ops as a
+        // successful idempotent repeat) while the TaskCompletionSource had already been claimed by
+        // TrySetCanceled, so TrySetResult silently failed and every subscriber's Completion faulted with
+        // cancellation forever - violating the documented promise that disposal never changes a settlement that
+        // already happened. Both operations must now be atomic with respect to each other under _gate.
+        for (var iteration = 0; iteration < 200; iteration++)
+        {
+            var publisher = Publisher();
+            var stream = publisher.Subscribe<string>();
+            var finished = RunResultTestData.Finished();
+
+            var completeTask = publisher.CompleteAsync(finished, TestContext.Current.CancellationToken).AsTask();
+            var disposeTask = publisher.DisposeAsync().AsTask();
+            await Task.WhenAll(completeTask, disposeTask);
+
+            // A later identical CompleteAsync call is a documented-safe idempotent repeat regardless of which
+            // operation won the race: whether this is the first real settlement or a no-op repeat of one that
+            // already happened, the envelope must always be recorded by the time this call returns.
+            await publisher.CompleteAsync(finished, TestContext.Current.CancellationToken);
+
+            (await stream.Completion).ShouldBe(finished);
+            await stream.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task CompleteAsync_WhenTheLoggerFails_StillExposesTheEnvelope()
     {
         await using var publisher = Publisher(logger: new ThrowingLogger<AgentRunOutputPublisher>());
