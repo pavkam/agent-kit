@@ -14,8 +14,8 @@ namespace AgentKit.Providers.OpenAICompatible.Wire;
 /// <c>{"code":"&lt;status text&gt;","error":"&lt;message&gt;"}</c>: <c>error</c>
 /// is a plain string and <c>code</c> is a top-level sibling rather than
 /// nested under <c>error</c>. Without this converter,
-/// <see cref="System.Text.Json.JsonSerializer"/> throws
-/// <see cref="System.Text.Json.JsonException"/> deserializing the whole
+/// <see cref="JsonSerializer"/> throws
+/// <see cref="JsonException"/> deserializing the whole
 /// enclosing <see cref="OpenAIErrorResponse"/>, which previously dropped the
 /// provider's code and message entirely and fell back to a status-only
 /// failure for every xAI error. A bare string is wrapped into an

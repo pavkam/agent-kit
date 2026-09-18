@@ -168,7 +168,7 @@ public sealed record SecurityRequest
         }
     }
     /// <summary>Gets the normalized input fingerprint.</summary>
-    /// <exception cref="ArgumentException">The initialized value's <see cref="AgentKit.InputFingerprint.Value"/> is blank.</exception>
+    /// <exception cref="ArgumentException">The initialized value's <see cref="InputFingerprint.Value"/> is blank.</exception>
     public InputFingerprint InputFingerprint
     {
         get;

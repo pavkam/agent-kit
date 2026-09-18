@@ -14,7 +14,7 @@ using System.Globalization;
 /// (<c>"invalid_api_key"</c>). OpenRouter's documented shape instead sends the numeric HTTP status
 /// as <c>code</c> (for example <c>429</c>), both in ordinary error response bodies and in
 /// mid-stream error chunks sent with an HTTP 200 status. Without this converter,
-/// <see cref="System.Text.Json.JsonSerializer"/> throws <see cref="System.Text.Json.JsonException"/>
+/// <see cref="JsonSerializer"/> throws <see cref="JsonException"/>
 /// deserializing the whole enclosing object whenever a compatible server takes the numeric form,
 /// which previously misreported every OpenRouter error as a malformed response instead of surfacing
 /// the provider's actual code and message.

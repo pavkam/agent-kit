@@ -68,7 +68,7 @@ internal static class WebContentProjector
     /// <param name="maximumCharacters">The requested, positive UTF-16 code-unit boundary; less than <paramref name="text"/>'s length.</param>
     /// <returns>
     /// <paramref name="maximumCharacters"/> unchanged, or one less when slicing there would split a surrogate
-    /// pair and emit a lone surrogate that a strict UTF-8 consumer or <see cref="System.Text.Json.JsonSerializer"/>
+    /// pair and emit a lone surrogate that a strict UTF-8 consumer or <see cref="JsonSerializer"/>
     /// would then render as replacement or escaped garbage.
     /// </returns>
     private static int TruncationLength(string text, int maximumCharacters) =>
