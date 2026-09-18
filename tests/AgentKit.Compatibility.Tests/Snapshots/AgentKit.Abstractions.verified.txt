@@ -121,6 +121,7 @@ namespace AgentKit
         public AgentKit.ComponentKey<AgentKit.IAgentLoop>? LoopKey { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
         public AgentKit.ModelSelectionPolicy Models { get; init; }
+        public AgentKit.OutputDefinition? Output { get; init; }
         public AgentKit.AgentDefinitionRevision Revision { get; init; }
         public AgentKit.RunPolicyDefaults RunDefaults { get; init; }
         public AgentKit.SecurityProfileKey SecurityProfile { get; }
@@ -312,6 +313,7 @@ namespace AgentKit
     {
         public AgentRunCompleted(AgentKit.AssistantMessage finalMessage) { }
         public AgentKit.AssistantMessage FinalMessage { get; init; }
+        public AgentKit.ValidatedOutput? Output { get; init; }
     }
     public sealed class AgentRunContextPreparationFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunContextPreparationFailed>
     {
@@ -445,6 +447,7 @@ namespace AgentKit
         public AgentKit.ModelSelectionPolicy ModelPolicy { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
         public AgentKit.IAgentRunObserver? Observer { get; init; }
+        public AgentKit.OutputDefinition? Output { get; init; }
         public AgentKit.RunId RunId { get; }
         public AgentKit.SessionId SessionId { get; }
         public AgentKit.SessionProfileSnapshot SessionProfile { get; }
@@ -460,12 +463,13 @@ namespace AgentKit
     }
     public sealed class AgentRunServices
     {
-        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy) { }
+        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null) { }
         public AgentKit.IContextAssembler Context { get; }
         public AgentKit.IRunContinuationPolicy ContinuationPolicy { get; }
         public AgentKit.ILlmModelResolver ModelResolver { get; }
         public AgentKit.IModelSelector ModelSelector { get; }
         public AgentKit.IModelCatalog Models { get; }
+        public AgentKit.IOutputProcessor? Output { get; }
         public AgentKit.ISecurityProfileSelector SecurityProfileSelector { get; }
         public AgentKit.ISessionCoordinator Session { get; }
         public AgentKit.IToolInvoker Tools { get; }

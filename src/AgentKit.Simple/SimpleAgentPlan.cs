@@ -80,6 +80,9 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets the portable request settings.</summary>
     public LlmRequestSettings RequestSettings { get; set; } = LlmRequestSettings.Default;
 
+    /// <summary>Gets or sets the structured-output contract every turn must satisfy, or <see langword="null"/> for free text.</summary>
+    public OutputDefinition? Output { get; set; }
+
     /// <summary>Gets or sets a value indicating whether the named local-development defaults were opted into.</summary>
     public bool LocalDevelopmentDefaults { get; set; }
 
@@ -194,7 +197,10 @@ internal sealed class SimpleAgentPlan
         new RunPolicyDefaults(MaxTurns, AttemptTimeout),
         ExtensionData.Empty,
         SecurityProfileKey,
-        SessionProfileKey);
+        SessionProfileKey)
+    {
+        Output = Output,
+    };
 
     /// <summary>Applies the plan to the conversation options.</summary>
     /// <param name="options">The options to populate.</param>
@@ -209,6 +215,7 @@ internal sealed class SimpleAgentPlan
         options.SessionProfile = SessionProfile();
         options.ModelSelectionPolicy = new ModelSelectionPolicy([RequireModelAlias()]);
         options.RequestSettings = RequestSettings;
+        options.Output = Output;
         options.MaxTurns = MaxTurns;
         options.AttemptTimeout = AttemptTimeout;
         foreach (var instruction in InstructionMessages())

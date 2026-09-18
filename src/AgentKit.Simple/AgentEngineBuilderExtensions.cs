@@ -471,6 +471,89 @@ public static class AgentEngineBuilderExtensions
             Plan(builder).RequestSettings = settings;
             return builder;
         }
+
+        /// <summary>
+        /// Requires every final answer to satisfy a structured-output contract: the loop validates each terminal
+        /// response through the composed output processor, asks the model to correct a rejected candidate within
+        /// the definition's retry policy, and surfaces the accepted value on the turn result.
+        /// </summary>
+        /// <param name="definition">The complete, immutable output definition.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="definition"/> is null.</exception>
+        /// <remarks>
+        /// In <see cref="OutputMode.Prompted"/> the schema reaches the model only through instructions, so pair this
+        /// call with <see cref="WithInstructions"/> describing the expected JSON, or use <see cref="WithOutput{T}"/>,
+        /// which adds that instruction for you. The output processor registered by the first sugar call is the
+        /// first-party one; replace it on <see cref="AgentEngineBuilder.Services"/> when you need another.
+        /// </remarks>
+        public AgentEngineBuilder WithOutput(OutputDefinition definition)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(definition);
+            Plan(builder).Output = definition;
+            return builder;
+        }
+
+        /// <summary>
+        /// Requires every final answer to be JSON matching <paramref name="schemaJson"/>, deserialized to
+        /// <typeparamref name="T"/>, and tells the model so through a definition-level instruction.
+        /// </summary>
+        /// <typeparam name="T">The application type the validated JSON is deserialized into; it must be constructible by <c>System.Text.Json</c>.</typeparam>
+        /// <param name="schemaJson">A JSON Schema (draft 2020-12 structural subset) the answer must validate against.</param>
+        /// <param name="name">A short name for the contract, used in diagnostics; defaults to the type's name.</param>
+        /// <param name="maximumRepairAttempts">
+        /// How many times the model may be asked to correct a rejected candidate before the turn fails; the composed
+        /// processor's own ceiling also applies. Defaults to 2.
+        /// </param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="schemaJson"/> is blank or not a JSON object, or <paramref name="name"/> is empty or whitespace.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumRepairAttempts"/> is negative.</exception>
+        /// <exception cref="System.Text.Json.JsonException"><paramref name="schemaJson"/> is not valid JSON.</exception>
+        /// <remarks>
+        /// Uses <see cref="OutputMode.Prompted"/>: the model is instructed to answer with only the JSON object and
+        /// the processor validates the text it returns. Read the accepted value with <c>AskAsync&lt;T&gt;</c> or from
+        /// <see cref="ConversationTurnResult.Output"/>.
+        /// </remarks>
+        public AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(schemaJson);
+            if (name is not null)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            }
+
+            ArgumentOutOfRangeException.ThrowIfNegative(maximumRepairAttempts);
+
+            using var document = System.Text.Json.JsonDocument.Parse(schemaJson);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                throw new ArgumentException("The schema must be a JSON object.", nameof(schemaJson));
+            }
+
+            var contractName = name ?? typeof(T).Name;
+            var schema = document.RootElement.Clone();
+            var definition = new OutputDefinition(
+                new OutputDefinitionId($"agentkit.simple.output/{contractName}"),
+                new OutputDefinitionVersion("1"),
+                contractName,
+                OutputMode.Prompted,
+                new JsonSchemaDocument(contractName, new SchemaVersion("1"), schema),
+                typeof(T),
+                alternatives: [],
+                validators: [],
+                OutputValidationPolicy.RejectOnFirstFailure,
+                new OutputRetryPolicy(maximumRepairAttempts),
+                OutputEndStrategy.Graceful);
+
+            var plan = Plan(builder);
+            plan.Output = definition;
+            plan.Instructions.Add(
+                $"Your final answer must be a single JSON object that validates against this JSON Schema, with no " +
+                $"prose, code fences, or commentary before or after it:\n{schema.GetRawText()}");
+            return builder;
+        }
     }
 
     /// <summary>

@@ -1242,6 +1242,87 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheRunCompletesWithOutput_SurfacesItAsAnEventAndOnTheResult()
+    {
+        var output = new ValidatedOutput(OutputMode.Prompted, text: null, json: null, value: new Answer("yes"));
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request => new AgentLoopResult(
+                request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                new AgentRunCompleted(FakeMessages.Assistant(request, "{\"ok\":\"yes\"}")) { Output = output },
+                [FakeMessages.Assistant(request, "{\"ok\":\"yes\"}")],
+                new SessionVersion(1)),
+        };
+        var observer = new RecordingConversationEventObserver();
+        using var session = CreateSession(loop: loop, configureOptions: o => o.Output = TestOutputDefinition());
+
+        var result = await session.SendAsync("question", observer, TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        result.Output.ShouldBeSameAs(output);
+        result.Events[^1].ShouldBeOfType<ConversationOutputEvent>().Output.ShouldBeSameAs(output);
+        _ = observer.Events.OfType<ConversationOutputEvent>().ShouldHaveSingleItem();
+        observer.Events.IndexOf(observer.Events.OfType<ConversationOutputEvent>().Single())
+            .ShouldBeLessThan(observer.Events.IndexOf(observer.Events.OfType<ConversationTurnCompletedEvent>().Single()));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAnOutputDefinitionIsConfigured_PassesItToTheLoopWithTheScopedProcessor()
+    {
+        var loop = new FakeAgentLoop();
+        var processor = new NullOutputProcessor();
+        var services = new ServiceCollection();
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, loop);
+        _ = services.AddScoped<IOutputProcessor>(_ => processor);
+        var definition = TestOutputDefinition();
+        using var session = CreateSession(
+            loopScopeFactory: services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            configureOptions: o => o.Output = definition);
+
+        _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        loop.LastRequest.ShouldNotBeNull().Output.ShouldBeSameAs(definition);
+        loop.LastServices.ShouldNotBeNull().Output.ShouldBeSameAs(processor);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenNoOutputDefinitionIsConfigured_LeavesTheRequestAndServicesOutputNull()
+    {
+        var loop = new FakeAgentLoop();
+        using var session = CreateSession(loop: loop);
+
+        _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        loop.LastRequest.ShouldNotBeNull().Output.ShouldBeNull();
+        loop.LastServices.ShouldNotBeNull().Output.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheRunCompletesWithoutOutput_LeavesTheResultOutputNull()
+    {
+        using var session = CreateSession();
+
+        var result = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        result.Output.ShouldBeNull();
+        result.Events.OfType<ConversationOutputEvent>().ShouldBeEmpty();
+    }
+
+    private static OutputDefinition TestOutputDefinition() => new(
+        new OutputDefinitionId("answer"), new OutputDefinitionVersion("1"), "answer", OutputMode.Prompted,
+        new JsonSchemaDocument("answer", new SchemaVersion("1"), System.Text.Json.JsonDocument.Parse("""{"type":"object"}""").RootElement),
+        typeof(Answer), alternatives: [], validators: [],
+        OutputValidationPolicy.RejectOnFirstFailure, new OutputRetryPolicy(1), OutputEndStrategy.Graceful);
+
+    private sealed record Answer(string Ok);
+
+    private sealed class NullOutputProcessor: IOutputProcessor
+    {
+        public ValueTask<OutputProcessingResult> ProcessAsync(OutputProcessingRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
     public void SessionId_BeforeAnyTurnOrOpen_IsNull()
     {
         using var session = CreateSession();

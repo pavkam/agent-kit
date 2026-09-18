@@ -21,4 +21,12 @@ public sealed record AgentRunCompleted: AgentRunOutcome
 
     /// <summary>Gets the final, complete assistant message.</summary>
     public AssistantMessage FinalMessage { get; init; }
+
+    /// <summary>Gets the validated structured output the run's selected definition accepted, when one was selected.</summary>
+    /// <value>
+    /// The accepted output extracted from <see cref="FinalMessage"/> and validated by the run's
+    /// <see cref="IOutputProcessor"/>, or <see langword="null"/> for a free-text run. A run with an output
+    /// definition never completes without it; a rejected candidate settles as <see cref="AgentRunOutputRejected"/>.
+    /// </value>
+    public ValidatedOutput? Output { get; init; }
 }

@@ -189,4 +189,20 @@ internal static partial class LoopLog
     /// <summary>Logs a model response that could not be accepted as a complete turn because its stop reason or tool-call identities were invalid.</summary>
     [LoggerMessage(1024, LogLevel.Warning, "Model response for run {RunId} turn {TurnId} was not accepted as complete: {Reason}.")]
     internal static partial void ModelResponseNotAccepted(ILogger logger, RunId runId, TurnId turnId, string reason);
+
+    /// <summary>Logs that the run selects an output definition but no output processor was composed, so it fails closed.</summary>
+    [LoggerMessage(1091, LogLevel.Error, "Run {RunId} turn {TurnId} selects output definition {OutputDefinitionId} but no output processor is composed; the run fails closed.")]
+    internal static partial void OutputProcessorMissing(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId);
+
+    /// <summary>Logs the output processor's typed decision for one terminal response.</summary>
+    [LoggerMessage(1092, LogLevel.Information, "Run {RunId} turn {TurnId} output definition {OutputDefinitionId} attempt {Attempt} decided {Decision}.")]
+    internal static partial void OutputDecided(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string decision);
+
+    /// <summary>Logs that output validation was cancelled after the response was committed.</summary>
+    [LoggerMessage(1093, LogLevel.Information, "Run {RunId} turn {TurnId} output validation for {OutputDefinitionId} attempt {Attempt} was cancelled; the response is committed.")]
+    internal static partial void OutputValidationCancelled(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt);
+
+    /// <summary>Logs that the output processor threw instead of returning a typed decision.</summary>
+    [LoggerMessage(1094, LogLevel.Error, "Run {RunId} turn {TurnId} output validation for {OutputDefinitionId} attempt {Attempt} faulted with {ErrorType}.")]
+    internal static partial void OutputValidationFaulted(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string errorType);
 }

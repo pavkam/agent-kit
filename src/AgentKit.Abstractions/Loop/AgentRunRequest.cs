@@ -157,6 +157,7 @@ public sealed record AgentRunRequest
         ArgumentException.ThrowIfNotEqual(configuration.Version, authorization.ConfigurationVersion);
         ArgumentException.ThrowIfNotEqual(configuration.Fingerprint, sessionProfile.ConfigurationFingerprint);
         Agent = agent;
+        Output = agent.Output;
         Configuration = configuration;
     }
 
@@ -344,6 +345,28 @@ public sealed record AgentRunRequest
         }
     }
 
+    /// <summary>Gets the structured-output contract this run must satisfy before it completes, when one is selected.</summary>
+    /// <value>
+    /// The definition handed to the run's <see cref="IOutputProcessor"/> after each terminal assistant response, or
+    /// <see langword="null"/> for a free-text run. A pinned <see cref="Agent"/> supplies it; the explicit
+    /// constructor leaves it unset and a record copy may select one.
+    /// </value>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own.</exception>
+    public OutputDefinition? Output
+    {
+        get;
+        init
+        {
+            if (Agent is not null && !Equals(Agent.Output, value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own output definition.", nameof(Output));
+            }
+
+            field = value;
+        }
+    }
+
     /// <summary>Gets the optional best-effort observer for provisional model and tool progress.</summary>
     /// <remarks>
     /// The observer is operational wiring rather than semantic request data, so it does not participate in
@@ -371,6 +394,7 @@ public sealed record AgentRunRequest
         && Settings.Equals(other.Settings)
         && MaxTurns == other.MaxTurns
         && AttemptTimeout == other.AttemptTimeout
+        && Equals(Output, other.Output)
         && Extensions.Equals(other.Extensions);
 
     /// <inheritdoc/>
@@ -402,6 +426,7 @@ public sealed record AgentRunRequest
         hash.Add(Settings);
         hash.Add(MaxTurns);
         hash.Add(AttemptTimeout);
+        hash.Add(Output);
         hash.Add(Extensions);
         return hash.ToHashCode();
     }

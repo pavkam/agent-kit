@@ -59,6 +59,17 @@ public sealed class ConversationTurnResultTests
     }
 
     [Fact]
+    public void Init_WhenOutputIsSupplied_PreservesItAndParticipatesInEquality()
+    {
+        var output = new ValidatedOutput(OutputMode.Text, "hello", json: null, value: null);
+
+        var result = new ConversationTurnResult(true, []) { Output = output };
+
+        result.Output.ShouldBeSameAs(output);
+        result.ShouldNotBe(new ConversationTurnResult(true, []));
+    }
+
+    [Fact]
     public void Equals_WhenSucceededAndEventsMatch_ReturnsTrueWithMatchingHashCode()
     {
         var events = ImmutableArray.Create<ConversationEvent>(new ConversationAssistantTextEvent("hi"));

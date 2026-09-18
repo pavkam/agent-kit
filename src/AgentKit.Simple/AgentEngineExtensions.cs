@@ -48,6 +48,43 @@ public static class AgentEngineExtensions
                 : throw new SimpleAgentException(reply.Length > 0 ? reply : "The run ended without a final assistant message.", result);
         }
 
+        /// <summary>
+        /// Sends one user message and returns the validated structured answer as <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">The runtime type the engine's output definition deserializes into; see <c>WithOutput&lt;T&gt;</c>.</typeparam>
+        /// <param name="text">The user's message.</param>
+        /// <param name="cancellationToken">Cancels the turn.</param>
+        /// <returns>The accepted, deserialized value.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="engine"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="text"/> is blank.</exception>
+        /// <exception cref="SimpleAgentException">
+        /// The turn did not complete, the engine selects no output definition, the accepted output carries no
+        /// deserialized value, or the value is not a <typeparamref name="T"/>. The exception carries the safe reason
+        /// and the committed <see cref="ConversationTurnResult"/>.
+        /// </exception>
+        public async Task<T> AskAsync<T>(string text, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentException.ThrowIfNullOrWhiteSpace(text);
+            var result = await engine.Conversation.SendAsync(text, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+            {
+                var reply = string.Concat(result.Events.OfType<ConversationAssistantTextEvent>().Select(static e => e.Text));
+                throw new SimpleAgentException(reply.Length > 0 ? reply : "The run ended without a final assistant message.", result);
+            }
+
+            return result.Output switch
+            {
+                null => throw new SimpleAgentException(
+                    "The turn completed without structured output; configure the engine with WithOutput<T> before calling AskAsync<T>.", result),
+                { Value: T typed } => typed,
+                { Value: null } => throw new SimpleAgentException(
+                    "The accepted output declares no runtime type; use WithOutput<T> so the value is deserialized.", result),
+                { Value: var other } => throw new SimpleAgentException(
+                    $"The accepted output is a '{other.GetType().Name}', not a '{typeof(T).Name}'.", result),
+            };
+        }
+
         /// <summary>Sends one user message and returns the complete turn result, including tool and usage events.</summary>
         /// <param name="text">The user message.</param>
         /// <param name="cancellationToken">Cancels the caller's wait; committed work is preserved.</param>

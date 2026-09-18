@@ -28,8 +28,19 @@ static AgentEngine CreateReviewer(string checkoutRoot, string apiKey)
         .UseWorkspace(checkoutRoot)
         .WithInstructions(
             "You review pull requests. Load the 'review-guidelines' skill first, " +
-            "then inspect only the files named in the request. Finish with a line " +
-            "'VERDICT: approve' or 'VERDICT: request-changes'.")
+            "then inspect only the files named in the request.")
+        .WithOutput<ReviewVerdict>("""
+            {
+              "type": "object",
+              "properties": {
+                "approve": { "type": "boolean" },
+                "summary": { "type": "string" },
+                "blocking": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["approve", "summary", "blocking"],
+              "additionalProperties": false
+            }
+            """)
         .WithMaxTurns(40)
         .WithAttemptTimeout(TimeSpan.FromMinutes(10));
 
@@ -79,26 +90,37 @@ so. If you prefer the model never to see them, skip `UseWorkspace` and register
 ## Use it
 
 ```csharp
+sealed record ReviewVerdict(bool Approve, string Summary, string[] Blocking);
+
 using var jobCancellation = new CancellationTokenSource(TimeSpan.FromMinutes(12));
 await using var engine = CreateReviewer(checkoutRoot, apiKey);
 
 var request = $"Review these changed files for PR #{prNumber}:\n{string.Join('\n', changedFiles)}";
 var result = await engine.SendAsync(request, jobCancellation.Token);
 
-var text = string.Concat(result.Events.OfType<ConversationAssistantTextEvent>().Select(e => e.Text));
 var usage = result.Events.OfType<ConversationUsageEvent>().Select(e => e.Usage).ToList();
-
-Console.WriteLine(text);
 Console.WriteLine($"tokens in={usage.Sum(u => u.InputTokens ?? 0)} out={usage.Sum(u => u.OutputTokens ?? 0)} " +
                   $"cost={usage.Sum(u => u.EstimatedCost ?? 0m)} {usage.FirstOrDefault()?.CostCurrency}");
 
-if (!result.Succeeded)
+if (result.Output?.Value is not ReviewVerdict verdict)
 {
-    return 2; // the turn hit a limit, was cancelled, or failed; the log has the events
+    return 2; // the turn hit a limit, was cancelled, or the answer never validated; the log has the events
 }
 
-return text.Contains("VERDICT: approve", StringComparison.Ordinal) ? 0 : 1;
+Console.WriteLine(verdict.Summary);
+foreach (var issue in verdict.Blocking)
+{
+    Console.WriteLine($"  blocking: {issue}");
+}
+
+return verdict.Approve ? 0 : 1;
 ```
+
+`WithOutput<T>` adds a definition-level instruction carrying the schema, and the
+loop validates every final answer against it. An answer that is not valid JSON,
+or does not match, is sent back to the model with a bounded repair instruction;
+after the configured attempts the turn fails rather than returning prose the
+pipeline would have to parse.
 
 `EstimatedCost` is populated when the model descriptor carries pricing, which
 `UseOpenAI` supplies from the known-model catalog; it stays `null` rather than

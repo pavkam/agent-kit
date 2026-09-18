@@ -28,6 +28,104 @@ public sealed class AgentEngineExtensionsTests
     }
 
     [Fact]
+    public async Task AskAsyncOfT_WhenTheModelAnswersWithValidJson_ReturnsTheDeserializedValue()
+    {
+        var handler = new StubOpenAIHandler("""{"category":"billing","priority":2}""");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<Triage>("""{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"],"additionalProperties":false}""");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var triage = await engine.AskAsync<Triage>("Classify: my invoice is wrong", TestContext.Current.CancellationToken);
+
+        triage.ShouldBe(new Triage("billing", 2));
+        handler.Bodies.Single().ShouldContain("JSON Schema");
+        handler.Bodies.Single().ShouldContain("category");
+        handler.Bodies.Single().ShouldContain("additionalProperties");
+    }
+
+    [Fact]
+    public async Task AskAsyncOfT_WhenTheFirstAnswerIsInvalid_AsksTheModelToRepairAndReturnsTheSecond()
+    {
+        var handler = new StubOpenAIHandler("not json at all", """{"category":"billing","priority":1}""");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<Triage>("""{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"]}""");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("Classify this", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        result.Output.ShouldNotBeNull().Value.ShouldBe(new Triage("billing", 1));
+        handler.Bodies.Count.ShouldBe(2);
+        handler.Bodies[1].ShouldContain("previous output was rejected");
+        _ = result.Events.OfType<ConversationOutputEvent>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AskAsyncOfT_WhenRepairsAreExhausted_ThrowsSimpleAgentExceptionWithTheRejection()
+    {
+        var handler = new StubOpenAIHandler("nope");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<Triage>("""{"type":"object"}""", maximumRepairAttempts: 1);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync<Triage>("Classify", TestContext.Current.CancellationToken));
+
+        exception.Result.Succeeded.ShouldBeFalse();
+        exception.Message.ShouldContain("rejected");
+        handler.Bodies.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task AskAsyncOfT_WhenNoOutputIsConfigured_ThrowsSimpleAgentExceptionNamingWithOutput()
+    {
+        await using var engine = Engine(new StubOpenAIHandler("plain text"));
+
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync<Triage>("hi", TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("WithOutput<T>");
+        exception.Result.Succeeded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AskAsyncOfT_WhenTheOutputIsAnotherType_ThrowsSimpleAgentException()
+    {
+        var handler = new StubOpenAIHandler("""{"category":"x","priority":1}""");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<Triage>("""{"type":"object"}""");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync<string>("hi", TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("Triage");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public async Task AskAsyncOfT_WhenTextIsBlank_ThrowsArgumentException(string? text)
+    {
+        await using var engine = Engine(new StubOpenAIHandler("unused"));
+
+        var exception = await Should.ThrowAsync<ArgumentException>(() => engine.AskAsync<Triage>(text!, TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("text");
+    }
+
+    private sealed record Triage(string Category, int Priority);
+
+    [Fact]
     public async Task SendAsync_WhenObserverIsNull_ThrowsArgumentNullException()
     {
         await using var engine = Engine(new StubOpenAIHandler("unused"));

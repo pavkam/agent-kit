@@ -58,9 +58,19 @@ sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, ISecurityAudit
             .UseOpenAI(config["OpenAI:ApiKey"]!, "gpt-4o-mini")
             .UseSqliteSessions("/var/lib/triage/sessions.db")
             .WithIdentity(WorkerIdentity)
-            .WithInstructions(
-                "You triage support tickets. Classify the ticket, draft a first reply, " +
-                "and call update_ticket exactly once with category, priority, and draft.")
+            .WithInstructions("You triage support tickets: classify, set a priority from 1 (urgent) to 4, and draft a first reply.")
+            .WithOutput<TriageDecision>("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "category": { "type": "string", "enum": ["billing", "bug", "how-to", "account", "other"] },
+                    "priority": { "type": "integer", "minimum": 1, "maximum": 4 },
+                    "draftReply": { "type": "string" }
+                  },
+                  "required": ["category", "priority", "draftReply"],
+                  "additionalProperties": false
+                }
+                """)
             .WithRequestSettings(LlmRequestSettings.Default with { Temperature = 0.2, MaxOutputTokens = 1_500 })
             .WithMaxTurns(4)
             .WithAttemptTimeout(TimeSpan.FromSeconds(60));
@@ -73,19 +83,19 @@ sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, ISecurityAudit
             audit);
         builder.Services.AddSingleton<ISecurityPolicy, TriagePolicy>();
 
-        builder.Services.AddSingleton<ITool>(new UpdateTicketTool(tickets, ticket.Id));
-        builder.Services.Configure<AgentToolsOptions>(o => o.AllowedToolIds.Add(UpdateTicketTool.Id));
-
         return builder.Build();
     }
+
+    sealed record TriageDecision(string Category, int Priority, string DraftReply);
 }
 ```
 
 `TriagePolicy` allows session state (`StateRead`, `StateMutation`) and abstains
 otherwise, so any tool that would need a file, process, or network is denied by
-default. `UpdateTicketTool` is an ordinary `ITool` over `ITicketApi`; its
-`ToolEffects` declare it as a mutation, and the allow-list names it explicitly
-rather than using `AllowAllRegisteredTools`.
+default. The agent has no tools at all: it reads the ticket in the prompt and
+returns a `TriageDecision`; the worker, not the model, writes to the ticket
+system. `WithOutput<T>` validates each final answer against the schema and asks
+the model to repair an invalid one before the turn fails.
 
 ## Use it
 
@@ -102,13 +112,15 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 
         var usage = result.Events.OfType<ConversationUsageEvent>().Select(e => e.Usage).ToList();
         var completed = result.Events.OfType<ConversationTurnCompletedEvent>().Last();
-        var updated = result.Events.OfType<ConversationToolResultEvent>()
-            .Any(e => e.ToolName == "update_ticket" && e.Succeeded);
 
-        logger.LogTriageCompleted(ticket.Id, completed.Outcome, updated,
+        logger.LogTriageCompleted(ticket.Id, completed.Outcome,
             usage.Sum(u => u.InputTokens ?? 0), usage.Sum(u => u.OutputTokens ?? 0), usage.Sum(u => u.EstimatedCost ?? 0m));
 
-        if (!updated)
+        if (result.Output?.Value is TriageDecision decision)
+        {
+            await tickets.UpdateAsync(ticket.Id, decision.Category, decision.Priority, decision.DraftReply, stoppingToken);
+        }
+        else
         {
             await queue.DeadLetterAsync(ticket, completed.Outcome, stoppingToken);
         }
@@ -118,9 +130,9 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 
 `stoppingToken` flows into every turn, so host shutdown cancels the model call
 and any in-flight tool, the turn ends with `Outcome == "cancelled"`, and the
-ticket is dead-lettered instead of half-updated. The per-job `CancelAfter` is an
-outer bound above the attempt timeout; both produce a typed outcome rather than
-an exception from the engine.
+ticket is dead-lettered instead of updated from a half-formed answer. The
+per-job `CancelAfter` is an outer bound above the attempt timeout; both produce
+a typed outcome rather than an exception from the engine.
 
 ## What the framework guarantees
 

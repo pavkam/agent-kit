@@ -16,6 +16,33 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
     /// <inheritdoc/>
     protected override Fixture CreateFixture() => new();
     [Fact]
+    public async Task DecideAsync_WhenRequiredOutputIsAccepted_CompletesWithTheValidatedOutputAttached()
+    {
+        var fixture = CreateFixture();
+        var accepted = new OutputAccepted(
+            new ValidatedOutput(OutputMode.Prompted, text: null, json: null, value: "typed"),
+            new OutputValidationManifest(new OutputDefinitionId("answer"), OutputMode.Prompted, 1, []));
+        var boundary = fixture.CreateCommittedBoundary(accepted, requiresOutput: true);
+
+        var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
+
+        var completed = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunCompleted>();
+        completed.FinalMessage.ShouldBeSameAs(boundary.Response);
+        completed.Output.ShouldBeSameAs(accepted.Output);
+    }
+
+    [Fact]
+    public async Task DecideAsync_WhenNoOutputIsRequired_CompletesWithoutAnOutput()
+    {
+        var fixture = CreateFixture();
+        var boundary = fixture.CreateCommittedBoundary(decision: null, requiresOutput: false);
+
+        var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunCompleted>().Output.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task DecideAsync_WhenPromotedInputAndOutputRepairCoexist_SelectsInputAndRetainsRepair()
     {
         var fixture = CreateFixture();

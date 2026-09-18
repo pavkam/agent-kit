@@ -45,6 +45,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     private readonly IToolPresenter? _toolPresenter;
     private readonly LlmToolChoice _toolChoice;
     private readonly LlmRequestSettings _requestSettings;
+    private readonly OutputDefinition? _output;
     private readonly int _maxTurns;
     private readonly TimeSpan _attemptTimeout;
 
@@ -373,6 +374,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _toolPresentationBindings = toolPresentationBindings;
         _toolChoice = optionValues.ToolChoice;
         _requestSettings = optionValues.RequestSettings;
+        _output = optionValues.Output;
         _maxTurns = optionValues.MaxTurns;
         _attemptTimeout = optionValues.AttemptTimeout;
     }
@@ -585,14 +587,27 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     DescribeToolResult,
                     _toolPresenter,
                     _toolPresentationBindings),
+            Output = _agent is null ? _output : request.Output,
         };
 
         await using var loopScope = _loopScopeFactory.CreateAsyncScope();
         var agentLoop = loopScope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
-        var loopResult = await agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
+        // The output processor is scoped, so a run that needs one borrows it from the same short-lived scope as the
+        // loop; a free-text run keeps the bundle built at construction.
+        var runServices = request.Output is null
+            ? _runServices
+            : WithOutputProcessor(_runServices, loopScope.ServiceProvider.GetService<IOutputProcessor>());
+        var loopResult = await agentLoop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);
-        if (loopResult.Outcome is AgentRunCompleted)
+        if (loopResult.Outcome is AgentRunCompleted completed)
         {
+            if (completed.Output is { } output)
+            {
+                var outputEvent = new ConversationOutputEvent(output);
+                await ObserveAsync(observer, outputEvent, cancellationToken).ConfigureAwait(false);
+                return (Finish(true, events.Add(outputEvent)) with { Output = output }, "settled");
+            }
+
             return (Finish(true, events), "settled");
         }
 
@@ -612,6 +627,25 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 SessionId = binding.SessionId,
                 RunId = runId,
             };
+    }
+
+    /// <summary>Copies the run collaborator bundle with the turn-scoped output processor attached.</summary>
+    /// <param name="services">The bundle built at construction.</param>
+    /// <param name="processor">The processor resolved from the turn's scope, or <see langword="null"/> when none is composed.</param>
+    /// <returns>An equivalent bundle whose <see cref="AgentRunServices.Output"/> is <paramref name="processor"/>.</returns>
+    private static AgentRunServices WithOutputProcessor(AgentRunServices services, IOutputProcessor? processor)
+    {
+        Debug.Assert(services is not null, "The construction-time bundle always exists.");
+        return new AgentRunServices(
+            services.Session,
+            services.SecurityProfileSelector,
+            services.Context,
+            services.Tools,
+            services.Models,
+            services.ModelSelector,
+            services.ModelResolver,
+            services.ContinuationPolicy,
+            processor);
     }
 
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>

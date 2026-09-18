@@ -42,6 +42,11 @@ namespace AgentKit.Conversations
         public ConversationHistoryUnavailable(string safeMessage) { }
         public string SafeMessage { get; }
     }
+    public sealed class ConversationOutputEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationOutputEvent>
+    {
+        public ConversationOutputEvent(AgentKit.ValidatedOutput output) { }
+        public AgentKit.ValidatedOutput Output { get; }
+    }
     public sealed class ConversationReasoningEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationReasoningEvent>
     {
         public ConversationReasoningEvent(string text) { }
@@ -85,6 +90,7 @@ namespace AgentKit.Conversations
         public int MaxTurns { get; set; }
         public AgentKit.ModelRequirements ModelRequirements { get; set; }
         public AgentKit.ModelSelectionPolicy? ModelSelectionPolicy { get; set; }
+        public AgentKit.OutputDefinition? Output { get; set; }
         public AgentKit.LlmRequestSettings RequestSettings { get; set; }
         public AgentKit.SecurityProfileKey SecurityProfileKey { get; set; }
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; set; }
@@ -142,6 +148,7 @@ namespace AgentKit.Conversations
     {
         public ConversationTurnResult(bool succeeded, System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> events) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> Events { get; init; }
+        public AgentKit.ValidatedOutput? Output { get; init; }
         public AgentKit.RunId? RunId { get; init; }
         public AgentKit.SessionId? SessionId { get; init; }
         public bool Succeeded { get; init; }

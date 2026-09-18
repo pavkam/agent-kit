@@ -334,6 +334,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
+        var outputValidation = new OutputValidationTracker();
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
             TurnOutcome result;
@@ -349,6 +350,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     turn == 1 ? modelResolution.FirstModelRequestId : null,
                     modelResolution.Adjustments,
                     history,
+                    outputValidation,
                     committedMessages,
                     currentVersion,
                     cancellationToken).ConfigureAwait(false);
@@ -503,6 +505,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ModelRequestId? reservedModelRequestId,
         ImmutableArray<CapabilityAdjustment> selectionAdjustments,
         HistoryView history,
+        OutputValidationTracker outputValidation,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
@@ -665,7 +668,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
-                committedMessages, currentVersion, cancellationToken)
+                outputValidation, committedMessages, currentVersion, cancellationToken)
                 .ConfigureAwait(false),
 
             _ => throw new InvalidOperationException(
@@ -697,6 +700,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         TurnId turnId,
         int turn,
         ModelResponse response,
+        OutputValidationTracker outputValidation,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
@@ -815,6 +819,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         return toolCalls switch
         {
+            { IsEmpty: true } when request.Output is { } outputDefinition => await ValidateOutputAsync(
+                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                assistantMessage, response, outputDefinition, outputValidation, committedMessages, currentVersion, committedSequence,
+                cancellationToken)
+                .ConfigureAwait(false),
             { IsEmpty: true } => await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken)
@@ -828,6 +837,176 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 committedMessages, currentVersion, committedSequence, cancellationToken)
                 .ConfigureAwait(false),
         };
+    }
+
+    /// <summary>
+    /// Validates the committed terminal response against the run's selected <see cref="OutputDefinition"/> and
+    /// hands the processor's typed decision to the continuation policy.
+    /// </summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle, whose <see cref="AgentRunServices.Output"/> performs the validation.</param>
+    /// <param name="sourceCursor">The history cursor the turn started from.</param>
+    /// <param name="turnSessionContext">The turn's session operation context.</param>
+    /// <param name="turnCorrelation">The turn's in-run correlation.</param>
+    /// <param name="turnId">The committed turn's identity.</param>
+    /// <param name="turn">The one-based number of the committed turn.</param>
+    /// <param name="assistantEntryId">The committed assistant entry's identity.</param>
+    /// <param name="assistantMessage">The complete, committed assistant response.</param>
+    /// <param name="response">The provider response the assistant message was built from.</param>
+    /// <param name="definition">The output contract the run must satisfy.</param>
+    /// <param name="outputValidation">The run-scoped attempt counter the processor's retry policy is evaluated against.</param>
+    /// <param name="committedMessages">Every message this run has committed so far.</param>
+    /// <param name="currentVersion">The branch version after the assistant commit.</param>
+    /// <param name="committedSequence">The sequence of the committed assistant entry.</param>
+    /// <param name="cancellationToken">Cancels validation; the assistant message is already committed.</param>
+    /// <returns>The turn's continuation or settlement.</returns>
+    /// <remarks>
+    /// <para>
+    /// An <see cref="OutputAccepted"/> decision completes the run with the validated value attached. An
+    /// <see cref="OutputRetryRequired"/> decision commits the processor's bounded repair instruction as a
+    /// <see cref="RuntimeMessage"/>, which the provider translation carries with user-level trust and never with
+    /// system authority, and continues to the next turn so the model can correct its answer; the turn limit still
+    /// applies. An <see cref="OutputRejected"/> or <see cref="OutputConfigurationRejected"/> decision halts the run
+    /// as <see cref="AgentRunOutputRejected"/>. The processor never sees a turn that requested tools: output is
+    /// validated only on a terminal response.
+    /// </para>
+    /// <para>
+    /// The attempt counter is per run, not per turn, so repairs consumed on earlier turns count against the
+    /// definition's retry policy. A composition that selects an output definition without an output processor fails
+    /// closed as <see cref="AgentRunInvalidState"/> rather than completing with unvalidated text.
+    /// </para>
+    /// </remarks>
+    private async Task<TurnOutcome> ValidateOutputAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        MessageCursor sourceCursor,
+        SessionOperationContext turnSessionContext,
+        InRunOperationCorrelation turnCorrelation,
+        TurnId turnId,
+        int turn,
+        SessionEntryId assistantEntryId,
+        AssistantMessage assistantMessage,
+        ModelResponse response,
+        OutputDefinition definition,
+        OutputValidationTracker outputValidation,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
+        SessionVersion currentVersion,
+        SessionSequence committedSequence,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request.Output is not null, "Output validation runs only when the request selects a definition.");
+
+        if (services.Output is not { } processor)
+        {
+            LoopLog.OutputProcessorMissing(_logger, request.RunId, turnId, definition.Id);
+            return TurnOutcome.Settled(
+                new AgentRunInvalidState("The run selects an output definition but the composition provides no output processor."),
+                currentVersion);
+        }
+
+        var attempt = outputValidation.NextAttempt();
+        OutputProcessingResult decision;
+        try
+        {
+            decision = await processor.ProcessAsync(
+                new OutputProcessingRequest(definition, response, attempt), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            LoopLog.OutputValidationCancelled(_logger, request.RunId, turnId, definition.Id, attempt);
+            return TurnOutcome.Settled(
+                new AgentRunCancelled("The run was cancelled while its output was being validated; the response is committed."),
+                currentVersion);
+        }
+        catch (Exception exception)
+        {
+            LoopLog.OutputValidationFaulted(_logger, request.RunId, turnId, definition.Id, attempt, exception.GetType().FullName ?? exception.GetType().Name);
+            return TurnOutcome.Settled(
+                new AgentRunInvalidState("The output processor faulted while validating the response."),
+                currentVersion);
+        }
+
+        LoopLog.OutputDecided(_logger, request.RunId, turnId, definition.Id, attempt, decision.GetType().Name);
+
+        if (decision is not OutputRetryRequired retry)
+        {
+            return await DecideContinuationAsync(
+                request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
+                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken,
+                decision).ConfigureAwait(false);
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var repairMessage = new RuntimeMessage(
+            _messageIds.Create(),
+            request.AgentId,
+            request.SessionId,
+            sourceCursor.ConversationId,
+            request.BranchId,
+            request.RunId,
+            turnId,
+            now,
+            MessageState.Complete,
+            [new TextPart(retry.Repair.SafeMessage, TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var repairEntry = new MessageSessionEntry(
+            _entryIds.Create(),
+            turnSessionContext.ToAddress(),
+            turnCorrelation,
+            request.BranchId,
+            new SessionSequence(committedSequence.Value + 1),
+            assistantEntryId,
+            now,
+            new SchemaVersion("1"),
+            repairMessage);
+
+        var appendAttempt = await AppendWithDiagnosticsAsync(
+            services,
+            new SessionAppendRequest(
+                turnSessionContext,
+                request.BranchId,
+                currentVersion,
+                new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:output-repair"),
+                [repairEntry]),
+            request.SessionProfile,
+            allowInterleavedMessages: true,
+            cancellationToken).ConfigureAwait(false);
+        if (appendAttempt.Result is not SessionAppended appended)
+        {
+            return TurnOutcome.Settled(
+                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+        }
+
+        committedMessages.Add(repairMessage);
+        var repairSequence = appended.CommittedEntries[^1].Sequence;
+        return await DecideContinuationAsync(
+            request, services, turnCorrelation, turn, assistantMessage, [], repairEntry.Id,
+            NextCursor(sourceCursor, appended.NewVersion, repairSequence),
+            [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, cancellationToken,
+            retry).ConfigureAwait(false);
+    }
+
+    /// <summary>Builds the continuation causes that describe one committed turn to the policy.</summary>
+    /// <param name="toolResults">The committed tool results of the turn, or empty.</param>
+    /// <param name="outputDecision">The output processor's decision for the turn, or <see langword="null"/>.</param>
+    /// <returns>Tool-result evidence when tools ran, repair evidence when a repair turn follows, otherwise empty.</returns>
+    private static ImmutableArray<RunContinuationCause> ContinuationCauses(
+        ImmutableArray<CommittedToolResultReference> toolResults,
+        OutputProcessingResult? outputDecision)
+    {
+        Debug.Assert(toolResults.IsEmpty || outputDecision is null, "Output is validated only on a turn without tool calls.");
+        var causes = ImmutableArray.CreateBuilder<RunContinuationCause>();
+        if (!toolResults.IsEmpty)
+        {
+            causes.Add(new CommittedToolResultsContinuationCause(toolResults));
+        }
+
+        if (outputDecision is OutputRetryRequired retry)
+        {
+            causes.Add(new OutputRepairContinuationCause(retry));
+        }
+
+        return causes.ToImmutable();
     }
 
     /// <summary>
@@ -1126,6 +1305,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
     /// <param name="version">The branch version after this turn's commits.</param>
     /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
+    /// <param name="outputDecision">
+    /// The output processor's decision for this terminal turn, or <see langword="null"/> when the run selects no
+    /// output definition or the turn requested tools. When present the boundary requires output validation, so the
+    /// policy completes only on acceptance, continues on a repair decision, and halts on rejection.
+    /// </param>
     /// <returns>A continuation to the next turn, or the settled outcome proposed by the policy.</returns>
     /// <remarks>
     /// <para>
@@ -1162,7 +1346,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         MessageCursor nextCursor,
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion version,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OutputProcessingResult? outputDecision = null)
     {
         Debug.Assert(request is not null, "A validated run request is required to decide continuation.");
         Debug.Assert(turnCorrelation.TurnId is not null, "Continuation is decided for one committed turn.");
@@ -1184,9 +1369,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 nextCursor.Sequence,
                 request.Authorization.ConfigurationVersion,
                 _policyVersion,
-                new CommittedTurnContinuationBoundary(assistantMessage, toolResults, outputDecision: null, requiresOutputValidation: false),
+                new CommittedTurnContinuationBoundary(
+                    assistantMessage, toolResults, outputDecision, requiresOutputValidation: outputDecision is not null),
                 requiredStopOutcome: null,
-                toolResults.IsEmpty ? [] : [new CommittedToolResultsContinuationCause(toolResults)]);
+                ContinuationCauses(toolResults, outputDecision));
         }
         catch (ArgumentException exception)
         {
@@ -2228,6 +2414,21 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>
+    /// <summary>Counts output validation attempts across the turns of one run.</summary>
+    /// <remarks>
+    /// The processor's retry policy is evaluated against this count, so repairs consumed on earlier turns are not
+    /// forgotten when a later turn produces another invalid candidate. One instance exists per run and is touched
+    /// only by that run's sequential turns.
+    /// </remarks>
+    private sealed class OutputValidationTracker
+    {
+        private int _attempts;
+
+        /// <summary>Allocates the next one-based attempt number.</summary>
+        /// <returns>1 for the first validation of the run, then 2, 3, and so on.</returns>
+        public int NextAttempt() => ++_attempts;
+    }
+
     private readonly struct TurnOutcome
     {
         private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, MessageCursor? cursor, ImmutableArray<AgentMessage> newMessages)

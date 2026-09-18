@@ -98,6 +98,10 @@ Each of these is one more line on the same builder; each has its own guide.
   `builder.Services`; deny wins over the local allow-all default, and
   `RequireApproval` puts a human in the loop. See
   [Permissions and approvals](guides/permissions.md).
+- **Get a typed answer.** `.WithOutput<Triage>(schemaJson)` makes every final
+  answer JSON that validates against the schema, and
+  `await engine.AskAsync<Triage>(question)` returns it deserialized. Invalid
+  answers are sent back to the model for repair before the turn fails.
 - **Stream the answer.** Pass an `IConversationEventObserver` to
   `engine.SendAsync(text, observer)` to receive text and reasoning deltas, tool
   starts and results, and usage before the call returns.

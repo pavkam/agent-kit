@@ -21,6 +21,33 @@ executor, or output publisher itself. A retry decision contains bounded repair
 instructions and budget cost; the loop decides whether another model request is
 allowed. That cut prevents output → provider → context → output cycles.
 
+### Loop integration
+
+`AgentDefinition.Output` and `AgentRunRequest.Output` carry the selected
+definition; `AgentRunServices.Output` carries the processor the run scope
+resolved. `DefaultAgentLoop` validates only a terminal response (a committed
+assistant message that requested no tools) and hands the processor's decision to
+the continuation policy on a `CommittedTurnContinuationBoundary` with
+`RequiresOutputValidation` set:
+
+- `OutputAccepted` completes the run; `AgentRunCompleted.Output` carries the
+  validated value.
+- `OutputRetryRequired` commits the repair instruction as a `RuntimeMessage`
+  (user-level trust, never system authority), adds an
+  `OutputRepairContinuationCause`, and continues. The attempt counter is per
+  run, so repairs on earlier turns count; the turn limit still applies.
+- `OutputRejected` and `OutputConfigurationRejected` halt the run as
+  `AgentRunOutputRejected`.
+- A request that selects a definition while `AgentRunServices.Output` is null
+  fails closed as `AgentRunInvalidState`; a processor that throws does the same.
+
+`AgentKit.Conversations` resolves the processor from the turn scope, surfaces
+the accepted value as `ConversationOutputEvent` and
+`ConversationTurnResult.Output`, and `AgentKit.Simple` exposes `WithOutput`,
+`WithOutput<T>` (prompted mode with a definition-authority instruction carrying
+the schema), and `AskAsync<T>`. Provider-native schema negotiation for
+`OutputMode.NativeSchema` remains provider work.
+
 ## Normative minimal contract shape
 
 ```csharp

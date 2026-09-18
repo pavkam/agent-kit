@@ -63,6 +63,11 @@ escape hatch is the ordinary AgentKit API:
   services, and call `WithIdentity`.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
+- **Structured answers:** `WithOutput<T>(schemaJson)` requires every final
+  answer to be JSON matching the schema and deserializable to `T`, adds the
+  instruction that tells the model so, and `AskAsync<T>` returns the value. A
+  rejected answer is sent back for repair within `maximumRepairAttempts`; the
+  accepted value is also on `ConversationTurnResult.Output`.
 
 `UseLocalDevelopmentDefaults` means what it says. Nothing survives the process,
 every request is permitted, and the identity is the process user. A service, a

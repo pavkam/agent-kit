@@ -244,6 +244,53 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public void WithOutput_WhenDefinitionIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().WithOutput(null!)).ParamName.ShouldBe("definition");
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void WithOutputOfT_WhenSchemaIsBlank_ThrowsArgumentException(string? schema) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>(schema!)).ParamName.ShouldBe("schemaJson");
+
+    [Fact]
+    public void WithOutputOfT_WhenSchemaIsNotAnObject_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>("[1,2]")).ParamName.ShouldBe("schemaJson");
+
+    [Fact]
+    public void WithOutputOfT_WhenSchemaIsNotJson_ThrowsJsonException() =>
+        _ = Should.Throw<System.Text.Json.JsonException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{not json"));
+
+    [Fact]
+    public void WithOutputOfT_WhenNameIsWhitespace_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{}", name: " ")).ParamName.ShouldBe("name");
+
+    [Fact]
+    public void WithOutputOfT_WhenRepairAttemptsAreNegative_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{}", maximumRepairAttempts: -1)).ParamName.ShouldBe("maximumRepairAttempts");
+
+    [Fact]
+    public async Task WithOutputOfT_WhenBuilt_PublishesTheDefinitionOnTheAgentAndAnInstructionCarryingTheSchema()
+    {
+        await using var engine = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<int>("""{"type":"object","properties":{"n":{"type":"integer"}}}""", name: "count", maximumRepairAttempts: 3)
+            .Build();
+
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+
+        var output = definition.Output.ShouldNotBeNull();
+        output.Name.ShouldBe("count");
+        output.Mode.ShouldBe(OutputMode.Prompted);
+        output.RuntimeType.ShouldBe(typeof(int));
+        output.RetryPolicy.MaximumAttempts.ShouldBe(3);
+        output.Schema.ShouldNotBeNull().Schema.GetProperty("properties").GetProperty("n").GetProperty("type").GetString().ShouldBe("integer");
+        definition.Instructions.OfType<SystemMessage>().Select(static m => ((TextPart) m.Parts[0]).Text)
+            .ShouldContain(text => text.Contains("JSON Schema", StringComparison.Ordinal) && text.Contains("\"n\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void UseModel_WhenAliasIsDefault_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().UseModel(default)).ParamName.ShouldBe("alias");
 
