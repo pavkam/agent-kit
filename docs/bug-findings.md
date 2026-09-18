@@ -621,6 +621,7 @@ findings).
   `UriComponents.AbsoluteUri | UriComponents.Fragment`) ordinally, and enforce
   `sizeInBytes == inlineBytes.Length` for inline media.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### A16 — `DelegatingOAuthCredentialSource` propagates a null credential from a misbehaving provider
 

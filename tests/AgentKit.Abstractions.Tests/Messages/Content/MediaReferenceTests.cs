@@ -148,4 +148,46 @@ public sealed class MediaReferenceTests
 
         reference.Uri.ShouldBe(uri);
     }
+
+    [Fact]
+    public void Constructor_WhenInlineSizeDisagreesWithByteCount_ThrowsArgumentException()
+    {
+        // The constructor did not require sizeInBytes == inlineBytes.Length when sizeInBytes was supplied,
+        // allowing self-contradictory evidence for an InlineBytes medium.
+        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1, 2, 3], 4, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("sizeInBytes");
+    }
+
+    [Fact]
+    public void Constructor_WhenInlineSizeMatchesByteCount_Succeeds()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1, 2, 3], 3, null, ExtensionData.Empty);
+
+        reference.SizeInBytes.ShouldBe(3);
+    }
+
+    [Fact]
+    public void MediaReference_Equality_WhenUriDiffersOnlyByFragment_InstancesAreNotEqual()
+    {
+        // Uri == other.Uri uses Uri.Equals, which ignores the fragment, so two MediaSourceKind.Uri references
+        // differing only in #fragment (which some media hosts use for range/page selection) compared equal and
+        // deduped into one.
+        var id = new MediaId(Guid.NewGuid());
+        var first = new MediaReference(id, MediaSourceKind.Uri, "image/png", new Uri("https://example.test/a.png#page=1"), [], null, null, ExtensionData.Empty);
+        var second = new MediaReference(id, MediaSourceKind.Uri, "image/png", new Uri("https://example.test/a.png#page=2"), [], null, null, ExtensionData.Empty);
+
+        first.ShouldNotBe(second);
+    }
+
+    [Fact]
+    public void MediaReference_Equality_WhenUriFragmentMatches_InstancesAreEqual()
+    {
+        var id = new MediaId(Guid.NewGuid());
+        var first = new MediaReference(id, MediaSourceKind.Uri, "image/png", new Uri("https://example.test/a.png#page=1"), [], null, null, ExtensionData.Empty);
+        var second = new MediaReference(id, MediaSourceKind.Uri, "image/png", new Uri("https://example.test/a.png#page=1"), [], null, null, ExtensionData.Empty);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
 }

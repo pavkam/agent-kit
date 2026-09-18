@@ -66,7 +66,9 @@ public sealed record MediaReference
     /// <exception cref="ArgumentException">
     /// <paramref name="mediaType"/> is null, empty, or whitespace; <paramref name="inlineBytes"/> is a
     /// default, uninitialized array; <paramref name="inlineBytes"/> is empty for an inline medium or
-    /// nonempty for a referenced medium; or <paramref name="uri"/> is supplied for an inline medium.
+    /// nonempty for a referenced medium; <paramref name="uri"/> is supplied for an inline medium; or
+    /// <paramref name="sizeInBytes"/> is supplied for an inline medium and disagrees with
+    /// <paramref name="inlineBytes"/>'s length.
     /// </exception>
     public MediaReference(
         MediaId id,
@@ -101,6 +103,12 @@ public sealed record MediaReference
         if (sizeInBytes is { } size)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(size, nameof(sizeInBytes));
+            if (sourceKind == MediaSourceKind.InlineBytes && size != inlineBytes.Length)
+            {
+                throw new ArgumentException(
+                    "Value must equal the inline byte count when both are supplied.",
+                    nameof(sizeInBytes));
+            }
         }
 
         ArgumentNullException.ThrowIfNull(extensions);
@@ -180,7 +188,7 @@ public sealed record MediaReference
         && Id.Equals(other.Id)
         && SourceKind == other.SourceKind
         && MediaType == other.MediaType
-        && Uri == other.Uri
+        && string.Equals(Uri?.OriginalString, other.Uri?.OriginalString, StringComparison.Ordinal)
         && InlineBytes.SequenceEqual(other.InlineBytes)
         && SizeInBytes == other.SizeInBytes
         && Nullable.Equals(Hash, other.Hash)
@@ -193,7 +201,7 @@ public sealed record MediaReference
         hash.Add(Id);
         hash.Add(SourceKind);
         hash.Add(MediaType);
-        hash.Add(Uri);
+        hash.Add(Uri?.OriginalString, StringComparer.Ordinal);
         foreach (var b in InlineBytes)
         {
             hash.Add(b);
