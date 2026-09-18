@@ -5,6 +5,9 @@ defaults, one instruction. It is the program the
 [getting-started guide](../../docs/getting-started.md) walks through, kept in
 the repository and covered by [QuickStart.Tests](../../tests/QuickStart.Tests)
 so it always compiles and completes a turn against the current libraries.
+[Example: QuickStart](../../docs/use-cases/quickstart-example.md) explains what
+each line composes and the [use cases](../../docs/use-cases/index.md) grow it
+into complete applications.
 
 ## Run it
 

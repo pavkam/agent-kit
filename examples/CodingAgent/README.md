@@ -184,6 +184,12 @@ whichever theme is active.
 
 ## What this proves
 
+[Example: CodingAgent](../../docs/use-cases/coding-agent-example.md) walks
+through the composition in `AgentRuntime.cs` block by block, and the
+[use cases](../../docs/use-cases/index.md) take individual slices of it
+(approval before writes, sandboxed commands, human questions) and rebuild them
+on the builder sugar.
+
 Composing a single working conversational turn — session creation, a user
 message, a multi-turn tool-calling loop, and a real provider round trip —
 originally needed far more than the four packages `AgentKit.Loop`'s own

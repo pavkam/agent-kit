@@ -118,10 +118,13 @@ coordinator, checkpoint store, and recovery policy described in
 
 ## Examples
 
-| Project                                             | Purpose                                                                                                                                                                             |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools. Guarded by [QuickStart.Tests](../../tests/QuickStart.Tests/QuickStartAgentTests.cs). |
-| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools.                                                                             |
+| Project                                             | Purpose                                                                                                                                                                                                                                                     |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools. Guarded by [QuickStart.Tests](../../tests/QuickStart.Tests/QuickStartAgentTests.cs). Explained in [Example: QuickStart](../use-cases/quickstart-example.md). |
+| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools. Explained in [Example: CodingAgent](../use-cases/coding-agent-example.md).                                                                          |
+
+The [use cases](../use-cases/index.md) show ten further compositions built from
+these packages.
 
 ## Shared tests and repository checks
 
