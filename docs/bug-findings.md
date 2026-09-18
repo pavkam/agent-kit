@@ -1527,6 +1527,7 @@ private static ToolInvocationResult Success(string json, string status) => new(
   `DefinitelyNotPerformed`, "No plan exists; use replace first"), and keep the
   `get` mapping as a success with `Observe`-appropriate certainty.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T05 — Read window treats a trailing newline as an extra empty line, misreporting `complete`
 

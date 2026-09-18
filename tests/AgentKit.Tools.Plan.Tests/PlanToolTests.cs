@@ -188,6 +188,48 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenGetFindsNoPlan_ReturnsSuccessWithNullPlan()
+    {
+        // "get" observes state and truthfully performs nothing either way, so an absent plan is a successful,
+        // no-op observation.
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateMissing(),
+        };
+
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
+        using var json = Json(result);
+        json.RootElement.GetProperty("plan").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSetStatusFindsNoPlan_ReturnsFailedInsteadOfASuccessfulNoOpMutation()
+    {
+        // SessionPlanStateStore.SetStatusAsync returns PlanStateMissing when no plan exists. Project mapped
+        // every PlanStateMissing to Success(..., "Missing"), and Success hard-codes
+        // SideEffectCertainty.DefinitelyPerformed. For "get" that is correct, but for "set_status" the model
+        // must not receive a Succeeded/DefinitelyPerformed outcome when nothing was mutated and the requested
+        // item does not exist.
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateMissing(),
+        };
+
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"one\",\"status\":\"completed\",\"expected_revision\":1}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("replace");
+        _ = store.StatusChanges.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenFoundPlanHasEveryItemStatus_ProjectsEachStatusText()
     {
         var plan = new WorkPlan(

@@ -194,10 +194,10 @@ public sealed class PlanTool: ITool
                 cancellationToken).ConfigureAwait(false),
             _ => throw new UnreachableException(),
         };
-        return Project(result);
+        return Project(action, result);
     }
 
-    private static ToolInvocationResult Project(PlanStateResult result) => result switch
+    private static ToolInvocationResult Project(string action, PlanStateResult result) => result switch
     {
         PlanStateFound found => Success(JsonSerializer.Serialize(new
         {
@@ -214,7 +214,13 @@ public sealed class PlanTool: ITool
                 }),
             },
         }), "Current"),
-        PlanStateMissing => Success(/*lang=json,strict*/ "{\"plan\":null}", "Missing"),
+        // "get" observes state and truthfully performs nothing either way, so an absent plan is still a
+        // successful, no-op observation. "set_status" (and, defensively, "replace") are requested mutations:
+        // no plan exists to mutate and the requested item cannot exist, so this must be a failure the model can
+        // act on, not a Succeeded/DefinitelyPerformed record of a mutation that never happened.
+        PlanStateMissing when action == "get" => Success(/*lang=json,strict*/ "{\"plan\":null}", "Missing"),
+        PlanStateMissing => Failure(
+            "No plan exists; use replace first.", "Missing", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
         PlanStateConflict conflict => Failure(
             conflict.CurrentRevision is { } revision
                 ? $"The plan changed; its current revision is {revision.Value}. Read it and retry."
