@@ -576,6 +576,14 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentTools_WhenServicesIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddAgentTools()).ParamName.ShouldBe("services");
+
+    [Fact]
+    public void AddTool_WhenServicesIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddTool<AlphaTool>()).ParamName.ShouldBe("services");
+
+    [Fact]
     public void AddAgentTools_WhenCalledTwice_KeepsFirstRegistration()
     {
         var services = new ServiceCollection();

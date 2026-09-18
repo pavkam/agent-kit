@@ -268,6 +268,7 @@ public static class ServiceExtensions
         /// </summary>
         /// <param name="configure">Optional configuration for <see cref="AgentToolsOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Idempotent: every registration here uses <c>TryAdd</c>
         /// semantics, so calling this more than once keeps the first
@@ -280,6 +281,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentTools(Action<AgentToolsOptions>? configure = null)
         {
+            ArgumentNullException.ThrowIfNull(services);
             _ = services.AddToolPresentation();
             _ = services.AddToolResultProjectionPolicyCatalog();
             _ = services.AddToolSchemaEngine();
@@ -387,9 +389,11 @@ public static class ServiceExtensions
         /// <summary>Adds <typeparamref name="TTool"/> to the additive set of registered tools.</summary>
         /// <typeparam name="TTool">The tool implementation to register.</typeparam>
         /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection AddTool<TTool>()
             where TTool : class, ITool
         {
+            ArgumentNullException.ThrowIfNull(services);
             _ = services.AddSingleton<ITool, TTool>();
             return services;
         }

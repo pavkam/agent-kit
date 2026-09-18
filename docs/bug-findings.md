@@ -1647,6 +1647,7 @@ public IServiceCollection AddTool<TTool>()
 - **Suggested fix:** Add `ArgumentNullException.ThrowIfNull(services);` as the
   first statement of both members and a `ParamName` test for each.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### Areas reviewed (Group 04)
 
