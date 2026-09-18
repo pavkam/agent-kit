@@ -513,6 +513,7 @@ findings).
   accessors (`double.IsFinite`), and compare with `Nullable.Equals`/`.Equals`
   rather than `==`.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### A12 — `ModelResponse` allows null `ContentPart` elements
 

@@ -50,7 +50,8 @@ public sealed record LlmRequestSettings
     /// <paramref name="stopSequences"/> is a default, uninitialized array.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="maxOutputTokens"/> is negative.
+    /// <paramref name="maxOutputTokens"/> is negative, or <paramref name="temperature"/> or
+    /// <paramref name="topP"/> is <see cref="double.NaN"/> or infinite.
     /// </exception>
     public LlmRequestSettings(
         double? temperature,
@@ -72,6 +73,16 @@ public sealed record LlmRequestSettings
                 "Value must not be negative.");
         }
 
+        if (temperature is { } temperatureValue && !double.IsFinite(temperatureValue))
+        {
+            throw new ArgumentOutOfRangeException(nameof(temperature), temperature, "Value must be finite.");
+        }
+
+        if (topP is { } topPValue && !double.IsFinite(topPValue))
+        {
+            throw new ArgumentOutOfRangeException(nameof(topP), topP, "Value must be finite.");
+        }
+
         Temperature = temperature;
         TopP = topP;
         MaxOutputTokens = maxOutputTokens;
@@ -82,10 +93,40 @@ public sealed record LlmRequestSettings
     }
 
     /// <summary>Gets the sampling temperature, when overridden.</summary>
-    public double? Temperature { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value assigned during initialization or non-destructive mutation is <see cref="double.NaN"/> or infinite.
+    /// </exception>
+    public double? Temperature
+    {
+        get;
+        init
+        {
+            if (value is { } finite)
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(double.IsFinite(finite), true, nameof(value));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the nucleus sampling probability mass, when overridden.</summary>
-    public double? TopP { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value assigned during initialization or non-destructive mutation is <see cref="double.NaN"/> or infinite.
+    /// </exception>
+    public double? TopP
+    {
+        get;
+        init
+        {
+            if (value is { } finite)
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(double.IsFinite(finite), true, nameof(value));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the maximum number of output tokens to produce, when overridden.</summary>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -163,8 +204,8 @@ public sealed record LlmRequestSettings
     /// <inheritdoc/>
     public bool Equals(LlmRequestSettings? other) =>
         other is not null
-        && Temperature == other.Temperature
-        && TopP == other.TopP
+        && Nullable.Equals(Temperature, other.Temperature)
+        && Nullable.Equals(TopP, other.TopP)
         && MaxOutputTokens == other.MaxOutputTokens
         && StopSequences.SequenceEqual(other.StopSequences)
         && ParallelToolCalls == other.ParallelToolCalls

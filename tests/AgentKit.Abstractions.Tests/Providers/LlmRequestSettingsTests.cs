@@ -80,4 +80,54 @@ public sealed class LlmRequestSettingsTests
         var exception = Should.Throw<ArgumentNullException>(() => _ = settings with { Extensions = null! });
         exception.ParamName.ShouldBe("value");
     }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void Constructor_WhenTemperatureIsNotFinite_ThrowsExactArgumentOutOfRangeException(double temperature)
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => new LlmRequestSettings(temperature, null, null, [], null, null, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("temperature");
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void Constructor_WhenTopPIsNotFinite_ThrowsExactArgumentOutOfRangeException(double topP)
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => new LlmRequestSettings(null, topP, null, [], null, null, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("topP");
+    }
+
+    [Fact]
+    public void WithExpression_WhenTemperatureIsNaN_ThrowsArgumentOutOfRangeException()
+    {
+        var settings = LlmRequestSettings.Default;
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => _ = settings with { Temperature = double.NaN });
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void WithExpression_WhenTopPIsInfinite_ThrowsArgumentOutOfRangeException()
+    {
+        var settings = LlmRequestSettings.Default;
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => _ = settings with { TopP = double.PositiveInfinity });
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void LlmRequestSettings_Equality_WhenTemperatureIsSameFiniteValue_IsReflexive()
+    {
+        // Equals previously used == directly on the double? fields, so an instance whose Temperature was NaN was
+        // not equal to itself while GetHashCode remained stable - breaking reflexivity. Temperature/TopP now
+        // reject non-finite values entirely, so this documents the intended reflexive, finite-only contract.
+        var settings = LlmRequestSettings.Default with { Temperature = 0.7, TopP = 0.9 };
+
+        settings.ShouldBe(settings);
+        settings.Equals(settings).ShouldBeTrue();
+    }
 }
