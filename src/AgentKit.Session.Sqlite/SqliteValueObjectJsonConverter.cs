@@ -21,7 +21,18 @@ internal sealed class SqliteValueObjectJsonConverter<T>: JsonConverter<T>
         var element = document.RootElement.GetProperty(_property.Name);
         var value = element.Deserialize(_property.PropertyType, options)
             ?? throw new JsonException($"The {_property.Name} value for {typeof(T).Name} is null.");
-        return (T) _constructor.Invoke([value]);
+        try
+        {
+            return (T) _constructor.Invoke([value]);
+        }
+        catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException is ArgumentException)
+        {
+            // The persisted value failed the struct's own validating constructor (e.g. a default Guid or a
+            // non-positive revision): a malformed-payload failure, not an unrelated reflection failure.
+            // ReadEntriesAsync/Deserialize<T> document JsonException for exactly this case.
+            throw new JsonException(
+                $"The persisted {_property.Name} value for {typeof(T).Name} failed validation.", exception.InnerException);
+        }
     }
 
     /// <inheritdoc/>

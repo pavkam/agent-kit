@@ -942,6 +942,7 @@ return (T) _constructor.Invoke([value]);
 - **Suggested fix:** Catch `TargetInvocationException` (and `ArgumentException`)
   around `Invoke` and rethrow as `JsonException` with a content-free message.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### Areas reviewed (Group 02)
 
