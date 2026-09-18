@@ -257,6 +257,35 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenFileHasATrailingNewlineAndFitsWindow_ReturnsFullContentMarkedComplete()
+    {
+        // Split('\n') turns a trailing line terminator into one extra, phantom empty final element ("l1\nl2\n"
+        // splits into ["l1", "l2", ""]). Counting that element as a real logical line made a read that already
+        // reached the file's true end report complete: false, so a follow-up read at the next offset would
+        // return nothing instead of the caller ever observing a complete: true window.
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\n", 6) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
+
+        TestFactory.ReadText(result).ShouldBe("l1\nl2\n");
+        TestFactory.ReadComplete(result).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenFileHasATrailingNewlineAndAnExplicitRangeReachesTheEnd_MarksComplete()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\n", 9) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 3, "limit": 5}"""), TestContext.Current.CancellationToken);
+
+        TestFactory.ReadText(result).ShouldBe("l3");
+        TestFactory.ReadComplete(result).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };

@@ -1554,6 +1554,7 @@ var complete = startIndex + count >= lines.Length;
   line terminator (tracking that the file had a trailing newline), or compute
   `complete` against the logical line count that excludes it.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T06 — Redirect targets bypass the tool's own URL admission checks
 

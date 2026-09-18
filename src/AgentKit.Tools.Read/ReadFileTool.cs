@@ -188,7 +188,17 @@ public sealed class ReadFileTool: ITool
         Debug.Assert(offset is null or >= 1, "Offset validation must precede range application.");
         Debug.Assert(limit >= 1, "The effective limit must be a positive line count.");
 
-        var lines = content.ReplaceLineEndings("\n").Split('\n');
+        var normalized = content.ReplaceLineEndings("\n");
+        var lines = normalized.Split('\n');
+        if (normalized.Length > 0 && normalized[^1] == '\n')
+        {
+            // Split on '\n' turns a trailing line terminator into one extra, phantom empty final element (e.g.
+            // "l1\nl2\n" splits into ["l1", "l2", ""]): that element is not a real logical line, and counting it
+            // makes a read that already reached the file's true end report complete: false, so the caller keeps
+            // requesting a follow-up window that returns nothing.
+            lines = lines[..^1];
+        }
+
         var startIndex = Math.Min(Math.Max((offset ?? 1) - 1, 0), lines.Length);
         var count = Math.Max(Math.Min(limit, lines.Length - startIndex), 0);
         var complete = startIndex + count >= lines.Length;
