@@ -1,0 +1,193 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Budgets.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Budgets.Json
+{
+    public sealed class JsonBudgetLedger : AgentKit.IBudgetLedger, System.IDisposable
+    {
+        public JsonBudgetLedger(AgentKit.Budgets.Json.JsonBudgetLedgerTarget target, AgentKit.Budgets.Json.JsonBudgetLedgerSettings settings, System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions, Microsoft.Extensions.Logging.ILogger<AgentKit.Budgets.Json.JsonBudgetLedger>? logger = null) { }
+        public AgentKit.BudgetLedgerDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetStartResult> MarkStartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetUnresolvedReservationPage> ReadUnresolvedStartedAsync(AgentKit.BudgetUnresolvedReservationQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(AgentKit.BudgetOverrunHoldResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonBudgetLedgerInstanceId : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetLedgerInstanceId>
+    {
+        public JsonBudgetLedgerInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonBudgetLedgerOptions
+    {
+        public JsonBudgetLedgerOptions() { }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonBudgetLedgerRecord : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetLedgerRecord>
+    {
+        public JsonBudgetLedgerRecord(AgentKit.Budgets.Json.JsonBudgetLedgerRecordKind Kind, System.Guid? ScopeId, AgentKit.Budgets.Json.JsonBudgetScopeCreateRequest? Scope, System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetReservationEntry> Reservations, System.Guid? ReservationId, System.DateTimeOffset? Occurred, decimal? Actual, long? Revision, AgentKit.Budgets.Json.JsonBudgetReconciliationEvidence? Evidence, AgentKit.Budgets.Json.JsonBudgetOverrunHoldReference? Hold, AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt, string? IdempotencyKey) { }
+        public decimal? Actual { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetReservationEntry> Entries { get; }
+        public AgentKit.Budgets.Json.JsonBudgetReconciliationEvidence? Evidence { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetOverrunHoldReference? Hold { get; init; }
+        public string? IdempotencyKey { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetLedgerRecordKind Kind { get; init; }
+        public System.DateTimeOffset? Occurred { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt { get; init; }
+        public System.Guid? ReservationId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetReservationEntry> Reservations { get; init; }
+        public long? Revision { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetScopeCreateRequest? Scope { get; init; }
+        public System.Guid? ScopeId { get; init; }
+        public bool Equals(AgentKit.Budgets.Json.JsonBudgetLedgerRecord? other) { }
+        public override int GetHashCode() { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForBatchReserved(AgentKit.BudgetScopeId scopeId, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLedgerReservationReceipt> receipts, System.DateTimeOffset occurred) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForCorrected(AgentKit.BudgetReservationId reservationId, decimal correctedActual, long revision, System.DateTimeOffset occurred) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForExpirySweep(System.DateTimeOffset occurred) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForOverrunHoldResolution(AgentKit.BudgetOverrunHoldResolutionRequest request, System.DateTimeOffset occurred) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForReconciled(AgentKit.BudgetReservationId reservationId, AgentKit.BudgetReconciliationEvidence evidence, AgentKit.IdempotencyKey idempotencyKey) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForReleased(AgentKit.BudgetReservationId reservationId) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForScopeCreated(AgentKit.BudgetLedgerScopeCreateRequest request, AgentKit.BudgetScopeId scopeId) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForSettled(AgentKit.BudgetReservationId reservationId, decimal actual) { }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerRecord ForStartMarked(AgentKit.BudgetReservationId reservationId, System.DateTimeOffset occurred) { }
+    }
+    public enum JsonBudgetLedgerRecordKind
+    {
+        ScopeCreated = 1,
+        BatchReserved = 2,
+        StartMarked = 3,
+        Released = 4,
+        Settled = 5,
+        Corrected = 6,
+        Reconciled = 7,
+        OverrunHoldResolutionRecorded = 8,
+        ExpirySwept = 9,
+    }
+    public sealed class JsonBudgetLedgerSettings : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetLedgerSettings>
+    {
+        public JsonBudgetLedgerSettings(int maximumRecordBytes, int maximumDocumentBytes, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Budgets.Json.JsonBudgetLedgerSettings CreateDefault() { }
+    }
+    public sealed class JsonBudgetLedgerTarget : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetLedgerTarget>
+    {
+        public JsonBudgetLedgerTarget(string directoryPath, AgentKit.Budgets.Json.JsonBudgetLedgerInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Budgets.Json.JsonBudgetLedgerInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public sealed class JsonBudgetLimit : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetLimit>
+    {
+        public JsonBudgetLimit(string Dimension, decimal Value, string Unit, AgentKit.BudgetLimitKind Kind) { }
+        public string Dimension { get; init; }
+        public AgentKit.BudgetLimitKind Kind { get; init; }
+        public string Unit { get; init; }
+        public decimal Value { get; init; }
+        public AgentKit.BudgetLimit ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetLimit FromDomain(AgentKit.BudgetLimit value) { }
+    }
+    public sealed class JsonBudgetOverrunHoldReference : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetOverrunHoldReference>
+    {
+        public JsonBudgetOverrunHoldReference(System.Guid BoundaryScopeId, System.Guid ReservationId, long TriggeringRevision) { }
+        public System.Guid BoundaryScopeId { get; init; }
+        public System.Guid ReservationId { get; init; }
+        public long TriggeringRevision { get; init; }
+        public AgentKit.BudgetOverrunHoldReference ToDomain(AgentKit.BudgetLedgerScopeReference boundary, AgentKit.BudgetLedgerReservationReference reservation) { }
+        public static AgentKit.Budgets.Json.JsonBudgetOverrunHoldReference FromDomain(AgentKit.BudgetOverrunHoldReference value) { }
+    }
+    public sealed class JsonBudgetReconciliationEvidence : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetReconciliationEvidence>
+    {
+        public JsonBudgetReconciliationEvidence(AgentKit.Budgets.Json.JsonBudgetReconciliationEvidenceKind Kind, decimal? Actual) { }
+        public decimal? Actual { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetReconciliationEvidenceKind Kind { get; init; }
+        public AgentKit.BudgetReconciliationEvidence ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetReconciliationEvidence FromDomain(AgentKit.BudgetReconciliationEvidence value) { }
+    }
+    public enum JsonBudgetReconciliationEvidenceKind
+    {
+        Measured = 1,
+        Estimated = 2,
+        NoUsageProven = 3,
+        StillUnknown = 4,
+    }
+    public sealed class JsonBudgetReservationEntry : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetReservationEntry>
+    {
+        public JsonBudgetReservationEntry(AgentKit.Budgets.Json.JsonBudgetReservationRequest Request, System.Guid ReservationId, System.DateTimeOffset EffectiveExpiresAt) { }
+        public System.DateTimeOffset EffectiveExpiresAt { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetReservationRequest Request { get; init; }
+        public System.Guid ReservationId { get; init; }
+        public AgentKit.BudgetReservationRequest ToDomainRequest() { }
+        public AgentKit.BudgetReservationId ToDomainReservationId() { }
+        public static AgentKit.Budgets.Json.JsonBudgetReservationEntry FromDomain(AgentKit.BudgetLedgerReservationReceipt value) { }
+    }
+    public sealed class JsonBudgetReservationRequest : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetReservationRequest>
+    {
+        public JsonBudgetReservationRequest(System.Guid ScopeId, string Dimension, decimal Amount, string Unit, System.Guid OperationId, System.DateTimeOffset? ExpiresAt, string IdempotencyKey) { }
+        public decimal Amount { get; init; }
+        public string Dimension { get; init; }
+        public System.DateTimeOffset? ExpiresAt { get; init; }
+        public string IdempotencyKey { get; init; }
+        public System.Guid OperationId { get; init; }
+        public System.Guid ScopeId { get; init; }
+        public string Unit { get; init; }
+        public AgentKit.BudgetReservationRequest ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetReservationRequest FromDomain(AgentKit.BudgetReservationRequest value) { }
+    }
+    public sealed class JsonBudgetScopeAddress : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetScopeAddress>
+    {
+        public JsonBudgetScopeAddress(string TenantId, string PrincipalId, System.Guid AgentId, System.Guid? SessionId, System.Guid? RunId, System.Guid? OperationId) { }
+        public System.Guid AgentId { get; init; }
+        public System.Guid? OperationId { get; init; }
+        public string PrincipalId { get; init; }
+        public System.Guid? RunId { get; init; }
+        public System.Guid? SessionId { get; init; }
+        public string TenantId { get; init; }
+        public AgentKit.BudgetScopeAddress ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetScopeAddress FromDomain(AgentKit.BudgetScopeAddress value) { }
+    }
+    public sealed class JsonBudgetScopeAdmission : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetScopeAdmission>
+    {
+        public JsonBudgetScopeAdmission(int MaximumScopeDepth, int MaximumOpenReservationsPerScope, System.TimeSpan DefaultReservationLifetime, AgentKit.BudgetOverrunHoldPolicy OverrunHoldPolicy) { }
+        public System.TimeSpan DefaultReservationLifetime { get; init; }
+        public int MaximumOpenReservationsPerScope { get; init; }
+        public int MaximumScopeDepth { get; init; }
+        public AgentKit.BudgetOverrunHoldPolicy OverrunHoldPolicy { get; init; }
+        public AgentKit.BudgetScopeAdmission ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetScopeAdmission FromDomain(AgentKit.BudgetScopeAdmission value) { }
+    }
+    public sealed class JsonBudgetScopeCreateRequest : System.IEquatable<AgentKit.Budgets.Json.JsonBudgetScopeCreateRequest>
+    {
+        public JsonBudgetScopeCreateRequest(System.Guid? ParentScopeId, AgentKit.Budgets.Json.JsonBudgetScopeAddress Address, System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetLimit> Limits, string IdempotencyKey, AgentKit.Budgets.Json.JsonBudgetScopeAdmission Admission) { }
+        public AgentKit.Budgets.Json.JsonBudgetScopeAddress Address { get; init; }
+        public AgentKit.Budgets.Json.JsonBudgetScopeAdmission Admission { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetLimit> ConfiguredLimits { get; }
+        public string IdempotencyKey { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Budgets.Json.JsonBudgetLimit> Limits { get; init; }
+        public System.Guid? ParentScopeId { get; init; }
+        public bool Equals(AgentKit.Budgets.Json.JsonBudgetScopeCreateRequest? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.BudgetLedgerScopeCreateRequest ToDomain() { }
+        public static AgentKit.Budgets.Json.JsonBudgetScopeCreateRequest FromDomain(AgentKit.BudgetLedgerScopeCreateRequest value) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonBudgetLedger(AgentKit.Budgets.Json.JsonBudgetLedgerTarget target, System.Action<AgentKit.Budgets.Json.JsonBudgetLedgerOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonBudgetLedger(AgentKit.Budgets.Json.JsonBudgetLedgerTarget target, AgentKit.Budgets.Json.JsonBudgetLedgerSettings settings) { }
+        }
+    }
+}

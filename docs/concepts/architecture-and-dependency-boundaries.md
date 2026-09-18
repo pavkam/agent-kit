@@ -54,12 +54,20 @@ concrete leaf.
 Storage-owning runtimes define narrow contracts, immutable capability
 descriptors, catalogs, selection, and domain coordination. They MUST NOT
 register a concrete store. First-party implementations use
-`AgentKit.<Owner>.InMemory` for deterministic ephemeral behavior and
+`AgentKit.<Owner>.InMemory` for deterministic ephemeral behavior,
 `AgentKit.<Owner>.Sqlite` for durable local behavior when SQLite can implement
-the contract honestly; other backends use `AgentKit.<Owner>.<ProviderName>`.
-Every adapter is selected explicitly by key or singular registration. A missing
-selection fails composition rather than falling back to process memory or
-registration order.
+the contract honestly, and `AgentKit.<Owner>.Json` for durable single-writer
+local behavior in inspectable JSON and newline-delimited JSON files; other
+backends use `AgentKit.<Owner>.<ProviderName>`. Every adapter is selected
+explicitly by key or singular registration. A missing selection fails
+composition rather than falling back to process memory or registration order.
+
+The JSON leaves share `AgentKit.Storage.Json`, a packable family-machinery
+package that owns atomic document replacement, flushed record-log appends,
+advisory single-writer locking, the fingerprinted encoding contract, and the
+portable identity and authorization evidence shapes. It is machinery rather than
+a selectable store: it registers no service and implements no storage contract,
+so it never competes with a leaf during composition.
 
 Authoritative mutable domain state that survives one operation MUST be accessed
 through its provider-neutral storage contract even when the first implementation
@@ -67,14 +75,18 @@ is process-local. This rule separates coordination from a concrete medium; it
 does not rename immutable catalogs, local gates, or disposable operation state
 as stores.
 
-The in-memory and SQLite leaves MUST run the same reusable conformance suite for
-their shared contract. Adapter descriptors state actual atomicity, isolation,
-durability, concurrency, pagination, fencing, and migration capabilities. SQLite
-durability does not imply distributed ownership, a cross-database transaction,
-or support for an optional operation. Process-local caches, immutable
-publication snapshots, and synchronization gates are implementation mechanics
-rather than persistence adapters unless they expose authoritative domain state
-through a storage contract.
+The in-memory, SQLite, and JSON leaves MUST run the same reusable conformance
+suite for their shared contract. Adapter descriptors state actual atomicity,
+isolation, durability, concurrency, pagination, fencing, and migration
+capabilities. SQLite durability does not imply distributed ownership, a
+cross-database transaction, or support for an optional operation. JSON
+durability is narrower still: an acknowledged record is flushed before it is
+acknowledged, but the leaf holds an advisory exclusive lock and rejects a second
+writer, so it MUST NOT advertise multi-process coordination, fencing, or
+cross-store atomicity. Process-local caches, immutable publication snapshots,
+and synchronization gates are implementation mechanics rather than persistence
+adapters unless they expose authoritative domain state through a storage
+contract.
 
 A runtime adapter that projects domain behavior through an already selected
 store contract is allowed and does not create another persistence medium.

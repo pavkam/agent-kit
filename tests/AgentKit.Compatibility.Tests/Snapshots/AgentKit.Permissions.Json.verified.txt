@@ -1,0 +1,169 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Permissions.Json
+{
+    public sealed class JsonApprovalLogRecord : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalLogRecord>
+    {
+        public JsonApprovalLogRecord(AgentKit.Permissions.Json.JsonApprovalLogRecordKind Kind, AgentKit.Permissions.Json.JsonApprovalRequest? Request, AgentKit.Permissions.Json.JsonApprovalResponse? Response) { }
+        public AgentKit.Permissions.Json.JsonApprovalLogRecordKind Kind { get; init; }
+        public AgentKit.Permissions.Json.JsonApprovalRequest? Request { get; init; }
+        public AgentKit.Permissions.Json.JsonApprovalResponse? Response { get; init; }
+        public static AgentKit.Permissions.Json.JsonApprovalLogRecord ForCreation(AgentKit.ApprovalRequest request) { }
+        public static AgentKit.Permissions.Json.JsonApprovalLogRecord ForResolution(AgentKit.ApprovalResponse response) { }
+    }
+    public enum JsonApprovalLogRecordKind
+    {
+        Created = 1,
+        Resolved = 2,
+    }
+    public sealed class JsonApprovalRequest : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalRequest>
+    {
+        public JsonApprovalRequest(System.Guid Id, AgentKit.Permissions.Json.JsonApprovalScopeBinding Binding, string SafePresentation, System.DateTimeOffset CreatedAt) { }
+        public AgentKit.Permissions.Json.JsonApprovalScopeBinding Binding { get; init; }
+        public System.DateTimeOffset CreatedAt { get; init; }
+        public System.Guid Id { get; init; }
+        public string SafePresentation { get; init; }
+        public AgentKit.ApprovalRequest ToDomain() { }
+        public static AgentKit.Permissions.Json.JsonApprovalRequest FromDomain(AgentKit.ApprovalRequest value) { }
+    }
+    public sealed class JsonApprovalResponse : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalResponse>
+    {
+        public JsonApprovalResponse(System.Guid Id, System.Guid RequestId, AgentKit.Permissions.Json.JsonApprovalScopeBinding Binding, AgentKit.ApprovalResolution Resolution, AgentKit.Storage.Json.JsonExecutionIdentity ApproverIdentity, System.DateTimeOffset RespondedAt) { }
+        public AgentKit.Storage.Json.JsonExecutionIdentity ApproverIdentity { get; init; }
+        public AgentKit.Permissions.Json.JsonApprovalScopeBinding Binding { get; init; }
+        public System.Guid Id { get; init; }
+        public System.Guid RequestId { get; init; }
+        public AgentKit.ApprovalResolution Resolution { get; init; }
+        public System.DateTimeOffset RespondedAt { get; init; }
+        public AgentKit.ApprovalResponse ToDomain() { }
+        public static AgentKit.Permissions.Json.JsonApprovalResponse FromDomain(AgentKit.ApprovalResponse value) { }
+    }
+    public sealed class JsonApprovalScopeBinding : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalScopeBinding>
+    {
+        public JsonApprovalScopeBinding(AgentKit.Storage.Json.JsonSecurityRequest Request, long PolicyVersion, long RevocationVersion, System.DateTimeOffset NotBefore, System.DateTimeOffset ExpiresAt, int AllowedUses) { }
+        public int AllowedUses { get; init; }
+        public System.DateTimeOffset ExpiresAt { get; init; }
+        public System.DateTimeOffset NotBefore { get; init; }
+        public long PolicyVersion { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityRequest Request { get; init; }
+        public long RevocationVersion { get; init; }
+        public AgentKit.ApprovalScopeBinding ToDomain() { }
+        public static AgentKit.Permissions.Json.JsonApprovalScopeBinding FromDomain(AgentKit.ApprovalScopeBinding value) { }
+    }
+    public sealed class JsonApprovalStore : AgentKit.IApprovalStore, System.IDisposable
+    {
+        public JsonApprovalStore(AgentKit.Permissions.Json.JsonApprovalStoreTarget target, AgentKit.Permissions.Json.JsonApprovalStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Json.JsonApprovalStore>? logger = null) { }
+        public AgentKit.ApprovalStoreCapabilities Capabilities { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreCreateResult> CreateAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonApprovalStoreInstanceId : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalStoreInstanceId>
+    {
+        public JsonApprovalStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonApprovalStoreOptions
+    {
+        public JsonApprovalStoreOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonApprovalStoreSettings : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalStoreSettings>
+    {
+        public JsonApprovalStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Permissions.Json.JsonApprovalStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonApprovalStoreTarget : System.IEquatable<AgentKit.Permissions.Json.JsonApprovalStoreTarget>
+    {
+        public JsonApprovalStoreTarget(string directoryPath, AgentKit.Permissions.Json.JsonApprovalStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Permissions.Json.JsonApprovalStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public sealed class JsonSecurityGrantLogRecord : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantLogRecord>
+    {
+        public JsonSecurityGrantLogRecord(AgentKit.Permissions.Json.JsonSecurityGrantLogRecordKind Kind, AgentKit.Storage.Json.JsonSecurityGrant? Grant, System.Guid? GrantId, int? RemainingUses, bool? Revoked, AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt) { }
+        public AgentKit.Storage.Json.JsonSecurityGrant? Grant { get; init; }
+        public System.Guid? GrantId { get; init; }
+        public AgentKit.Permissions.Json.JsonSecurityGrantLogRecordKind Kind { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt { get; init; }
+        public int? RemainingUses { get; init; }
+        public bool? Revoked { get; init; }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForConsumption(AgentKit.GrantId grantId, int remainingUses, AgentKit.SecurityEnforcementIntentReceipt? receipt) { }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForReceipt(AgentKit.SecurityEnforcementIntentReceipt receipt) { }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForRegistration(AgentKit.SecurityGrant grant) { }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForRevocation(AgentKit.GrantId grantId) { }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForState(AgentKit.GrantId grantId, int remainingUses, bool revoked) { }
+    }
+    public enum JsonSecurityGrantLogRecordKind
+    {
+        Registered = 1,
+        Consumed = 2,
+        Revoked = 3,
+        State = 4,
+        Receipt = 5,
+    }
+    public sealed class JsonSecurityGrantStore : AgentKit.ISecurityGrantStore, System.IDisposable
+    {
+        public JsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Json.JsonSecurityGrantStore>? logger = null) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonSecurityGrantStoreInstanceId : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantStoreInstanceId>
+    {
+        public JsonSecurityGrantStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonSecurityGrantStoreOptions
+    {
+        public JsonSecurityGrantStoreOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonSecurityGrantStoreSettings : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings>
+    {
+        public JsonSecurityGrantStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonSecurityGrantStoreTarget : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget>
+    {
+        public JsonSecurityGrantStoreTarget(string directoryPath, AgentKit.Permissions.Json.JsonSecurityGrantStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Permissions.Json.JsonSecurityGrantStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, System.Action<AgentKit.Permissions.Json.JsonSecurityGrantStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings settings) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonApprovalStore(AgentKit.Permissions.Json.JsonApprovalStoreTarget target, System.Action<AgentKit.Permissions.Json.JsonApprovalStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonApprovalStore(AgentKit.Permissions.Json.JsonApprovalStoreTarget target, AgentKit.Permissions.Json.JsonApprovalStoreSettings settings) { }
+        }
+    }
+}

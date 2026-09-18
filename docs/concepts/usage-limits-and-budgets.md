@@ -240,11 +240,15 @@ identity and accounting history; they do not authorize new effects. The scope
 creator owns its lifetime; consumers borrow the capability for one invocation.
 
 The budget runtime MUST NOT hide an in-memory reservation ledger. Hosts select
-an `AgentKit.Budgets.InMemory`, `AgentKit.Budgets.Sqlite`, or other ledger leaf
-explicitly. The in-memory and SQLite adapters run the same atomic reservation,
-settlement, correction, and idempotency conformance suite. Only a restart-tested
-SQLite adapter may advertise durable local accounting, and neither local adapter
-may advertise distributed fencing without separate evidence.
+an `AgentKit.Budgets.InMemory`, `AgentKit.Budgets.Sqlite`,
+`AgentKit.Budgets.Json`, or other ledger leaf explicitly. The in-memory, SQLite,
+and JSON adapters run the same atomic reservation, settlement, correction, and
+idempotency conformance suite. Only a restart-tested SQLite or JSON adapter may
+advertise durable local accounting, and no local adapter may advertise
+distributed fencing without separate evidence. A JSON ledger commits an
+indivisible batch as one flushed record so no partial reservation can be
+recovered, and it retains started reservations with unknown spend across process
+loss until reconciliation.
 
 Every ledger exposes immutable side-effect-free capability evidence describing
 durability and its process-local, host-local, or distributed concurrency domain.

@@ -1,0 +1,161 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Session.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Session.Json
+{
+    public sealed class JsonSessionDirectory : AgentKit.ISessionDirectory, System.IDisposable
+    {
+        public JsonSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, AgentKit.Session.Json.JsonSessionDirectoryTarget target, AgentKit.Session.Json.JsonSessionDirectorySettings settings, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.Json.JsonSessionDirectory>? logger = null) { }
+        public bool Durable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryListRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLocationResult> LocateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionOperationContext> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryCreateRecordRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonSessionDirectoryInstanceId : System.IEquatable<AgentKit.Session.Json.JsonSessionDirectoryInstanceId>
+    {
+        public JsonSessionDirectoryInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonSessionDirectoryLogRecord : System.IEquatable<AgentKit.Session.Json.JsonSessionDirectoryLogRecord>
+    {
+        public JsonSessionDirectoryLogRecord(AgentKit.Session.Json.JsonSessionDirectoryLogRecordKind Kind, AgentKit.SessionDirectoryWriteRequest? Write, AgentKit.SessionDirectoryCreateRecordRequest? Create) { }
+        public AgentKit.SessionDirectoryCreateRecordRequest? Create { get; init; }
+        public AgentKit.Session.Json.JsonSessionDirectoryLogRecordKind Kind { get; init; }
+        public AgentKit.SessionDirectoryWriteRequest? Write { get; init; }
+        public static AgentKit.Session.Json.JsonSessionDirectoryLogRecord ForCreate(AgentKit.SessionDirectoryCreateRecordRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionDirectoryLogRecord ForWrite(AgentKit.SessionDirectoryWriteRequest request) { }
+    }
+    public enum JsonSessionDirectoryLogRecordKind
+    {
+        RouteRecorded = 1,
+        CreationRouteRecorded = 2,
+    }
+    public sealed class JsonSessionDirectoryOptions
+    {
+        public JsonSessionDirectoryOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonSessionDirectorySettings : System.IEquatable<AgentKit.Session.Json.JsonSessionDirectorySettings>
+    {
+        public JsonSessionDirectorySettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Session.Json.JsonSessionDirectorySettings CreateDefault() { }
+    }
+    public sealed class JsonSessionDirectoryTarget : System.IEquatable<AgentKit.Session.Json.JsonSessionDirectoryTarget>
+    {
+        public JsonSessionDirectoryTarget(string directoryPath, AgentKit.Session.Json.JsonSessionDirectoryInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Session.Json.JsonSessionDirectoryInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public sealed class JsonSessionStore : AgentKit.ISessionStore, System.IDisposable
+    {
+        public JsonSessionStore(AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, AgentKit.ISessionEntryCodecCatalog entryCodecs, AgentKit.Session.Json.JsonSessionStoreTarget target, AgentKit.Session.Json.JsonSessionStoreSettings settings, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.Json.JsonSessionStore>? logger = null) { }
+        public AgentKit.SessionStoreDescriptor Descriptor { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStartResult> AcceptRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStartRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AdmitInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputAdmissionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionAppendRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionStoreCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> CreateBranchAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionBranchRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionDeleteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunReleaseResult> ReleaseRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunReleaseRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonSessionStoreInstanceId : System.IEquatable<AgentKit.Session.Json.JsonSessionStoreInstanceId>
+    {
+        public JsonSessionStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonSessionStoreLogRecord : System.IEquatable<AgentKit.Session.Json.JsonSessionStoreLogRecord>
+    {
+        public JsonSessionStoreLogRecord(AgentKit.Session.Json.JsonSessionStoreLogRecordKind Kind, AgentKit.SessionStoreCreateRequest? Create, AgentKit.SessionExecutionLaneProvisionRequest? Provision, AgentKit.SessionAppendRequest? Append, AgentKit.SessionBranchRequest? Branch, AgentKit.SessionDeleteRequest? Delete, AgentKit.SessionInputAdmissionRequest? Admit, AgentKit.SessionRunStartRequest? Start, AgentKit.SessionRunReleaseRequest? Release, System.Guid? NewBranchId, System.DateTimeOffset? CommittedAt) { }
+        public AgentKit.SessionInputAdmissionRequest? Admit { get; init; }
+        public AgentKit.SessionAppendRequest? Append { get; init; }
+        public AgentKit.SessionBranchRequest? Branch { get; init; }
+        public System.DateTimeOffset? CommittedAt { get; init; }
+        public AgentKit.SessionStoreCreateRequest? Create { get; init; }
+        public AgentKit.SessionDeleteRequest? Delete { get; init; }
+        public AgentKit.Session.Json.JsonSessionStoreLogRecordKind Kind { get; init; }
+        public System.Guid? NewBranchId { get; init; }
+        public AgentKit.SessionExecutionLaneProvisionRequest? Provision { get; init; }
+        public AgentKit.SessionRunReleaseRequest? Release { get; init; }
+        public AgentKit.SessionRunStartRequest? Start { get; init; }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForAdmit(AgentKit.SessionInputAdmissionRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForAppend(AgentKit.SessionAppendRequest request, System.DateTimeOffset committedAt) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForBranch(AgentKit.SessionBranchRequest request, AgentKit.BranchId branchId, System.DateTimeOffset committedAt) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForCreate(AgentKit.SessionStoreCreateRequest request, AgentKit.BranchId branchId, System.DateTimeOffset createdAt) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForDelete(AgentKit.SessionDeleteRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForProvision(AgentKit.SessionExecutionLaneProvisionRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForRunAccepted(AgentKit.SessionRunStartRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForRunReleased(AgentKit.SessionRunReleaseRequest request, System.DateTimeOffset committedAt) { }
+    }
+    public enum JsonSessionStoreLogRecordKind
+    {
+        SessionCreated = 1,
+        LaneProvisioned = 2,
+        EntriesAppended = 3,
+        BranchCreated = 4,
+        SessionDeleted = 5,
+        InputAdmitted = 6,
+        RunAccepted = 7,
+        RunReleased = 8,
+    }
+    public sealed class JsonSessionStoreOptions
+    {
+        public JsonSessionStoreOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumIssuedReadSnapshots { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonSessionStoreSettings : System.IEquatable<AgentKit.Session.Json.JsonSessionStoreSettings>
+    {
+        public JsonSessionStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, int maximumIssuedReadSnapshots, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumIssuedReadSnapshots { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Session.Json.JsonSessionStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonSessionStoreTarget : System.IEquatable<AgentKit.Session.Json.JsonSessionStoreTarget>
+    {
+        public JsonSessionStoreTarget(string directoryPath, AgentKit.Session.Json.JsonSessionStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Session.Json.JsonSessionStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSessionStore(AgentKit.Session.Json.JsonSessionStoreTarget target, System.Action<AgentKit.Session.Json.JsonSessionStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSessionStore(AgentKit.Session.Json.JsonSessionStoreTarget target, AgentKit.Session.Json.JsonSessionStoreSettings settings) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.Session.Json.JsonSessionDirectoryTarget target, System.Action<AgentKit.Session.Json.JsonSessionDirectoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.Session.Json.JsonSessionDirectoryTarget target, AgentKit.Session.Json.JsonSessionDirectorySettings settings) { }
+        }
+    }
+}

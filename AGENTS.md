@@ -34,8 +34,13 @@ code being changed and call out any unresolved conflict.
   `AgentKit.Tools`.
 - Tool features use `AgentKit.Tools.<ToolName>`. Provider integrations use
   `AgentKit.Providers.<ProviderName>`. Storage adapters use
-  `AgentKit.<Owner>.InMemory`, `AgentKit.<Owner>.Sqlite`, or
-  `AgentKit.<Owner>.<ProviderName>`.
+  `AgentKit.<Owner>.InMemory`, `AgentKit.<Owner>.Sqlite`,
+  `AgentKit.<Owner>.Json`, or `AgentKit.<Owner>.<ProviderName>`.
+- `AgentKit.Storage.Json` is shared storage-family machinery for the `.Json`
+  leaves. It owns atomic document replacement, flushed newline-delimited record
+  logs, advisory single-writer locking, the fingerprinted encoding contract, and
+  portable identity/authorization evidence shapes. It registers no service and
+  implements no storage contract, so it is never selected as a store.
 - Concrete providers, storage, transports, filesystem implementations, and
   hosting integrations are leaves; foundation and runtime packages never
   reference them.
@@ -400,10 +405,13 @@ The architecture index defines document authority and change rules.
   describe guarantees the selected adapter actually provides.
 - Concrete storage lives in leaf packages. Each first-party persistent store
   family provides explicit `.InMemory` and `.Sqlite` adapters where SQLite can
-  satisfy the contract, and both run the same reusable conformance suite for
-  their shared capabilities. In-memory storage is explicitly ephemeral; SQLite
-  is durable local storage and does not imply distributed leases, fencing, or
-  cross-store atomicity.
+  satisfy the contract, plus a `.Json` adapter for durable inspectable local
+  files, and all of them run the same reusable conformance suite for their
+  shared capabilities. In-memory storage is explicitly ephemeral; SQLite is
+  durable local storage and does not imply distributed leases, fencing, or
+  cross-store atomicity. A `.Json` adapter flushes every acknowledged record and
+  recovers a torn trailing append, but holds an advisory exclusive lock and
+  rejects a second writer, so it claims no multi-process coordination.
 - Process-local caches, immutable snapshots, and synchronization gates are not
   persistence adapters. They must not be presented as durable stores, but need
   not be externalized merely because they retain transient state.
@@ -514,8 +522,8 @@ The architecture index defines document authority and change rules.
   reflective, such as API extraction or metadata discovery.
 - Write reusable conformance suites for every swappable contract, then run the
   same suite against every adapter. Storage suites must cover the common
-  contract for both `.InMemory` and `.Sqlite`, with separate capability tests
-  for guarantees only one adapter advertises.
+  contract for `.InMemory`, `.Sqlite`, and `.Json`, with separate capability
+  tests for guarantees only one adapter advertises.
 - Unit tests do not call live model, embedding, MCP, or storage services. Use
   deterministic fakes, loopback HTTP handlers, recorded protocol fixtures, and
   controllable clocks.

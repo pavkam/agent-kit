@@ -133,13 +133,16 @@ ordinary requests cannot select or reuse. Bootstrap failure fails closed.
 
 Security runtime registration MUST NOT install an in-memory grant, approval,
 decision, or audit-outbox store. The host explicitly selects a
-`AgentKit.Permissions.InMemory`, `AgentKit.Permissions.Sqlite`, or other leaf
-and supplies its fixed persistence target through trusted bootstrap
-configuration. In-memory selection is ephemeral evidence and cannot satisfy a
-durable deferral, crash-safe grant, or required durable-audit policy. A SQLite
-selection claims only the transactions and concurrency its adapter descriptor
-and shared conformance results prove; it does not make the external protected
-effect part of the database transaction.
+`AgentKit.Permissions.InMemory`, `AgentKit.Permissions.Sqlite`,
+`AgentKit.Permissions.Json`, or other leaf and supplies its fixed persistence
+target through trusted bootstrap configuration. In-memory selection is ephemeral
+evidence and cannot satisfy a durable deferral, crash-safe grant, or required
+durable-audit policy. A SQLite selection claims only the transactions and
+concurrency its adapter descriptor and shared conformance results prove; it does
+not make the external protected effect part of the database transaction. A JSON
+selection commits each grant transition as one flushed record, so a consumed use
+and its enforcement receipt are never recovered apart, but it serializes writers
+through an advisory host-local lock and claims no multi-process coordination.
 
 Every authorization context captures one immutable scope: typed agent, optional
 session, and operation correlation. Requests, approvals, grants, caches, and

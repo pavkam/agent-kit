@@ -1,0 +1,275 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Storage.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Storage.Json
+{
+    public static class JsonAtomicDocument
+    {
+        public static byte[]? Read(string path, int maximumBytes) { }
+        public static void Replace(string path, byte[] payload, System.Threading.CancellationToken cancellationToken = default) { }
+        public static void TryDelete(string path) { }
+    }
+    public sealed class JsonAuthenticationEvidence : System.IEquatable<AgentKit.Storage.Json.JsonAuthenticationEvidence>
+    {
+        public JsonAuthenticationEvidence(string Id, string Issuer, string Method, System.DateTimeOffset AuthenticatedAt, System.DateTimeOffset? ExpiresAt, string SafeFingerprint) { }
+        public System.DateTimeOffset AuthenticatedAt { get; init; }
+        public System.DateTimeOffset? ExpiresAt { get; init; }
+        public string Id { get; init; }
+        public string Issuer { get; init; }
+        public string Method { get; init; }
+        public string SafeFingerprint { get; init; }
+        public AgentKit.AuthenticationEvidence ToDomain() { }
+        public static AgentKit.Storage.Json.JsonAuthenticationEvidence FromDomain(AgentKit.AuthenticationEvidence value) { }
+    }
+    public sealed class JsonDelegationIdentityLink : System.IEquatable<AgentKit.Storage.Json.JsonDelegationIdentityLink>
+    {
+        public JsonDelegationIdentityLink(System.Guid Id, string TenantId, string PrincipalId, string Issuer, string EvidenceId, long Version, System.DateTimeOffset DelegatedAt, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonIdentityClaim> Claims, AgentKit.IdentityAssuranceLevel Assurance) { }
+        public AgentKit.IdentityAssuranceLevel Assurance { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonIdentityClaim> Claims { get; init; }
+        public System.DateTimeOffset DelegatedAt { get; init; }
+        public string EvidenceId { get; init; }
+        public System.Guid Id { get; init; }
+        public string Issuer { get; init; }
+        public string PrincipalId { get; init; }
+        public string TenantId { get; init; }
+        public long Version { get; init; }
+        public bool Equals(AgentKit.Storage.Json.JsonDelegationIdentityLink? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.DelegationIdentityLink ToDomain() { }
+        public static AgentKit.Storage.Json.JsonDelegationIdentityLink FromDomain(AgentKit.DelegationIdentityLink value) { }
+    }
+    public sealed class JsonEncodingOptions
+    {
+        public JsonEncodingOptions() { }
+        public System.Text.Json.JsonSerializerOptions SerializerOptions { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Configure(System.Action<System.Text.Json.JsonSerializerOptions> configure) { }
+    }
+    public sealed class JsonEncodingSettings : System.IEquatable<AgentKit.Storage.Json.JsonEncodingSettings>
+    {
+        public JsonEncodingSettings(System.Text.Json.JsonSerializerOptions serializerOptions) { }
+        public System.Text.Json.JsonSerializerOptions DocumentOptions { get; }
+        public string Fingerprint { get; }
+        public System.Text.Json.JsonSerializerOptions RecordOptions { get; }
+        public bool Equals(AgentKit.Storage.Json.JsonEncodingSettings? other) { }
+        public override int GetHashCode() { }
+        public static AgentKit.Storage.Json.JsonEncodingSettings CreateDefault() { }
+    }
+    public sealed class JsonExecutionIdentity : System.IEquatable<AgentKit.Storage.Json.JsonExecutionIdentity>
+    {
+        public JsonExecutionIdentity(string TenantId, string PrincipalId, AgentKit.ExecutionSubjectKind SubjectKind, AgentKit.Storage.Json.JsonAuthenticationEvidence Evidence, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonIdentityClaim> Claims, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonDelegationIdentityLink> DelegationChain, AgentKit.IdentityAssuranceLevel Assurance, long Version) { }
+        public AgentKit.IdentityAssuranceLevel Assurance { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonIdentityClaim> Claims { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonDelegationIdentityLink> DelegationChain { get; init; }
+        public AgentKit.Storage.Json.JsonAuthenticationEvidence Evidence { get; init; }
+        public string PrincipalId { get; init; }
+        public AgentKit.ExecutionSubjectKind SubjectKind { get; init; }
+        public string TenantId { get; init; }
+        public long Version { get; init; }
+        public bool Equals(AgentKit.Storage.Json.JsonExecutionIdentity? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.ExecutionIdentity ToDomain() { }
+        public static AgentKit.Storage.Json.JsonExecutionIdentity FromDomain(AgentKit.ExecutionIdentity value) { }
+    }
+    public static class JsonFormatFingerprint
+    {
+        public static string Compute(System.Text.Json.JsonSerializerOptions options) { }
+    }
+    public sealed class JsonIdentityClaim : System.IEquatable<AgentKit.Storage.Json.JsonIdentityClaim>
+    {
+        public JsonIdentityClaim(string Issuer, string Type, string Value, AgentKit.IdentityClaimValueKind ValueKind) { }
+        public string Issuer { get; init; }
+        public string Type { get; init; }
+        public string Value { get; init; }
+        public AgentKit.IdentityClaimValueKind ValueKind { get; init; }
+        public AgentKit.IdentityClaim ToDomain() { }
+        public static AgentKit.Storage.Json.JsonIdentityClaim FromDomain(AgentKit.IdentityClaim value) { }
+    }
+    public sealed class JsonOperationCorrelation : System.IEquatable<AgentKit.Storage.Json.JsonOperationCorrelation>
+    {
+        public JsonOperationCorrelation(AgentKit.Storage.Json.JsonOperationCorrelationKind Kind, System.Guid OperationId, System.Guid? AdmissionId, System.Guid? RunId, System.Guid? TurnId) { }
+        public System.Guid? AdmissionId { get; init; }
+        public AgentKit.Storage.Json.JsonOperationCorrelationKind Kind { get; init; }
+        public System.Guid OperationId { get; init; }
+        public System.Guid? RunId { get; init; }
+        public System.Guid? TurnId { get; init; }
+        public AgentKit.OperationCorrelation ToDomain() { }
+        public static AgentKit.Storage.Json.JsonOperationCorrelation FromDomain(AgentKit.OperationCorrelation value) { }
+    }
+    public enum JsonOperationCorrelationKind
+    {
+        BeforeRun = 1,
+        InRun = 2,
+        AfterRun = 3,
+    }
+    public sealed class JsonProtectedResource : System.IEquatable<AgentKit.Storage.Json.JsonProtectedResource>
+    {
+        public JsonProtectedResource(AgentKit.ProtectedResourceKind Kind, string Identifier) { }
+        public string Identifier { get; init; }
+        public AgentKit.ProtectedResourceKind Kind { get; init; }
+        public AgentKit.ProtectedResource ToDomain() { }
+        public static AgentKit.Storage.Json.JsonProtectedResource FromDomain(AgentKit.ProtectedResource value) { }
+    }
+    public sealed class JsonRecordLog
+    {
+        public JsonRecordLog(string path, int maximumRecordBytes) { }
+        public bool Exists { get; }
+        public string Path { get; }
+        public void Append(byte[] record, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Compact(System.Collections.Generic.IReadOnlyList<byte[]> records, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentKit.Storage.Json.JsonRecordLogReplay Replay(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonRecordLogReplay : System.IEquatable<AgentKit.Storage.Json.JsonRecordLogReplay>
+    {
+        public JsonRecordLogReplay(System.Collections.Generic.IReadOnlyList<System.ReadOnlyMemory<byte>> Records, bool HasIncompleteTrailingRecord) { }
+        public bool HasIncompleteTrailingRecord { get; init; }
+        public System.Collections.Generic.IReadOnlyList<System.ReadOnlyMemory<byte>> Records { get; init; }
+    }
+    public sealed class JsonSecurityAuthorizationContext : System.IEquatable<AgentKit.Storage.Json.JsonSecurityAuthorizationContext>
+    {
+        public JsonSecurityAuthorizationContext(string ProfileKey, long ProfileVersion, AgentKit.Storage.Json.JsonSecurityPolicySnapshotReference PolicySnapshot, string AuthorityKey, long AgentDefinitionRevision, long ConfigurationVersion, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity) { }
+        public long AgentDefinitionRevision { get; init; }
+        public string AuthorityKey { get; init; }
+        public long ConfigurationVersion { get; init; }
+        public AgentKit.Storage.Json.JsonExecutionIdentity Identity { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityPolicySnapshotReference PolicySnapshot { get; init; }
+        public string ProfileKey { get; init; }
+        public long ProfileVersion { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope { get; init; }
+        public AgentKit.SecurityAuthorizationContext ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityAuthorizationContext FromDomain(AgentKit.SecurityAuthorizationContext value) { }
+    }
+    public sealed class JsonSecurityAuthorizationScope : System.IEquatable<AgentKit.Storage.Json.JsonSecurityAuthorizationScope>
+    {
+        public JsonSecurityAuthorizationScope(System.Guid AgentId, System.Guid? SessionId, AgentKit.Storage.Json.JsonOperationCorrelation Correlation) { }
+        public System.Guid AgentId { get; init; }
+        public AgentKit.Storage.Json.JsonOperationCorrelation Correlation { get; init; }
+        public System.Guid? SessionId { get; init; }
+        public AgentKit.SecurityAuthorizationScope ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityAuthorizationScope FromDomain(AgentKit.SecurityAuthorizationScope value) { }
+    }
+    public sealed class JsonSecurityEnforcementIntentReceipt : System.IEquatable<AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt>
+    {
+        public JsonSecurityEnforcementIntentReceipt(System.Guid IntentId, System.Guid GrantId, System.Guid RequestId, AgentKit.Storage.Json.JsonSecurityEnforcementRequest Enforcement, long? RequiredFence, string EffectFingerprint, System.DateTimeOffset ConsumedAt) { }
+        public System.DateTimeOffset ConsumedAt { get; init; }
+        public string EffectFingerprint { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityEnforcementRequest Enforcement { get; init; }
+        public System.Guid GrantId { get; init; }
+        public System.Guid IntentId { get; init; }
+        public System.Guid RequestId { get; init; }
+        public long? RequiredFence { get; init; }
+        public AgentKit.SecurityEnforcementIntentReceipt ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt FromDomain(AgentKit.SecurityEnforcementIntentReceipt value) { }
+    }
+    public sealed class JsonSecurityEnforcementRequest : System.IEquatable<AgentKit.Storage.Json.JsonSecurityEnforcementRequest>
+    {
+        public JsonSecurityEnforcementRequest(AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, long RevocationVersion) { }
+        public string Audience { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public AgentKit.SecurityEffect Effect { get; init; }
+        public AgentKit.Storage.Json.JsonExecutionIdentity Identity { get; init; }
+        public string InputFingerprint { get; init; }
+        public AgentKit.SecurityOperationKind Kind { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources { get; init; }
+        public long RevocationVersion { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope { get; init; }
+        public bool Equals(AgentKit.Storage.Json.JsonSecurityEnforcementRequest? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.SecurityEnforcementRequest ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityEnforcementRequest FromDomain(AgentKit.SecurityEnforcementRequest value) { }
+    }
+    public sealed class JsonSecurityGrant : System.IEquatable<AgentKit.Storage.Json.JsonSecurityGrant>
+    {
+        public JsonSecurityGrant(System.Guid Id, System.Guid RequestId, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, long PolicyVersion, long RevocationVersion, System.DateTimeOffset NotBefore, System.DateTimeOffset ExpiresAt, int AllowedUses) { }
+        public int AllowedUses { get; init; }
+        public string Audience { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public AgentKit.SecurityEffect Effect { get; init; }
+        public System.DateTimeOffset ExpiresAt { get; init; }
+        public System.Guid Id { get; init; }
+        public AgentKit.Storage.Json.JsonExecutionIdentity Identity { get; init; }
+        public string InputFingerprint { get; init; }
+        public AgentKit.SecurityOperationKind Kind { get; init; }
+        public System.DateTimeOffset NotBefore { get; init; }
+        public long PolicyVersion { get; init; }
+        public System.Guid RequestId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources { get; init; }
+        public long RevocationVersion { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope { get; init; }
+        public bool Equals(AgentKit.Storage.Json.JsonSecurityGrant? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.SecurityGrant ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityGrant FromDomain(AgentKit.SecurityGrant value) { }
+    }
+    public sealed class JsonSecurityPolicySnapshotReference : System.IEquatable<AgentKit.Storage.Json.JsonSecurityPolicySnapshotReference>
+    {
+        public JsonSecurityPolicySnapshotReference(System.Guid Id, long Version, string Fingerprint) { }
+        public string Fingerprint { get; init; }
+        public System.Guid Id { get; init; }
+        public long Version { get; init; }
+        public AgentKit.SecurityPolicySnapshotReference ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityPolicySnapshotReference FromDomain(AgentKit.SecurityPolicySnapshotReference value) { }
+    }
+    public sealed class JsonSecurityRequest : System.IEquatable<AgentKit.Storage.Json.JsonSecurityRequest>
+    {
+        public JsonSecurityRequest(System.Guid Id, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, System.Guid? ToolCallId, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, System.DateTimeOffset Deadline, int RequestedUses) { }
+        public string Audience { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.SecurityEffect Effect { get; init; }
+        public System.Guid Id { get; init; }
+        public AgentKit.Storage.Json.JsonExecutionIdentity Identity { get; init; }
+        public string InputFingerprint { get; init; }
+        public AgentKit.SecurityOperationKind Kind { get; init; }
+        public int RequestedUses { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope { get; init; }
+        public System.Guid? ToolCallId { get; init; }
+        public bool Equals(AgentKit.Storage.Json.JsonSecurityRequest? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.SecurityRequest ToDomain() { }
+        public static AgentKit.Storage.Json.JsonSecurityRequest FromDomain(AgentKit.SecurityRequest value) { }
+    }
+    public sealed class JsonStoreLock : System.IDisposable
+    {
+        public void Dispose() { }
+        public static AgentKit.Storage.Json.JsonStoreLock Acquire(string path) { }
+    }
+    public sealed class JsonStoreManifest : System.IEquatable<AgentKit.Storage.Json.JsonStoreManifest>
+    {
+        public JsonStoreManifest(System.Guid storeId, string storeKind, int schemaVersion, string formatFingerprint) { }
+        public string FormatFingerprint { get; }
+        public int SchemaVersion { get; }
+        public System.Guid StoreId { get; }
+        public string StoreKind { get; }
+    }
+    public enum JsonStoreOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public enum JsonStoreRecoveryMode
+    {
+        ValidateExact = 0,
+        RecoverTornAppends = 1,
+    }
+    public sealed class JsonStoreRoot
+    {
+        public JsonStoreRoot(string directoryPath) { }
+        public string DirectoryPath { get; }
+        public string LockPath { get; }
+        public string ManifestPath { get; }
+        public string LogPath(string name) { }
+        public void Validate(bool allowCreate) { }
+        public static void ValidateFile(string path) { }
+    }
+    public static class JsonStoreSerialization
+    {
+        public static System.Text.Json.JsonSerializerOptions CreateCanonicalOptions() { }
+        public static TValue Decode<TValue>(System.ReadOnlySpan<byte> payload, System.Text.Json.JsonSerializerOptions options)
+            where TValue :  notnull { }
+        public static byte[] Encode<TValue>(TValue value, System.Text.Json.JsonSerializerOptions options, int maximumBytes)
+            where TValue :  notnull { }
+        public static void VerifyRoundTrip<TValue>(TValue probe, System.Text.Json.JsonSerializerOptions options)
+            where TValue :  notnull { }
+    }
+}

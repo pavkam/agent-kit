@@ -24,8 +24,10 @@
     <Project Path="src/AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
     <Project Path="src/AgentKit.Mcp.Server/AgentKit.Mcp.Server.csproj"/>
     <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
+    <Project Path="src/AgentKit.Storage.Json/AgentKit.Storage.Json.csproj"/>
     <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <Project Path="src/AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Session.Json/AgentKit.Session.Json.csproj"/>
     <Project Path="src/AgentKit.Simple/AgentKit.Simple.csproj"/>
     <Project Path="src/AgentKit.Context/AgentKit.Context.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
@@ -33,11 +35,13 @@
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
     <Project Path="src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <Project Path="src/AgentKit.Budgets.Sqlite/AgentKit.Budgets.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Budgets.Json/AgentKit.Budgets.Json.csproj"/>
     <Project Path="src/AgentKit.Durability.InMemory/AgentKit.Durability.InMemory.csproj"/>
     <Project Path="src/AgentKit.Identity/AgentKit.Identity.csproj"/>
     <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
     <Project Path="src/AgentKit.Permissions.Sqlite/AgentKit.Permissions.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Permissions.Json/AgentKit.Permissions.Json.csproj"/>
     <Project Path="src/AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <Project Path="src/AgentKit.Output/AgentKit.Output.csproj"/>
     <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
@@ -99,8 +103,10 @@
     <Project Path="tests/AgentKit.Mcp.Client.Tests/AgentKit.Mcp.Client.Tests.csproj"/>
     <Project Path="tests/AgentKit.Mcp.Server.Tests/AgentKit.Mcp.Server.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Storage.Json.Tests/AgentKit.Storage.Json.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Sqlite.Tests/AgentKit.Session.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Session.Json.Tests/AgentKit.Session.Json.Tests.csproj"/>
     <Project Path="tests/AgentKit.Simple.Tests/AgentKit.Simple.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Tests/AgentKit.Context.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
@@ -108,6 +114,7 @@
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.InMemory.Tests/AgentKit.Budgets.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.Tests/AgentKit.Budgets.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Budgets.Json.Tests/AgentKit.Budgets.Json.Tests.csproj"/>
     <Project Path="tests/AgentKit.Durability.InMemory.Tests/AgentKit.Durability.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.ProcessHost/AgentKit.Budgets.Sqlite.ProcessHost.csproj"/>
     <Project Path="tests/AgentKit.Identity.Tests/AgentKit.Identity.Tests.csproj"/>
@@ -115,6 +122,7 @@
     <Project Path="tests/AgentKit.Permissions.Tests/AgentKit.Permissions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.InMemory.Tests/AgentKit.Permissions.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.Sqlite.Tests/AgentKit.Permissions.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Permissions.Json.Tests/AgentKit.Permissions.Json.Tests.csproj"/>
     <Project Path="tests/AgentKit.Output.Tests/AgentKit.Output.Tests.csproj"/>
     <Project Path="tests/AgentKit.Hooks.Tests/AgentKit.Hooks.Tests.csproj"/>
     <Project Path="tests/AgentKit.FileSystem.Tests/AgentKit.FileSystem.Tests.csproj"/>

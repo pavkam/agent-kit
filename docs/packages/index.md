@@ -32,6 +32,23 @@ infrastructure is listed at the end.
 | [AgentKit.Goals](../../src/AgentKit.Goals/README.md)                           | Coordinate protected task-delegation requests.                                                  | [Tests](../../tests/AgentKit.Goals.Tests/README.md)              |
 | [AgentKit.Observability](../../src/AgentKit.Observability/README.md)           | Share AgentKit logging, activity, metric, and tag conventions across components.                | [Tests](../../tests/AgentKit.Observability.Tests/README.md)      |
 
+## Storage adapters
+
+Storage-owning runtimes register no concrete store. An application selects one
+adapter per family explicitly and supplies its persistence target. The
+in-memory, SQLite, and JSON leaves of a family run the same reusable conformance
+suite; their capability descriptors differ.
+
+| Project                                                                            | Use it for                                                                                           | Tests                                                          |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [AgentKit.Storage.Json](../../src/AgentKit.Storage.Json/README.md)                 | Share JSON and JSONL file mechanics, encoding contracts, and portable evidence shapes across leaves. | [Tests](../../tests/AgentKit.Storage.Json.Tests)               |
+| [AgentKit.Permissions.InMemory](../../src/AgentKit.Permissions.InMemory/README.md) | Hold grants and approvals in memory as explicitly ephemeral security evidence.                       | [Tests](../../tests/AgentKit.Permissions.InMemory.Tests)       |
+| [AgentKit.Permissions.Sqlite](../../src/AgentKit.Permissions.Sqlite/README.md)     | Persist grants in one explicitly selected SQLite database.                                           | [Tests](../../tests/AgentKit.Permissions.Sqlite.Tests)         |
+| [AgentKit.Permissions.Json](../../src/AgentKit.Permissions.Json/README.md)         | Persist grants and approvals as inspectable JSON records under one single-writer root.               | [Tests](../../tests/AgentKit.Permissions.Json.Tests)           |
+| [AgentKit.Budgets.InMemory](../../src/AgentKit.Budgets.InMemory/README.md)         | Keep the reservation ledger in memory for tests and process-local applications.                      | [Tests](../../tests/AgentKit.Budgets.InMemory.Tests/README.md) |
+| [AgentKit.Budgets.Sqlite](../../src/AgentKit.Budgets.Sqlite/README.md)             | Persist the reservation ledger in one explicitly selected SQLite database.                           | [Tests](../../tests/AgentKit.Budgets.Sqlite.Tests/README.md)   |
+| [AgentKit.Budgets.Json](../../src/AgentKit.Budgets.Json/README.md)                 | Persist the reservation ledger as an append-only JSON journal under one single-writer root.          | [Tests](../../tests/AgentKit.Budgets.Json.Tests/README.md)     |
+
 ## Sessions and artifacts
 
 | Project                                                                        | Use it for                                                                                | Tests                                                            |
@@ -39,6 +56,7 @@ infrastructure is listed at the end.
 | [AgentKit.Session](../../src/AgentKit.Session/README.md)                       | Coordinate session lifecycle, run ownership, branching, and store routing.                | [Tests](../../tests/AgentKit.Session.Tests/README.md)            |
 | [AgentKit.Session.InMemory](../../src/AgentKit.Session.InMemory/README.md)     | Keep session records and directory state in memory for ephemeral applications.            | [Tests](../../tests/AgentKit.Session.InMemory.Tests/README.md)   |
 | [AgentKit.Session.Sqlite](../../src/AgentKit.Session.Sqlite/README.md)         | Persist session records and directory state in one explicitly selected SQLite database.   | [Tests](../../tests/AgentKit.Session.Sqlite.Tests)               |
+| [AgentKit.Session.Json](../../src/AgentKit.Session.Json/README.md)             | Persist session records and directory state as inspectable JSON command logs.             | [Tests](../../tests/AgentKit.Session.Json.Tests)                 |
 | [AgentKit.Artifacts](../../src/AgentKit.Artifacts/README.md)                   | Coordinate bounded preparation, finalization, and reading of generated or binary content. | [Tests](../../tests/AgentKit.Artifacts.Tests/README.md)          |
 | [AgentKit.Artifacts.InMemory](../../src/AgentKit.Artifacts.InMemory/README.md) | Store artifact content in memory with deterministic lifecycle behavior.                   | [Tests](../../tests/AgentKit.Artifacts.InMemory.Tests/README.md) |
 

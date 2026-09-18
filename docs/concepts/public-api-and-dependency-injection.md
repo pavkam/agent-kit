@@ -177,11 +177,11 @@ provider, validate options, and document:
 
 Runtime registrations such as `AddAgentSession`, `AddAgentPermissions`,
 `AddAgentBudgets`, `AddAgentArtifacts`, and `AddAgentMemory` MUST NOT install a
-concrete store. A host separately calls an explicit `.InMemory`, `.Sqlite`, or
-other adapter registration and supplies its key and persistence target. The
-in-memory call above is therefore an application choice, not a framework
-default. Multiple adapters may coexist only through a catalog and exact
-selection; registration order never selects persistence.
+concrete store. A host separately calls an explicit `.InMemory`, `.Sqlite`,
+`.Json`, or other adapter registration and supplies its key and persistence
+target. The in-memory call above is therefore an application choice, not a
+framework default. Multiple adapters may coexist only through a catalog and
+exact selection; registration order never selects persistence.
 
 Multi-provider concepts SHOULD be keyed/named and selected by an injected
 catalog/selector. Runtime code MUST NOT receive `IServiceProvider` as a locator.

@@ -155,11 +155,15 @@ forward-compatible round trips.
 
 The session runtime MUST NOT register a concrete store or directory as a hidden
 fallback. Hosts explicitly select an `AgentKit.Session.InMemory`,
-`AgentKit.Session.Sqlite`, or other adapter and a compatible directory. The
-in-memory and SQLite leaves run the same store conformance suite. SQLite may
-advertise durable local transactions after restart tests pass, but it MUST NOT
-advertise distributed lane ownership, fencing, or cross-store atomicity merely
-because the session rows share one local database.
+`AgentKit.Session.Sqlite`, `AgentKit.Session.Json`, or other adapter and a
+compatible directory. The in-memory, SQLite, and JSON leaves run the same store
+conformance suite. SQLite may advertise durable local transactions after restart
+tests pass, but it MUST NOT advertise distributed lane ownership, fencing, or
+cross-store atomicity merely because the session rows share one local database.
+The JSON leaf recovers optimistic concurrency, per-lane ownership, and every
+idempotency receipt by replaying its command log through the same commit path
+that produced it, and it reuses the session runtime's portable entry codec so
+entries stay interchangeable with the SQLite leaf.
 
 ## Discovery and migration
 
