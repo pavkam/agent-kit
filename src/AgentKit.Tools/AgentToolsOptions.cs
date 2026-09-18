@@ -37,4 +37,18 @@ public sealed class AgentToolsOptions
     /// evaluations that a tool's own effecting boundary still enforces.
     /// </value>
     public bool AllowAllRegisteredTools { get; set; }
+
+    /// <summary>
+    /// Gets or sets the bounds <see cref="DefaultToolInvoker"/> uses to compile each resolved tool's declared
+    /// <see cref="ToolDescriptor.InputSchema"/> and to validate one call's arguments against it.
+    /// </summary>
+    /// <value>
+    /// 256 KiB of raw UTF-8 JSON, a maximum depth of 64, at most 10,000 total JSON values, and a work budget of
+    /// 100,000 deterministic units by default - generous bounds for a single tool call's arguments while still
+    /// bounding the local work a hostile or malformed schema or argument payload can force. A compiled schema is
+    /// cached per exact tool identity and version, so these limits bound one compilation per distinct descriptor
+    /// plus one validation per call, not a cost repeated on every call to the same tool.
+    /// </value>
+    public ToolSchemaLimits ArgumentValidationLimits { get; set; } = new(
+        maximumUtf8Bytes: 262_144, maximumDepth: 64, maximumNodes: 10_000, maximumWork: 100_000);
 }

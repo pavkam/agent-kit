@@ -1410,6 +1410,7 @@ src/AgentKit.Abstractions/Tools/...
   `ToolTerminalStatus.InvalidArguments` and `ResourceLimitExceeded` to a
   distinct resource-exhaustion status.
 - **Confidence:** High
+- **Status:** Fixed ✅
 
 ### T02 — Merge-graph `Apply` lets a policy bind an authored alias to a tool it was never authored for
 

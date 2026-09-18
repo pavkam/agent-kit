@@ -7,6 +7,7 @@ using AgentKit.Observability;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Dependency-injection registration for the tool runtime and retained projection policies.</summary>
 public static class ServiceExtensions
@@ -281,6 +282,7 @@ public static class ServiceExtensions
         {
             _ = services.AddToolPresentation();
             _ = services.AddToolResultProjectionPolicyCatalog();
+            _ = services.AddToolSchemaEngine();
             var optionsBuilder = services.AddOptions<AgentToolsOptions>();
             if (configure is not null)
             {
@@ -289,7 +291,12 @@ public static class ServiceExtensions
 
             services.TryAddSingleton<IToolAuthorizer, AllowListToolAuthorizer>();
             services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalog(provider.GetServices<ITool>()));
-            services.TryAddSingleton<IToolInvoker, DefaultToolInvoker>();
+            services.TryAddSingleton<IToolInvoker>(static provider => new DefaultToolInvoker(
+                provider.GetRequiredService<IToolCatalog>(),
+                provider.GetRequiredService<IToolAuthorizer>(),
+                provider.GetRequiredService<ILogger<DefaultToolInvoker>>(),
+                provider.GetRequiredService<IToolSchemaEngine>(),
+                provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits));
 
             return services;
         }

@@ -69,6 +69,51 @@ public sealed class DefaultToolInvokerTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenArgumentsDoNotSatisfyTheDeclaredSchema_ReturnsInvalidArgumentsWithoutInvokingTool()
+    {
+        // AGENTS.md requires that every call passes schema validation before invocation, but nothing in the
+        // invoker ever compiled a descriptor's declared InputSchema or validated a call's arguments against it.
+        // Every feature tool relied solely on its own ad-hoc parsing, and declared schema constraints a tool
+        // did not re-implement (here: additionalProperties: false and a required member) were silently
+        // unenforced.
+        using var schemaDocument = JsonDocument.Parse(
+            /*lang=json,strict*/ """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}""");
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("schema-checked", ToolEffect.ReadOnly, schemaDocument.RootElement),
+        };
+        var invoker = CreateInvoker([tool], allowed: "schema-checked");
+        using var argumentsDocument = JsonDocument.Parse( /*lang=json,strict*/ """{"unexpected":"value"}""");
+        var request = TestFactory.CallRequest(new ToolId("schema-checked"), argumentsDocument.RootElement);
+
+        var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        result.Invocation.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Invocation.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Invocation.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        tool.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenArgumentsSatisfyTheDeclaredSchema_InvokesTheTool()
+    {
+        using var schemaDocument = JsonDocument.Parse(
+            /*lang=json,strict*/ """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}""");
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("schema-checked-valid", ToolEffect.ReadOnly, schemaDocument.RootElement),
+        };
+        var invoker = CreateInvoker([tool], allowed: "schema-checked-valid");
+        using var argumentsDocument = JsonDocument.Parse( /*lang=json,strict*/ """{"path":"a.txt"}""");
+        var request = TestFactory.CallRequest(new ToolId("schema-checked-valid"), argumentsDocument.RootElement);
+
+        var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        result.Invocation.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        _ = tool.ReceivedRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenAuthorized_InvokesToolAndReturnsItsResult()
     {
         var expectedContent = ImmutableArray.Create<ContentPart>(new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty));

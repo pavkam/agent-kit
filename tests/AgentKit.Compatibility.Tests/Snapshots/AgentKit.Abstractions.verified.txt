@@ -8782,6 +8782,7 @@ namespace AgentKit
         ResultNormalizationFailed = 12,
         ResultSerializationFailed = 13,
         ProtocolFailed = 14,
+        ResourceLimitExceeded = 15,
     }
     public static class ToolTerminalStatusExtensions
     {

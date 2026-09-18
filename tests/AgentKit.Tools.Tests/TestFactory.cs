@@ -26,13 +26,15 @@ internal static class TestFactory
             identity);
     }
 
-    public static ToolDescriptor Descriptor(string id = "test-tool", ToolEffect effect = ToolEffect.ReadOnly) => new(
+    public static ToolDescriptor Descriptor(string id = "test-tool", ToolEffect effect = ToolEffect.ReadOnly) =>
+        Descriptor(id, effect, JsonDocument.Parse("{}").RootElement);
+
+    public static ToolDescriptor Descriptor(string id, ToolEffect effect, JsonElement inputSchema) => new(
         new ToolId(id),
         new ToolVersion("1.0"),
         id,
         "A test tool.",
-        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"),
-            JsonDocument.Parse("{}").RootElement),
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), inputSchema),
         outputSchema: null,
         new ToolEffects(effect, null, null),
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),

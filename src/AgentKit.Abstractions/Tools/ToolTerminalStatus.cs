@@ -35,4 +35,6 @@ public enum ToolTerminalStatus
     ResultSerializationFailed = 13,
     /// <summary>Protocol mapping failed.</summary>
     ProtocolFailed = 14,
+    /// <summary>Argument schema validation could not determine validity because a bounded resource limit was exceeded.</summary>
+    ResourceLimitExceeded = 15,
 }

@@ -19,6 +19,7 @@ public static class ToolTerminalStatusExtensions
             ToolTerminalStatus.Succeeded => ToolCallOutcomeKind.Success,
             ToolTerminalStatus.UnknownTool or ToolTerminalStatus.InvalidArguments or ToolTerminalStatus.Unsupported
                 or ToolTerminalStatus.Denied or ToolTerminalStatus.ApprovalDenied or ToolTerminalStatus.ApprovalExpired
+                or ToolTerminalStatus.ResourceLimitExceeded
                 => ToolCallOutcomeKind.Rejected,
             ToolTerminalStatus.Cancelled or ToolTerminalStatus.Interrupted => ToolCallOutcomeKind.Cancelled,
             ToolTerminalStatus.InvocationFailed or ToolTerminalStatus.TimedOut

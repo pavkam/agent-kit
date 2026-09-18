@@ -33,9 +33,19 @@ namespace AgentKit.Tools;
 /// </remarks>
 public sealed class DefaultToolInvoker: IToolInvoker
 {
+    /// <summary>
+    /// The bounds used to compile a resolved tool's declared input schema and validate one call's arguments
+    /// against it, for a caller that does not explicitly supply <see cref="AgentToolsOptions.ArgumentValidationLimits"/>.
+    /// </summary>
+    private static readonly ToolSchemaLimits _defaultArgumentValidationLimits = new(
+        maximumUtf8Bytes: 262_144, maximumDepth: 64, maximumNodes: 10_000, maximumWork: 100_000);
+
     private readonly IToolCatalog _catalog;
     private readonly IToolAuthorizer _authorizer;
     private readonly ILogger<DefaultToolInvoker> _logger;
+    private readonly IToolSchemaEngine _schemaEngine;
+    private readonly ToolSchemaLimits _argumentValidationLimits;
+    private readonly ConcurrentDictionary<(ToolId Id, ToolVersion Version), ToolSchemaCompilationResult> _compiledSchemas = new();
 
     /// <summary>Initializes a new instance of the <see cref="DefaultToolInvoker"/> class.</summary>
     /// <param name="catalog">The catalog used to resolve a call's tool identity.</param>
@@ -53,18 +63,56 @@ public sealed class DefaultToolInvoker: IToolInvoker
     /// <param name="authorizer">The authorizer used to decide whether a resolved call may proceed.</param>
     /// <param name="logger">The logger that receives safe tool-lifecycle diagnostics.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    /// <remarks>
+    /// Argument schema validation still runs, using an internally owned <see cref="BoundedToolSchemaEngine"/>
+    /// instance and this class's own default bounds. A caller composing through <c>AddAgentTools</c> gets the
+    /// application's registered, possibly replaced, <see cref="IToolSchemaEngine"/> and configurable
+    /// <see cref="AgentToolsOptions.ArgumentValidationLimits"/> instead; see the five-parameter constructor.
+    /// </remarks>
     public DefaultToolInvoker(
         IToolCatalog catalog,
         IToolAuthorizer authorizer,
         ILogger<DefaultToolInvoker> logger)
+        : this(
+            catalog,
+            authorizer,
+            logger,
+            new BoundedToolSchemaEngine(
+                TimeProvider.System,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<BoundedToolSchemaEngine>.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<CompiledToolSchema>.Instance),
+            _defaultArgumentValidationLimits)
+    {
+    }
+
+    /// <summary>Initializes an invoker with an explicit schema engine and argument-validation bounds.</summary>
+    /// <param name="catalog">The catalog used to resolve a call's tool identity.</param>
+    /// <param name="authorizer">The authorizer used to decide whether a resolved call may proceed.</param>
+    /// <param name="logger">The logger that receives safe tool-lifecycle diagnostics.</param>
+    /// <param name="schemaEngine">
+    /// Compiles each resolved tool's declared <see cref="ToolDescriptor.InputSchema"/> once; the compiled handle
+    /// is cached for the lifetime of this invoker, keyed by exact tool identity and version.
+    /// </param>
+    /// <param name="argumentValidationLimits">The bounds applied to both schema compilation and per-call argument validation.</param>
+    /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    public DefaultToolInvoker(
+        IToolCatalog catalog,
+        IToolAuthorizer authorizer,
+        ILogger<DefaultToolInvoker> logger,
+        IToolSchemaEngine schemaEngine,
+        ToolSchemaLimits argumentValidationLimits)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(authorizer);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(schemaEngine);
+        ArgumentNullException.ThrowIfNull(argumentValidationLimits);
 
         _catalog = catalog;
         _authorizer = authorizer;
         _logger = logger;
+        _schemaEngine = schemaEngine;
+        _argumentValidationLimits = argumentValidationLimits;
     }
 
     /// <inheritdoc/>
@@ -104,6 +152,23 @@ public sealed class DefaultToolInvoker: IToolInvoker
 
             tool = resolvedToolImpl;
             resolvedTool = new ToolReference(requestedTool.ProviderAlias, descriptor.Id, descriptor.Version);
+
+            // Every call passes schema validation before the configured security authority, so a resolved but
+            // never-validated call cannot reach ITool.InvokeAsync purely because a feature tool's own ad-hoc
+            // TryParse happens not to re-implement a constraint its declared schema promises (e.g.
+            // "additionalProperties": false or a numeric "minimum").
+            var schemaRejection = ValidateArguments(descriptor, request.Arguments, cancellationToken);
+            if (schemaRejection is not null)
+            {
+                activity.SetFailed(schemaRejection.Value.Metric, schemaRejection.Value.Metric);
+                ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, schemaRejection.Value.Metric));
+                ToolLog.Failed(_logger, context.ToolCallId, candidateId, schemaRejection.Value.Metric);
+                return new ResolvedToolInvocation(
+                    resolvedTool,
+                    ToolResultProjectionPolicyReference.Default,
+                    Rejected(schemaRejection.Value.Status, schemaRejection.Value.SafeMessage));
+            }
+
             authorization = await _authorizer.AuthorizeAsync(
                 new ToolAuthorizationRequest(request.Context, descriptor), cancellationToken).ConfigureAwait(false);
         }
@@ -182,6 +247,53 @@ public sealed class DefaultToolInvoker: IToolInvoker
                 ToolResultProjectionPolicyReference.Default,
                 Failed($"Tool '{candidateId}' threw an unhandled exception during invocation."));
         }
+    }
+
+    /// <summary>
+    /// Compiles (once, then from cache) and applies the resolved tool's declared canonical input schema against
+    /// one call's arguments.
+    /// </summary>
+    /// <param name="descriptor">The exact descriptor captured alongside the resolved tool.</param>
+    /// <param name="arguments">The call's raw canonical arguments.</param>
+    /// <param name="cancellationToken">Propagates cancellation to compilation and validation.</param>
+    /// <returns>
+    /// <see langword="null"/> when the arguments satisfy the schema and invocation may proceed; otherwise the
+    /// typed rejection evidence to report instead of invoking the tool.
+    /// </returns>
+    private (ToolTerminalStatus Status, string SafeMessage, string Metric)? ValidateArguments(
+        ToolDescriptor descriptor, JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var compilation = _compiledSchemas.GetOrAdd(
+            (descriptor.Id, descriptor.Version),
+            _ => _schemaEngine.Compile(descriptor.InputSchema, _argumentValidationLimits, cancellationToken));
+
+        if (compilation is not ToolSchemaCompiled compiled)
+        {
+            // The tool's own declared schema cannot be validated by the configured engine (an unsupported
+            // dialect/keyword, a malformed schema, or one that exceeds compilation resource limits). This is a
+            // tool-definition problem, never evidence about whether these particular arguments are valid.
+            return (
+                ToolTerminalStatus.Unsupported,
+                "The tool's declared input schema could not be compiled by the configured validation engine.",
+                "schema_unsupported");
+        }
+
+        return compiled.Schema.Validate(arguments, _argumentValidationLimits, cancellationToken) switch
+        {
+            ToolSchemaValidationResult.Valid => null,
+            ToolSchemaValidationResult.ResourceLimitExceeded => (
+                ToolTerminalStatus.ResourceLimitExceeded,
+                "The arguments could not be validated within the configured resource limits.",
+                "resource_limit_exceeded"),
+            ToolSchemaValidationResult.Invalid => (
+                ToolTerminalStatus.InvalidArguments,
+                "The arguments did not satisfy the tool's declared schema.",
+                "invalid_arguments"),
+            _ => (
+                ToolTerminalStatus.InvalidArguments,
+                "The arguments did not satisfy the tool's declared schema.",
+                "invalid_arguments"),
+        };
     }
 
     private static ActivityTagsCollection CreateActivityTags(ToolCallRequest request, ToolId candidateId)

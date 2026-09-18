@@ -8,6 +8,7 @@ namespace AgentKit.Tools
         public AgentToolsOptions() { }
         public bool AllowAllRegisteredTools { get; set; }
         public System.Collections.Generic.HashSet<AgentKit.ToolId> AllowedToolIds { get; }
+        public AgentKit.ToolSchemaLimits ArgumentValidationLimits { get; set; }
     }
     public sealed class AllowListToolAuthorizer : AgentKit.IToolAuthorizer
     {
@@ -18,6 +19,7 @@ namespace AgentKit.Tools
     {
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer) { }
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger) { }
+        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger, AgentKit.IToolSchemaEngine schemaEngine, AgentKit.ToolSchemaLimits argumentValidationLimits) { }
         public System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class RejectingToolCatalogMergePolicy : AgentKit.IToolCatalogMergePolicy
