@@ -649,6 +649,7 @@ findings).
 - **Suggested fix:** Capture the result and throw `InvalidOperationException`
   (naming the provider type) when it is null before returning.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ---
 

@@ -21,6 +21,20 @@ public sealed class DelegatingOAuthCredentialSourceTests
         resolved.ShouldBe(credential);
     }
 
+    [Fact]
+    public async Task GetCredentialAsync_WhenTokenProviderReturnsNull_ThrowsInvalidOperationException()
+    {
+        // GetCredentialAsync returned whatever IOAuthAccessTokenProvider.GetAccessTokenAsync yielded without a
+        // null check. IProviderCredentialSource returns a non-nullable ProviderCredential, so a misbehaving
+        // provider returning null leaked a null through the non-nullable contract and failed as a
+        // NullReferenceException inside the branded provider's auth header construction rather than as a clear
+        // composition error here.
+        var source = new DelegatingOAuthCredentialSource(new FakeTokenProvider(null!));
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await source.GetCredentialAsync(new ProviderId("openai"), TestContext.Current.CancellationToken));
+    }
+
     private sealed class FakeTokenProvider(OAuthTokenProviderCredential credential): IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

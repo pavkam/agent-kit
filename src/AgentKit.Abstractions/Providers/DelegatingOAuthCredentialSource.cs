@@ -23,8 +23,17 @@ public sealed class DelegatingOAuthCredentialSource: IProviderCredentialSource
     }
 
     /// <inheritdoc/>
+    /// <exception cref="InvalidOperationException">
+    /// The configured <see cref="IOAuthAccessTokenProvider"/> returned <see langword="null"/> despite its
+    /// non-nullable contract.
+    /// </exception>
     public async ValueTask<ProviderCredential> GetCredentialAsync(
         ProviderId providerId,
-        CancellationToken cancellationToken = default) =>
-        await _tokenProvider.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        CancellationToken cancellationToken = default)
+    {
+        var credential = await _tokenProvider.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        return credential
+            ?? throw new InvalidOperationException(
+                $"{_tokenProvider.GetType()} returned a null credential from GetAccessTokenAsync, violating the non-nullable {nameof(IOAuthAccessTokenProvider)} contract.");
+    }
 }
