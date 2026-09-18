@@ -14,17 +14,19 @@ using System.Text;
 /// <c>docs/implementation-plan.md</c>, workstream 1): the effective continuation-relevant behavior a run observes
 /// is the combination of the definition's narrowed turn limit and attempt timeout, the selected
 /// <see cref="IRunContinuationPolicy"/> registration, and the host's live, independently hot-reloadable
-/// <see cref="AgentLoopOptions"/>. This type derives a stable version from exactly those inputs instead of using
-/// a fixed constant, so two evaluations that observe the identical effective policy always agree, and a change to
-/// any one input — including an operator's live <see cref="AgentLoopOptions"/> reload that never touches the
-/// owning <see cref="AgentDefinition"/> — is reflected in a different version.
+/// <see cref="AgentLoopOptions"/>. This type composes the shared admission-visible core
+/// (<see cref="AgentKit.RunPolicyVersioning"/>, which an admission boundary outside this package uses too)
+/// with this instance's additionally-visible resolved <see cref="AgentLoopOptions"/>, so two evaluations that
+/// observe the identical effective policy always agree, and a change to any one input — including an operator's
+/// live <see cref="AgentLoopOptions"/> reload that never touches the owning <see cref="AgentDefinition"/> — is
+/// reflected in a different version.
 /// </para>
 /// <para>
 /// The result is content-derived rather than a monotonically issued sequence number, so it requires no mutable
 /// registry, is reproducible across process restarts, and agrees across every process observing the identical
 /// inputs without coordination. It is not a substitute for a published, catalog-validated run-policy profile;
-/// it exists so <see cref="RunContinuationContext.PolicyVersion"/> and <see cref="RunConfigurationReference"/>
-/// carry a real, non-fabricated value until that profile system exists.
+/// it exists so <see cref="RunContinuationContext.PolicyVersion"/> carries a real, non-fabricated value until
+/// that profile system exists.
 /// </para>
 /// </remarks>
 public static class RunPolicyVersioning
@@ -44,15 +46,12 @@ public static class RunPolicyVersioning
         ComponentKey<IRunContinuationPolicy> continuationPolicyKey,
         AgentLoopOptions options)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTurns);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(attemptTimeout, TimeSpan.Zero);
-        ArgumentException.ThrowIfNullOrWhiteSpace(continuationPolicyKey.Value, nameof(continuationPolicyKey));
+        // Validates maxTurns, attemptTimeout, and continuationPolicyKey identically to the core.
+        var core = AgentKit.RunPolicyVersioning.Compute(maxTurns, attemptTimeout, continuationPolicyKey);
         ArgumentNullException.ThrowIfNull(options);
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        AppendInt64(hash, maxTurns);
-        AppendInt64(hash, attemptTimeout.Ticks);
-        AppendText(hash, continuationPolicyKey.Value);
+        AppendInt64(hash, core.Value);
         AppendInt64(hash, options.HistoryReadPageSize);
         AppendInt64(hash, options.AppendConflictRetryLimit);
         AppendInt64(hash, options.DisableToolsOnFinalTurn ? 1 : 0);

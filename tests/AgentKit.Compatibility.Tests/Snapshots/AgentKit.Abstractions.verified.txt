@@ -6602,6 +6602,10 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public static class RunPolicyVersioning
+    {
+        public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey) { }
+    }
     public sealed class RunSettlementCompleted : AgentKit.RunSettlementOutcome, System.IEquatable<AgentKit.RunSettlementCompleted>
     {
         public RunSettlementCompleted() { }
