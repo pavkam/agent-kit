@@ -238,6 +238,29 @@ public sealed class WebFetchToolTests
         result.Outcome.FailureReason!.ShouldContain("redirect boundary");
     }
 
+    [Fact]
+    public async Task InvokeAsync_WhenRedirectTargetsAnUnsupportedScheme_RejectsInsteadOfAdoptingItVerbatim()
+    {
+        // TryDestination rejects non-http(s) schemes, userinfo, and fragments for the initial URL, but
+        // NetworkDestination itself accepts any non-blank scheme. A redirect destination is built by the
+        // transport, not through TryDestination, so a Location: ftp://... (or file://...) redirect must not be
+        // re-authorized and re-resolved without the same tool-level policy that gated the first hop.
+        var fixture = new Fixture();
+        fixture.Resolver.Script(fixture.Origin, new NetworkResolved([Address()]));
+        var redirected = new NetworkDestination("ftp", new NormalizedHost("other.test"), 21, new NetworkRoute("/final"));
+        fixture.Transport.Script(fixture.Origin, new NetworkRedirectReceived(redirected, crossOrigin: true));
+
+        var result = await fixture.Tool.InvokeAsync(
+            Request(/*lang=json,strict*/ """{"url":"https://example.test/"}"""),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Unsupported);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.PartiallyPerformed);
+        result.Outcome.FailureReason!.ShouldContain("scheme");
+        _ = fixture.Resolver.Traces.ShouldHaveSingleItem();
+    }
+
     [Theory]
     [InlineData(NetworkFailureKind.Timeout, ToolTerminalStatus.TimedOut, ToolCallOutcomeKind.Failed)]
     [InlineData(NetworkFailureKind.Cancelled, ToolTerminalStatus.Cancelled, ToolCallOutcomeKind.Cancelled)]

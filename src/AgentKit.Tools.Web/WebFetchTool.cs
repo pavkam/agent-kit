@@ -172,6 +172,20 @@ public sealed class WebFetchTool: ITool
                     return Failure("The web fetch exceeded its redirect boundary.", "RedirectLimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.PartiallyPerformed);
                 }
 
+                // TryDestination gates the initial URL to non-blank absolute HTTP(S), but NetworkDestination
+                // itself accepts any non-blank scheme; a redirect destination is built by the transport, not
+                // through TryDestination, so a Location header naming a different scheme (e.g. "ftp://" or
+                // "file://") would otherwise be adopted verbatim and re-authorized instead of being rejected by
+                // the same tool-level policy that gated hop zero.
+                if (redirect.Destination.Scheme is not ("http" or "https"))
+                {
+                    return Failure(
+                        "The redirect target uses an unsupported URL scheme.",
+                        "UnsupportedRedirectScheme",
+                        ToolTerminalStatus.Unsupported,
+                        SideEffectCertainty.PartiallyPerformed);
+                }
+
                 redirects.Add(SafeDisplayUrl(destination));
                 destination = redirect.Destination;
                 continue;

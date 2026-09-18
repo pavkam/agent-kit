@@ -1587,6 +1587,7 @@ if (send is NetworkRedirectReceived redirect)
   no-downgrade rule) to `redirect.Destination` before continuing, failing with
   `Unsupported`/`PartiallyPerformed` otherwise.
 - **Confidence:** Medium
+- **Status:** Fixed ✅
 
 ### T07 — Character truncation can split a surrogate pair, emitting a lone surrogate
 
