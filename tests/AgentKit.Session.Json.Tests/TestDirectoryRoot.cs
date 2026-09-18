@@ -12,13 +12,23 @@ namespace AgentKit.Session.Json.Tests;
 internal sealed class TestDirectoryRoot: IDisposable
 {
     private readonly string _path = TestTemporaryDirectory.Create();
-    private readonly JsonSessionDirectoryInstanceId _instanceId = new(Guid.NewGuid());
+
+    /// <summary>Gets the fully qualified directory root this instance owns.</summary>
+    internal string DirectoryPath => Path.Combine(_path, "directory");
+
+    /// <summary>Gets the fixed persistent directory identity every open of this root must present.</summary>
+    internal JsonSessionDirectoryInstanceId InstanceId { get; } = new(Guid.NewGuid());
 
     /// <summary>Composes one directory bound to this root without initializing it.</summary>
     /// <param name="auditDispatcher">The required audit dispatcher.</param>
     /// <param name="grantStore">The authoritative grant store that validates and consumes each directory grant.</param>
     /// <param name="auditRecordIds">The deterministic audit-record identity source.</param>
     /// <param name="timeProvider">The controllable clock used for audit timestamps.</param>
+    /// <param name="settings">The settings to bind; defaults to <see cref="JsonSessionDirectorySettings.CreateDefault"/>.</param>
+    /// <param name="openMode">Whether the root may be created.</param>
+    /// <param name="recoveryMode">Whether a torn trailing append may be discarded.</param>
+    /// <param name="instanceId">Overrides the expected persistent identity; defaults to <see cref="InstanceId"/>.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <returns>A new directory the caller owns and must dispose before opening another over this root.</returns>
     /// <exception cref="ArgumentNullException">A collaborator is null.</exception>
     /// <remarks>
@@ -29,7 +39,12 @@ internal sealed class TestDirectoryRoot: IDisposable
         ISecurityAuditDispatcher auditDispatcher,
         ISecurityGrantStore grantStore,
         IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        JsonSessionDirectorySettings? settings = null,
+        JsonStoreOpenMode openMode = JsonStoreOpenMode.CreateIfMissing,
+        JsonStoreRecoveryMode recoveryMode = JsonStoreRecoveryMode.RecoverTornAppends,
+        JsonSessionDirectoryInstanceId? instanceId = null,
+        Microsoft.Extensions.Logging.ILogger<JsonSessionDirectory>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(auditDispatcher);
         ArgumentNullException.ThrowIfNull(grantStore);
@@ -41,12 +56,9 @@ internal sealed class TestDirectoryRoot: IDisposable
             grantStore,
             auditRecordIds,
             timeProvider,
-            new JsonSessionDirectoryTarget(
-                Path.Combine(_path, "directory"),
-                _instanceId,
-                JsonStoreOpenMode.CreateIfMissing,
-                JsonStoreRecoveryMode.RecoverTornAppends),
-            JsonSessionDirectorySettings.CreateDefault());
+            new JsonSessionDirectoryTarget(DirectoryPath, instanceId ?? InstanceId, openMode, recoveryMode),
+            settings ?? JsonSessionDirectorySettings.CreateDefault(),
+            logger);
     }
 
     /// <summary>Removes the temporary root and everything the case wrote into it.</summary>
