@@ -56,6 +56,24 @@ public sealed class AgentRunOutputPublisherTests
     }
 
     [Fact]
+    public async Task AgentRunOutputPublisher_IsAssignableToISubscribableOutputPublisher()
+    {
+        await using var publisher = Publisher();
+        _ = publisher.ShouldBeAssignableTo<ISubscribableOutputPublisher>();
+    }
+
+    [Fact]
+    public async Task Subscribe_WhenCalledThroughTheNarrowedInterface_BehavesIdenticallyToTheConcreteType()
+    {
+        await using var publisher = Publisher();
+        await using var stream = ((ISubscribableOutputPublisher) publisher).Subscribe<string>();
+
+        stream.AgentId.ShouldBe(Agent);
+        stream.SessionId.ShouldBe(Session);
+        stream.RunId.ShouldBe(Run);
+    }
+
+    [Fact]
     public async Task PublishAsync_WhenSequenceDoesNotAdvance_RejectsWithoutDeliveringTheEvent()
     {
         await using var publisher = Publisher();

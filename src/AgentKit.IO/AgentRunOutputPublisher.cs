@@ -9,7 +9,7 @@ namespace AgentKit.IO;
 /// It deliberately owns no durable behavior: it reserves no durable sequence range, records no publication intent, delivers to no required external sink,
 /// and bounds no event payload bytes. It also never decides a semantic outcome; the envelope it exposes is already settled or already requires recovery.
 /// </remarks>
-public sealed class AgentRunOutputPublisher: IOutputPublisher, IAsyncDisposable
+public sealed class AgentRunOutputPublisher: ISubscribableOutputPublisher, IAsyncDisposable
 {
     private readonly Lock _gate = new();
     private readonly TaskCompletionSource<object> _completion =

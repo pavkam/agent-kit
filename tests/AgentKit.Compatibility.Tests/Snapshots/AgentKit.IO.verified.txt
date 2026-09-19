@@ -12,7 +12,7 @@ namespace AgentKit.IO
         public int MaximumPendingInputsPerLane { get; set; }
         public int MaximumSubscriptions { get; set; }
     }
-    public sealed class AgentRunOutputPublisher : AgentKit.IOutputPublisher, System.IAsyncDisposable
+    public sealed class AgentRunOutputPublisher : AgentKit.IOutputPublisher, AgentKit.ISubscribableOutputPublisher, System.IAsyncDisposable
     {
         public AgentRunOutputPublisher(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, System.TimeProvider timeProvider, AgentKit.IO.RunOutputPublisherOptions? options = null, Microsoft.Extensions.Logging.ILogger<AgentKit.IO.AgentRunOutputPublisher>? logger = null) { }
         public System.Threading.Tasks.ValueTask CompleteAsync<TOutput>(AgentKit.AgentRunFinished<TOutput> result, System.Threading.CancellationToken cancellationToken = default) { }

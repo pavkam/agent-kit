@@ -366,6 +366,11 @@ public interface IOutputPublisher
         CancellationToken cancellationToken = default);
 }
 
+public interface ISubscribableOutputPublisher : IOutputPublisher
+{
+    IAgentRunStream<TOutput> Subscribe<TOutput>();
+}
+
 public interface IAgentRunStream<TOutput> : IAsyncDisposable
 {
     AgentId AgentId { get; }
@@ -568,6 +573,26 @@ admission and history cannot diverge. `RunEventHub` is an internal bounded
 fan-out mechanism, not a second public event system or a base class for channel
 adapters. Direct implementations of `IInputCoordinator` and `IOutputPublisher`
 remain supported.
+
+`ISubscribableOutputPublisher` is a narrower, optional capability, not a
+widening of `IOutputPublisher` itself: publishing events and exposing the final
+envelope are universal requirements for every run, while a local, in-process
+live subscription is not — a purely durable or forwarding publisher (for
+example, one that only appends to an external queue for a remote reader) has no
+in-process hub to subscribe to and legitimately implements `IOutputPublisher`
+alone. `AgentKit`'s facade selects the DI-resolved `IOutputPublisher` and
+pattern-matches it against `ISubscribableOutputPublisher` only when a caller
+requests `Agent.StreamAsync<TOutput>`; a configured publisher that does not
+implement it makes streaming a composition-time unsupported capability for that
+agent, never a silent fallback to polling or to a fabricated empty stream.
+`AgentRunOutputPublisher` (`AgentKit.IO`) is the first-party implementation: it
+owns one run's `RunEventHub` directly and exposes `Subscribe<TOutput>()` over
+the same completion source `CompleteAsync` resolves, so a stream obtained
+before, during, or immediately after settlement observes the same final
+envelope. `DefaultOutputPublisher`, which fans events out to registered sinks
+and durable delivery, does not implement `ISubscribableOutputPublisher` today;
+an agent selecting it for its output publisher key can still use
+`RunAsync<TOutput>`, just not `StreamAsync<TOutput>`.
 
 The input coordinator and output publisher are run-scoped. The hub and mutable
 subscription state are run-scoped. Stateless, thread-safe promotion and
