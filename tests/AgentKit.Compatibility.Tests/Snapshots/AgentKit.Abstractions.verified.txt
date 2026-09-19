@@ -4613,6 +4613,7 @@ namespace AgentKit
         IdentityMismatch = 2,
         AddressNotFound = 3,
         StaleVersion = 4,
+        NoEligibleInput = 5,
     }
     public sealed class InvalidAgentDefinition : AgentKit.AgentDefinitionResolution, System.IEquatable<AgentKit.InvalidAgentDefinition>
     {
@@ -7718,10 +7719,12 @@ namespace AgentKit
     public abstract class SessionPageResult : System.IEquatable<AgentKit.SessionPageResult> { }
     public sealed class SessionPendingInputsLoaded : AgentKit.SessionPendingInputsResult, System.IEquatable<AgentKit.SessionPendingInputsLoaded>
     {
-        public SessionPendingInputsLoaded(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ExecutionLaneId executionLaneId, System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> pending) { }
+        public SessionPendingInputsLoaded(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ExecutionLaneId executionLaneId, System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> pending, AgentKit.SessionLaneRevision revision, AgentKit.SessionBranchCursor branchCursor) { }
         public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SessionBranchCursor BranchCursor { get; }
         public AgentKit.ExecutionLaneId ExecutionLaneId { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> Pending { get; }
+        public AgentKit.SessionLaneRevision Revision { get; }
         public AgentKit.SessionId SessionId { get; }
     }
     public sealed class SessionPendingInputsRequest : System.IEquatable<AgentKit.SessionPendingInputsRequest>

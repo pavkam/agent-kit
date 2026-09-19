@@ -16,4 +16,6 @@ public enum InputRejectionKind
     AddressNotFound,
     /// <summary>Optional optimistic concurrency evidence is stale.</summary>
     StaleVersion,
+    /// <summary>No durably admitted input is eligible for the requested promotion boundary.</summary>
+    NoEligibleInput,
 }

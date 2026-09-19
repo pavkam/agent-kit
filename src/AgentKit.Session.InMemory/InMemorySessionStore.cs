@@ -987,8 +987,8 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 .Select(static stored => stored.Input)
                 .OrderBy(static input => input.AdmittedSequence.Value)
                 .ToImmutableArray();
-            return ValueTask.FromResult<SessionPendingInputsResult>(
-                new SessionPendingInputsLoaded(request.Context.AgentId, request.Context.SessionId, laneId, pending));
+            return ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsLoaded(
+                request.Context.AgentId, request.Context.SessionId, laneId, pending, lane.Revision, lane.BranchCursor));
         }
     }
 

@@ -908,7 +908,7 @@ public sealed partial class JsonSessionStore: ISessionStore, IDisposable
             }
 
             var laneId = request.Context.ExecutionLaneId!.Value;
-            if (!record.Lanes.TryGetValue(laneId, out _))
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
             {
                 return new SessionPendingInputsUnavailable("The execution lane has not been provisioned.");
             }
@@ -918,7 +918,8 @@ public sealed partial class JsonSessionStore: ISessionStore, IDisposable
                 .Select(static stored => stored.Input)
                 .OrderBy(static input => input.AdmittedSequence.Value)
                 .ToImmutableArray();
-            return new SessionPendingInputsLoaded(request.Context.AgentId, request.Context.SessionId, laneId, pending);
+            return new SessionPendingInputsLoaded(
+                request.Context.AgentId, request.Context.SessionId, laneId, pending, lane.Revision, lane.BranchCursor);
         }
     }
 

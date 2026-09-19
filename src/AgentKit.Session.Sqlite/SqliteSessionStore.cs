@@ -909,7 +909,8 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         }
 
         var pending = await uow.ListPendingAdmissionsByLaneAsync(address, laneId, cancellationToken).ConfigureAwait(false);
-        return new SessionPendingInputsLoaded(request.Context.AgentId, request.Context.SessionId, laneId, pending);
+        return new SessionPendingInputsLoaded(
+            request.Context.AgentId, request.Context.SessionId, laneId, pending, lane.Revision, lane.BranchCursor);
     }
 
     /// <summary>Atomically promotes a durably admitted selection into an already-accepted run's current turn, or reconciles a repeated identical promotion.</summary>
