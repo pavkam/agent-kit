@@ -17,7 +17,7 @@ Owning document:
 
 ## Progress
 
-- [ ] WS18-C1 `AgentComponentSelection` and `AgentOptionalCapabilitySelection`
+- [x] WS18-C1 `AgentComponentSelection` and `AgentOptionalCapabilitySelection`
 - [ ] WS18-C2 `InstructionSource` (if not landed by WS9-C4)
 - [ ] WS18-C3 init-only
       `Components`/`OptionalCapabilities`/`HookProfile`/`Toolsets`
@@ -100,6 +100,24 @@ Readers: `AgentLoopRunRequest.cs:143-160`, `AgentEngine.cs:275,477,721-724`,
   types existing, or use forward-declared keys. Risk: ADDITIVE. Size: S.
 - Deliverables: two records per `composition-and-configuration.md:148-165` with
   validating constructors; tests; snapshot.
+- **Landed**: pulled forward as a WS1-C9 prerequisite — `AgentRunPlan`
+  (`composition-and-configuration.md:513-522`) has an
+  `AgentOptionalCapabilitySelection OptionalCapabilities` field, and by the time
+  WS1-C9 needed to compile that plan, both of C1's own listed dependencies
+  (`IModelRequestExecutor`, `IToolExecutor`) already existed from WS7/WS4 work
+  landed by a concurrent session, so no forward-declaration was needed.
+  `src/AgentKit.Abstractions/Composition/AgentComponentSelection.cs` and
+  `AgentOptionalCapabilitySelection.cs`, both matching the spec shape exactly.
+  `AgentOptionalCapabilitySelection` gained one addition beyond the spec: a
+  shared `None` singleton (every field absent/empty) for the common case of an
+  agent with no optional capabilities, used by `DefaultAgentRunPlanCompiler`.
+  Neither record is wired into `AgentDefinition` yet — that remains C3's job
+  (`Components`/ `OptionalCapabilities` as real properties, migrating off the
+  interim `LoopKey`/`InputCoordinatorKey`/`OutputPublisherKey` flat properties).
+  `DefaultAgentRunPlanCompiler` (WS1-C9) builds an `AgentComponentSelection` and
+  `AgentOptionalCapabilitySelection` freshly from the definition's existing flat
+  properties and defaults rather than reading them from the definition directly,
+  so this landing does not depend on or block C3. Snapshot: Abstractions.
 
 ### WS18-C2: `InstructionSource`
 

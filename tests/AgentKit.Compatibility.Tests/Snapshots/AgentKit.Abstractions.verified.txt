@@ -110,6 +110,19 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class AgentComponentSelection : System.IEquatable<AgentKit.AgentComponentSelection>
+    {
+        public AgentComponentSelection(AgentKit.ComponentKey<AgentKit.IAgentLoop> loop, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicy, AgentKit.ComponentKey<AgentKit.IInputCoordinator> input, AgentKit.ComponentKey<AgentKit.IOutputPublisher> output, AgentKit.ComponentKey<AgentKit.IOutputProcessor> outputProcessor, AgentKit.ComponentKey<AgentKit.IContextAssembler> context, AgentKit.ComponentKey<AgentKit.IModelSelector> modelSelector, AgentKit.ComponentKey<AgentKit.IModelRequestExecutor> modelExecutor, AgentKit.BudgetProfileKey budgetProfile) { }
+        public AgentKit.BudgetProfileKey BudgetProfile { get; }
+        public AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> ContinuationPolicy { get; }
+        public AgentKit.ComponentKey<AgentKit.IContextAssembler> Context { get; }
+        public AgentKit.ComponentKey<AgentKit.IInputCoordinator> Input { get; }
+        public AgentKit.ComponentKey<AgentKit.IAgentLoop> Loop { get; }
+        public AgentKit.ComponentKey<AgentKit.IModelRequestExecutor> ModelExecutor { get; }
+        public AgentKit.ComponentKey<AgentKit.IModelSelector> ModelSelector { get; }
+        public AgentKit.ComponentKey<AgentKit.IOutputPublisher> Output { get; }
+        public AgentKit.ComponentKey<AgentKit.IOutputProcessor> OutputProcessor { get; }
+    }
     public sealed class AgentDefinition : System.IEquatable<AgentKit.AgentDefinition>
     {
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
@@ -359,6 +372,19 @@ namespace AgentKit
         public AgentKit.MessageState State { get; init; }
         public AgentKit.TurnId? TurnId { get; init; }
         public virtual bool Equals(AgentKit.AgentMessage? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class AgentOptionalCapabilitySelection : System.IEquatable<AgentKit.AgentOptionalCapabilitySelection>
+    {
+        public AgentOptionalCapabilitySelection(AgentKit.ComponentKey<AgentKit.IToolExecutor>? toolExecutor, AgentKit.ComponentKey<AgentKit.IArtifactCoordinator>? artifactCoordinator, AgentKit.DurabilityProfileKey? durabilityProfile, AgentKit.MemoryProfileKey? memoryProfile, AgentKit.GoalProfileKey? goalProfile, System.Collections.Immutable.ImmutableArray<AgentKit.AgentCapabilityReference> capabilities) { }
+        public AgentKit.ComponentKey<AgentKit.IArtifactCoordinator>? ArtifactCoordinator { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentCapabilityReference> Capabilities { get; }
+        public AgentKit.DurabilityProfileKey? DurabilityProfile { get; }
+        public AgentKit.GoalProfileKey? GoalProfile { get; }
+        public AgentKit.MemoryProfileKey? MemoryProfile { get; }
+        public static AgentKit.AgentOptionalCapabilitySelection None { get; }
+        public AgentKit.ComponentKey<AgentKit.IToolExecutor>? ToolExecutor { get; }
+        public bool Equals(AgentKit.AgentOptionalCapabilitySelection? other) { }
         public override int GetHashCode() { }
     }
     public abstract class AgentRunEvent : System.IEquatable<AgentKit.AgentRunEvent> { }
