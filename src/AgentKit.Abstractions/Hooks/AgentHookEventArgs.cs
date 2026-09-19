@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>
-/// The immutable, read-only causality and dispatch identity shared by every
+/// The immutable, read-only point, dispatch, causality, and timing identity shared by every
 /// boundary-specific hook event-argument type, regardless of whether that
 /// boundary's stage has resolved an agent yet.
 /// </summary>
@@ -25,6 +25,13 @@ namespace AgentKit;
 /// was designed to expose.
 /// </para>
 /// <para>
+/// One instance is shared across every hook invoked for one
+/// <see cref="DispatchId"/>, so it cannot truthfully expose a single
+/// registration's individual execution identity. The dispatcher builds a
+/// separate immutable <see cref="HookInvocationContext"/> for each hook it
+/// invokes and supplies that alongside this shared instance.
+/// </para>
+/// <para>
 /// This type carries no mutable state of its own and is safe to share
 /// across threads without synchronization; a derived type's own writable
 /// properties are mutated in place by hooks running sequentially under a
@@ -34,21 +41,24 @@ namespace AgentKit;
 public abstract class AgentHookEventArgs: EventArgs
 {
     /// <summary>Initializes a new instance of the <see cref="AgentHookEventArgs"/> class.</summary>
-    /// <param name="correlation">The causal operation this hook invocation occurred within.</param>
-    /// <param name="timestamp">The time this dispatch began, from the injected <see cref="TimeProvider"/>.</param>
-    /// <param name="invocationId">The stable identity of this specific dispatch.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="correlation"/> is null.</exception>
-    protected AgentHookEventArgs(
-        OperationCorrelation correlation,
-        DateTimeOffset timestamp,
-        HookInvocationId invocationId)
+    /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="dispatch"/> is null.</exception>
+    protected AgentHookEventArgs(HookDispatchMetadata dispatch)
     {
-        ArgumentNullException.ThrowIfNull(correlation);
+        ArgumentNullException.ThrowIfNull(dispatch);
 
-        Correlation = correlation;
-        Timestamp = timestamp;
-        InvocationId = invocationId;
+        Point = dispatch.Point;
+        DispatchId = dispatch.DispatchId;
+        Correlation = dispatch.Correlation;
+        Timestamp = dispatch.Timestamp;
+        Deadline = dispatch.Deadline;
     }
+
+    /// <summary>Gets the hook point this dispatch targets.</summary>
+    public HookPointId Point { get; }
+
+    /// <summary>Gets the stable identity of this dispatch, shared by every hook invoked for it.</summary>
+    public HookDispatchId DispatchId { get; }
 
     /// <summary>Gets the causal operation this hook invocation occurred within.</summary>
     public OperationCorrelation Correlation { get; }
@@ -56,8 +66,9 @@ public abstract class AgentHookEventArgs: EventArgs
     /// <summary>Gets the time this dispatch began, from the injected <see cref="TimeProvider"/>.</summary>
     public DateTimeOffset Timestamp { get; }
 
-    /// <summary>Gets the stable identity of this specific dispatch.</summary>
-    public HookInvocationId InvocationId { get; }
+    /// <summary>Gets the latest time by which this dispatch's hooks are expected to have quiesced.</summary>
+    /// <value>Clamped by the kernel to at most the host's configured default hook timeout past <see cref="Timestamp"/>.</value>
+    public DateTimeOffset Deadline { get; }
 
     /// <summary>
     /// Validates the current state of this instance's writable properties,

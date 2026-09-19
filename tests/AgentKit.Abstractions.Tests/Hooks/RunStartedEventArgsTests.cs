@@ -11,11 +11,11 @@ public sealed class RunStartedEventArgsTests
     [Fact]
     public void Constructor_WhenArgumentsAreValid_ExposesRunIdentitiesAndBounds()
     {
-        var invocation = new HookInvocationId(Guid.NewGuid());
+        var dispatch = HookPointEventArgsTestData.RunDispatch(AgentHookPoints.RunStarted);
 
         var args = new RunStartedEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, invocation, _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30));
+            dispatch, HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId,
+            _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30));
 
         args.RunId.ShouldBe(HookPointEventArgsTestData.RunCorrelation.RunId);
         args.BranchId.ShouldBe(_branch);
@@ -23,22 +23,38 @@ public sealed class RunStartedEventArgsTests
         args.MaxTurns.ShouldBe(4);
         args.AttemptTimeout.ShouldBe(TimeSpan.FromSeconds(30));
         args.SessionId.ShouldBe(HookPointEventArgsTestData.SessionId);
-        args.InvocationId.ShouldBe(invocation);
+        args.Point.ShouldBe(AgentHookPoints.RunStarted);
+        args.DispatchId.ShouldBe(dispatch.DispatchId);
+        args.Deadline.ShouldBe(dispatch.Deadline);
         args.CaptureMutableState().ShouldBeNull();
     }
 
     [Fact]
+    public void Constructor_WhenDispatchIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new RunStartedEventArgs(
+            null!, HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId,
+            _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30)))
+            .ParamName.ShouldBe("dispatch");
+
+    [Fact]
+    public void Constructor_WhenDispatchCorrelationIsNotInRun_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => new RunStartedEventArgs(
+            HookPointEventArgsTestData.OutOfRunDispatch(AgentHookPoints.RunStarted), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30)))
+            .ParamName.ShouldBe("dispatch");
+
+    [Fact]
     public void Constructor_WhenBranchIsDefault_ThrowsArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => new RunStartedEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), default, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30)))
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.RunStarted), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, default, HookPointEventArgsTestData.Model, 4, TimeSpan.FromSeconds(30)))
             .ParamName.ShouldBe("branchId");
 
     [Fact]
     public void Constructor_WhenModelIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new RunStartedEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), _branch, null!, 4, TimeSpan.FromSeconds(30)))
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.RunStarted), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, _branch, null!, 4, TimeSpan.FromSeconds(30)))
             .ParamName.ShouldBe("model");
 
     [Theory]
@@ -46,15 +62,15 @@ public sealed class RunStartedEventArgsTests
     [InlineData(-1)]
     public void Constructor_WhenMaxTurnsIsNotPositive_ThrowsArgumentOutOfRangeException(int maxTurns) =>
         Should.Throw<ArgumentOutOfRangeException>(() => new RunStartedEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), _branch, HookPointEventArgsTestData.Model, maxTurns, TimeSpan.FromSeconds(30)))
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.RunStarted), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, _branch, HookPointEventArgsTestData.Model, maxTurns, TimeSpan.FromSeconds(30)))
             .ParamName.ShouldBe("maxTurns");
 
     [Fact]
     public void Constructor_WhenAttemptTimeoutIsNotPositive_ThrowsArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => new RunStartedEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.Zero))
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.RunStarted), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, _branch, HookPointEventArgsTestData.Model, 4, TimeSpan.Zero))
             .ParamName.ShouldBe("attemptTimeout");
 
     [Fact]

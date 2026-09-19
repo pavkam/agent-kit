@@ -23,26 +23,21 @@ using System.Text.Json;
 public sealed class BeforeToolInvocationEventArgs: AgentScopedHookEventArgs, IShortCircuitingHookArgs
 {
     /// <summary>Initializes the arguments.</summary>
+    /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
     /// <param name="agentId">The agent being run.</param>
     /// <param name="sessionId">The session the run appends to.</param>
-    /// <param name="correlation">The turn's in-run correlation, which names the turn.</param>
-    /// <param name="timestamp">When the dispatch began.</param>
-    /// <param name="invocationId">The dispatch's invocation identity.</param>
     /// <param name="call">The tool call part the model produced.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="correlation"/> or <paramref name="call"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="correlation"/> names no turn.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="dispatch"/> or <paramref name="call"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="dispatch"/>'s correlation names no turn.</exception>
     public BeforeToolInvocationEventArgs(
+        HookDispatchMetadata dispatch,
         AgentId agentId,
         SessionId sessionId,
-        InRunOperationCorrelation correlation,
-        DateTimeOffset timestamp,
-        HookInvocationId invocationId,
         ToolCallPart call)
-        : base(agentId, sessionId, correlation, timestamp, invocationId)
+        : base(dispatch, agentId, sessionId)
     {
-        ArgumentNullException.ThrowIfNull(correlation);
         ArgumentNullException.ThrowIfNull(call);
-        ArgumentException.ThrowIfNotEqual(correlation.TurnId.HasValue, true, nameof(correlation));
+        ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation { TurnId: not null }, true, nameof(dispatch));
         Call = call;
         Arguments = call.Arguments;
     }

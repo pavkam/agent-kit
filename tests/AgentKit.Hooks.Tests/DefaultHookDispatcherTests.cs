@@ -337,7 +337,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
 
@@ -362,7 +362,7 @@ public sealed class DefaultHookDispatcherTests
         };
         var args = new TestHookEventArgs { Payload = "original" };
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         observedByB.ShouldBe("original");
         args.Payload.ShouldBe("original");
@@ -387,7 +387,7 @@ public sealed class DefaultHookDispatcherTests
         };
         var args = new TestHookEventArgs();
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         // Either the marker is rolled back and b runs, or the dispatch honours the marker and b does not run; a set marker with b having run is incoherent.
         (args.IsShortCircuited && args.InvocationOrder.Contains(new HookId("b"))).ShouldBeFalse();
@@ -407,7 +407,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -431,7 +431,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
         args.RejectPayload.ShouldBeFalse();
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
@@ -457,7 +457,7 @@ public sealed class DefaultHookDispatcherTests
         };
         var args = new TestHookEventArgs();
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         args.RejectPayload.ShouldBeFalse();
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
@@ -681,7 +681,7 @@ public sealed class DefaultHookDispatcherTests
         };
         var args = new TestHookEventArgs();
 
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken));
 
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
@@ -689,7 +689,7 @@ public sealed class DefaultHookDispatcherTests
     [Fact]
     public async Task DispatchAsync_WhenCallerModeIsStricter_KeepsCallerMode()
     {
-        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.Isolate }));
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.IsolateAndDiagnose }));
         var hooks = new[]
         {
             new TestHook
@@ -709,7 +709,7 @@ public sealed class DefaultHookDispatcherTests
     [Fact]
     public async Task DispatchAsync_WhenHostMinimumMatchesCallerIsolation_StillIsolates()
     {
-        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.Isolate }));
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.IsolateAndDiagnose }));
         var hooks = new[]
         {
             new TestHook
@@ -721,7 +721,7 @@ public sealed class DefaultHookDispatcherTests
         };
         var args = new TestHookEventArgs();
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
@@ -738,7 +738,7 @@ public sealed class DefaultHookDispatcherTests
         var completed = logger.Snapshot().Single(static log => log.EventId.Id == 8000);
         completed.Level.ShouldBe(LogLevel.Debug);
         completed.State["HookPoint"].ShouldBe(_point);
-        completed.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        completed.State["HookDispatchId"].ShouldBe(args.DispatchId);
     }
 
     [Fact]
@@ -768,7 +768,7 @@ public sealed class DefaultHookDispatcherTests
         var cancelled = logger.Snapshot().Single(static log => log.EventId.Id == 8001);
         cancelled.Level.ShouldBe(LogLevel.Debug);
         cancelled.State["HookPoint"].ShouldBe(_point);
-        cancelled.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        cancelled.State["HookDispatchId"].ShouldBe(args.DispatchId);
     }
 
     [Fact]
@@ -792,7 +792,7 @@ public sealed class DefaultHookDispatcherTests
         var failed = logger.Snapshot().Single(static log => log.EventId.Id == 8002);
         failed.Level.ShouldBe(LogLevel.Error);
         failed.State["HookPoint"].ShouldBe(_point);
-        failed.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        failed.State["HookDispatchId"].ShouldBe(args.DispatchId);
         failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
     }
 
@@ -813,13 +813,13 @@ public sealed class DefaultHookDispatcherTests
             Hook("b"),
         };
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         var isolated = logger.Snapshot().Single(static log => log.EventId.Id == 8003);
         isolated.Level.ShouldBe(LogLevel.Warning);
         isolated.State["HookPoint"].ShouldBe(_point);
         isolated.State["HookId"].ShouldBe(new HookId("a"));
-        isolated.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        isolated.State["HookDispatchId"].ShouldBe(args.DispatchId);
         isolated.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
         foreach (var log in logger.Snapshot())
         {
@@ -846,7 +846,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b"),
         };
 
-        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         logger.EnumerableCounts.ShouldContain(5);
     }
@@ -899,15 +899,15 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.FailOperation }), logger);
         var args = new TestHookEventArgs { Payload = payload };
 
-        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         var logs = logger.Snapshot();
         var escalation = logs.Single(static log => log.EventId.Id == 8005);
         escalation.Level.ShouldBe(LogLevel.Debug);
         escalation.Category.ShouldBe(typeof(DefaultHookDispatcher).FullName);
         escalation.State["HookPoint"].ShouldBe(_point);
-        escalation.State["HookInvocationId"].ShouldBe(args.InvocationId);
-        escalation.State["RequestedFailureMode"].ShouldBe(HookFailureMode.Isolate);
+        escalation.State["HookDispatchId"].ShouldBe(args.DispatchId);
+        escalation.State["RequestedFailureMode"].ShouldBe(HookFailureMode.IsolateAndDiagnose);
         escalation.State["EffectiveFailureMode"].ShouldBe(HookFailureMode.FailOperation);
         foreach (var log in logs)
         {
@@ -930,7 +930,7 @@ public sealed class DefaultHookDispatcherTests
         var clamp = logs.Single(static log => log.EventId.Id == 8004);
         clamp.Level.ShouldBe(LogLevel.Debug);
         clamp.State["HookPoint"].ShouldBe(_point);
-        clamp.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        clamp.State["HookDispatchId"].ShouldBe(args.DispatchId);
         clamp.State["RequestedDepth"].ShouldBe(5);
         clamp.State["EffectiveDepth"].ShouldBe(2);
         foreach (var log in logs)
@@ -946,7 +946,7 @@ public sealed class DefaultHookDispatcherTests
         var logger = new RecordingLogger<DefaultHookDispatcher>();
         var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions()), logger);
 
-        await dispatcher.DispatchAsync(_point, [Hook("a")], new TestHookEventArgs(), Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        await dispatcher.DispatchAsync(_point, [Hook("a")], new TestHookEventArgs(), Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken);
 
         logger.Snapshot().Where(static log => log.EventId.Id is 8004 or 8005).ShouldBeEmpty();
     }
@@ -979,7 +979,7 @@ public sealed class DefaultHookDispatcherTests
         var activity = stopped.ShouldNotBeNull();
         activity.OperationName.ShouldBe(AgentKitActivityNames.HookDispatch);
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
-        activity.GetTagItem(AgentKitTagNames.HookInvocationId).ShouldBe(args.InvocationId.ToString());
+        activity.GetTagItem(AgentKitTagNames.HookDispatchId).ShouldBe(args.DispatchId.ToString());
         activity.GetTagItem(AgentKitTagNames.AgentId).ShouldBeNull();
         activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBeNull();
     }

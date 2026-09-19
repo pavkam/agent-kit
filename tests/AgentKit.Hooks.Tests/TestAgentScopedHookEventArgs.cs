@@ -12,11 +12,14 @@ internal sealed class TestAgentScopedHookEventArgs: AgentScopedHookEventArgs
 {
     public TestAgentScopedHookEventArgs(AgentId agentId, SessionId? sessionId)
         : base(
+            new HookDispatchMetadata(
+                new HookPointId("test.hook.point"),
+                new HookDispatchId(Guid.NewGuid()),
+                new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch + TimeSpan.FromMinutes(1)),
             agentId,
-            sessionId,
-            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
-            DateTimeOffset.UnixEpoch,
-            new HookInvocationId(Guid.NewGuid()))
+            sessionId)
     {
     }
 }

@@ -47,8 +47,7 @@ internal static class HookKernelTestData
             ValueTask.CompletedTask;
     }
 
-    public sealed class TestEventArgs(OperationCorrelation correlation, DateTimeOffset timestamp, HookInvocationId invocationId)
-        : AgentHookEventArgs(correlation, timestamp, invocationId);
+    public sealed class TestEventArgs(HookDispatchMetadata dispatch): AgentHookEventArgs(dispatch);
 
     public sealed class TestValidator: IHookMutationValidator<TestEventArgs>
     {

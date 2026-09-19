@@ -14,9 +14,9 @@ Owning documents: [Extensions](../architecture/extensions.md),
 
 ## Progress
 
-- [ ] WS2-C1 identity and vocabulary types
-- [ ] WS2-C2 kernel contract records and interfaces
-- [ ] WS2-C3 event-args reshape to `HookDispatchMetadata`
+- [x] WS2-C1 identity and vocabulary types
+- [x] WS2-C2 kernel contract records and interfaces
+- [x] WS2-C3 event-args reshape to `HookDispatchMetadata`
 - [ ] WS2-C4a order resolver and invocation tracker
 - [ ] WS2-C4b registration catalog, instance factory, profile selector
 - [ ] WS2-C5 new `DispatchAsync` overload and conformance suite

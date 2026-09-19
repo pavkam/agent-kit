@@ -148,8 +148,14 @@ public static class AgentKitTagNames
     /// <summary>Gets the stable hook-point identity attribute.</summary>
     public const string HookPoint = "agentkit.hook.point";
 
-    /// <summary>Gets the stable hook-invocation identity attribute.</summary>
+    /// <summary>Gets the stable hook-invocation identity attribute: one registration's individual execution within a dispatch.</summary>
     public const string HookInvocationId = "agentkit.hook.invocation.id";
+
+    /// <summary>Gets the stable hook-dispatch identity attribute: one emission of one hook point, shared by every hook invoked for it.</summary>
+    public const string HookDispatchId = "agentkit.hook.dispatch.id";
+
+    /// <summary>Gets the stable hook-registration identity attribute: one configured hook registration within a profile.</summary>
+    public const string HookRegistrationId = "agentkit.hook.registration.id";
 
     /// <summary>Gets the logical compaction identity attribute.</summary>
     public const string CompactionId = "agentkit.compaction.id";

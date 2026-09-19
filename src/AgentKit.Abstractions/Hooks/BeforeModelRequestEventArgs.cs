@@ -22,30 +22,25 @@ namespace AgentKit;
 public sealed class BeforeModelRequestEventArgs: AgentScopedHookEventArgs
 {
     /// <summary>Initializes the arguments.</summary>
+    /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
     /// <param name="agentId">The agent being run.</param>
     /// <param name="sessionId">The session the run appends to.</param>
-    /// <param name="correlation">The turn's in-run correlation, which names the turn.</param>
-    /// <param name="timestamp">When the dispatch began.</param>
-    /// <param name="invocationId">The dispatch's invocation identity.</param>
     /// <param name="turn">The one-based turn number within the run.</param>
     /// <param name="request">The assembled request context.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="correlation"/> or <paramref name="request"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="dispatch"/> or <paramref name="request"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="turn"/> is not positive.</exception>
-    /// <exception cref="ArgumentException"><paramref name="correlation"/> names no turn.</exception>
+    /// <exception cref="ArgumentException"><paramref name="dispatch"/>'s correlation names no turn.</exception>
     public BeforeModelRequestEventArgs(
+        HookDispatchMetadata dispatch,
         AgentId agentId,
         SessionId sessionId,
-        InRunOperationCorrelation correlation,
-        DateTimeOffset timestamp,
-        HookInvocationId invocationId,
         int turn,
         LlmRequestContext request)
-        : base(agentId, sessionId, correlation, timestamp, invocationId)
+        : base(dispatch, agentId, sessionId)
     {
-        ArgumentNullException.ThrowIfNull(correlation);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(turn);
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNotEqual(correlation.TurnId.HasValue, true, nameof(correlation));
+        ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation { TurnId: not null }, true, nameof(dispatch));
         Turn = turn;
         Request = request;
         OriginalSettings = request.Settings;

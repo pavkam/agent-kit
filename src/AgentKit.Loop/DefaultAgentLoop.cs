@@ -70,7 +70,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly ImmutableArray<IRunStartedHook> _runStartedHooks;
     private readonly ImmutableArray<IBeforeModelRequestHook> _beforeModelRequestHooks;
     private readonly ImmutableArray<IBeforeToolInvocationHook> _beforeToolInvocationHooks;
-    private readonly IIdentifierGenerator<HookInvocationId> _hookInvocationIds;
+    private readonly IIdentifierGenerator<HookDispatchId> _hookDispatchIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
@@ -115,6 +115,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>The longest single backoff between settlement retries.</summary>
     private static readonly TimeSpan _settlementRetryMaxDelay = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// The interim per-dispatch hook deadline window until <c>AgentHookOptions.DefaultHookTimeout</c> lands and the
+    /// kernel enforces it directly (WS2-C12); <see cref="HookDispatchMetadata"/> requires a deadline after its
+    /// timestamp, so the loop supplies this generous bound rather than fabricating an unenforced one.
+    /// </summary>
+    private static readonly TimeSpan _hookDispatchTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
@@ -146,7 +153,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="runStartedHooks">The registered <see cref="IRunStartedHook"/> implementations, or <see langword="null"/> for none.</param>
     /// <param name="beforeModelRequestHooks">The registered <see cref="IBeforeModelRequestHook"/> implementations, or <see langword="null"/> for none.</param>
     /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
-    /// <param name="hookInvocationIds">The generator for hook invocation identities, or <see langword="null"/> for a GUID generator.</param>
+    /// <param name="hookDispatchIds">The generator for hook dispatch identities, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="usageEntryIds">The generator for usage-accounting entry identities, or <see langword="null"/> for a GUID generator.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
@@ -176,7 +183,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
-        IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null,
+        IIdentifierGenerator<HookDispatchId>? hookDispatchIds = null,
         IIdentifierGenerator<CompactionId>? compactionIds = null,
         IIdentifierGenerator<UsageEntryId>? usageEntryIds = null)
     {
@@ -229,7 +236,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         _hookDispatcher = hookDispatcher;
-        _hookInvocationIds = hookInvocationIds ?? new GuidIdentifierGenerator<HookInvocationId>(static value => new HookInvocationId(value));
+        _hookDispatchIds = hookDispatchIds ?? new GuidIdentifierGenerator<HookDispatchId>(static value => new HookDispatchId(value));
+    }
+
+    /// <summary>Builds the shared point, dispatch, causality, and timing facts for one hook dispatch.</summary>
+    /// <param name="point">The hook point about to be dispatched.</param>
+    /// <param name="correlation">The causal operation this dispatch occurs within.</param>
+    /// <returns>The immutable metadata every event-argument type and the dispatcher itself observe for this dispatch.</returns>
+    private HookDispatchMetadata CreateHookDispatch(HookPointId point, OperationCorrelation correlation)
+    {
+        var timestamp = _timeProvider.GetUtcNow();
+        return new HookDispatchMetadata(point, _hookDispatchIds.Create(), correlation, timestamp, timestamp + _hookDispatchTimeout);
     }
 
     /// <inheritdoc/>
@@ -520,11 +537,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 AgentHookPoints.RunStarted,
                 _runStartedHooks,
                 new RunStartedEventArgs(
-                    request.AgentId, request.SessionId, runCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(),
+                    CreateHookDispatch(AgentHookPoints.RunStarted, runCorrelation), request.AgentId, request.SessionId,
                     request.BranchId, model, request.MaxTurns, request.AttemptTimeout),
                 static (hook, args, _, token) => hook.OnRunStartedAsync(args, token).AsTask(),
                 HookDispatchScope.Root,
-                HookFailureMode.Isolate,
+                HookFailureMode.IsolateAndDiagnose,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
@@ -818,7 +835,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (_hookDispatcher is not null && !_beforeModelRequestHooks.IsEmpty)
         {
             var hookArgs = new BeforeModelRequestEventArgs(
-                request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), turn, context);
+                CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation), request.AgentId, request.SessionId, turn, context);
             try
             {
                 await _hookDispatcher.DispatchAsync(
@@ -1710,7 +1727,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 if (_hookDispatcher is not null && !_beforeToolInvocationHooks.IsEmpty)
                 {
                     var hookArgs = new BeforeToolInvocationEventArgs(
-                        request.AgentId, request.SessionId, turnCorrelation, _timeProvider.GetUtcNow(), _hookInvocationIds.Create(), toolCall);
+                        CreateHookDispatch(AgentHookPoints.BeforeToolInvocation, turnCorrelation), request.AgentId, request.SessionId, toolCall);
                     await _hookDispatcher.DispatchAsync(
                         AgentHookPoints.BeforeToolInvocation,
                         _beforeToolInvocationHooks,

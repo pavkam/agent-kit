@@ -42,16 +42,16 @@ public sealed class AgentHookOptions
     /// Gets or sets the least strict <see cref="HookFailureMode"/> the host permits for any dispatch.
     /// </summary>
     /// <value>
-    /// A defined <see cref="HookFailureMode"/>. The default of <see cref="HookFailureMode.Isolate"/> is the least
+    /// A defined <see cref="HookFailureMode"/>. The default of <see cref="HookFailureMode.IsolateAndDiagnose"/> is the least
     /// strict mode, so it leaves every caller's requested mode unchanged.
     /// </value>
     /// <remarks>
-    /// Failure modes form the strictness order <see cref="HookFailureMode.Isolate"/> &lt;
+    /// Failure modes form the strictness order <see cref="HookFailureMode.IsolateAndDiagnose"/> &lt;
     /// <see cref="HookFailureMode.FailOperation"/>. The effective mode for one dispatch is the stricter of the
     /// caller's <c>failureMode</c> argument and this value: setting <see cref="HookFailureMode.FailOperation"/> here
     /// escalates every isolating dispatch to fail the owning operation, while a caller that already requested
     /// <see cref="HookFailureMode.FailOperation"/> is never relaxed to isolation. Undefined values fail options
     /// validation and dispatcher construction.
     /// </remarks>
-    public HookFailureMode MinimumFailureMode { get; set; } = HookFailureMode.Isolate;
+    public HookFailureMode MinimumFailureMode { get; set; } = HookFailureMode.IsolateAndDiagnose;
 }

@@ -27,7 +27,7 @@ public sealed record HookPointDefinition<THook, TEventArgs>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="id"/> is default, <paramref name="kind"/> is not a defined value, or <paramref name="kind"/>
     /// is not <see cref="HookPointKind.Observational"/> while <paramref name="failureInvariant"/> is
-    /// <see cref="HookFailureMode.Isolate"/>.
+    /// <see cref="HookFailureMode.IsolateAndDiagnose"/>.
     /// </exception>
     /// <exception cref="ArgumentNullException"><paramref name="validator"/> or <paramref name="invoke"/> is null.</exception>
     public HookPointDefinition(
@@ -42,7 +42,7 @@ public sealed record HookPointDefinition<THook, TEventArgs>
         ArgumentOutOfRangeException.ThrowIfUndefined(failureInvariant);
         ArgumentNullException.ThrowIfNull(validator);
         ArgumentNullException.ThrowIfNull(invoke);
-        if (kind != HookPointKind.Observational && failureInvariant == HookFailureMode.Isolate)
+        if (kind != HookPointKind.Observational && failureInvariant == HookFailureMode.IsolateAndDiagnose)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(failureInvariant),

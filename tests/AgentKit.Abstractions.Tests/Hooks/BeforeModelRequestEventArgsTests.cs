@@ -7,8 +7,8 @@ namespace AgentKit.Abstractions.Tests.Hooks;
 public sealed class BeforeModelRequestEventArgsTests
 {
     private static BeforeModelRequestEventArgs Create(LlmRequestSettings? settings = null) => new(
-        HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.TurnCorrelation,
-        DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), 2, HookPointEventArgsTestData.Request(settings));
+        HookPointEventArgsTestData.TurnDispatch(AgentHookPoints.BeforeModelRequest), HookPointEventArgsTestData.AgentId,
+        HookPointEventArgsTestData.SessionId, 2, HookPointEventArgsTestData.Request(settings));
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_ExposesTurnIdentitiesAndTheOriginalSettings()
@@ -24,24 +24,30 @@ public sealed class BeforeModelRequestEventArgsTests
     }
 
     [Fact]
+    public void Constructor_WhenDispatchIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new BeforeModelRequestEventArgs(
+            null!, HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, 1, HookPointEventArgsTestData.Request()))
+            .ParamName.ShouldBe("dispatch");
+
+    [Fact]
     public void Constructor_WhenCorrelationNamesNoTurn_ThrowsArgumentException() =>
         Should.Throw<ArgumentException>(() => new BeforeModelRequestEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), 1, HookPointEventArgsTestData.Request()))
-            .ParamName.ShouldBe("correlation");
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.BeforeModelRequest), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, 1, HookPointEventArgsTestData.Request()))
+            .ParamName.ShouldBe("dispatch");
 
     [Fact]
     public void Constructor_WhenTurnIsNotPositive_ThrowsArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => new BeforeModelRequestEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.TurnCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), 0, HookPointEventArgsTestData.Request()))
+            HookPointEventArgsTestData.TurnDispatch(AgentHookPoints.BeforeModelRequest), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, 0, HookPointEventArgsTestData.Request()))
             .ParamName.ShouldBe("turn");
 
     [Fact]
     public void Constructor_WhenRequestIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new BeforeModelRequestEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.TurnCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), 1, null!))
+            HookPointEventArgsTestData.TurnDispatch(AgentHookPoints.BeforeModelRequest), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, 1, null!))
             .ParamName.ShouldBe("request");
 
     [Fact]

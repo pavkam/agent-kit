@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>Observes <see cref="AgentHookPoints.RunStarted"/>: a run has been admitted and is about to drive its first turn.</summary>
 /// <remarks>
-/// This is a read-only point. The loop dispatches it with <see cref="HookFailureMode.Isolate"/>, so a hook that
+/// This is a read-only point. The loop dispatches it with <see cref="HookFailureMode.IsolateAndDiagnose"/>, so a hook that
 /// throws is logged and skipped unless the host's minimum failure mode is stricter; cancellation always propagates.
 /// Register implementations additively as <see cref="IRunStartedHook"/> singletons; ordering follows
 /// <see cref="IHook"/>.

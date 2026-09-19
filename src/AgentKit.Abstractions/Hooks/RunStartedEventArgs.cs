@@ -14,29 +14,27 @@ namespace AgentKit;
 public sealed class RunStartedEventArgs: AgentScopedHookEventArgs
 {
     /// <summary>Initializes the arguments.</summary>
+    /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
     /// <param name="agentId">The agent being run.</param>
     /// <param name="sessionId">The session the run appends to.</param>
-    /// <param name="correlation">The run's in-run correlation.</param>
-    /// <param name="timestamp">When the dispatch began.</param>
-    /// <param name="invocationId">The dispatch's invocation identity.</param>
     /// <param name="branchId">The branch the run appends to.</param>
     /// <param name="model">The model selected for every turn of the run.</param>
     /// <param name="maxTurns">The run's turn limit.</param>
     /// <param name="attemptTimeout">The run's per-attempt timeout.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="correlation"/> or <paramref name="model"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="dispatch"/> or <paramref name="model"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="dispatch"/>'s correlation is not an in-run correlation.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="branchId"/> is default, <paramref name="maxTurns"/> is not positive, or <paramref name="attemptTimeout"/> is not positive.</exception>
     public RunStartedEventArgs(
+        HookDispatchMetadata dispatch,
         AgentId agentId,
         SessionId sessionId,
-        InRunOperationCorrelation correlation,
-        DateTimeOffset timestamp,
-        HookInvocationId invocationId,
         BranchId branchId,
         ModelDescriptor model,
         int maxTurns,
         TimeSpan attemptTimeout)
-        : base(agentId, sessionId, correlation, timestamp, invocationId)
+        : base(dispatch, agentId, sessionId)
     {
+        ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation, true, nameof(dispatch));
         ArgumentOutOfRangeException.ThrowIfEqual(branchId, default);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTurns);

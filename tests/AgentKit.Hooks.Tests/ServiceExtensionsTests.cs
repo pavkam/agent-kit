@@ -94,7 +94,7 @@ public sealed class ServiceExtensionsTests
 
         var options = provider.GetRequiredService<IOptions<AgentHookOptions>>().Value;
         options.MaximumInvocationDepth.ShouldBe(8);
-        options.MinimumFailureMode.ShouldBe(HookFailureMode.Isolate);
+        options.MinimumFailureMode.ShouldBe(HookFailureMode.IsolateAndDiagnose);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public sealed class ServiceExtensionsTests
         };
         var args = new TestHookEventArgs();
 
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.IsolateAndDiagnose, cancellationToken: TestContext.Current.CancellationToken));
 
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }

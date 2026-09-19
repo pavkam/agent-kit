@@ -17,9 +17,9 @@ public sealed class AgentHookOptionsTests
     [Fact]
     public void MinimumFailureMode_WhenDefault_IsLeastStrictMode()
     {
-        // Isolate < FailOperation in strictness, so the default must be Isolate to leave caller modes unchanged.
+        // IsolateAndDiagnose < FailOperation in strictness, so the default must be IsolateAndDiagnose to leave caller modes unchanged.
         var options = new AgentHookOptions();
 
-        options.MinimumFailureMode.ShouldBe(HookFailureMode.Isolate);
+        options.MinimumFailureMode.ShouldBe(HookFailureMode.IsolateAndDiagnose);
     }
 }

@@ -16,9 +16,12 @@ internal sealed class TestHookEventArgs: AgentHookEventArgs, IShortCircuitingHoo
 {
     public TestHookEventArgs()
         : base(
-            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
-            DateTimeOffset.UnixEpoch,
-            new HookInvocationId(Guid.NewGuid()))
+            new HookDispatchMetadata(
+                new HookPointId("test.hook.point"),
+                new HookDispatchId(Guid.NewGuid()),
+                new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch + TimeSpan.FromMinutes(1)))
     {
     }
 

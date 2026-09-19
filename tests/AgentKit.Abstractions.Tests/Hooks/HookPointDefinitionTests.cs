@@ -11,7 +11,7 @@ public sealed class HookPointDefinitionTests
     public void Constructor_WhenIdIsDefault_ThrowsArgumentOutOfRangeException()
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new HookPointDefinition<HookKernelTestData.ITestHook, HookKernelTestData.TestEventArgs>(
-            default, HookPointKind.Observational, HookFailureMode.Isolate, new HookKernelTestData.TestValidator(), HookKernelTestData.Invoke));
+            default, HookPointKind.Observational, HookFailureMode.IsolateAndDiagnose, new HookKernelTestData.TestValidator(), HookKernelTestData.Invoke));
 
         exception.ParamName.ShouldBe("id");
     }
@@ -38,7 +38,7 @@ public sealed class HookPointDefinitionTests
     public void Constructor_WhenValidatorIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new HookPointDefinition<HookKernelTestData.ITestHook, HookKernelTestData.TestEventArgs>(
-            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.Isolate, null!, HookKernelTestData.Invoke));
+            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.IsolateAndDiagnose, null!, HookKernelTestData.Invoke));
 
         exception.ParamName.ShouldBe("validator");
     }
@@ -47,7 +47,7 @@ public sealed class HookPointDefinitionTests
     public void Constructor_WhenInvokeIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new HookPointDefinition<HookKernelTestData.ITestHook, HookKernelTestData.TestEventArgs>(
-            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.Isolate, new HookKernelTestData.TestValidator(), null!));
+            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.IsolateAndDiagnose, new HookKernelTestData.TestValidator(), null!));
 
         exception.ParamName.ShouldBe("invoke");
     }
@@ -58,7 +58,7 @@ public sealed class HookPointDefinitionTests
     public void Constructor_WhenNonObservationalKindDeclaresIsolate_ThrowsArgumentOutOfRangeException(HookPointKind kind)
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new HookPointDefinition<HookKernelTestData.ITestHook, HookKernelTestData.TestEventArgs>(
-            HookKernelTestData.Point, kind, HookFailureMode.Isolate, new HookKernelTestData.TestValidator(), HookKernelTestData.Invoke));
+            HookKernelTestData.Point, kind, HookFailureMode.IsolateAndDiagnose, new HookKernelTestData.TestValidator(), HookKernelTestData.Invoke));
 
         exception.ParamName.ShouldBe("failureInvariant");
     }
@@ -69,11 +69,11 @@ public sealed class HookPointDefinitionTests
         var validator = new HookKernelTestData.TestValidator();
 
         var definition = new HookPointDefinition<HookKernelTestData.ITestHook, HookKernelTestData.TestEventArgs>(
-            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.Isolate, validator, HookKernelTestData.Invoke);
+            HookKernelTestData.Point, HookPointKind.Observational, HookFailureMode.IsolateAndDiagnose, validator, HookKernelTestData.Invoke);
 
         definition.Id.ShouldBe(HookKernelTestData.Point);
         definition.Kind.ShouldBe(HookPointKind.Observational);
-        definition.FailureInvariant.ShouldBe(HookFailureMode.Isolate);
+        definition.FailureInvariant.ShouldBe(HookFailureMode.IsolateAndDiagnose);
         definition.Validator.ShouldBe(validator);
         definition.Invoke.ShouldBe(HookKernelTestData.Invoke);
     }

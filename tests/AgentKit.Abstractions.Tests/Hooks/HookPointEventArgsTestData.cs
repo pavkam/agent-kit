@@ -18,6 +18,16 @@ internal static class HookPointEventArgsTestData
     public static InRunOperationCorrelation RunCorrelation { get; } =
         new(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
 
+    public static HookDispatchMetadata RunDispatch(HookPointId point, DateTimeOffset? timestamp = null) =>
+        new(point, new HookDispatchId(Guid.NewGuid()), RunCorrelation, timestamp ?? DateTimeOffset.UnixEpoch, (timestamp ?? DateTimeOffset.UnixEpoch) + TimeSpan.FromMinutes(1));
+
+    public static HookDispatchMetadata TurnDispatch(HookPointId point, DateTimeOffset? timestamp = null) =>
+        new(point, new HookDispatchId(Guid.NewGuid()), TurnCorrelation, timestamp ?? DateTimeOffset.UnixEpoch, (timestamp ?? DateTimeOffset.UnixEpoch) + TimeSpan.FromMinutes(1));
+
+    public static HookDispatchMetadata OutOfRunDispatch(HookPointId point, DateTimeOffset? timestamp = null) =>
+        new(point, new HookDispatchId(Guid.NewGuid()), new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null),
+            timestamp ?? DateTimeOffset.UnixEpoch, (timestamp ?? DateTimeOffset.UnixEpoch) + TimeSpan.FromMinutes(1));
+
     public static ModelDescriptor Model { get; } = new(
         new ModelAlias("chat"), new ProviderId("test"), new ApiFamilyId("test"), new ModelId("m"), null,
         new ModelCapabilities(true, true, true, true, false, false, false, ExtensionData.Empty),

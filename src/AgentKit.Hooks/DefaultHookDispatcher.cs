@@ -101,7 +101,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
             new KeyValuePair<string, object?>[]
             {
                 new(AgentKitTagNames.HookPoint, point.ToString()),
-                new(AgentKitTagNames.HookInvocationId, args.InvocationId.ToString()),
+                new(AgentKitTagNames.HookDispatchId, args.DispatchId.ToString()),
                 new(AgentKitTagNames.AgentId, scoped?.AgentId.ToString()),
                 new(AgentKitTagNames.SessionId, scoped?.SessionId?.ToString()),
                 new(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString()),
@@ -111,13 +111,13 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         var effectiveDepth = Math.Min(maxReentrantDepth, _maximumInvocationDepth);
         if (effectiveDepth != maxReentrantDepth)
         {
-            SafeLog(() => HookLog.ReentrantDepthClamped(_logger, point, args.InvocationId, maxReentrantDepth, effectiveDepth));
+            SafeLog(() => HookLog.ReentrantDepthClamped(_logger, point, args.DispatchId, maxReentrantDepth, effectiveDepth));
         }
 
         var effectiveFailureMode = Strictest(failureMode, _minimumFailureMode);
         if (effectiveFailureMode != failureMode)
         {
-            SafeLog(() => HookLog.FailureModeEscalated(_logger, point, args.InvocationId, failureMode, effectiveFailureMode));
+            SafeLog(() => HookLog.FailureModeEscalated(_logger, point, args.DispatchId, failureMode, effectiveFailureMode));
         }
 
         try
@@ -127,13 +127,13 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
                 .ConfigureAwait(false);
             var outcome = args is IShortCircuitingHookArgs { IsShortCircuited: true } ? "short_circuited" : "completed";
             SafeSetActivity(() => activity.SetSuccessful(outcome));
-            SafeLog(() => HookLog.DispatchCompleted(_logger, point, args.InvocationId));
+            SafeLog(() => HookLog.DispatchCompleted(_logger, point, args.DispatchId));
             SafeObserve(static () => HookMetrics.RecordDispatch("completed"));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             SafeSetActivity(() => activity.SetFailed("cancelled", nameof(OperationCanceledException)));
-            SafeLog(() => HookLog.DispatchCancelled(_logger, point, args.InvocationId));
+            SafeLog(() => HookLog.DispatchCancelled(_logger, point, args.DispatchId));
             SafeObserve(static () => HookMetrics.RecordDispatch("cancelled"));
             throw;
         }
@@ -141,7 +141,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         {
             var errorType = exception.GetType().FullName ?? exception.GetType().Name;
             SafeSetActivity(() => activity.SetFailed("failed", errorType));
-            SafeLog(() => HookLog.DispatchFailed(_logger, point, args.InvocationId, errorType));
+            SafeLog(() => HookLog.DispatchFailed(_logger, point, args.DispatchId, errorType));
             SafeObserve(static () => HookMetrics.RecordDispatch("failed"));
             throw;
         }
@@ -187,7 +187,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
     }
 
     /// <summary>
-    /// Composes two failure modes under the strictness order <see cref="HookFailureMode.Isolate"/> &lt;
+    /// Composes two failure modes under the strictness order <see cref="HookFailureMode.IsolateAndDiagnose"/> &lt;
     /// <see cref="HookFailureMode.FailOperation"/>. Only two isolating inputs yield isolation; any other input,
     /// including an undefined caller value, fails closed to <see cref="HookFailureMode.FailOperation"/>.
     /// </summary>
@@ -195,8 +195,8 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
     /// <param name="minimum">The host's minimum mode captured at construction.</param>
     /// <returns>The stricter of the two modes.</returns>
     private static HookFailureMode Strictest(HookFailureMode requested, HookFailureMode minimum) =>
-        requested == HookFailureMode.Isolate && minimum == HookFailureMode.Isolate
-            ? HookFailureMode.Isolate
+        requested == HookFailureMode.IsolateAndDiagnose && minimum == HookFailureMode.IsolateAndDiagnose
+            ? HookFailureMode.IsolateAndDiagnose
             : HookFailureMode.FailOperation;
 
     private async Task DispatchCoreAsync<THook, TArgs>(
@@ -228,7 +228,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (failureMode == HookFailureMode.Isolate)
+            if (failureMode == HookFailureMode.IsolateAndDiagnose)
             {
                 // Isolation must not leak a partial mutation, replacement value, or short-circuit marker from a
                 // hook that failed midway: the permitted writable state is captured before the hook runs and
@@ -250,7 +250,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
                     args.RestoreMutableState(snapshot);
                     args.Validate();
                     var errorType = exception.GetType().FullName ?? exception.GetType().Name;
-                    SafeLog(() => HookLog.InvocationIsolated(_logger, point, hook.Id, args.InvocationId, errorType));
+                    SafeLog(() => HookLog.InvocationIsolated(_logger, point, hook.Id, args.DispatchId, errorType));
                     SafeSetActivity(() => activity?.AddEvent(new ActivityEvent(
                         "hook.failure.isolated",
                         tags: new ActivityTagsCollection

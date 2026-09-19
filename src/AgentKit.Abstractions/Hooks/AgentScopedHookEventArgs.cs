@@ -29,22 +29,18 @@ namespace AgentKit;
 public abstract class AgentScopedHookEventArgs: AgentHookEventArgs
 {
     /// <summary>Initializes a new instance of the <see cref="AgentScopedHookEventArgs"/> class.</summary>
+    /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
     /// <param name="agentId">The agent this hook invocation occurred for.</param>
     /// <param name="sessionId">The session this hook invocation relates to, when applicable.</param>
-    /// <param name="correlation">The causal operation this hook invocation occurred within.</param>
-    /// <param name="timestamp">The time this dispatch began, from the injected <see cref="TimeProvider"/>.</param>
-    /// <param name="invocationId">The stable identity of this specific dispatch.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="correlation"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="dispatch"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="agentId"/> or a present <paramref name="sessionId"/> is default.
     /// </exception>
     protected AgentScopedHookEventArgs(
+        HookDispatchMetadata dispatch,
         AgentId agentId,
-        SessionId? sessionId,
-        OperationCorrelation correlation,
-        DateTimeOffset timestamp,
-        HookInvocationId invocationId)
-        : base(correlation, timestamp, invocationId)
+        SessionId? sessionId)
+        : base(dispatch)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
         if (sessionId is { } session)

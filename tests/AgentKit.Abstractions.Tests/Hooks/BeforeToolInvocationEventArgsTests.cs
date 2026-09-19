@@ -9,8 +9,8 @@ using System.Text.Json;
 public sealed class BeforeToolInvocationEventArgsTests
 {
     private static BeforeToolInvocationEventArgs Create(ToolCallPart? call = null) => new(
-        HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.TurnCorrelation,
-        DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), call ?? HookPointEventArgsTestData.Call());
+        HookPointEventArgsTestData.TurnDispatch(AgentHookPoints.BeforeToolInvocation), HookPointEventArgsTestData.AgentId,
+        HookPointEventArgsTestData.SessionId, call ?? HookPointEventArgsTestData.Call());
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_ExposesTheCallAndStartsUnvetoed()
@@ -30,18 +30,24 @@ public sealed class BeforeToolInvocationEventArgsTests
     }
 
     [Fact]
+    public void Constructor_WhenDispatchIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new BeforeToolInvocationEventArgs(
+            null!, HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.Call()))
+            .ParamName.ShouldBe("dispatch");
+
+    [Fact]
     public void Constructor_WhenCallIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new BeforeToolInvocationEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.TurnCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), null!))
+            HookPointEventArgsTestData.TurnDispatch(AgentHookPoints.BeforeToolInvocation), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, null!))
             .ParamName.ShouldBe("call");
 
     [Fact]
     public void Constructor_WhenCorrelationNamesNoTurn_ThrowsArgumentException() =>
         Should.Throw<ArgumentException>(() => new BeforeToolInvocationEventArgs(
-            HookPointEventArgsTestData.AgentId, HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.RunCorrelation,
-            DateTimeOffset.UnixEpoch, new HookInvocationId(Guid.NewGuid()), HookPointEventArgsTestData.Call()))
-            .ParamName.ShouldBe("correlation");
+            HookPointEventArgsTestData.RunDispatch(AgentHookPoints.BeforeToolInvocation), HookPointEventArgsTestData.AgentId,
+            HookPointEventArgsTestData.SessionId, HookPointEventArgsTestData.Call()))
+            .ParamName.ShouldBe("dispatch");
 
     [Fact]
     public void Veto_WhenSet_ShortCircuits()
