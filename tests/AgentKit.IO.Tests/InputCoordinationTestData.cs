@@ -78,6 +78,7 @@ internal static class InputCoordinationTestData
         var snapshot = new InputPromotionSnapshot(
             Agent, Session, Lane, Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch, null),
             new SessionSequence(1), null, null, PromotionBoundary.AfterTurnCommitted, Turn, NextTurn, [admissionId]);
-        return new InputPromoted(snapshot, [admitted], new SessionVersion(1));
+        return new InputPromoted(
+            snapshot, [admitted], new SessionVersion(1), new SessionBranchCursor(Branch, null), new OperationStateRevision(2));
     }
 }

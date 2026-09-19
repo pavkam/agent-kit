@@ -78,6 +78,26 @@ checkpoint sequence, covered-entry count, and retained-message count, and tags
 the run activity with `agentkit.compaction.id`. Summary text never enters any
 signal.
 
+## Mid-run input promotion
+
+When a run carries a `LoopLaneAdmission` (it was durably admitted through the
+session lane protocol) and the compiled `AgentRunServices.Input` is not `null`,
+`DefaultAgentLoop` attempts to promote already-admitted, not-yet-visible input
+at three safe boundaries: once before the run's first model request, after every
+committed turn (before the continuation policy runs), and — only when the policy
+would otherwise complete the run and a further turn is possible — one last time
+so newly admitted input is not stranded until an entirely new run picks it up. A
+promotion committed at the after-turn-committed boundary is offered to the
+continuation policy as a `PromotedInputContinuationCause` (highest precedence in
+`DefaultRunContinuationPolicy`); a promotion at the other two boundaries
+continues the run directly. The loop never re-appends a promoted message itself
+— the session store alone materializes it — so it reloads the newly visible
+entries by reading forward from its last observed cursor. A rejection,
+stale-evidence conflict, or fault while promoting is logged (events 1107–1112)
+and treated as nothing eligible; it never fails the run.
+`AgentLoopOptions.MaximumPromotionsPerBoundary` bounds one atomic promotion
+transition.
+
 ## Related projects
 
 - [AgentKit.Context](../AgentKit.Context/README.md) — assemble provider-ready
@@ -100,8 +120,8 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/agent-runtime.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/run-envelope-and-admission.md) —
+  remaining run-envelope and admission work and proof.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

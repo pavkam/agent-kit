@@ -78,4 +78,15 @@ public sealed class AgentLoopOptions
     /// </summary>
     /// <value>A positive ratio; 4.0 by default. Estimation is advisory and never blocks a request on its own.</value>
     public double EstimatedCharactersPerToken { get; set; } = 4.0;
+
+    /// <summary>
+    /// Gets or sets the upper bound on how many durably admitted inputs one promotion attempt at a single
+    /// <see cref="PromotionBoundary"/> may select. Defaults to 20.
+    /// </summary>
+    /// <value>
+    /// A positive maximum. It bounds one atomic promotion transition, not the total input a run may ever
+    /// promote across its lifetime: a run with more eligible input than this bound promotes it across
+    /// multiple boundaries instead of in one commit.
+    /// </value>
+    public int MaximumPromotionsPerBoundary { get; set; } = 20;
 }

@@ -11,12 +11,23 @@ public sealed record InputPromoted: InputPromotionResult
     /// <param name="snapshot">The non-null exact selection, ownership, cutoff, and target-turn evidence used by the promotion.</param>
     /// <param name="promoted">The non-default immutable records in the snapshot's committed selection order.</param>
     /// <param name="sessionVersion">The session version observed after the committed promotion transition.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <param name="committedCursor">The lane-owned branch tip after the atomic transition.</param>
+    /// <param name="operationStateRevision">The total-state revision installed by this promotion.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> or <paramref name="committedCursor"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="promoted"/> is default, null-bearing, misordered, uncommitted, or inconsistent with snapshot address and lane.</exception>
-    public InputPromoted(InputPromotionSnapshot snapshot, ImmutableArray<AdmittedInput> promoted, SessionVersion sessionVersion)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationStateRevision"/> is default.</exception>
+    public InputPromoted(
+        InputPromotionSnapshot snapshot,
+        ImmutableArray<AdmittedInput> promoted,
+        SessionVersion sessionVersion,
+        SessionBranchCursor committedCursor,
+        OperationStateRevision operationStateRevision)
     {
         ArgumentException.ThrowIfInvalidPromotedInputs(snapshot, promoted);
+        ArgumentNullException.ThrowIfNull(committedCursor);
+        ArgumentOutOfRangeException.ThrowIfEqual(operationStateRevision, default);
         Snapshot = snapshot; Promoted = promoted; SessionVersion = sessionVersion;
+        CommittedCursor = committedCursor; OperationStateRevision = operationStateRevision;
     }
     /// <summary>Gets the exact selection and ownership evidence for the promotion.</summary>
     /// <value>A non-null snapshot for the committed or reconciled plan, retained to prevent duplicate consumption.</value>
@@ -27,4 +38,10 @@ public sealed record InputPromoted: InputPromotionResult
     /// <summary>Gets the session version observed after the promotion committed.</summary>
     /// <value>The post-commit version for subsequent session coordination; it is not a branch identity or an input cutoff.</value>
     public SessionVersion SessionVersion { get; }
+    /// <summary>Gets the lane-owned branch tip after the atomic transition.</summary>
+    /// <value>The tip a caller must observe before a later admission, promotion, or release on this lane.</value>
+    public SessionBranchCursor CommittedCursor { get; }
+    /// <summary>Gets the total-state revision installed by this promotion.</summary>
+    /// <value>The revision a later release or promotion on the same accepted run must present.</value>
+    public OperationStateRevision OperationStateRevision { get; }
 }

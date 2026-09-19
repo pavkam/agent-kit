@@ -101,6 +101,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly bool _disableToolsOnFinalTurn;
     private readonly double _contextPressureThreshold;
     private readonly double _estimatedCharactersPerToken;
+    private readonly int _maximumPromotionsPerBoundary;
     private readonly IIdentifierGenerator<CompactionId> _compactionIds;
 
     /// <summary>
@@ -207,6 +208,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.EstimatedCharactersPerToken, nameof(optionsMonitor));
         _contextPressureThreshold = loopOptions.ContextPressureThreshold;
         _estimatedCharactersPerToken = loopOptions.EstimatedCharactersPerToken;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.MaximumPromotionsPerBoundary, nameof(optionsMonitor));
+        _maximumPromotionsPerBoundary = loopOptions.MaximumPromotionsPerBoundary;
         _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
         _runStartedHooks = [.. runStartedHooks ?? []];
         _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
@@ -234,7 +237,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(services);
 
-        var operationId = _operationIds.Create();
+        // A durably admitted run's driving operation is the exact operation admission installed on the lane
+        // (SessionAcceptedRunState.Correlation.OperationId): every store-facing call for this run — promotion,
+        // release — must present that identity, so the loop reuses it here rather than minting an unrelated
+        // second operation identity for the same accepted work.
+        var operationId = request.LaneAdmission?.AcceptedCorrelation.OperationId ?? _operationIds.Create();
         var startedTimestamp = _timeProvider.GetTimestamp();
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.InvokeAgent,
@@ -431,6 +438,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         currentVersion = history.SourceCursor.Version;
+
+        var beforeFirstModelRequest = request.LaneAdmission is { } admissionForPromotion
+            ? await TryPromoteInputAsync(
+                request, services, laneState, PromotionBoundary.BeforeFirstModelRequest, previousTurnId: null,
+                admissionForPromotion.AcceptedCorrelation.TurnId!.Value, history.SourceCursor, lastEntryId: null,
+                cancellationToken)
+                .ConfigureAwait(false)
+            : null;
+        if (beforeFirstModelRequest is { } promotedBeforeFirstRequest)
+        {
+            laneState.OperationStateRevision = promotedBeforeFirstRequest.NewOperationStateRevision;
+            committedMessages.AddRange(promotedBeforeFirstRequest.NewMessages);
+            history = new HistoryView(
+                promotedBeforeFirstRequest.Cursor,
+                history.Messages.AddRange(promotedBeforeFirstRequest.NewMessages),
+                history.Repairs);
+            currentVersion = promotedBeforeFirstRequest.Cursor.Version;
+        }
 
         var modelResolution = await ResolveModelAsync(request, services, operationId, cancellationToken)
             .ConfigureAwait(false);
@@ -1063,7 +1088,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             { IsEmpty: true } => await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
-                cancellationToken)
+                committedMessages, cancellationToken)
                 .ConfigureAwait(false),
             _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
@@ -1172,7 +1197,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
-                cancellationToken, decision).ConfigureAwait(false);
+                committedMessages, cancellationToken, decision).ConfigureAwait(false);
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -1222,19 +1247,224 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request, services, turnCorrelation, turn, assistantMessage, [], repairEntry.Id,
             NextCursor(sourceCursor, appended.NewVersion, repairSequence),
             [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, laneState,
-            cancellationToken, retry).ConfigureAwait(false);
+            committedMessages, cancellationToken, retry).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Attempts one atomic input-promotion transition at a safe loop boundary, best-effort: a rejection,
+    /// stale-evidence conflict, or fault is logged and treated as nothing to promote rather than failing the run.
+    /// </summary>
+    /// <param name="request">The run being driven; promotion is skipped entirely when it carries no <see cref="AgentRunRequest.LaneAdmission"/>.</param>
+    /// <param name="services">The compiled per-run collaborator bundle; promotion is skipped entirely when <see cref="AgentRunServices.Input"/> is <see langword="null"/>.</param>
+    /// <param name="laneState">
+    /// The run's tracked lane identity and current total-state revision. Not mutated here on a successful
+    /// commit: the caller applies the returned <see cref="PromotionAttemptOutcome.NewOperationStateRevision"/>
+    /// once it no longer needs <see cref="LoopLaneState.OperationStateRevision"/>'s pre-commit value for
+    /// continuation-evidence consistency. Mutated directly here only when the commit succeeded but its content
+    /// could not be reloaded, since no outcome is returned to carry the advance in that case.
+    /// </param>
+    /// <param name="boundary">The exact safe boundary this attempt occurs at.</param>
+    /// <param name="previousTurnId">The committed turn preceding this boundary, or <see langword="null"/> before the run's first turn.</param>
+    /// <param name="targetTurnId">The turn that would receive the promoted input in the atomic history transition.</param>
+    /// <param name="fromCursor">The history cursor already observed by the loop, whose sequence becomes the promotion's admission cutoff.</param>
+    /// <param name="lastEntryId">The identity of the last entry the loop has actually observed on the branch, or <see langword="null"/> when none is known.</param>
+    /// <param name="cancellationToken">Cancels the attempt.</param>
+    /// <returns>The committed promotion's evidence and newly visible messages, or <see langword="null"/> when nothing was promoted.</returns>
+    /// <remarks>
+    /// A committed promotion's messages are not reconstructed from the coordinator's evidence: the session store
+    /// alone materializes the exact <see cref="UserMessage"/> records (identity, timestamp, and causal placement),
+    /// so this method reloads them by reading forward from <paramref name="fromCursor"/> rather than re-appending
+    /// anything the store already committed.
+    /// </remarks>
+    private async Task<PromotionAttemptOutcome?> TryPromoteInputAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        LoopLaneState laneState,
+        PromotionBoundary boundary,
+        TurnId? previousTurnId,
+        TurnId targetTurnId,
+        MessageCursor fromCursor,
+        SessionEntryId? lastEntryId,
+        CancellationToken cancellationToken)
+    {
+        if (services.Input is not { } coordinator || request.LaneAdmission is not { } admission)
+        {
+            return null;
+        }
+
+        LoopLog.InputPromotionAttempted(_logger, request.RunId, boundary);
+        var (authorization, _) = await CaptureAuthorizationAsync(
+            request, services, admission.AcceptedCorrelation, cancellationToken).ConfigureAwait(false);
+        if (authorization is null)
+        {
+            LoopLog.InputPromotionFaulted(_logger, request.RunId, boundary, "authorization_unavailable");
+            return null;
+        }
+
+        InputPromotionResult result;
+        try
+        {
+            var promotionRequest = new InputPromotionRequest(
+                request.AgentId,
+                request.SessionId,
+                laneState.ExecutionLaneId,
+                admission.AcceptedCorrelation,
+                laneState.OperationStateRevision,
+                new SessionBranchCursor(request.BranchId, lastEntryId),
+                fromCursor.Sequence,
+                expectedVersion: null,
+                expectedFencingToken: null,
+                request.Identity,
+                authorization,
+                boundary,
+                previousTurnId,
+                targetTurnId,
+                _maximumPromotionsPerBoundary);
+            result = await coordinator.PromoteAsync(promotionRequest, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LoopLog.InputPromotionFaulted(_logger, request.RunId, boundary, exception.GetType().FullName ?? exception.GetType().Name);
+            return null;
+        }
+
+        switch (result)
+        {
+            case InputPromoted promoted:
+                var sessionContext = new SessionOperationContext(
+                    request.AgentId, request.SessionId, laneState.ExecutionLaneId, admission.AcceptedCorrelation,
+                    request.Identity, authorization);
+                var reloaded = await LoadEntriesAfterAsync(
+                    request, services, sessionContext, fromCursor, promoted.SessionVersion, cancellationToken)
+                    .ConfigureAwait(false);
+                if (reloaded is not { } page)
+                {
+                    // The store committed this promotion durably even though the loop could not reload its
+                    // content; the caller still must observe the lane's now-current revision so a later
+                    // operation on this lane (another promotion, or the eventual release) is not fenced.
+                    laneState.OperationStateRevision = promoted.OperationStateRevision;
+                    LoopLog.InputPromotionFaulted(_logger, request.RunId, boundary, "history_reload_failed");
+                    return null;
+                }
+
+                LoopLog.InputPromotionCommitted(_logger, request.RunId, boundary, promoted.Promoted.Length);
+                return new PromotionAttemptOutcome(
+                    promoted.Snapshot, page.Cursor, page.Messages, page.LastEntryId, promoted.OperationStateRevision);
+
+            case InputPromotionRejected { Rejection.Kind: InputRejectionKind.NoEligibleInput } none:
+                LoopLog.InputPromotionSkipped(_logger, request.RunId, boundary, none.Rejection.SafeReason);
+                return null;
+
+            case InputPromotionRejected rejected:
+                LoopLog.InputPromotionRejected(_logger, request.RunId, boundary, rejected.Rejection.SafeReason);
+                return null;
+
+            case InputPromotionConflict conflict:
+                LoopLog.InputPromotionConflict(_logger, request.RunId, boundary, conflict.Kind.ToString());
+                return null;
+
+            default:
+                LoopLog.InputPromotionFaulted(_logger, request.RunId, boundary, "unrecognized_result");
+                return null;
+        }
+    }
+
+    /// <summary>Reads every entry committed after <paramref name="fromCursor"/> and projects the messages among them.</summary>
+    /// <param name="request">The run whose branch is read.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="sessionContext">The session operation context the read is authorized under.</param>
+    /// <param name="fromCursor">The exact previously observed cursor; only entries after its sequence are returned.</param>
+    /// <param name="newVersion">The branch version to stamp on the returned cursor.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The advanced cursor, newly visible messages in sequence order, and the last entry's identity; <see langword="null"/> when the read failed.</returns>
+    private async Task<(MessageCursor Cursor, ImmutableArray<AgentMessage> Messages, SessionEntryId? LastEntryId)?> LoadEntriesAfterAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        SessionOperationContext sessionContext,
+        MessageCursor fromCursor,
+        SessionVersion newVersion,
+        CancellationToken cancellationToken)
+    {
+        var entries = ImmutableArray.CreateBuilder<SessionEntry>();
+        var cursor = fromCursor.Sequence;
+        SessionReadSnapshot? snapshot = null;
+        while (true)
+        {
+            var pageResult = await services.Session.ReadAsync(
+                snapshot is null
+                    ? new SessionReadRequest(sessionContext, request.BranchId, cursor, _historyReadPageSize)
+                    : new SessionReadRequest(sessionContext, request.BranchId, cursor, _historyReadPageSize, snapshot),
+                request.SessionProfile,
+                cancellationToken).ConfigureAwait(false);
+            if (pageResult is not SessionPage { Snapshot: { } pageSnapshot } page)
+            {
+                return null;
+            }
+
+            snapshot ??= pageSnapshot;
+            if (pageSnapshot != snapshot)
+            {
+                return null;
+            }
+
+            entries.AddRange(page.Entries);
+            cursor = page.ThroughSequence;
+            if (!page.HasMore || page.Entries.IsEmpty)
+            {
+                break;
+            }
+        }
+
+        var built = entries.ToImmutable();
+        var messages = ToMessages(built);
+        var lastEntryId = built.IsEmpty ? (SessionEntryId?) null : built[^1].Id;
+        var nextCursor = new MessageCursor(
+            fromCursor.AgentId, fromCursor.SessionId, fromCursor.ConversationId, fromCursor.BranchId, newVersion, cursor);
+        return (nextCursor, messages, lastEntryId);
+    }
+
+    /// <summary>Carries one committed promotion's evidence back to its caller.</summary>
+    /// <param name="Snapshot">
+    /// The exact pre-commit selection evidence the session owner revalidated, unchanged by the commit: this is
+    /// what a <see cref="PromotedInputContinuationCause"/> built from this outcome must carry so it matches the
+    /// continuation context built from the same pre-promotion values.
+    /// </param>
+    /// <param name="Cursor">The advanced history cursor after the promoted messages.</param>
+    /// <param name="NewMessages">The promoted messages, in commit order.</param>
+    /// <param name="LastEntryId">The identity of the last committed entry, or <see langword="null"/> when none was read back.</param>
+    /// <param name="NewOperationStateRevision">
+    /// The lane's total-state revision as installed by this commit; the caller applies this to
+    /// <see cref="LoopLaneState.OperationStateRevision"/> only once it no longer needs the pre-commit value for
+    /// evidence consistency.
+    /// </param>
+    private readonly record struct PromotionAttemptOutcome(
+        InputPromotionSnapshot Snapshot,
+        MessageCursor Cursor,
+        ImmutableArray<AgentMessage> NewMessages,
+        SessionEntryId? LastEntryId,
+        OperationStateRevision NewOperationStateRevision);
 
     /// <summary>Builds the continuation causes that describe one committed turn to the policy.</summary>
     /// <param name="toolResults">The committed tool results of the turn, or empty.</param>
     /// <param name="outputDecision">The output processor's decision for the turn, or <see langword="null"/>.</param>
-    /// <returns>Tool-result evidence when tools ran, repair evidence when a repair turn follows, otherwise empty.</returns>
+    /// <param name="promoted">The promotion evidence to weigh alongside the turn's other causes, or <see langword="null"/> when nothing was promoted.</param>
+    /// <returns>Promotion evidence first when present, tool-result evidence when tools ran, repair evidence when a repair turn follows, otherwise empty.</returns>
     private static ImmutableArray<RunContinuationCause> ContinuationCauses(
         ImmutableArray<CommittedToolResultReference> toolResults,
-        OutputProcessingResult? outputDecision)
+        OutputProcessingResult? outputDecision,
+        InputPromotionSnapshot? promoted = null)
     {
         Debug.Assert(toolResults.IsEmpty || outputDecision is null, "Output is validated only on a turn without tool calls.");
         var causes = ImmutableArray.CreateBuilder<RunContinuationCause>();
+        if (promoted is { } snapshot)
+        {
+            causes.Add(new PromotedInputContinuationCause(snapshot));
+        }
+
         if (!toolResults.IsEmpty)
         {
             causes.Add(new CommittedToolResultsContinuationCause(toolResults));
@@ -1564,7 +1794,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return await DecideContinuationAsync(
             request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
             [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, laneState,
-            cancellationToken)
+            committedMessages, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -1579,6 +1809,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ObserverDeliveryTimeout = _observerDeliveryTimeout,
         ContextPressureThreshold = _contextPressureThreshold,
         EstimatedCharactersPerToken = _estimatedCharactersPerToken,
+        MaximumPromotionsPerBoundary = _maximumPromotionsPerBoundary,
     };
 
     /// <summary>
@@ -1596,6 +1827,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
     /// <param name="version">The branch version after this turn's commits.</param>
     /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
+    /// <param name="committedMessages">Every message this run has committed so far; a committed promotion's messages are added here.</param>
     /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
     /// <param name="outputDecision">
     /// The output processor's decision for this terminal turn, or <see langword="null"/> when the run selects no
@@ -1643,6 +1875,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion version,
         LoopLaneState laneState,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
         CancellationToken cancellationToken,
         OutputProcessingResult? outputDecision = null)
     {
@@ -1652,6 +1885,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnId = turnCorrelation.TurnId.Value;
         var policyVersion = RunPolicyVersioning.Compute(
             request.MaxTurns, request.AttemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey, EffectiveLoopOptions());
+
+        // The continuation context and the PromotedInputContinuationCause it may carry must describe the exact
+        // same pre-promotion evidence (see ArgumentExceptionExtensions.ThrowIfInconsistentContinuationEvidence):
+        // the revision, branch cursor, and cutoff below are deliberately the values observed before this
+        // attempt, not the store's new state after it commits. The merged cursor/messages a Continue decision
+        // actually resumes from are tracked separately below.
+        var afterTurnCommitted = await TryPromoteInputAsync(
+            request, services, laneState, PromotionBoundary.AfterTurnCommitted, turnId, _turnIds.Create(), nextCursor,
+            lastEntryId, cancellationToken).ConfigureAwait(false);
 
         RunContinuationContext context;
         try
@@ -1671,13 +1913,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new CommittedTurnContinuationBoundary(
                     assistantMessage, toolResults, outputDecision, requiresOutputValidation: outputDecision is not null),
                 requiredStopOutcome: null,
-                ContinuationCauses(toolResults, outputDecision));
+                ContinuationCauses(toolResults, outputDecision, afterTurnCommitted?.Snapshot));
         }
         catch (ArgumentException exception)
         {
             LoopLog.ContinuationFailed(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
             return TurnOutcome.Settled(
                 new AgentRunInvalidState("The committed turn could not be described as continuation evidence."), version);
+        }
+
+        // The promotion, if any, is durably committed regardless of what the policy decides below: the lane's
+        // real revision and version have already advanced in the store, and every promoted message belongs in
+        // this run's result whether the run continues or settles here.
+        if (afterTurnCommitted is { } committed)
+        {
+            laneState.OperationStateRevision = committed.NewOperationStateRevision;
+            committedMessages.AddRange(committed.NewMessages);
+            nextCursor = committed.Cursor;
+            newMessages = [.. newMessages, .. committed.NewMessages];
+            version = committed.Cursor.Version;
         }
 
         RunContinuationDecision decision;
@@ -1691,6 +1945,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return TurnOutcome.Settled(
                 new AgentRunCancelled("The run was cancelled while its continuation was being decided; the turn's messages are committed."),
                 version);
+        }
+
+        // A policy that would otherwise complete the run gets one last chance to observe input admitted in the
+        // brief window since the AfterTurnCommitted attempt above, so it is not stranded until an entirely new
+        // run picks it up. Only attempted when a further turn is actually possible and nothing already promoted
+        // above (which would already have produced a highest-priority PromotedInputContinuationCause).
+        if (decision is CompleteRun && afterTurnCommitted is null && turn < request.MaxTurns)
+        {
+            var otherwiseIdle = await TryPromoteInputAsync(
+                request, services, laneState, PromotionBoundary.OtherwiseIdle, turnId, _turnIds.Create(), nextCursor,
+                lastEntryId, cancellationToken).ConfigureAwait(false);
+            if (otherwiseIdle is { } idlePromotion)
+            {
+                laneState.OperationStateRevision = idlePromotion.NewOperationStateRevision;
+                committedMessages.AddRange(idlePromotion.NewMessages);
+                LoopLog.ContinuationDecisionApplied(_logger, request.RunId, turnId, nameof(ContinueRun));
+                return TurnOutcome.Continue(idlePromotion.Cursor, [.. newMessages, .. idlePromotion.NewMessages]);
+            }
         }
 
         LoopLog.ContinuationDecisionApplied(_logger, request.RunId, turnId, decision.GetType().Name);

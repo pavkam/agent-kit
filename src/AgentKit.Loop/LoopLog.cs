@@ -253,4 +253,28 @@ internal static partial class LoopLog
     /// <summary>Logs that releasing a durably admitted run's lane faulted.</summary>
     [LoggerMessage(1106, LogLevel.Error, "Run {RunId}: releasing the admitted lane faulted with {ErrorType}; the lane was not released.")]
     internal static partial void LaneReleaseFaulted(ILogger logger, RunId runId, string errorType);
+
+    /// <summary>Logs that the loop is attempting one input-promotion transition at a safe boundary.</summary>
+    [LoggerMessage(1107, LogLevel.Debug, "Run {RunId}: attempting input promotion at boundary {Boundary}.")]
+    internal static partial void InputPromotionAttempted(ILogger logger, RunId runId, PromotionBoundary boundary);
+
+    /// <summary>Logs that a promotion attempt atomically committed one or more inputs.</summary>
+    [LoggerMessage(1108, LogLevel.Information, "Run {RunId}: promoted {Count} input(s) at boundary {Boundary}.")]
+    internal static partial void InputPromotionCommitted(ILogger logger, RunId runId, PromotionBoundary boundary, int count);
+
+    /// <summary>Logs that no durably admitted input was eligible for a promotion attempt.</summary>
+    [LoggerMessage(1109, LogLevel.Debug, "Run {RunId}: no eligible input to promote at boundary {Boundary} ({Reason}).")]
+    internal static partial void InputPromotionSkipped(ILogger logger, RunId runId, PromotionBoundary boundary, string reason);
+
+    /// <summary>Logs that a promotion attempt was rejected before any mutation occurred.</summary>
+    [LoggerMessage(1110, LogLevel.Warning, "Run {RunId}: input promotion at boundary {Boundary} was rejected ({Reason}); the run continues without it.")]
+    internal static partial void InputPromotionRejected(ILogger logger, RunId runId, PromotionBoundary boundary, string reason);
+
+    /// <summary>Logs that a promotion attempt observed stale evidence and committed nothing.</summary>
+    [LoggerMessage(1111, LogLevel.Warning, "Run {RunId}: input promotion at boundary {Boundary} observed stale evidence ({Kind}); the run continues without it.")]
+    internal static partial void InputPromotionConflict(ILogger logger, RunId runId, PromotionBoundary boundary, string kind);
+
+    /// <summary>Logs that a promotion attempt faulted; the run continues without it.</summary>
+    [LoggerMessage(1112, LogLevel.Error, "Run {RunId}: input promotion at boundary {Boundary} faulted with {ErrorType}; the run continues without it.")]
+    internal static partial void InputPromotionFaulted(ILogger logger, RunId runId, PromotionBoundary boundary, string errorType);
 }

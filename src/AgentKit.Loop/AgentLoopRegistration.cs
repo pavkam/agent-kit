@@ -41,7 +41,8 @@ internal static class AgentLoopRegistration
             .Validate(static o => o.SettlementTimeout > TimeSpan.Zero, "SettlementTimeout must be positive.")
             .Validate(static o => o.ObserverDeliveryTimeout > TimeSpan.Zero, "ObserverDeliveryTimeout must be positive.")
             .Validate(static o => o.ContextPressureThreshold is > 0 and <= 1, "ContextPressureThreshold must be in (0, 1].")
-            .Validate(static o => o.EstimatedCharactersPerToken > 0, "EstimatedCharactersPerToken must be positive.");
+            .Validate(static o => o.EstimatedCharactersPerToken > 0, "EstimatedCharactersPerToken must be positive.")
+            .Validate(static o => o.MaximumPromotionsPerBoundary > 0, "MaximumPromotionsPerBoundary must be positive.");
         if (configure is not null)
         {
             _ = optionsBuilder.Configure(configure);

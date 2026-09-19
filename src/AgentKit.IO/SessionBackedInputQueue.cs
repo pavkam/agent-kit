@@ -166,7 +166,9 @@ public sealed class SessionBackedInputQueue: IInputQueue
                     request.ExpectedVersion, request.ExpectedFencingToken, request.Boundary, request.PreviousTurnId,
                     request.TargetTurnId, admissionIds),
                 committed.Promoted,
-                committed.SessionVersion),
+                committed.SessionVersion,
+                committed.CommittedCursor,
+                committed.OperationStateRevision),
             SessionInputPromotionRejected rejected => new InputPromotionRejected(
                 new InputRejection(InputRejectionKind.StaleVersion, rejected.SafeReason)),
             _ => new InputPromotionRejected(new InputRejection(

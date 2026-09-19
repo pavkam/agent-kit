@@ -59,6 +59,7 @@ public static class RunPolicyVersioning
         AppendInt64(hash, options.ObserverDeliveryTimeout.Ticks);
         AppendDouble(hash, options.ContextPressureThreshold);
         AppendDouble(hash, options.EstimatedCharactersPerToken);
+        AppendInt64(hash, options.MaximumPromotionsPerBoundary);
 
         Span<byte> digest = stackalloc byte[32];
         _ = hash.GetHashAndReset(digest);

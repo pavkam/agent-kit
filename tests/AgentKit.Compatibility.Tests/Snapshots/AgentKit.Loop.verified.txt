@@ -16,6 +16,7 @@ namespace AgentKit.Loop
         public bool DisableToolsOnFinalTurn { get; set; }
         public double EstimatedCharactersPerToken { get; set; }
         public int HistoryReadPageSize { get; set; }
+        public int MaximumPromotionsPerBoundary { get; set; }
         public System.TimeSpan ObserverDeliveryTimeout { get; set; }
         public System.TimeSpan SettlementTimeout { get; set; }
     }

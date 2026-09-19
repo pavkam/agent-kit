@@ -4493,7 +4493,9 @@ namespace AgentKit
     }
     public sealed class InputPromoted : AgentKit.InputPromotionResult, System.IEquatable<AgentKit.InputPromoted>
     {
-        public InputPromoted(AgentKit.InputPromotionSnapshot snapshot, System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> promoted, AgentKit.SessionVersion sessionVersion) { }
+        public InputPromoted(AgentKit.InputPromotionSnapshot snapshot, System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> promoted, AgentKit.SessionVersion sessionVersion, AgentKit.SessionBranchCursor committedCursor, AgentKit.OperationStateRevision operationStateRevision) { }
+        public AgentKit.SessionBranchCursor CommittedCursor { get; }
+        public AgentKit.OperationStateRevision OperationStateRevision { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AdmittedInput> Promoted { get; }
         public AgentKit.SessionVersion SessionVersion { get; }
         public AgentKit.InputPromotionSnapshot Snapshot { get; }

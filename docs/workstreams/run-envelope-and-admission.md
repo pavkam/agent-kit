@@ -27,7 +27,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] Prerequisite: `SessionBackedInputQueue` in `AgentKit.IO` (`05bdea28`)
 - [x] WS1-C1 lane identity and live revision in the loop
 - [x] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
-- [ ] WS1-C3 loop promotes input at three boundaries
+- [x] WS1-C3 loop promotes input at three boundaries
 - [ ] WS1-C4 `IRunEventSink`, registration, backpressure contracts
 - [ ] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
 - [ ] WS1-C6 loop publishes `RunEvent`s
@@ -67,25 +67,55 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 | `LoopLaneAdmission`                                          | EXISTS-AND-USED            | produced `AgentEngine.cs:379`, consumed `DefaultAgentLoop.cs` to seed `LoopLaneState` (WS1-C1)                                                                                                                                                                    |
 | `LoopLaneState`                                              | EXISTS-AND-USED            | `Loop/LoopLaneState.cs` (WS1-C1); one instance per run threaded through `RunCoreAsync`→`RunTurnAsync`→`SettleCompletedAsync`/`ValidateOutputAsync`/`InvokeToolsAsync`→`DecideContinuationAsync`, and into `ReleaseLaneAsync`                                      |
 | `RunScopeState`                                              | EXISTS-AND-USED            | `src/AgentKit/RunScopeState.cs` (WS1-C2); scoped holder, `Session` set by `AgentEngine.SendAgentAsync` before `AgentRunServicesFactory.Compile` runs                                                                                                              |
-| `IInputCoordinator` / `DefaultInputCoordinator`              | EXISTS-AND-USED            | `src/AgentKit.IO/DefaultInputCoordinator.cs`, scoped at `IO/ServiceExtensions.cs` (WS1-C2); resolved by `AgentRunServicesFactory.Compile` into `AgentRunServices.Input`; still no loop caller (WS1-C3)                                                            |
+| `IInputCoordinator` / `DefaultInputCoordinator`              | EXISTS-AND-USED            | `src/AgentKit.IO/DefaultInputCoordinator.cs`, scoped at `IO/ServiceExtensions.cs` (WS1-C2); resolved by `AgentRunServicesFactory.Compile` into `AgentRunServices.Input`; called by `DefaultAgentLoop.TryPromoteInputAsync` at all three boundaries (WS1-C3)       |
 | `SessionBackedInputQueue`                                    | EXISTS-AND-USED            | `IO/SessionBackedInputQueue.cs:27`; scoped `SessionExecutionCapability` now resolves through `RunScopeState` (WS1-C2)                                                                                                                                             |
 | `PromotionBoundary`                                          | EXISTS                     | `Input/PromotionBoundary.cs`                                                                                                                                                                                                                                      |
-| `PromotedInputContinuationCause`                             | EXISTS-UNWIRED             | never produced by `DefaultAgentLoop.ContinuationCauses` (`:1216`)                                                                                                                                                                                                 |
+| `PromotedInputContinuationCause`                             | EXISTS-AND-USED            | produced by `DefaultAgentLoop.ContinuationCauses` when `TryPromoteInputAsync` commits a promotion at `AfterTurnCommitted` (WS1-C3)                                                                                                                                |
 
 Loop state relevant to promotion: `currentVersion` is threaded through
 `RunCoreAsync`; `history.SourceCursor` carries branch, version, sequence.
-`LoopLaneState` (WS1-C1) now tracks the run's one live `ExecutionLaneId` and
+`LoopLaneState` (WS1-C1) tracks the run's one live `ExecutionLaneId` and
 `OperationStateRevision`: seeded from `request.LaneAdmission` when present, or
 `new ExecutionLaneId(request.SessionId.Value)` / `new OperationStateRevision(1)`
 otherwise, matching the engine's own derivation (`AgentEngine.cs:288`).
 `DecideContinuationAsync` reads both from `laneState` instead of fabricating
 `new OperationStateRevision(turn)` and
-`new ExecutionLaneId(request.BranchId.Value)`. The revision does not yet advance
-mid-run — nothing durably mutates the lane's state from inside the loop until
-WS1-C3 wires input promotion — so it stays constant across every turn today.
-`ReleaseLaneAsync` releases using `laneState`'s current revision rather than the
-value admission first installed, so a future mid-run advance (WS1-C3) is
-released correctly without a further change to the release path.
+`new ExecutionLaneId(request.BranchId.Value)`. WS1-C3 wires the mid-run advance:
+`DefaultAgentLoop.TryPromoteInputAsync` calls `services.Input.PromoteAsync` at
+`BeforeFirstModelRequest` (once, in `RunCoreAsync` before model resolution),
+`AfterTurnCommitted` (in `DecideContinuationAsync`, before the continuation
+policy call), and `OtherwiseIdle` (only when the policy would otherwise
+`CompleteRun` and a further turn is possible). A committed promotion's messages
+are never re-appended by the loop — the session store alone materializes them —
+so `TryPromoteInputAsync` reloads the newly visible entries by paging
+`services.Session.ReadAsync` forward from the pre-promotion cursor.
+`ReleaseLaneAsync` releases using `laneState`'s current revision, which
+`DecideContinuationAsync`/`RunCoreAsync` now update in place once a promotion
+commits, so a mid-run advance releases correctly without a further change to the
+release path.
+
+Two correctness fixes were required to land this without violating
+`ArgumentExceptionExtensions.ThrowIfInconsistentContinuationEvidence`:
+
+1. `DefaultAgentLoop.RunAsync` now reuses
+   `request.LaneAdmission?.AcceptedCorrelation.OperationId` as the run's own
+   driving `OperationId` instead of always minting an unrelated one via
+   `_operationIds.Create()`. The store validates every promotion and release
+   against the exact operation admission installed
+   (`SessionAcceptedRunState.Correlation.OperationId`); the loop's own
+   `RunContinuationContext.OperationId` must therefore be that same identity
+   whenever the run is durably admitted, not a second, disconnected value that
+   happened never to be cross-checked before `PromotedInputContinuationCause`
+   existed.
+2. `RunContinuationContext`'s `operationStateRevision`, `branchCursor`, and
+   `InputPromotionCutoff` describe the evidence **as observed before** the
+   `AfterTurnCommitted` promotion attempt — matching what
+   `PromotedInputContinuationCause.Snapshot` itself carries — not the store's
+   new state after the commit. `DecideContinuationAsync` therefore builds the
+   context from the pre-promotion `nextCursor`/`lastEntryId`/
+   `laneState.OperationStateRevision`, and only afterward applies the commit's
+   advanced revision, merged messages, and merged cursor to what a `ContinueRun`
+   decision actually resumes from and what the run's settlement version reports.
 
 ### Facade
 
@@ -162,11 +192,10 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
    release still hard-codes revision 1, which stays correct only because it
    fires after the loop's own release already cleared the lane (see its
    remarks); WS1-C3 does not need to touch it.
-7. `PromoteInputAsync` advances `OperationStateRevision`; WS1-C1's
-   `LoopLaneState.OperationStateRevision` is mutable exactly so WS1-C3 can
-   update it in place when a promotion commits, and the loop's own
-   `ReleaseLaneAsync` already reads the live value (fixed by WS1-C1). Nothing in
-   the loop advances it yet — that lands with WS1-C3.
+7. ~~`PromoteInputAsync` advances `OperationStateRevision`~~ — fixed by WS1-C3:
+   `DecideContinuationAsync`/`RunCoreAsync` update
+   `LoopLaneState.OperationStateRevision` in place once a commit is observed,
+   and `ReleaseLaneAsync` (fixed by WS1-C1) already reads the live value.
 8. The loop never emits `RunEvent`; `RunEvent` constructors reject sequence
    `< 1`, so the publisher must allocate sequences.
 9. `RunUsage` is not accumulated; `new RunUsage(runId, [])` is valid interim.
@@ -269,6 +298,24 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   file untouched); the new tests pass.
 - Open: confirm the loop must not re-append promoted messages (the store
   materializes them).
+- Landed: confirmed — the loop reloads promoted content via
+  `services.Session.ReadAsync` rather than reconstructing it from
+  `InputPromoted.Promoted`. Extended `InputPromoted` (public, `AgentKit.IO`'s
+  only production caller) with `CommittedCursor` and `OperationStateRevision` so
+  the loop learns the lane's post-commit state; `SessionInputPromoted` already
+  carried both. Discovered and fixed two correctness issues exposed only once
+  `PromotedInputContinuationCause` cross-validates against
+  `RunContinuationContext` (see the narrative above): the loop's driving
+  `OperationId` now reuses the admission's when one exists, and
+  `DecideContinuationAsync` builds its continuation context from pre-promotion
+  evidence, applying the commit's advanced state afterward. Six tests:
+  `RunAsync_WhenInputIsPromotedBeforeFirstModelRequest_IncludesItInTheFirstContextAssemblyRequest`,
+  `RunAsync_WhenNoLaneAdmissionIsPresent_NeverAttemptsInputPromotion`,
+  `RunAsync_WhenInputIsPromotedAfterTurnCommitted_ForcesContinuationAndIncludesThePromotedMessage`,
+  `RunAsync_WhenInputIsPromotedOnlyWhenTheRunWouldOtherwiseFinish_ContinuesInstead`,
+  `RunAsync_WhenInputIsPromotedOnTheFinalTurn_StillSettlesWithTheTurnLimit`,
+  `RunAsync_WhenPromotionIsRejectedOrConflicted_CompletesNormallyWithoutFailing`.
+  Snapshots: Abstractions (`InputPromoted`), Loop (`AgentLoopOptions`).
 
 ### WS1-C4: `IRunEventSink`, `RunEventSinkRegistration`, `IOutputBackpressurePolicy`
 

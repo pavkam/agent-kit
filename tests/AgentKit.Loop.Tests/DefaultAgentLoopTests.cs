@@ -3659,6 +3659,174 @@ public sealed class DefaultAgentLoopTests
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
     }
 
+    [Fact]
+    public async Task RunAsync_WhenInputIsPromotedBeforeFirstModelRequest_IncludesItInTheFirstContextAssemblyRequest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        FakeSessionCoordinator? coordinatorRef = null;
+        var input = new ScriptedInputCoordinator(
+            req =>
+            {
+                coordinatorRef!.SimulateConcurrentAppend(
+                    [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, req.CutoffSequence.Value + 1, "promoted")]);
+                return ScriptedInputCoordinator.Promoted(
+                    req, "promoted", new SessionVersion(coordinatorRef.Version.Value), new OperationStateRevision(2));
+            });
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler, inputCoordinator: input);
+        coordinatorRef = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, admission) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var firstRequest = assembler.Requests.ShouldHaveSingleItem();
+        firstRequest.History.OfType<UserMessage>()
+            .ShouldContain(message => message.Parts.OfType<TextPart>().Any(part => part.Text == "promoted"));
+        var promotionRequest = input.Requests[0];
+        promotionRequest.Boundary.ShouldBe(PromotionBoundary.BeforeFirstModelRequest);
+        promotionRequest.TargetTurnId.ShouldBe(admission.AcceptedCorrelation.TurnId!.Value);
+        promotionRequest.PreviousTurnId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoLaneAdmissionIsPresent_NeverAttemptsInputPromotion()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var input = new ScriptedInputCoordinator();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), inputCoordinator: input);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        input.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenInputIsPromotedAfterTurnCommitted_ForcesContinuationAndIncludesThePromotedMessage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        FakeSessionCoordinator? coordinatorRef = null;
+        var input = new ScriptedInputCoordinator(
+            static req => new InputPromotionRejected(new InputRejection(InputRejectionKind.NoEligibleInput, "nothing yet")),
+            req =>
+            {
+                coordinatorRef!.SimulateConcurrentAppend(
+                    [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, req.CutoffSequence.Value + 1, "steered")]);
+                return ScriptedInputCoordinator.Promoted(
+                    req, "steered", new SessionVersion(coordinatorRef.Version.Value), new OperationStateRevision(2));
+            });
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ =>
+            {
+                modelCalls++;
+                return TestFactory.CompletedWithText(requestId);
+            },
+            contextAssembler: assembler, inputCoordinator: input);
+        coordinatorRef = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        modelCalls.ShouldBe(2);
+        assembler.Requests.Count.ShouldBe(2);
+        assembler.Requests[1].History.OfType<UserMessage>()
+            .ShouldContain(message => message.Parts.OfType<TextPart>().Any(part => part.Text == "steered"));
+        input.Requests[1].Boundary.ShouldBe(PromotionBoundary.AfterTurnCommitted);
+        _ = input.Requests[1].PreviousTurnId.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenInputIsPromotedOnlyWhenTheRunWouldOtherwiseFinish_ContinuesInstead()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        FakeSessionCoordinator? coordinatorRef = null;
+        var input = new ScriptedInputCoordinator(
+            static req => new InputPromotionRejected(new InputRejection(InputRejectionKind.NoEligibleInput, "before first request")),
+            static req => new InputPromotionRejected(new InputRejection(InputRejectionKind.NoEligibleInput, "after turn committed")),
+            req =>
+            {
+                coordinatorRef!.SimulateConcurrentAppend(
+                    [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, req.CutoffSequence.Value + 1, "just in time")]);
+                return ScriptedInputCoordinator.Promoted(
+                    req, "just in time", new SessionVersion(coordinatorRef.Version.Value), new OperationStateRevision(2));
+            });
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ =>
+            {
+                modelCalls++;
+                return TestFactory.CompletedWithText(requestId);
+            },
+            inputCoordinator: input);
+        coordinatorRef = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        // Turn 1 completes without the model requesting anything further: BeforeFirstModelRequest (1) and
+        // AfterTurnCommitted (2) find nothing, so the policy would complete the run, but OtherwiseIdle (3)
+        // catches the just-admitted input and forces a second turn. Turn 2 finds nothing at its own
+        // AfterTurnCommitted (4) and OtherwiseIdle (5) attempts and completes normally.
+        modelCalls.ShouldBe(2);
+        input.Requests.Count.ShouldBe(5);
+        input.Requests[2].Boundary.ShouldBe(PromotionBoundary.OtherwiseIdle);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenInputIsPromotedOnTheFinalTurn_StillSettlesWithTheTurnLimit()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        FakeSessionCoordinator? coordinatorRef = null;
+        var input = new ScriptedInputCoordinator(
+            static req => new InputPromotionRejected(new InputRejection(InputRejectionKind.NoEligibleInput, "before first request")),
+            req =>
+            {
+                coordinatorRef!.SimulateConcurrentAppend(
+                    [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, req.CutoffSequence.Value + 1, "steered")]);
+                return ScriptedInputCoordinator.Promoted(
+                    req, "steered", new SessionVersion(coordinatorRef.Version.Value), new OperationStateRevision(2));
+            });
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), inputCoordinator: input);
+        coordinatorRef = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (baseline, _) = RequestWithLaneAdmission();
+        var request = baseline with { MaxTurns = 1 };
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPromotionIsRejectedOrConflicted_CompletesNormallyWithoutFailing()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var input = new ScriptedInputCoordinator(
+            static _ => new InputPromotionRejected(new InputRejection(InputRejectionKind.InvalidInput, "rejected")),
+            static _ => new InputPromotionConflict(InputPromotionConflictKind.OperationRevisionChanged, "stale"));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), inputCoordinator: input);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, _) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        input.Requests.Count.ShouldBe(3);
+    }
+
     private (AgentRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
     {
         var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
@@ -3707,7 +3875,8 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
-        ISessionRunCoordinator? runCoordinator = null)
+        ISessionRunCoordinator? runCoordinator = null,
+        IInputCoordinator? inputCoordinator = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3729,7 +3898,8 @@ public sealed class DefaultAgentLoopTests
             outputProcessor,
             compactor,
             budgets,
-            runCoordinator);
+            runCoordinator,
+            inputCoordinator);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
