@@ -25,7 +25,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
       `PromoteInputAsync` across InMemory/Sqlite/Json with conformance
       (`d54a38c9`, `aa4e46a8`)
 - [x] Prerequisite: `SessionBackedInputQueue` in `AgentKit.IO` (`05bdea28`)
-- [ ] WS1-C1 lane identity and live revision in the loop
+- [x] WS1-C1 lane identity and live revision in the loop
 - [ ] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
 - [ ] WS1-C3 loop promotes input at three boundaries
 - [ ] WS1-C4 `IRunEventSink`, registration, backpressure contracts
@@ -64,19 +64,27 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 | `AgentRunInvocation`                                         | MISSING                    | spec `agent-runtime.md:171-185`; needs `HookDispatchContext` (WS2) and `RunPolicySnapshot` (no spec)                                                                                                                                                      |
 | `AgentRunServices`                                           | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentRunServices.cs`: 8 required + 4 optional; spec `agent-runtime.md:187-199` adds `IInputCoordinator`, `SessionExecutionCapability`, `IModelRequestExecutor`, `IToolExecutor`, `IOutputPublisher`, `IHookDispatcher`, `BudgetExecutionCapability` |
 | `AgentRunServicesFactory.Compile`                            | EXISTS-AND-USED            | `src/AgentKit/AgentRunServicesFactory.cs:46`; pure resolver, registers nothing into the scope, does not resolve `IInputCoordinator`                                                                                                                       |
-| `LoopLaneAdmission`                                          | EXISTS-AND-USED            | produced `AgentEngine.cs:379`, consumed `DefaultAgentLoop.cs:256,377,685,700`; its `OperationStateRevision` is read once                                                                                                                                  |
+| `LoopLaneAdmission`                                          | EXISTS-AND-USED            | produced `AgentEngine.cs:379`, consumed `DefaultAgentLoop.cs` to seed `LoopLaneState` (WS1-C1)                                                                                                                                                            |
+| `LoopLaneState`                                              | EXISTS-AND-USED            | `Loop/LoopLaneState.cs` (WS1-C1); one instance per run threaded through `RunCoreAsync`→`RunTurnAsync`→`SettleCompletedAsync`/`ValidateOutputAsync`/`InvokeToolsAsync`→`DecideContinuationAsync`, and into `ReleaseLaneAsync`                              |
 | `IInputCoordinator` / `DefaultInputCoordinator`              | EXISTS-UNWIRED (loop)      | `src/AgentKit.IO/DefaultInputCoordinator.cs`, registered singleton at `IO/ServiceExtensions.cs:62`; no loop or engine caller                                                                                                                              |
 | `SessionBackedInputQueue`                                    | EXISTS-UNWIRED             | `IO/SessionBackedInputQueue.cs:27`; scoped registration requires a scoped `SessionExecutionCapability` nothing registers                                                                                                                                  |
 | `PromotionBoundary`                                          | EXISTS                     | `Input/PromotionBoundary.cs`                                                                                                                                                                                                                              |
 | `PromotedInputContinuationCause`                             | EXISTS-UNWIRED             | never produced by `DefaultAgentLoop.ContinuationCauses` (`:1216`)                                                                                                                                                                                         |
 
 Loop state relevant to promotion: `currentVersion` is threaded through
-`RunCoreAsync` (`:394,423,508,527,547`); `history.SourceCursor` carries branch,
-version, sequence; a live `OperationStateRevision` is **not** tracked.
-`DecideContinuationAsync` fabricates `new OperationStateRevision(turn)`
-(`:1645`) and `new ExecutionLaneId(request.BranchId.Value)` (`:1641`) while the
-engine uses `new ExecutionLaneId(sessionId.Value)` (`AgentEngine.cs:288`); the
-two disagree today.
+`RunCoreAsync`; `history.SourceCursor` carries branch, version, sequence.
+`LoopLaneState` (WS1-C1) now tracks the run's one live `ExecutionLaneId` and
+`OperationStateRevision`: seeded from `request.LaneAdmission` when present, or
+`new ExecutionLaneId(request.SessionId.Value)` / `new OperationStateRevision(1)`
+otherwise, matching the engine's own derivation (`AgentEngine.cs:288`).
+`DecideContinuationAsync` reads both from `laneState` instead of fabricating
+`new OperationStateRevision(turn)` and
+`new ExecutionLaneId(request.BranchId.Value)`. The revision does not yet advance
+mid-run — nothing durably mutates the lane's state from inside the loop until
+WS1-C3 wires input promotion — so it stays constant across every turn today.
+`ReleaseLaneAsync` releases using `laneState`'s current revision rather than the
+value admission first installed, so a future mid-run advance (WS1-C3) is
+released correctly without a further change to the release path.
 
 ### Facade
 
@@ -144,10 +152,16 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
 5. The engine builds `SessionExecutionCapability` after creating the scope
    (`AgentEngine.cs:274,289`); a scoped holder type is required to place it in
    the scope's provider.
-6. `ExecutionLaneId` identity mismatch between engine and loop (see above).
-7. `PromoteInputAsync` advances `OperationStateRevision`; the loop and the
-   engine release path (`AgentEngine.cs:633` hard-codes revision 1) must carry
-   the live value or release is rejected as stale.
+6. ~~`ExecutionLaneId` identity mismatch between engine and loop~~ — fixed by
+   WS1-C1's `LoopLaneState`. `AgentEngine.cs:633`'s own best-effort fallback
+   release still hard-codes revision 1, which stays correct only because it
+   fires after the loop's own release already cleared the lane (see its
+   remarks); WS1-C3 does not need to touch it.
+7. `PromoteInputAsync` advances `OperationStateRevision`; WS1-C1's
+   `LoopLaneState.OperationStateRevision` is mutable exactly so WS1-C3 can
+   update it in place when a promotion commits, and the loop's own
+   `ReleaseLaneAsync` already reads the live value (fixed by WS1-C1). Nothing in
+   the loop advances it yet — that lands with WS1-C3.
 8. The loop never emits `RunEvent`; `RunEvent` constructors reject sequence
    `< 1`, so the publisher must allocate sequences.
 9. `RunUsage` is not accumulated; `new RunUsage(runId, [])` is valid interim.
@@ -197,6 +211,12 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   `RunAsync_WhenLaneAdmitted_ContinuationContextUsesAdmittedLaneAndRevision`.
 - Done when: `DefaultAgentLoopTests` and `AgentKit.Tests` pass; continuation
   context lane equals admission lane.
+- Landed: `LoopLaneState` threaded through `RunCoreAsync` → `RunTurnAsync` →
+  `SettleCompletedAsync`/`ValidateOutputAsync`/`InvokeToolsAsync` →
+  `DecideContinuationAsync`, and into `ReleaseLaneAsync`; no public API changed
+  (`IAgentLoop.RunAsync` signature is unaffected). Also updated
+  `RunAsync_WhenContinuationPolicyContinuesAfterNoToolTurn_RunsAnotherTurn`,
+  which had asserted the old fabricated `OperationStateRevision(turn)` behavior.
 
 ### WS1-C2: Scoped `IInputCoordinator` and `SessionExecutionCapability` holder
 

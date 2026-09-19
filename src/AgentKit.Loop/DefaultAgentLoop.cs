@@ -250,12 +250,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
             });
         LoopLog.RunStarted(_logger, request.RunId, request.AgentId, request.SessionId);
 
+        var laneState = new LoopLaneState(
+            request.LaneAdmission?.ExecutionLaneId ?? new ExecutionLaneId(request.SessionId.Value),
+            request.LaneAdmission?.OperationStateRevision ?? new OperationStateRevision(1));
+
         try
         {
-            var result = await RunCoreAsync(request, services, operationId, activity, cancellationToken).ConfigureAwait(false);
+            var result = await RunCoreAsync(request, services, operationId, activity, laneState, cancellationToken).ConfigureAwait(false);
             if (request.LaneAdmission is { } admission && result.FinalVersion is { } finalVersion)
             {
-                await ReleaseLaneAsync(request, services, admission, finalVersion).ConfigureAwait(false);
+                await ReleaseLaneAsync(request, services, admission, laneState, finalVersion).ConfigureAwait(false);
             }
 
             var outcome = result.Outcome.GetType().Name;
@@ -293,20 +297,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>Releases a durably admitted run's lane once the run has settled.</summary>
     /// <param name="request">The run request, carrying the exact <see cref="LoopLaneAdmission"/> to release.</param>
     /// <param name="services">The compiled per-run collaborator bundle.</param>
-    /// <param name="admission">The exact lane, accepted correlation, and installed state revision to release.</param>
+    /// <param name="admission">The accepted correlation the release presents as its evidence.</param>
+    /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
     /// <param name="finalVersion">The branch version this run's settlement observed, presented as the release's expected version.</param>
     /// <remarks>
     /// This is best-effort: release failure never changes the run's already-determined outcome. A lane the run
     /// could not release stays durably accepted; nothing today reconciles it, matching the narrow scope of this
     /// increment (see <c>docs/implementation-plan.md</c>, workstream 1). Uses <see cref="CancellationToken.None"/>
     /// throughout so a caller's cancellation, already reflected in the settled outcome, cannot also prevent this
-    /// cleanup.
+    /// cleanup. The presented revision is <paramref name="laneState"/>'s current value rather than the value
+    /// admission first installed, so a run that advanced the lane's state mid-run (for example by promoting
+    /// admitted input) releases against the revision it actually last observed.
     /// </remarks>
     private async Task ReleaseLaneAsync(
-        AgentRunRequest request, AgentRunServices services, LoopLaneAdmission admission, SessionVersion finalVersion)
+        AgentRunRequest request, AgentRunServices services, LoopLaneAdmission admission, LoopLaneState laneState, SessionVersion finalVersion)
     {
         Debug.Assert(request is not null, "A validated run request is required to release its lane.");
         Debug.Assert(admission is not null, "Lane-release evidence is required.");
+        Debug.Assert(laneState is not null, "The run's tracked lane state is required to release it.");
         if (services.RunCoordinator is not { } runCoordinator)
         {
             return;
@@ -324,10 +332,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
 
             var releaseContext = new SessionOperationContext(
-                request.AgentId, request.SessionId, admission.ExecutionLaneId, admission.AcceptedCorrelation,
+                request.AgentId, request.SessionId, laneState.ExecutionLaneId, admission.AcceptedCorrelation,
                 request.Identity, authorization);
             var release = new SessionRunReleaseRequest(
-                releaseContext, admission.OperationStateRevision, finalVersion,
+                releaseContext, laneState.OperationStateRevision, finalVersion,
                 new IdempotencyKey($"agentkit.loop:{request.RunId}:release"));
             var capability = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
             var result = await services.Session.ReleaseRunAsync(release, capability, CancellationToken.None).ConfigureAwait(false);
@@ -351,6 +359,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// only; they are never written to whatever <see cref="Activity.Current"/> happens to be, which may be a
     /// host-owned parent when the loop's activity was not sampled.
     /// </param>
+    /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
     /// <param name="cancellationToken">The caller's cancellation.</param>
     /// <returns>The complete result of the run.</returns>
     private async Task<AgentLoopResult> RunCoreAsync(
@@ -358,6 +367,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         AgentRunServices services,
         OperationId operationId,
         Activity? runActivity,
+        LoopLaneState laneState,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated run request is required by the loop core.");
@@ -374,7 +384,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var sessionContext = new SessionOperationContext(
             request.AgentId,
             request.SessionId,
-            executionLaneId: request.LaneAdmission?.ExecutionLaneId,
+            executionLaneId: laneState.ExecutionLaneId,
             runCorrelation,
             request.Identity,
             runAuthorization);
@@ -525,6 +535,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     tracking,
                     committedMessages,
                     currentVersion,
+                    laneState,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && committedMessages.Count > 0)
@@ -680,6 +691,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
+        LoopLaneState laneState,
         CancellationToken cancellationToken)
     {
         var turnId = turn == 1 && request.LaneAdmission is { } firstTurnAdmission
@@ -697,7 +709,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnSessionContext = new SessionOperationContext(
             request.AgentId,
             request.SessionId,
-            executionLaneId: request.LaneAdmission?.ExecutionLaneId,
+            executionLaneId: laneState.ExecutionLaneId,
             turnCorrelation,
             request.Identity,
             turnAuthorization);
@@ -883,7 +895,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
-                tracking, committedMessages, currentVersion, cancellationToken)
+                tracking, committedMessages, currentVersion, laneState, cancellationToken)
                 .ConfigureAwait(false),
 
             _ => throw new InvalidOperationException(
@@ -918,6 +930,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
+        LoopLaneState laneState,
         CancellationToken cancellationToken)
     {
         // A terminal is accepted as a complete turn only when the provider reports it finished by choice
@@ -1045,11 +1058,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
             { IsEmpty: true } when request.Output is { } outputDefinition => await ValidateOutputAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
                 assistantMessage, response, outputDefinition, tracking, committedMessages, currentVersion, committedSequence,
-                cancellationToken)
+                laneState, cancellationToken)
                 .ConfigureAwait(false),
             { IsEmpty: true } => await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
-                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken)
+                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
+                cancellationToken)
                 .ConfigureAwait(false),
             _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
@@ -1057,7 +1071,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
-                tracking, committedMessages, currentVersion, committedSequence, cancellationToken)
+                tracking, committedMessages, currentVersion, committedSequence, laneState, cancellationToken)
                 .ConfigureAwait(false),
         };
     }
@@ -1081,6 +1095,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="committedMessages">Every message this run has committed so far.</param>
     /// <param name="currentVersion">The branch version after the assistant commit.</param>
     /// <param name="committedSequence">The sequence of the committed assistant entry.</param>
+    /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
     /// <param name="cancellationToken">Cancels validation; the assistant message is already committed.</param>
     /// <returns>The turn's continuation or settlement.</returns>
     /// <remarks>
@@ -1115,6 +1130,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence committedSequence,
+        LoopLaneState laneState,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request.Output is not null, "Output validation runs only when the request selects a definition.");
@@ -1155,8 +1171,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             return await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
-                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken,
-                decision).ConfigureAwait(false);
+                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
+                cancellationToken, decision).ConfigureAwait(false);
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -1205,8 +1221,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return await DecideContinuationAsync(
             request, services, turnCorrelation, turn, assistantMessage, [], repairEntry.Id,
             NextCursor(sourceCursor, appended.NewVersion, repairSequence),
-            [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, cancellationToken,
-            retry).ConfigureAwait(false);
+            [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, laneState,
+            cancellationToken, retry).ConfigureAwait(false);
     }
 
     /// <summary>Builds the continuation causes that describe one committed turn to the policy.</summary>
@@ -1359,6 +1375,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence currentSequence,
+        LoopLaneState laneState,
         CancellationToken cancellationToken)
     {
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
@@ -1546,7 +1563,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ToImmutableArray();
         return await DecideContinuationAsync(
             request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
-            [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, cancellationToken)
+            [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, laneState,
+            cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -1577,6 +1595,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="nextCursor">The exact history cursor after this turn's commits.</param>
     /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
     /// <param name="version">The branch version after this turn's commits.</param>
+    /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
     /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
     /// <param name="outputDecision">
     /// The output processor's decision for this terminal turn, or <see langword="null"/> when the run selects no
@@ -1594,10 +1613,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <see cref="AgentRunInvalidState"/>.
     /// </para>
     /// <para>
-    /// This reduced loop drives one implicit execution lane per branch, so the lane identity is the branch
-    /// identity; its operation-state revision is the turn number, which advances with every committed turn; and
-    /// its policy version is computed by <see cref="RunPolicyVersioning.Compute"/> from the run's effective turn
-    /// limit and attempt timeout, the selected continuation policy key, and this instance's resolved
+    /// The lane identity and operation-state revision presented to the policy are <paramref name="laneState"/>'s
+    /// live values: the exact lane the run's admission installed (or the session-derived lane when the run carries
+    /// no admission), and the revision as last observed by this run rather than a value fabricated from the turn
+    /// number. Its policy version is computed by <see cref="RunPolicyVersioning.Compute"/> from the run's effective
+    /// turn limit and attempt timeout, the selected continuation policy key, and this instance's resolved
     /// <see cref="AgentLoopOptions"/>, so a change to any of those — including a live options reload that never
     /// advances the owning <see cref="AgentDefinition"/>'s revision — names a different version. The reduced loop
     /// projects every result of a batch into one tool message entry, so there is
@@ -1622,6 +1642,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         MessageCursor nextCursor,
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion version,
+        LoopLaneState laneState,
         CancellationToken cancellationToken,
         OutputProcessingResult? outputDecision = null)
     {
@@ -1638,11 +1659,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
             context = new RunContinuationContext(
                 request.AgentId,
                 request.SessionId,
-                new ExecutionLaneId(request.BranchId.Value),
+                laneState.ExecutionLaneId,
                 turnCorrelation.OperationId,
                 request.RunId,
                 AgentRunState.Driving,
-                new OperationStateRevision(turn),
+                laneState.OperationStateRevision,
                 new SessionBranchCursor(request.BranchId, lastEntryId),
                 nextCursor.Sequence,
                 request.Authorization.ConfigurationVersion,

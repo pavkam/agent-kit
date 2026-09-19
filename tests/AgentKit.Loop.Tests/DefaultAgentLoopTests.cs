@@ -305,7 +305,11 @@ public sealed class DefaultAgentLoopTests
         modelCalls.ShouldBe(2);
         result.NewMessages.Length.ShouldBe(2);
         assembler.Requests[1].History.Length.ShouldBe(2);
-        policy.Contexts[1].OperationStateRevision.ShouldBe(new OperationStateRevision(2));
+        // Without a lane admission nothing durably advances the lane's total-state revision mid-run, so every
+        // turn's continuation context observes the same session-derived lane at its starting revision.
+        policy.Contexts[0].OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        policy.Contexts[1].OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        policy.Contexts[0].ExecutionLaneId.ShouldBe(policy.Contexts[1].ExecutionLaneId);
     }
 
     [Fact]
@@ -3520,6 +3524,44 @@ public sealed class DefaultAgentLoopTests
         coordinator.ReceivedAppends.ShouldNotBeEmpty();
         coordinator.ReceivedAppends.ShouldAllBe(
             append => append.Context.ExecutionLaneId == admission.ExecutionLaneId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLaneAdmitted_ContinuationContextUsesAdmittedLaneAndRevision()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var runCoordinator = new FakeSessionRunCoordinator();
+        var policy = new ScriptedRunContinuationPolicy(
+            context => new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy, runCoordinator: runCoordinator);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var (request, admission) = RequestWithLaneAdmission();
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var context = policy.Contexts.ShouldHaveSingleItem();
+        context.ExecutionLaneId.ShouldBe(admission.ExecutionLaneId);
+        context.OperationStateRevision.ShouldBe(admission.OperationStateRevision);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoLaneAdmissionIsPresent_ContinuationContextUsesTheSessionDerivedLane()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(
+            context => new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var context = policy.Contexts.ShouldHaveSingleItem();
+        context.ExecutionLaneId.ShouldBe(new ExecutionLaneId(_sessionId.Value));
+        context.OperationStateRevision.ShouldBe(new OperationStateRevision(1));
     }
 
     [Fact]
