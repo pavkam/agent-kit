@@ -28,4 +28,12 @@ internal sealed class RunScopeState
     /// that point that requires <see cref="SessionExecutionCapability"/> fails to resolve.
     /// </value>
     public SessionExecutionCapability? Session { get; set; }
+
+    /// <summary>Gets or sets this run's complete correlation, for scoped collaborators outside the facade's own assembly.</summary>
+    /// <value>
+    /// <see langword="null"/> until the engine discovers the run's session address, conversation, and allocated
+    /// <see cref="RunId"/>; a scoped collaborator resolved before that point that requires
+    /// <see cref="RunScopeIdentity"/> fails to resolve.
+    /// </value>
+    public RunScopeIdentity? Identity { get; set; }
 }

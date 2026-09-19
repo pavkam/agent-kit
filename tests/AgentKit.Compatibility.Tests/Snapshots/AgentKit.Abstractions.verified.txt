@@ -118,11 +118,13 @@ namespace AgentKit
         public string DisplayName { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.AgentId Id { get; init; }
+        public AgentKit.ComponentKey<AgentKit.IInputCoordinator>? InputCoordinatorKey { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
         public AgentKit.ComponentKey<AgentKit.IAgentLoop>? LoopKey { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
         public AgentKit.ModelSelectionPolicy Models { get; init; }
         public AgentKit.OutputDefinition? Output { get; init; }
+        public AgentKit.ComponentKey<AgentKit.IOutputPublisher>? OutputPublisherKey { get; init; }
         public AgentKit.AgentDefinitionRevision Revision { get; init; }
         public AgentKit.RunPolicyDefaults RunDefaults { get; init; }
         public AgentKit.SecurityProfileKey SecurityProfile { get; }
@@ -253,6 +255,13 @@ namespace AgentKit
         public static AgentKit.HookPointId BeforeModelRequest { get; }
         public static AgentKit.HookPointId BeforeToolInvocation { get; }
         public static AgentKit.HookPointId RunStarted { get; }
+    }
+    public static class AgentIOComponentDefaults
+    {
+        public const string InputCoordinatorKeyValue = "agentkit-default-input-coordinator";
+        public const string OutputPublisherKeyValue = "agentkit-default-output-publisher";
+        public static AgentKit.ComponentKey<AgentKit.IInputCoordinator> InputCoordinatorKey { get; }
+        public static AgentKit.ComponentKey<AgentKit.IOutputPublisher> OutputPublisherKey { get; }
     }
     public readonly struct AgentId : System.IEquatable<AgentKit.AgentId>
     {
@@ -6639,6 +6648,14 @@ namespace AgentKit
     public static class RunPolicyVersioning
     {
         public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey) { }
+    }
+    public sealed class RunScopeIdentity : System.IEquatable<AgentKit.RunScopeIdentity>
+    {
+        public RunScopeIdentity(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ConversationId? ConversationId { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
     }
     public sealed class RunSettlementCompleted : AgentKit.RunSettlementOutcome, System.IEquatable<AgentKit.RunSettlementCompleted>
     {

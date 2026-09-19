@@ -298,6 +298,8 @@ public sealed class AgentEngine: IAsyncDisposable
             var executionLaneId = new ExecutionLaneId(sessionId.Value);
 
             var runId = _runIds.Create();
+            scope.ServiceProvider.GetRequiredService<RunScopeState>().Identity =
+                new RunScopeIdentity(definition.Id, sessionId, descriptor.ConversationId, runId);
             using var lane = await _lanes.EnterAsync(definition.Id, sessionId, runId, sessionProfile.BusyBehavior, cancellationToken)
                 .ConfigureAwait(false);
 

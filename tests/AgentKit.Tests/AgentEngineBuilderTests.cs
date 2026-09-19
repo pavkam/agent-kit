@@ -206,6 +206,51 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public void Build_WhenDefinitionExplicitlySelectsAnInputCoordinatorKeyWithNoMatchingRegistration_RejectsWithAnOptionalCollaboratorDiagnostic()
+    {
+        var definition = CompositionTestData.Definition() with { InputCoordinatorKey = new ComponentKey<IInputCoordinator>("missing") };
+        var builder = CompositionTestData.RunnableBuilder(definition: definition);
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.optional-collaborator.missing");
+    }
+
+    [Fact]
+    public void Build_WhenDefinitionExplicitlySelectsAnOutputPublisherKeyWithNoMatchingRegistration_RejectsWithAnOptionalCollaboratorDiagnostic()
+    {
+        var definition = CompositionTestData.Definition() with { OutputPublisherKey = new ComponentKey<IOutputPublisher>("missing") };
+        var builder = CompositionTestData.RunnableBuilder(definition: definition);
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.optional-collaborator.missing");
+    }
+
+    [Fact]
+    public async Task Build_WhenDefinitionDoesNotSelectAnInputCoordinatorOrOutputPublisherKey_AcceptsWithoutRequiringEither()
+    {
+        var builder = CompositionTestData.RunnableBuilder();
+
+        await using var engine = builder.Build();
+
+        _ = engine;
+    }
+
+    [Fact]
+    public async Task Build_WhenDefinitionExplicitlySelectsAMatchingKeyedInputCoordinator_Accepts()
+    {
+        var key = new ComponentKey<IInputCoordinator>("matching");
+        var definition = CompositionTestData.Definition() with { InputCoordinatorKey = key };
+        var builder = CompositionTestData.RunnableBuilder(definition: definition);
+        _ = builder.Services.AddKeyedSingleton<IInputCoordinator>(key.Value, static (_, _) => throw new InvalidOperationException("Unused test coordinator."));
+
+        await using var engine = builder.Build();
+
+        _ = engine;
+    }
+
+    [Fact]
     public async Task Build_WhenLoopHasAKeyedAlternativeUnderAnUnselectedKey_AcceptsWithoutActivatingTheAlternative()
     {
         var factoryCalls = 0;

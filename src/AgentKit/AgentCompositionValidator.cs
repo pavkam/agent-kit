@@ -312,6 +312,22 @@ internal static class AgentCompositionValidator
             RequireKeyedOrUnkeyed<IToolInvoker>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);
+
+            // IInputCoordinator and IOutputPublisher are optional collaborators: a definition that never sets
+            // these keys may run without either, and no diagnostic is raised. An explicit key, however, states
+            // that this definition depends on a specific keyed selection existing, so an unresolvable one is a
+            // composition mistake rather than a silently absent optional feature.
+            if (definition.InputCoordinatorKey is { } explicitInputKey)
+            {
+                RequireKeyedOrUnkeyedOptional<IInputCoordinator>(
+                    componentRegistrations, explicitInputKey.Value, definition.Id, diagnostics);
+            }
+
+            if (definition.OutputPublisherKey is { } explicitOutputKey)
+            {
+                RequireKeyedOrUnkeyedOptional<IOutputPublisher>(
+                    componentRegistrations, explicitOutputKey.Value, definition.Id, diagnostics);
+            }
         }
 
         return profileSnapshot;
@@ -334,6 +350,30 @@ internal static class AgentCompositionValidator
             diagnostics.Add(new CompositionDiagnostic(
                 "agentkit.definition.collaborator.missing",
                 $"Agent '{agentId}' selects loop key '{loopKey}' but no keyed or unkeyed {typeof(TService).Name} is registered."));
+        }
+    }
+
+    /// <summary>Requires a registration keyed to an explicitly selected key, or an unkeyed fallback, for one optional collaborator contract.</summary>
+    /// <typeparam name="TService">The optional collaborator contract.</typeparam>
+    /// <remarks>
+    /// Called only when the definition sets the corresponding key explicitly: leaving it unset means the
+    /// definition never depends on this optional collaborator, so an absent registration is not diagnosed.
+    /// </remarks>
+    private static void RequireKeyedOrUnkeyedOptional<TService>(
+        ComponentRegistrationSnapshot componentRegistrations,
+        string explicitKey,
+        AgentId agentId,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+        where TService : class
+    {
+        var hasRegistration = componentRegistrations.Services.Any(service =>
+            service.ServiceType == typeof(TService)
+            && (!service.IsKeyedService || explicitKey.Equals(service.ServiceKey as string, StringComparison.Ordinal)));
+        if (!hasRegistration)
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.definition.optional-collaborator.missing",
+                $"Agent '{agentId}' explicitly selects {typeof(TService).Name} key '{explicitKey}' but no keyed or unkeyed registration exists for it."));
         }
     }
 

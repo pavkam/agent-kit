@@ -140,6 +140,80 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Registers the built-in <see cref="DefaultInputCoordinator"/> and <see cref="DefaultOutputPublisher"/> as a keyed, scoped pair.</summary>
+        /// <param name="inputKey">The stable key this input coordinator registration is selected by.</param>
+        /// <param name="outputKey">The stable key this output publisher registration is selected by.</param>
+        /// <param name="configure">Optional configuration for <see cref="AgentIOOptions"/>.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="inputKey"/> or <paramref name="outputKey"/> is uninitialized.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// A different <see cref="IInputCoordinator"/> or <see cref="IOutputPublisher"/> implementation is already registered under the matching key.
+        /// </exception>
+        /// <remarks>
+        /// Uses <c>TryAddKeyedScoped</c> semantics: repeated equivalent calls for the same keys are idempotent. This
+        /// still requires the application to separately select exactly one <see cref="IInputQueue"/> — for example
+        /// through <see cref="AddSessionBackedInputQueue"/> — since <see cref="DefaultInputCoordinator"/> coordinates
+        /// over an application-selected queue rather than selecting one itself.
+        /// </remarks>
+        public IServiceCollection AddAgentIO(
+            ComponentKey<IInputCoordinator> inputKey,
+            ComponentKey<IOutputPublisher> outputKey,
+            Action<AgentIOOptions>? configure = null) =>
+            AgentIORegistration.Add(services, inputKey, outputKey, configure);
+
+        /// <summary>Additively registers a custom keyed, scoped <see cref="IInputCoordinator"/> implementation.</summary>
+        /// <typeparam name="TCoordinator">The scoped coordinator implementation.</typeparam>
+        /// <param name="key">The stable key this registration is selected by.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="key"/> is uninitialized.</exception>
+        /// <exception cref="InvalidOperationException">A different <see cref="IInputCoordinator"/> implementation is already registered under <paramref name="key"/>.</exception>
+        public IServiceCollection AddInputCoordinator<TCoordinator>(ComponentKey<IInputCoordinator> key)
+            where TCoordinator : class, IInputCoordinator =>
+            AgentIORegistration.AddInput<TCoordinator>(services, key);
+
+        /// <summary>Replaces whatever <see cref="IInputCoordinator"/> is registered under a key with a new implementation.</summary>
+        /// <typeparam name="TCoordinator">The scoped replacement implementation.</typeparam>
+        /// <param name="key">The stable key whose registration is replaced.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="key"/> is uninitialized.</exception>
+        public IServiceCollection ReplaceInputCoordinator<TCoordinator>(ComponentKey<IInputCoordinator> key)
+            where TCoordinator : class, IInputCoordinator =>
+            AgentIORegistration.ReplaceInput<TCoordinator>(services, key);
+
+        /// <summary>Additively registers a custom keyed, scoped <see cref="IOutputPublisher"/> implementation.</summary>
+        /// <typeparam name="TPublisher">The scoped publisher implementation.</typeparam>
+        /// <param name="key">The stable key this registration is selected by.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="key"/> is uninitialized.</exception>
+        /// <exception cref="InvalidOperationException">A different <see cref="IOutputPublisher"/> implementation is already registered under <paramref name="key"/>.</exception>
+        public IServiceCollection AddOutputPublisher<TPublisher>(ComponentKey<IOutputPublisher> key)
+            where TPublisher : class, IOutputPublisher =>
+            AgentIORegistration.AddOutput<TPublisher>(services, key);
+
+        /// <summary>Replaces whatever <see cref="IOutputPublisher"/> is registered under a key with a new implementation.</summary>
+        /// <typeparam name="TPublisher">The scoped replacement implementation.</typeparam>
+        /// <param name="key">The stable key whose registration is replaced.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="key"/> is uninitialized.</exception>
+        public IServiceCollection ReplaceOutputPublisher<TPublisher>(ComponentKey<IOutputPublisher> key)
+            where TPublisher : class, IOutputPublisher =>
+            AgentIORegistration.ReplaceOutput<TPublisher>(services, key);
+
+        /// <summary>Additively registers one <see cref="IRunEventSink"/> under its declared stable name.</summary>
+        /// <typeparam name="TSink">The sink implementation, resolved from the service provider when registered there, or constructed otherwise.</typeparam>
+        /// <param name="registration">The sink's stable identity, delivery requirement, and fan-out order.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="registration"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">A different sink registration or implementation type already uses <see cref="RunEventSinkRegistration.SinkName"/>.</exception>
+        public IServiceCollection AddRunEventSink<TSink>(RunEventSinkRegistration registration)
+            where TSink : class, IRunEventSink =>
+            AgentIORegistration.AddRunEventSink<TSink>(services, registration);
+
         /// <summary>Registers the protected human-question broker over an application-provided channel.</summary>
         /// <returns>The same service collection for composition chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

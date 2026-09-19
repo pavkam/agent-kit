@@ -198,6 +198,23 @@ public sealed record AgentDefinition
     /// </value>
     public ComponentKey<IAgentLoop>? LoopKey { get; init; }
 
+    /// <summary>Gets the explicitly selected keyed <see cref="IInputCoordinator"/> this definition promotes admitted input through.</summary>
+    /// <value>
+    /// The selected key, or <see langword="null"/> when this definition leaves the input coordinator unspecified.
+    /// A <see langword="null"/> value resolves to <see cref="AgentIOComponentDefaults.InputCoordinatorKey"/> at
+    /// run activation. Unlike <see cref="LoopKey"/> this collaborator is optional: a composition that registers
+    /// nothing for the resolved key simply never promotes mid-run input.
+    /// </value>
+    public ComponentKey<IInputCoordinator>? InputCoordinatorKey { get; init; }
+
+    /// <summary>Gets the explicitly selected keyed <see cref="IOutputPublisher"/> this definition publishes run events and its final result through.</summary>
+    /// <value>
+    /// The selected key, or <see langword="null"/> when this definition leaves the output publisher unspecified.
+    /// A <see langword="null"/> value resolves to <see cref="AgentIOComponentDefaults.OutputPublisherKey"/> at
+    /// run activation. Unlike <see cref="LoopKey"/> this collaborator is optional.
+    /// </value>
+    public ComponentKey<IOutputPublisher>? OutputPublisherKey { get; init; }
+
     /// <summary>Gets the structured-output contract every run of this definition must satisfy before it completes.</summary>
     /// <value>
     /// The immutable definition the loop hands to the selected <see cref="IOutputProcessor"/> after each terminal
@@ -379,6 +396,8 @@ public sealed record AgentDefinition
         && SecurityProfile.Equals(other.SecurityProfile)
         && SessionProfile.Equals(other.SessionProfile)
         && LoopKey.Equals(other.LoopKey)
+        && InputCoordinatorKey.Equals(other.InputCoordinatorKey)
+        && OutputPublisherKey.Equals(other.OutputPublisherKey)
         && Equals(Output, other.Output)
         && BudgetLimits.SequenceEqual(other.BudgetLimits)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
@@ -406,6 +425,8 @@ public sealed record AgentDefinition
         hash.Add(SecurityProfile);
         hash.Add(SessionProfile);
         hash.Add(LoopKey);
+        hash.Add(InputCoordinatorKey);
+        hash.Add(OutputPublisherKey);
         hash.Add(Output);
         foreach (var limit in BudgetLimits)
         {

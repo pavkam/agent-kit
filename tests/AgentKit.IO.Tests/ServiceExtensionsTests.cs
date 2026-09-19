@@ -228,4 +228,168 @@ public sealed class ServiceExtensionsTests
 
         queue.AppendedPreprocessing!.ConfigurationVersion.ShouldBe(new ConfigurationVersion(11));
     }
+
+    private static readonly ComponentKey<IInputCoordinator> InputKey = new("test-input");
+    private static readonly ComponentKey<IOutputPublisher> OutputKey = new("test-output");
+
+    [Fact]
+    public async Task AddAgentIO_WhenCalled_ResolvesTheKeyedDefaultPair()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IInputQueue>(new RecordingInputQueue());
+        _ = services.AddSingleton<ILogger<DefaultOutputPublisher>>(Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultOutputPublisher>.Instance);
+        _ = services.AddScoped(_ => SampleIdentity());
+        _ = services.AddAgentIO(InputKey, OutputKey);
+        using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+
+        _ = scope.ServiceProvider.GetRequiredKeyedService<IInputCoordinator>(InputKey.Value).ShouldBeOfType<DefaultInputCoordinator>();
+        _ = scope.ServiceProvider.GetRequiredKeyedService<IOutputPublisher>(OutputKey.Value).ShouldBeOfType<DefaultOutputPublisher>();
+    }
+
+    [Fact]
+    public void AddAgentIO_WhenCalledTwice_KeepsFirstRegistration()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentIO(InputKey, OutputKey);
+        _ = services.AddAgentIO(InputKey, OutputKey);
+
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IInputCoordinator)
+            && InputKey.Value.Equals(descriptor.ServiceKey)).ShouldBe(1);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IOutputPublisher)
+            && OutputKey.Value.Equals(descriptor.ServiceKey)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAgentIO_WhenAConflictingInputCoordinatorIsAlreadyRegisteredUnderTheSameKey_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator<FakeInputCoordinator>(InputKey);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddAgentIO(InputKey, OutputKey));
+
+        exception.Message.ShouldContain(InputKey.Value);
+    }
+
+    [Fact]
+    public void AddAgentIO_WhenAConflictingOutputPublisherIsAlreadyRegisteredUnderTheSameKey_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOutputPublisher<FakeOutputPublisher>(OutputKey);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddAgentIO(InputKey, OutputKey));
+
+        exception.Message.ShouldContain(OutputKey.Value);
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenKeyedAndAConflictingImplementationIsAlreadyRegisteredUnderTheSameKey_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator<FakeInputCoordinator>(InputKey);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddInputCoordinator<DefaultInputCoordinator>(InputKey));
+
+        exception.Message.ShouldContain(InputKey.Value);
+    }
+
+    [Fact]
+    public void ReplaceInputCoordinator_WhenCalled_ReplacesTheExistingKeyedRegistration()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator<DefaultInputCoordinator>(InputKey);
+
+        _ = services.ReplaceInputCoordinator<FakeInputCoordinator>(InputKey);
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredKeyedService<IInputCoordinator>(InputKey.Value).ShouldBeOfType<FakeInputCoordinator>();
+    }
+
+    [Fact]
+    public void AddOutputPublisher_WhenKeyedAndAConflictingImplementationIsAlreadyRegisteredUnderTheSameKey_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOutputPublisher<FakeOutputPublisher>(OutputKey);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddOutputPublisher<DefaultOutputPublisher>(OutputKey));
+
+        exception.Message.ShouldContain(OutputKey.Value);
+    }
+
+    [Fact]
+    public void ReplaceOutputPublisher_WhenCalled_ReplacesTheExistingKeyedRegistration()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOutputPublisher<FakeOutputPublisher>(OutputKey);
+
+        _ = services.ReplaceOutputPublisher<FakeOutputPublisher>(OutputKey);
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredKeyedService<IOutputPublisher>(OutputKey.Value).ShouldBeOfType<FakeOutputPublisher>();
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenCalledTwiceWithAnEquivalentRegistration_IsIdempotent()
+    {
+        var services = new ServiceCollection();
+        var registration = new RunEventSinkRegistration("sink", RunEventDelivery.BestEffort, 0);
+
+        _ = services.AddRunEventSink<FakeRunEventSink>(registration);
+        _ = services.AddRunEventSink<FakeRunEventSink>(registration);
+
+        services.Count(descriptor => descriptor.ServiceType == typeof(IRunEventSink)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenADifferentRegistrationReusesTheSameName_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddRunEventSink<FakeRunEventSink>(new RunEventSinkRegistration("sink", RunEventDelivery.BestEffort, 0));
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddRunEventSink<FakeRunEventSink>(
+            new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0)));
+
+        exception.Message.ShouldContain("sink");
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenADifferentImplementationTypeReusesTheSameName_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        var registration = new RunEventSinkRegistration("sink", RunEventDelivery.BestEffort, 0);
+        _ = services.AddRunEventSink<FakeRunEventSink>(registration);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddRunEventSink<OtherFakeRunEventSink>(registration));
+
+        exception.Message.ShouldContain("sink");
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+        var exception = Should.Throw<ArgumentNullException>(
+            () => services.AddRunEventSink<FakeRunEventSink>(new RunEventSinkRegistration("sink", RunEventDelivery.BestEffort, 0)));
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenRegistrationIsNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        var services = new ServiceCollection();
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddRunEventSink<FakeRunEventSink>(null!));
+        exception.ParamName.ShouldBe("registration");
+    }
+
+    private static RunScopeIdentity SampleIdentity() => new(
+        new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
+        new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001")),
+        null,
+        new RunId(Guid.Parse("30000000-0000-0000-0000-000000000001")));
+
+    private sealed class OtherFakeRunEventSink: IRunEventSink
+    {
+        public ValueTask PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
 }

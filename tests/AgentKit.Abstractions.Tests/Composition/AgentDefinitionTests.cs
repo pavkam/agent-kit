@@ -106,11 +106,15 @@ public sealed class AgentDefinitionTests
     {
         var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));
         var loopKey = new ComponentKey<IAgentLoop>("loop");
+        var inputCoordinatorKey = new ComponentKey<IInputCoordinator>("input");
+        var outputPublisherKey = new ComponentKey<IOutputPublisher>("output");
         var instructions = Instructions();
         var tools = Tools();
         var changed = definition with
         {
             LoopKey = loopKey,
+            InputCoordinatorKey = inputCoordinatorKey,
+            OutputPublisherKey = outputPublisherKey,
             DisplayName = "changed",
             Models = new ModelSelectionPolicy([new ModelAlias("other")]),
             ModelRequirements = ModelRequirements.None,
@@ -122,6 +126,8 @@ public sealed class AgentDefinitionTests
             Extensions = ExtensionData.Empty,
         };
         changed.LoopKey.ShouldBe(loopKey);
+        changed.InputCoordinatorKey.ShouldBe(inputCoordinatorKey);
+        changed.OutputPublisherKey.ShouldBe(outputPublisherKey);
         changed.DisplayName.ShouldBe("changed");
         changed.ModelRequirements.ShouldBe(ModelRequirements.None);
         changed.Instructions.ShouldBe(instructions);
@@ -130,6 +136,36 @@ public sealed class AgentDefinitionTests
         changed.Settings.ShouldBe(LlmRequestSettings.Default);
         changed.RunDefaults.MaxTurns.ShouldBe(4);
         changed.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void Equality_WhenInputCoordinatorKeysDiffer_AreNotEqual()
+    {
+        var left = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
+        {
+            InputCoordinatorKey = new ComponentKey<IInputCoordinator>("a"),
+        };
+        var right = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
+        {
+            InputCoordinatorKey = new ComponentKey<IInputCoordinator>("b"),
+        };
+
+        left.ShouldNotBe(right);
+    }
+
+    [Fact]
+    public void Equality_WhenOutputPublisherKeysDiffer_AreNotEqual()
+    {
+        var left = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
+        {
+            OutputPublisherKey = new ComponentKey<IOutputPublisher>("a"),
+        };
+        var right = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
+        {
+            OutputPublisherKey = new ComponentKey<IOutputPublisher>("b"),
+        };
+
+        left.ShouldNotBe(right);
     }
 
     [Fact]

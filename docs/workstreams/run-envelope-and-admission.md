@@ -29,7 +29,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
 - [x] WS1-C3 loop promotes input at three boundaries
 - [x] WS1-C4 `IRunEventSink`, registration, backpressure contracts
-- [ ] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
+- [x] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
 - [ ] WS1-C6 loop publishes `RunEvent`s
 - [ ] WS1-C7 unified outcome family
 - [ ] WS1-C8 facade result types and `AgentRunOptions` reshape
@@ -127,17 +127,31 @@ Two correctness fixes were required to land this without violating
 | `AgentEngine.GetAgentAsync` → `ValueTask<Agent?>`; `GetAgentsAsync` → `ImmutableArray<AgentDefinition>`                                                                                                  | EXISTS-AS-REDUCED-STAND-IN | spec returns `AgentResolution` and `AgentCatalogSnapshot` (`composition-and-configuration.md:396-403`)    |
 | `AgentEngineRuntime`, `AgentResolution` family, `AgentSessionCreateRequest`, `AgentSessionCreationResult` family, `AgentRunPlan`, `IAgentRunPlanCompiler`, `IAgentRunScopeFactory`, `AgentRunScopeLease` | MISSING                    | –                                                                                                         |
 | `SessionLaneRegistry`                                                                                                                                                                                    | EXISTS-AND-USED            | `src/AgentKit/SessionLaneRegistry.cs`; only `AgentEngine.cs:43,292`; 6 tests                              |
-| `IIdentifierGenerator<InputId>`                                                                                                                                                                          | MISSING                    | `AgentEngine.cs:346` news a GUID inline                                                                   |
+| `IIdentifierGenerator<InputId>`                                                                                                                                                                          | EXISTS-AND-USED            | registered in `AddAgentKit()` (WS1-C2); `AgentEngine.cs` uses `_inputIds.Create()`                        |
 
 ### IO package
 
 `IRunEventSink`, `RunEventSinkRegistration`, `RunEventDelivery`,
 `IOutputBackpressurePolicy`, `BackpressureDecision` exist in
-`src/AgentKit.Abstractions/Results/` (WS1-C4) but have no production caller yet.
-`AddAgentIO`, `DefaultOutputPublisher`, `AddRunEventSink<T>` remain MISSING
-(WS1-C5). `AgentIOOptions` exists minimally (`IO/AgentIOOptions.cs`).
-`RunEventHub` is internal with a per-run constructor (`IO/RunEventHub.cs:20`)
-and is not DI-constructible.
+`src/AgentKit.Abstractions/Results/` (WS1-C4). `DefaultOutputPublisher`,
+`AgentIORegistration`, `AddAgentIO`, `AddInputCoordinator<T>(key)` /
+`ReplaceInputCoordinator<T>` / `AddOutputPublisher<T>(key)` /
+`ReplaceOutputPublisher<T>` / `AddRunEventSink<T>` exist (WS1-C5), all in
+`src/AgentKit.IO/`. `RunEventHub` is now DI-constructible: `AgentIORegistration`
+registers a scoped factory building it from a new `RunScopeIdentity`
+(`src/AgentKit.Abstractions/Composition/RunScopeIdentity.cs`), which
+`AgentEngine.SendAgentAsync` populates on `RunScopeState` once the session
+address, conversation, and run identity are known — mirroring
+`SessionExecutionCapability`'s existing holder pattern. `AgentDefinition` gained
+matching optional `InputCoordinatorKey`/`OutputPublisherKey` properties and
+`AgentCompositionValidator` validates them when explicitly set (optional
+collaborators are not required merely by existing). Still MISSING:
+`AgentRunServicesFactory` does not yet resolve `IOutputPublisher` into
+`AgentRunServices` (that is WS1-C6, which also adds the `Publisher` slot), and
+`IInputCoordinator` resolution in `AgentRunServicesFactory.Compile` remains
+unkeyed (`provider.GetService<IInputCoordinator>()`, from WS1-C2) rather than
+routed through `AgentDefinition.InputCoordinatorKey` — a known interim gap for a
+later chunk to close alongside WS1-C6's publisher wiring.
 
 ### Conversations and Simple
 
@@ -355,6 +369,29 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   Tests: required-sink failure, best-effort isolation, idempotent registration,
   duplicate sink name. Snapshots: IO, Abstractions.
 - Done when: `AddAgentIO` twice is idempotent; duplicate sink fails build.
+- Landed: `RunScopeState` (not directly visible to `AgentKit.IO`) could not be
+  the factory's direct dependency, so a new public
+  `AgentKit.RunScopeIdentity(AgentId, SessionId, ConversationId?, RunId)`
+  carries the correlation `RunEventHub` needs; `AgentEngine.SendAgentAsync`
+  populates it on `RunScopeState.Identity` right after allocating `runId`. Also
+  added a matching `AgentIOComponentDefaults` (mirroring
+  `AgentLoopComponentDefaults`) and `RequireKeyedOrUnkeyedOptional` in
+  `AgentCompositionValidator`, since the cross-cutting rule requires every
+  selectable component's key and validator check to land together — the chunk's
+  own text only named the output publisher, but `AddAgentIO` accepts both an
+  input and an output key, so `AgentDefinition.InputCoordinatorKey` was added
+  too. `AddAgentIO` also binds `InputCoordinatorOptions` with this package's
+  defaults so it is self-sufficient without a separate
+  `AddInputCoordinator(configure)` call. Tests: constructor guards,
+  required-sink fault propagation, required-sink backpressure misconfiguration
+  (a policy returning anything but `Wait` for a required sink throws),
+  best-effort fault isolation, best-effort backpressure drop, delivery order,
+  hub forwarding, `CompleteAsync` identity validation/idempotency/conflict, hub
+  sealing, plus the registration idempotency/conflict matrix for `AddAgentIO`,
+  `AddInputCoordinator<T>`/`ReplaceInputCoordinator<T>`,
+  `AddOutputPublisher<T>`/`ReplaceOutputPublisher<T>`, and `AddRunEventSink<T>`.
+  `AgentCompositionValidator` end-to-end tests added to
+  `AgentEngineBuilderTests`. Snapshots: Abstractions, IO.
 
 ### WS1-C6: Loop publishes `RunEvent`s through the publisher
 

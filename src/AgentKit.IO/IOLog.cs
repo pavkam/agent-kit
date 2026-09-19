@@ -32,4 +32,16 @@ internal static partial class IOLog
 
     [LoggerMessage(EventId = 22008, Level = LogLevel.Error, Message = "Input promotion failed at {Boundary} with {ErrorType}.")]
     internal static partial void InputPromotionFailed(ILogger logger, PromotionBoundary boundary, string errorType);
+
+    [LoggerMessage(EventId = 22009, Level = LogLevel.Error, Message = "Required run-event sink {SinkName} faulted with {ErrorType}; the run observes this failure.")]
+    internal static partial void RequiredRunEventSinkFaulted(ILogger logger, string sinkName, string errorType);
+
+    [LoggerMessage(EventId = 22010, Level = LogLevel.Warning, Message = "Best-effort run-event sink {SinkName} faulted with {ErrorType}; the run continues without it.")]
+    internal static partial void BestEffortRunEventSinkFaulted(ILogger logger, string sinkName, string errorType);
+
+    [LoggerMessage(EventId = 22011, Level = LogLevel.Warning, Message = "Best-effort run-event sink {SinkName} delivery was {Decision} after remaining blocked.")]
+    internal static partial void BestEffortRunEventSinkBackpressured(ILogger logger, string sinkName, BackpressureDecision decision);
+
+    [LoggerMessage(EventId = 22012, Level = LogLevel.Error, Message = "The backpressure policy returned {Decision} for required sink {SinkName}; only Wait is valid for a required sink.")]
+    internal static partial void RequiredRunEventSinkBackpressureMisconfigured(ILogger logger, string sinkName, BackpressureDecision decision);
 }

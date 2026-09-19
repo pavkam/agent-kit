@@ -9,10 +9,6 @@ internal sealed class RunEventHub: IAsyncDisposable
 {
     private readonly Lock _gate = new();
     private readonly HashSet<RunEventSubscription> _subscriptions = [];
-    private readonly AgentId _agentId;
-    private readonly SessionId _sessionId;
-    private readonly ConversationId? _conversationId;
-    private readonly RunId _runId;
     private readonly RunEventHubOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<RunEventHub> _logger;
@@ -37,14 +33,26 @@ internal sealed class RunEventHub: IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        _agentId = agentId;
-        _sessionId = sessionId;
-        _conversationId = conversationId;
-        _runId = runId;
+        AgentId = agentId;
+        SessionId = sessionId;
+        ConversationId = conversationId;
+        RunId = runId;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<RunEventHub>.Instance;
     }
+
+    /// <summary>Gets the accepted agent identity this hub's events must carry.</summary>
+    internal AgentId AgentId { get; }
+
+    /// <summary>Gets the session identity this hub's events must carry.</summary>
+    internal SessionId SessionId { get; }
+
+    /// <summary>Gets the optional conversation identity this hub's events must carry.</summary>
+    internal ConversationId? ConversationId { get; }
+
+    /// <summary>Gets the accepted run identity this hub's events must carry.</summary>
+    internal RunId RunId { get; }
 
     /// <summary>Atomically registers one empty bounded buffer before the consumer starts reading.</summary>
     /// <returns>A non-owning single-reader subscription receiving only subsequent publications.</returns>
@@ -76,7 +84,7 @@ internal sealed class RunEventHub: IAsyncDisposable
     internal IAgentRunStream<TOutput> Subscribe<TOutput>(Task<AgentRunFinished<TOutput>> completion)
     {
         ArgumentNullException.ThrowIfNull(completion);
-        return new RunEventStream<TOutput>(Subscribe(), _agentId, _sessionId, _conversationId, _runId, completion, Observe);
+        return new RunEventStream<TOutput>(Subscribe(), AgentId, SessionId, ConversationId, RunId, completion, Observe);
     }
 
     /// <summary>Captures recipients and offers one event atomically with the run-local sequence check.</summary>
@@ -89,10 +97,10 @@ internal sealed class RunEventHub: IAsyncDisposable
     internal ValueTask<RunEventPublicationOutcome> PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(runEvent);
-        ArgumentException.ThrowIfNotEqual(runEvent.AgentId, _agentId, nameof(runEvent));
-        ArgumentException.ThrowIfNotEqual(runEvent.SessionId, _sessionId, nameof(runEvent));
-        ArgumentException.ThrowIfNotEqual(runEvent.ConversationId, _conversationId, nameof(runEvent));
-        ArgumentException.ThrowIfNotEqual(runEvent.RunId, _runId, nameof(runEvent));
+        ArgumentException.ThrowIfNotEqual(runEvent.AgentId, AgentId, nameof(runEvent));
+        ArgumentException.ThrowIfNotEqual(runEvent.SessionId, SessionId, nameof(runEvent));
+        ArgumentException.ThrowIfNotEqual(runEvent.ConversationId, ConversationId, nameof(runEvent));
+        ArgumentException.ThrowIfNotEqual(runEvent.RunId, RunId, nameof(runEvent));
         using var observation = Observe(RunEventHubOperation.Publish);
         var disconnected = 0;
         try
@@ -181,6 +189,6 @@ internal sealed class RunEventHub: IAsyncDisposable
     private RunEventHubObservation Observe(RunEventHubOperation operation)
     {
         Debug.Assert(Enum.IsDefined(operation), "Only package-defined hub operations are observed.");
-        return new RunEventHubObservation(operation, _agentId, _sessionId, _runId, _timeProvider, _logger);
+        return new RunEventHubObservation(operation, AgentId, SessionId, RunId, _timeProvider, _logger);
     }
 }

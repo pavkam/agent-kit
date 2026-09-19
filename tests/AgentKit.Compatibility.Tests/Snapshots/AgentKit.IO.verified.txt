@@ -6,8 +6,11 @@ namespace AgentKit.IO
     public sealed class AgentIOOptions
     {
         public AgentIOOptions() { }
+        public int CapacityPerSubscription { get; set; }
+        public System.TimeSpan MaximumBestEffortSinkWait { get; set; }
         public int MaximumFollowUpPromotionsPerIdleBoundary { get; set; }
         public int MaximumPendingInputsPerLane { get; set; }
+        public int MaximumSubscriptions { get; set; }
     }
     public sealed class AgentRunOutputPublisher : AgentKit.IOutputPublisher, System.IAsyncDisposable
     {
@@ -46,6 +49,17 @@ namespace AgentKit.IO
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(System.Action<AgentKit.IO.InputCoordinatorOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(AgentKit.IO.InputCoordinatorOptions options) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionBackedInputQueue(System.Action<AgentKit.IO.AgentIOOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentIO(AgentKit.ComponentKey<AgentKit.IInputCoordinator> inputKey, AgentKit.ComponentKey<AgentKit.IOutputPublisher> outputKey, System.Action<AgentKit.IO.AgentIOOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator<TCoordinator>(AgentKit.ComponentKey<AgentKit.IInputCoordinator> key)
+                where TCoordinator :  class, AgentKit.IInputCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceInputCoordinator<TCoordinator>(AgentKit.ComponentKey<AgentKit.IInputCoordinator> key)
+                where TCoordinator :  class, AgentKit.IInputCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputPublisher<TPublisher>(AgentKit.ComponentKey<AgentKit.IOutputPublisher> key)
+                where TPublisher :  class, AgentKit.IOutputPublisher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputPublisher<TPublisher>(AgentKit.ComponentKey<AgentKit.IOutputPublisher> key)
+                where TPublisher :  class, AgentKit.IOutputPublisher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunEventSink<TSink>(AgentKit.RunEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IRunEventSink { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
         }
     }

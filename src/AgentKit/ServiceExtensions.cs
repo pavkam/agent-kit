@@ -36,13 +36,14 @@ public static class ServiceExtensions
         /// disposal.
         /// </para>
         /// <para>
-        /// This also registers a scoped <see cref="SessionExecutionCapability"/>
-        /// resolver, backed by an internal per-scope holder the engine's own
-        /// admission path fills in once it has compiled the capability for the
-        /// run. A collaborator resolved from the same run scope before that
-        /// point — for example a session-backed input queue resolved too
-        /// early — fails with <see cref="InvalidOperationException"/> rather
-        /// than silently observing a different run's capability.
+        /// This also registers scoped <see cref="SessionExecutionCapability"/> and
+        /// <see cref="RunScopeIdentity"/> resolvers, backed by an internal
+        /// per-scope holder the engine's own admission path fills in once each
+        /// becomes known for the run. A collaborator resolved from the same run
+        /// scope before that point — for example a session-backed input queue,
+        /// or a package's own run-event hub resolved too early — fails with
+        /// <see cref="InvalidOperationException"/> rather than silently
+        /// observing a different run's capability or identity.
         /// </para>
         /// <para>
         /// This registers no loop, provider, store, tool, or security
@@ -85,6 +86,11 @@ public static class ServiceExtensions
                     "No SessionExecutionCapability has been compiled for this run scope yet. This is resolved "
                     + "only after the engine admits a run into its session lane; nothing outside that admission "
                     + "path can resolve it."));
+            services.TryAddScoped(static provider => provider.GetRequiredService<RunScopeState>().Identity
+                ?? throw new InvalidOperationException(
+                    "No RunScopeIdentity has been discovered for this run scope yet. This is resolved only "
+                    + "after the engine discovers the run's session address, conversation, and allocated RunId; "
+                    + "nothing outside that admission path can resolve it."));
             services.TryAddSingleton(
                 static provider =>
                 {
