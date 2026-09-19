@@ -46,6 +46,8 @@ internal static class LoopTestData
     public static ToolCallPart ToolCall() =>
         new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")), default, null, ExtensionData.Empty);
 
+    public static ValidatedOutput ValidatedOutput() => new(OutputMode.Text, "done", null, null);
+
     public static OutputRejected OutputRejected() =>
         new(new OutputValidationFailure(OutputValidationFailureKind.SchemaValidationFailed, "invalid", []));
 

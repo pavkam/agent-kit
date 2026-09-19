@@ -613,13 +613,7 @@ public sealed class DefaultConversationSessionTests
             request.SessionId,
             request.BranchId,
             request.RunId,
-            new AgentRunCompleted(FakeMessages.Assistant(
-                request,
-                [
-                    new TextPart("   ", TextSemantics.Plain, ExtensionData.Empty),
-                    new TextPart("Hello there", TextSemantics.Plain, ExtensionData.Empty),
-                    call1,
-                ])),
+            new RunSucceeded(),
             [
                 FakeMessages.Assistant(
                     request,
@@ -678,7 +672,7 @@ public sealed class DefaultConversationSessionTests
         {
             ResultFactory = request => new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                new AgentRunCompleted(FakeMessages.Assistant(request, [])), [], new SessionVersion(1)),
+                new RunSucceeded(), [], new SessionVersion(1)),
         };
         using var session = CreateSession(coordinator: coordinator, loop: loop);
 
@@ -728,7 +722,7 @@ public sealed class DefaultConversationSessionTests
                     request.SessionId,
                     request.BranchId,
                     request.RunId,
-                    new AgentRunCompleted(assistant),
+                    new RunSucceeded(),
                     [assistant],
                     new SessionVersion(1));
             },
@@ -756,7 +750,7 @@ public sealed class DefaultConversationSessionTests
                     request.SessionId,
                     request.BranchId,
                     request.RunId,
-                    new AgentRunCompleted(assistant),
+                    new RunSucceeded(),
                     [assistant],
                     new SessionVersion(1));
             },
@@ -778,7 +772,7 @@ public sealed class DefaultConversationSessionTests
                 request.SessionId,
                 request.BranchId,
                 request.RunId,
-                new AgentRunTurnLimitReached(request.MaxTurns),
+                new RunPolicyHalted(new PolicyHalt(TurnLimitError())),
                 [],
                 new SessionVersion(1)),
         };
@@ -805,7 +799,7 @@ public sealed class DefaultConversationSessionTests
                 request.SessionId,
                 request.BranchId,
                 request.RunId,
-                new AgentRunTurnLimitReached(request.MaxTurns),
+                new RunPolicyHalted(new PolicyHalt(TurnLimitError())),
                 [],
                 new SessionVersion(1)),
         };
@@ -818,8 +812,12 @@ public sealed class DefaultConversationSessionTests
         var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24007);
         entry.Level.ShouldBe(LogLevel.Information);
         entry.State["AgentId"].ShouldBe(ConversationSessionOptionsFactory.AgentId);
-        entry.State["OutcomeType"].ShouldBe(nameof(AgentRunTurnLimitReached));
+        entry.State["OutcomeType"].ShouldBe(nameof(RunPolicyHalted));
     }
+
+    private static AgentError TurnLimitError() => new(
+        AgentErrorCodes.RequestLimit, "The run reached its turn limit.", isRetryable: false, SideEffectCertainty.NotApplicable,
+        new ErrorOrigin("test"), externalCode: null, operationId: null, externalRequestId: null, retryAfter: null, ExtensionData.Empty);
 
     [Fact]
     public async Task SendAsync_WhenLoopFailsWithProviderFailureCarryingDiagnosticCause_DoesNotExposeItInEvents()
@@ -836,10 +834,15 @@ public sealed class DefaultConversationSessionTests
             "The provider is unavailable.",
             new HttpRequestException($"connection refused while sending {secret}"),
             ExtensionData.Empty);
+        // The mapping deliberately never touches ProviderFailure.DiagnosticCause or Extensions; only the safe
+        // message and code reach the outcome, matching RunOutcomes.ModelAttemptFailed in AgentKit.Loop.
+        var error = new AgentError(
+            AgentErrorCodes.ProviderUnavailable, failure.SafeMessage, isRetryable: false, SideEffectCertainty.NotApplicable,
+            new ErrorOrigin("test"), failure.ProviderCode, operationId: null, externalRequestId: null, failure.RetryAfter, ExtensionData.Empty);
         var loop = new FakeAgentLoop
         {
             ResultFactory = request => new AgentLoopResult(
-                request.AgentId, request.SessionId, request.BranchId, request.RunId, new AgentRunFailed(failure), [], new SessionVersion(1)),
+                request.AgentId, request.SessionId, request.BranchId, request.RunId, new RunFailed(new RunFailure(error)), [], new SessionVersion(1)),
         };
         using var session = CreateSession(loop: loop);
 
@@ -868,7 +871,7 @@ public sealed class DefaultConversationSessionTests
                         ExtensionData.Empty)]);
                 return new AgentLoopResult(
                     request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                    new AgentRunCompleted(assistant), [assistant], new SessionVersion(1));
+                    new RunSucceeded(), [assistant], new SessionVersion(1));
             },
         };
         using var session = CreateSession(loop: loop);
@@ -903,28 +906,28 @@ public sealed class DefaultConversationSessionTests
     {
         var data = new TheoryData<AgentRunOutcome, string>
         {
-            { new AgentRunSessionOperationFailed("store fault"), "session operation failed" },
-            { new AgentRunModelSelectionFailed("no usable model", []), "no usable model could be selected" },
+            { new RunIdle(), "ended idle" },
+            { new RunCancelled(new(Error(AgentErrorCodes.Cancelled, "the caller cancelled"))), "the caller cancelled" },
+            { new RunFailed(new(Error(AgentErrorCodes.Unknown, "store fault"))), "store fault" },
             {
-                new AgentRunContextPreparationFailed(new ContextPreparationFailure(
-                    ContextPreparationFailureKind.EmptyHistory, "history is empty", ExtensionData.Empty)),
-                "context preparation failed"
-            },
-            { new AgentRunCancelled("the caller cancelled"), "the caller cancelled" },
-            { new AgentRunIdle(), "ended idle" },
-            { new AgentRunInvalidState("inconsistent evidence"), "inconsistent evidence" },
-            {
-                new AgentRunOutputRejected(new OutputRejected(new OutputValidationFailure(
-                    OutputValidationFailureKind.ValidatorFailed, "output failed validation", []))),
-                "output was rejected"
+                new RunPolicyHalted(new(Error(AgentErrorCodes.OutputValidationFailed, "output failed validation"))),
+                "output failed validation"
             },
             {
-                new AgentRunOutputRejected(new OutputConfigurationRejected(new OutputSchemaConfigurationFailure(
-                    OutputSchemaConfigurationFailureKind.MalformedSchema, "schema is malformed", []))),
-                "output definition could not be applied"
+                new RunLimitReached(new(
+                    new BudgetLimitFailure(
+                        new BudgetScopeId(Guid.NewGuid()), BudgetDimensions.Turns, BudgetLimitKind.Hard, 5, 5, 1,
+                        new BudgetUnit("count"), "the turn budget is exhausted"),
+                    new ComponentId("test"), hasPartialOutput: true, SideEffectCertainty.DefinitelyNotPerformed)),
+                "the turn budget is exhausted"
             },
         };
         return data;
+
+        static AgentError Error(AgentErrorCode code, string safeMessage) => new(
+            code, safeMessage, isRetryable: false, SideEffectCertainty.NotApplicable,
+            new ErrorOrigin("test"), externalCode: null, operationId: null, externalRequestId: null, retryAfter: null,
+            ExtensionData.Empty);
     }
 
     [Fact]
@@ -1249,9 +1252,10 @@ public sealed class DefaultConversationSessionTests
         {
             ResultFactory = request => new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                new AgentRunCompleted(FakeMessages.Assistant(request, /*lang=json,strict*/ "{\"ok\":\"yes\"}")) { Output = output },
+                new RunSucceeded(),
                 [FakeMessages.Assistant(request, /*lang=json,strict*/ "{\"ok\":\"yes\"}")],
-                new SessionVersion(1)),
+                new SessionVersion(1),
+                output),
         };
         var observer = new RecordingConversationEventObserver();
         using var session = CreateSession(loop: loop, configureOptions: o => o.Output = TestOutputDefinition());
@@ -1304,7 +1308,11 @@ public sealed class DefaultConversationSessionTests
         {
             ResultFactory = request => new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                new AgentRunBudgetExhausted(BudgetDimensions.Cost, "cost cap reached"), [], new SessionVersion(1)),
+                new RunFailed(new(new AgentError(
+                    AgentErrorCodes.CostLimit, $"The {BudgetDimensions.Cost.Value} budget is exhausted: cost cap reached",
+                    isRetryable: false, SideEffectCertainty.NotApplicable, new ErrorOrigin("test"), externalCode: null,
+                    operationId: null, externalRequestId: null, retryAfter: null, ExtensionData.Empty))),
+                [], new SessionVersion(1)),
         };
         using var session = CreateSession(loop: loop);
 

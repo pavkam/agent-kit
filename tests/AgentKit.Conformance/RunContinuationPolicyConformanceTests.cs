@@ -16,7 +16,10 @@ public abstract class RunContinuationPolicyConformanceTests<TFixture>
     public async Task DecideAsync_WhenRequiredStopExists_HaltsWithExactOutcome()
     {
         var fixture = CreateFixture();
-        var stop = new AgentRunTurnLimitReached(3);
+        AgentRunOutcome stop = new RunPolicyHalted(new PolicyHalt(new AgentError(
+            AgentErrorCodes.RequestLimit, "The run reached its turn limit.", isRetryable: false,
+            SideEffectCertainty.NotApplicable, new ErrorOrigin("test"), externalCode: null, operationId: null,
+            externalRequestId: null, retryAfter: null, ExtensionData.Empty)));
         var context = fixture.CreateContext(
             new IdleContinuationBoundary(),
             [new ExplicitPolicyContinuationCause("follow-up")],
@@ -36,7 +39,7 @@ public abstract class RunContinuationPolicyConformanceTests<TFixture>
             fixture.CreateContext(new IdleContinuationBoundary(), []),
             TestContext.Current.CancellationToken);
 
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
     }
 
     /// <summary>Verifies optional policy continuation retains every lower-priority pending cause.</summary>
@@ -69,7 +72,10 @@ public abstract class RunContinuationPolicyConformanceTests<TFixture>
 
         var decision = await fixture.Policy.DecideAsync(context, TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunOutputRejected>().Rejection.ShouldBeSameAs(rejected);
+        // Unifying the outcome family reduces the rich OutputProcessingResult to a safe-message summary inside
+        // PolicyHalt; the original typed rejection (and its Issues) is no longer retained by reference.
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunPolicyHalted>()
+            .Reason.Error.SafeMessage.ShouldBe(rejected.Failure.SafeMessage);
     }
 
     /// <summary>Verifies pre-cancellation discards evaluation without producing a proposal.</summary>

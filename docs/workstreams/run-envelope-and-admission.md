@@ -31,7 +31,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C4 `IRunEventSink`, registration, backpressure contracts
 - [x] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
 - [x] WS1-C6 loop publishes `RunEvent`s
-- [ ] WS1-C7 unified outcome family
+- [x] WS1-C7 unified outcome family
 - [ ] WS1-C8 facade result types and `AgentRunOptions` reshape
 - [ ] WS1-C9 `AgentEngineRuntime`, run plan, `RunAsync<T>`, delete
       `SessionLaneRegistry`
@@ -45,16 +45,16 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 
 ### Outcome families
 
-| Type                                                                                                                                                                                                                                                                                              | State                      | Evidence                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AgentRunOutcome` base                                                                                                                                                                                                                                                                            | EXISTS-AND-USED            | `src/AgentKit.Abstractions/Loop/AgentRunOutcome.cs:28`; both families derive from it                                                                                                                                                      |
-| 13 `Loop/AgentRun*` terminals (`AgentRunCompleted`, `Cancelled`, `Failed`, `Idle`, `TurnLimitReached`, `BudgetExhausted`, `OutputRejected`, `OutputLengthLimitReached`, `AuthorizationUnavailable`, `ContextPreparationFailed`, `ModelSelectionFailed`, `SessionOperationFailed`, `InvalidState`) | EXISTS-AND-USED            | produced in `src/AgentKit.Loop/DefaultAgentLoop.cs`, `RunBudget.cs`, `DefaultRunContinuationPolicy.cs`; consumed by `src/AgentKit.Conversations/DefaultConversationSession.cs:622-687`, `src/AgentKit/EngineDelegationChannel.cs:120-122` |
-| `Results/Run*` (`RunSucceeded`, `RunIdle`, `RunDeferred`, `RunCancelled`, `RunLimitReached`, `RunPolicyHalted`, `RunFailed` + causes)                                                                                                                                                             | EXISTS-UNWIRED             | `src/AgentKit.Abstractions/Results/*.cs`; zero production producers                                                                                                                                                                       |
-| `RunSettlementOutcome`, `RunSettlementCompleted`, `RunSettlementRecoveryRequired`                                                                                                                                                                                                                 | EXISTS-UNWIRED             | `Results/RunSettlement*.cs`                                                                                                                                                                                                               |
-| `AgentRunResult<T>`, `AgentRunFinished<T>`, `AgentRunRejected<T>`, `AgentRunStreamStartResult<T>`, `IAgentRunStream<T>`                                                                                                                                                                           | EXISTS-UNWIRED (facade)    | only `src/AgentKit.IO/AgentRunOutputPublisher.cs`, `RunEventStream.cs`, `RunEventHub.cs` use them                                                                                                                                         |
-| `AgentLoopResult`                                                                                                                                                                                                                                                                                 | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentLoopResult.cs`; missing `ConversationId`, `Settlement`, `PreviousCursor`, `Output`, `Usage` vs `agent-runtime.md:242-252`; built only at `DefaultAgentLoop.cs:2723`                                                            |
-| `IOutputPublisher`                                                                                                                                                                                                                                                                                | EXISTS-UNWIRED             | `Results/IOutputPublisher.cs`; `AgentRunOutputPublisher` is never registered in DI                                                                                                                                                        |
-| `RunEvent`, `ContentDeltaEvent`, `MessageCommittedEvent`                                                                                                                                                                                                                                          | EXISTS-UNWIRED             | `Input/RunEvent.cs`; the loop emits the separate `AgentRunEvent` family via `IAgentRunObserver` (`DefaultAgentLoop.cs:836,1406,1877,1968`)                                                                                                |
+| Type                                                                                                                                  | State                      | Evidence                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AgentRunOutcome` base                                                                                                                | EXISTS-AND-USED            | `src/AgentKit.Abstractions/Loop/AgentRunOutcome.cs`; closed to the 7 canonical cases (WS1-C7)                                                                                                                                                                                              |
+| ~~13 `Loop/AgentRun*` terminals~~                                                                                                     | DELETED                    | removed in WS1-C7; `rg` for `AgentRun(Completed\|Cancelled\|Failed\|Idle\|TurnLimitReached\|BudgetExhausted\|OutputRejected\|OutputLengthLimitReached\|AuthorizationUnavailable\|ContextPreparationFailed\|ModelSelectionFailed\|SessionOperationFailed\|InvalidState)` in `src/` is empty |
+| `Results/Run*` (`RunSucceeded`, `RunIdle`, `RunDeferred`, `RunCancelled`, `RunLimitReached`, `RunPolicyHalted`, `RunFailed` + causes) | EXISTS-AND-USED            | `src/AgentKit.Abstractions/Results/*.cs`; produced by `src/AgentKit.Loop/DefaultAgentLoop.cs` (via `RunOutcomes.cs`), `RunBudget.cs`, `DefaultRunContinuationPolicy.cs`; consumed by `DefaultConversationSession.cs`, `EngineDelegationChannel.cs` (WS1-C7)                                |
+| `RunSettlementOutcome`, `RunSettlementCompleted`, `RunSettlementRecoveryRequired`                                                     | EXISTS-UNWIRED             | `Results/RunSettlement*.cs`; still no production producer — `AgentLoopResult` was not reshaped to carry `Settlement` in WS1-C7 (see its Landed note)                                                                                                                                       |
+| `AgentRunResult<T>`, `AgentRunFinished<T>`, `AgentRunRejected<T>`, `AgentRunStreamStartResult<T>`, `IAgentRunStream<T>`               | EXISTS-UNWIRED (facade)    | only `src/AgentKit.IO/AgentRunOutputPublisher.cs`, `RunEventStream.cs`, `RunEventHub.cs` use them                                                                                                                                                                                          |
+| `AgentLoopResult`                                                                                                                     | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentLoopResult.cs`; gained `Output` (WS1-C7); still missing `ConversationId`, `Settlement`, `PreviousCursor`, `Usage` vs `agent-runtime.md:242-252` — deliberately deferred, see WS1-C7's Landed note; built only at `DefaultAgentLoop.BuildResult`                                 |
+| `IOutputPublisher`                                                                                                                    | EXISTS-UNWIRED             | `Results/IOutputPublisher.cs`; `AgentRunOutputPublisher` is never registered in DI                                                                                                                                                                                                         |
+| `RunEvent`, `ContentDeltaEvent`, `MessageCommittedEvent`                                                                              | EXISTS-UNWIRED             | `Input/RunEvent.cs`; the loop emits the separate `AgentRunEvent` family via `IAgentRunObserver` (`DefaultAgentLoop.cs:836,1406,1877,1968`)                                                                                                                                                 |
 
 ### Invocation and services
 
@@ -470,6 +470,179 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
 - Open: `RunLimitFailure` for non-budget limits; where
   `ContextPreparationFailure`, `ProviderFailure`, model-selection diagnostics
   live inside `RunFailure`.
+- Landed: deleted all 13 `Loop/AgentRun*` records; every production producer
+  (`DefaultAgentLoop.cs`, `RunBudget.cs`, `DefaultRunContinuationPolicy.cs`) now
+  builds one of the 7 canonical `Results/Run*` outcomes through a new internal
+  `src/AgentKit.Loop/RunOutcomes.cs` mapper, so every construction site is one
+  reviewable, centrally documented decision instead of scattered `AgentError`
+  boilerplate. `rg` for any of the 13 old identifiers across `src/` is empty.
+  Full solution: 15,882 tests passing (no regression in count beyond legacy
+  dedicated single-type test files deleted alongside their types — see below);
+  pushed after `dotnet format`/`--verify-no-changes` clean and the compatibility
+  snapshots regenerated (only `AgentKit.Abstractions.verified.txt` changed: the
+  13 type removals and `AgentLoopResult.Output`).
+  - **Resolved mapping** (`RunOutcomes.cs`'s exact decisions, each with its own
+    XML-documented rationale): `Completed→RunSucceeded` (payload moves to the
+    envelope: `FinalMessage`/`Output` are no longer on the outcome — see the
+    `AgentLoopResult` note below). `Idle→RunIdle`. `Cancelled→RunCancelled`
+    wrapping `CancellationReason(AgentError(Code: Cancelled))`.
+    `AgentRunOutputRejected→RunPolicyHalted` wrapping
+    `PolicyHalt(AgentError(Code: OutputValidationFailed or InvalidConfiguration))`
+    — a rejected output candidate is the definition's own output _policy_
+    declining the candidate, exactly what `PolicyHalt` exists to describe.
+    `AgentRunInvalidState→RunFailed` with the exact-matching
+    `AgentErrorCodes.InvalidState`. `AgentRunSessionOperationFailed→RunFailed`
+    with `AgentErrorCodes.Unknown` (parity: the old type was also just an
+    untyped safe string). `AgentRunAuthorizationUnavailable→RunFailed` with
+    `AgentErrorCodes.AuthorizationDenied` (closest existing code; "capture
+    unavailable" is effectively a refusal to authorize the operation).
+    `AgentRunContextPreparationFailed→RunFailed` with a
+    `ContextPreparationFailureKind`-to-`AgentErrorCode` mapping
+    (`EmptyHistory→InvalidInput`, `BrokenToolCallCausality`/
+    `InvalidRolePartCombination→CorruptState`,
+    `InvalidInstructionMessage→InvalidConfiguration`, `Unknown→Unknown`) plus
+    the original kind preserved textually in `AgentError.Diagnostics`.
+    `AgentRunModelSelectionFailed→RunFailed` with
+    `AgentErrorCodes.IncompatibleModel` and only a diagnostic _count_ preserved
+    in `Diagnostics` (see fidelity note below).
+    `AgentRunFailed(ProviderFailure)→RunFailed` via a
+    `ProviderFailureKind`-to-`AgentErrorCode` mapping covering every defined
+    kind, with one defensive branch: a `ProviderFailure` whose `Kind` is
+    `Cancellation` maps to `RunCancelled` instead of `RunFailed`, since the
+    canonical family already has an exact case for that and forcing it through
+    `RunFailed` would misrepresent it.
+  - **The genuinely hard call — non-budget "limits"**: the chunk's own "Open"
+    note asked where `RunLimitFailure` should live for limits the budget
+    authority never reserved against. `RunLimitFailure.Limit` is a
+    `BudgetLimitFailure`, which always names a real `BudgetScopeId` a
+    reservation was evaluated against — `AgentRunRequest.MaxTurns` (a
+    loop-configured ceiling, never a budget reservation) and a provider's own
+    generation-length ceiling (`NormalizedStopReason.Length`) have no such
+    scope, and fabricating one would misrepresent the cause as a budget decision
+    it never was. Widening `RunLimitFailure`'s shape to accept non-budget
+    evidence (e.g. a new `LimitEvidence` closed union) was considered and
+    rejected for this chunk: `RunLimitFailure`/`RunLimitReached` already have
+    real, passing dedicated tests
+    (`RunLimitFailureTests.cs`/`RunLimitReachedTests.cs`) built entirely around
+    `BudgetLimitFailure`, and reshaping them is a distinct, self-contained
+    design decision that deserves its own chunk rather than riding along here.
+    Resolution actually landed: `AgentRunTurnLimitReached→RunPolicyHalted`
+    (`AgentErrorCodes.RequestLimit`, message
+    `"The run reached its {n}-turn limit."`) — the caller's own configured turn
+    ceiling halting the run is a policy decision, exactly what `PolicyHalt`
+    documents. `AgentRunOutputLengthLimitReached→RunFailed`
+    (`AgentErrorCodes.TokenLimit`, with `modelRequestId`/`hasPartialOutput`
+    preserved in `Diagnostics`) — a provider-reported truncation is not a policy
+    the framework configured, so it fits `RunFailed` better than
+    `RunPolicyHalted`. Only a genuinely evidence-complete budget rejection
+    (`BudgetRejected`, which carries a real `BudgetLimitFailure`) becomes
+    `RunLimitReached`; `RunBudget.cs`'s two fallback cases with no such evidence
+    (`BudgetHeld`, unsupported reservation outcome) become `RunFailed` via a new
+    internal `BudgetExhaustion` record (`Dimension`, `SafeMessage`, optional
+    `Failure`, `SideEffectCertainty`) that
+    `RunBudget.CountAsync`/`AccountUsageAsync` now return instead of the deleted
+    `AgentRunBudgetExhausted`, so the per-tool-call budget-rejection site
+    (`BudgetRejectedResultPart`) — which never needed a full outcome, only a
+    dimension and message — is unaffected by the outcome-family change at all.
+    `SideEffectCertainty` on `BudgetExhaustion`/`RunLimitFailure` is
+    `DefinitelyNotPerformed` for `CountAsync` (pre-attempt refusal) and
+    `DefinitelyPerformed` for `AccountUsageAsync` (the provider request that
+    produced the usage already completed).
+  - **`AgentLoopResult` reshape — deliberately partial, not the full spec
+    shape**: only `Output` (`ValidatedOutput?`) was added, because
+    `DefaultConversationSession` already depended on it via the deleted
+    `AgentRunCompleted.Output`. Discovered mid-chunk that the spec's
+    `AgentLoopResult.PreviousCursor` is a _required_, non-nullable
+    `MessageCursor`, while the loop's real `FinalVersion` is nullable
+    specifically for "the run settled before it ever observed the branch"
+    (authorization or history-load failure before any read) — reshaping the
+    envelope to add `ConversationId`/`Settlement`/`PreviousCursor`/`Usage`
+    surfaced this real tension plus `Settlement`'s
+    completed-vs-recovery-required derivation needing durable-execution-adjacent
+    design work, and touches every terminal return site in `DefaultAgentLoop.cs`
+    (~10 call sites), `AgentEngine.cs`'s lane-release fallback, and every
+    `AgentLoopResult` construction across the test-doubles list
+    (`GatedAgentLoop`, `ScopedRecordingAgentLoop`, `CompositionTestData`,
+    `FakeAgentLoop`, plus ~30 in `DefaultConversationSessionTests.cs`). This is
+    a distinct, equally large piece of work from unifying the _outcome_ family
+    (this chunk's actual name), so it was deliberately left as a follow-up
+    rather than folded in under this chunk's already-large budget — added as a
+    new explicit prerequisite note for WS1-C9, which is the chunk that actually
+    needs to construct `AgentRunFinished<T>` and therefore needs these fields
+    for real. To thread `Output` through, `TurnOutcome` (a
+    `DefaultAgentLoop`-private struct) gained an `Output` field alongside
+    `Outcome`/`Version`, populated only when `DecideContinuationAsync` observes
+    `outputDecision is OutputAccepted accepted` at the point it turns a
+    `CompleteRun` decision into a settled `TurnOutcome` — the continuation
+    policy's own outcome no longer carries the response or output at all
+    (`DefaultRunContinuationPolicy` only ever proposes bare
+    `RunOutcomes.Completed()`/`.Idle()` now); the loop reads the boundary's
+    `OutputDecision` itself in the same call frame instead.
+  - **Fidelity trade-offs, explicit and tested**: `AgentError.Diagnostics`
+    (`ExtensionData`, canonical-JSON-encoded per entry, matching the existing
+    `JsonSerializer.SerializeToUtf8Bytes(value)` convention used across tool
+    packages) is the one place richer evidence survives, but only as inspectable
+    string values, not the original typed objects — `ModelSelectionDiagnostic[]`
+    collapses to a bare `candidateCount`; `OutputRejected`/
+    `OutputConfigurationRejected`'s original object (with its `Issues` array) is
+    not retained at all, only its `SafeMessage`; a `ProviderFailure`'s
+    `ProviderId`/`Kind`/`StatusCode` are individually stashed as diagnostic
+    entries, not reconstructable as a `ProviderFailure`. Every test that
+    previously asserted on one of these lost fields was rewritten to assert on
+    what actually survives (`AgentErrorCode`, `SafeMessage`, or a decoded
+    diagnostic entry) with an inline comment explaining the trade-off, rather
+    than deleted — `RunContinuationPolicyConformanceTests.cs`'s output-rejection
+    case is the clearest example. `AgentError.SideEffectCertainty` is
+    `NotApplicable` on every `RunOutcomes`-built error uniformly: none of these
+    outcomes report on one specific, potentially-repeatable external effect the
+    way a tool invocation does.
+  - **Consumers**: `DefaultConversationSession.RunOutcomeKind` (the bounded
+    metric/log token) and `DescribeIncompleteOutcome` (the safe user-facing
+    description) both now switch on the 7 canonical types, recovering the old
+    per-cause distinctions where it mattered by branching on `AgentError.Code`
+    inside the `RunPolicyHalted` (`RequestLimit` → "turn limit" phrasing;
+    anything else → "output was rejected" phrasing) and `RunLimitReached`
+    (always the budget-dimension phrasing) arms — since `RunPolicyHalted` now
+    covers two semantically different causes and `RunFailed` covers seven,
+    collapsing them to one generic phrase per outer type would have been a real
+    UX regression, not just a type-safety one. `EngineDelegationChannel`'s
+    `TaskDelegationStatus` switch maps `RunSucceeded→Succeeded`,
+    `RunCancelled→Cancelled`, `RunPolicyHalted→Blocked` (turn limit _and_ output
+    rejection both read as "the child didn't finish" from a delegator's
+    perspective), everything else→`Failed`.
+  - **`ArgumentExceptionExtensions.ThrowIfNotSuccessfulRunOutcome`/
+    `ThrowIfSuccessfulRunOutcome`** simplified to check only `RunSucceeded`/
+    `RunIdle` (the legacy-family branches were dead once the types were
+    deleted); the removed `AgentRunCompleted`-specific "must have a complete
+    message with run/turn identity" check has no replacement here because
+    `RunSucceeded` carries no message to validate —
+    `DefaultRunContinuationPolicy` already only proposes it from an
+    already-validated committed context, so the invariant is enforced upstream
+    instead of redundantly at construction.
+  - **Test fallout**: 11 dedicated single-type unit-test files under
+    `AgentLoop/` and 5 conformance-binding files under `Messages/` in
+    `AgentKit.Abstractions.Tests` were deleted outright (not deprecated) along
+    with their types — the canonical family's own dedicated tests
+    (`RunSucceededTests.cs`, `RunIdleTests.cs`, `RunCancelledTests.cs`,
+    `RunLimitReachedTests.cs`/`RunLimitFailureTests.cs`,
+    `RunPolicyHaltedTests.cs`, `RunFailedTests.cs`/`RunFailureTests.cs`,
+    `RunDeferredTests.cs`) already existed from earlier planning work and fully
+    cover them, so no coverage was lost. `AgentRunFinishedTests.cs`'s
+    `Constructor_WhenOutcomeIsLegacy_RequiresExplicitCanonicalMapping` test was
+    deleted rather than rewritten: the outcome hierarchy is closed by a
+    `private protected` constructor plus a copy-constructor that only accepts
+    same-concrete-type originals (proven separately by
+    `Results/AgentRunOutcomeTests.cs`'s `ForeignVariant` test), so constructing
+    a non-canonical `AgentRunOutcome` to exercise that branch is no longer
+    possible from outside the assembly — the scenario itself is gone, not just
+    untested. `DefaultAgentLoopTests.cs`'s ~150 references were updated
+    mechanically (outer-type swap, then per-property-access-chain fixes guided
+    by compiler errors) and its affected test method names were renamed to match
+    the new outcome names (e.g. `...ReturnsAgentRunTurnLimitReached` →
+    `...ReturnsRunPolicyHalted`). New tests added:
+    `Constructor_WhenOutputIsSupplied_RoundTripsProperty`/
+    `Constructor_WhenOutputIsOmitted_DefaultsToNull` on
+    `AgentLoopResultTests.cs` for the new `Output` field.
 
 ### WS1-C8: Facade result types and `AgentRunOptions` reshape
 

@@ -3,12 +3,14 @@
 
 namespace AgentKit.Abstractions.Tests.Continuation;
 
+using AgentKit.TestSupport;
+
 public sealed class CompleteRunTests
 {
     [Fact]
     public void CompleteRun_WhenOutcomeIsNotSuccessful_ThrowsArgumentException()
     {
-        var exception = Should.Throw<ArgumentException>(() => _ = new CompleteRun(new AgentRunTurnLimitReached(1)));
+        var exception = Should.Throw<ArgumentException>(() => _ = new CompleteRun(new RunFailed(new RunFailure(RunResultTestData.Error(AgentErrorCodes.InvalidState)))));
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("outcome");
     }
@@ -16,7 +18,7 @@ public sealed class CompleteRunTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new CompleteRun(new AgentRunIdle());
+        var original = new CompleteRun(new RunIdle());
         var copy = original with { };
         copy.ShouldBe(original);
     }
@@ -24,7 +26,7 @@ public sealed class CompleteRunTests
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
-        var outcome = new AgentRunIdle();
+        var outcome = new RunIdle();
         var decision = new CompleteRun(outcome);
         decision.Outcome.ShouldBe(outcome);
     }

@@ -184,10 +184,6 @@ public sealed class AgentRunFinishedTests
         exception.GetType().ShouldBe(exceptionKind == "range" ? typeof(ArgumentOutOfRangeException) : exceptionKind == "null" ? typeof(ArgumentNullException) : typeof(ArgumentException));
     }
 
-    [Fact]
-    public void Constructor_WhenOutcomeIsLegacy_RequiresExplicitCanonicalMapping() =>
-        Should.Throw<ArgumentException>(() => RunResultTestData.Finished(new AgentRunIdle())).ParamName.ShouldBe("outcome");
-
     [Theory]
     [InlineData("default")]
     [InlineData("null")]

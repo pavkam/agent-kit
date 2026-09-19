@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Records work resolved from one run scope for facade admission tests.</summary>
 internal sealed class ScopedRecordingAgentLoop: IAgentLoop
 {
@@ -34,7 +36,7 @@ internal sealed class ScopedRecordingAgentLoop: IAgentLoop
             request.SessionId,
             request.BranchId,
             request.RunId,
-            new AgentRunTurnLimitReached(request.MaxTurns),
+            new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.RequestLimit))),
             [],
             new SessionVersion(0)));
     }

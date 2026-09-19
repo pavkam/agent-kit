@@ -4,14 +4,9 @@
 namespace AgentKit;
 
 /// <summary>
-/// The closed semantic outcome of one agent run. Canonical results use
-/// <see cref="RunSucceeded"/>, <see cref="RunIdle"/>, <see cref="RunDeferred"/>,
-/// <see cref="RunCancelled"/>, <see cref="RunLimitReached"/>, <see cref="RunPolicyHalted"/>,
-/// or <see cref="RunFailed"/>. The reduced loop still exposes legacy cases including
-/// <see cref="AgentRunCompleted"/>, <see cref="AgentRunFailed"/>,
-/// <see cref="AgentRunCancelled"/>, <see cref="AgentRunTurnLimitReached"/>,
-/// <see cref="AgentRunContextPreparationFailed"/>, <see cref="AgentRunIdle"/>,
-/// <see cref="AgentRunInvalidState"/>, or <see cref="AgentRunOutputRejected"/>.
+/// The closed semantic outcome of one agent run: <see cref="RunSucceeded"/>, <see cref="RunIdle"/>,
+/// <see cref="RunDeferred"/>, <see cref="RunCancelled"/>, <see cref="RunLimitReached"/>,
+/// <see cref="RunPolicyHalted"/>, or <see cref="RunFailed"/>.
 /// </summary>
 /// <remarks>
 /// This hierarchy is closed to first-party outcomes recognized by
@@ -22,8 +17,6 @@ namespace AgentKit;
 /// context-preparation failure are typed outcomes, never a thrown
 /// <see cref="NotSupportedException"/> or a successful result with a null
 /// output.
-/// The additive continuation outcomes coexist with the original loop outcomes
-/// while consumers migrate to handling the complete family explicitly.
 /// </remarks>
 public abstract record AgentRunOutcome
 {

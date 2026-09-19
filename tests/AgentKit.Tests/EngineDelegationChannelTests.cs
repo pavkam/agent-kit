@@ -141,7 +141,7 @@ public sealed class EngineDelegationChannelTests
     [Fact]
     public async Task DelegateAsync_WhenTheChildSettlesCancelled_ReportsCancelledWithItsIdentities()
     {
-        var loop = new GatedAgentLoop { OutcomeOverride = request => new AgentRunCancelled("stopped") };
+        var loop = new GatedAgentLoop { OutcomeOverride = request => new RunCancelled(new(RunResultTestData.Error(AgentErrorCodes.Cancelled))) };
         var (engine, _, _) = await BuildAsync(loop);
         await using var owned = engine;
         var channel = engine.Services.GetRequiredService<ITaskDelegationChannel>();
@@ -151,7 +151,7 @@ public sealed class EngineDelegationChannelTests
         var child = result.ShouldBeOfType<TaskDelegationChildResult>();
         child.Status.ShouldBe(TaskDelegationStatus.Cancelled);
         child.ChildSessionId.ShouldBe(loop.Requests.Single().SessionId);
-        child.Summary.ShouldContain("AgentRunCancelled");
+        child.Summary.ShouldContain(nameof(RunCancelled));
     }
 
     [Fact]

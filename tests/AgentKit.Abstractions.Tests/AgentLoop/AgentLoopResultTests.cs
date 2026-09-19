@@ -12,12 +12,12 @@ public sealed class AgentLoopResultTests
 
     [Fact]
     public void Constructor_WhenNewMessagesIsDefault_ThrowsExactArgumentException() =>
-        Should.Throw<ArgumentException>(() => new AgentLoopResult(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new AgentRunIdle(), default, null)).ParamName.ShouldBe("newMessages");
+        Should.Throw<ArgumentException>(() => new AgentLoopResult(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), default, null)).ParamName.ShouldBe("newMessages");
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
-        var outcome = new AgentRunIdle();
+        var outcome = new RunIdle();
         var result = Result(outcome: outcome);
         result.AgentId.ShouldBe(LoopTestData.AgentId);
         result.SessionId.ShouldBe(LoopTestData.SessionId);
@@ -26,6 +26,7 @@ public sealed class AgentLoopResultTests
         result.Outcome.ShouldBe(outcome);
         result.NewMessages.ShouldBeEmpty();
         result.FinalVersion.ShouldBeNull();
+        result.Output.ShouldBeNull();
     }
 
     [Fact]
@@ -42,6 +43,14 @@ public sealed class AgentLoopResultTests
     public void Equality_WhenOtherIsNull_IsNotEqual() => Result().Equals(null).ShouldBeFalse();
 
     [Fact]
+    public void Constructor_WhenOutputIsSupplied_RoundTripsProperty()
+    {
+        var output = LoopTestData.ValidatedOutput();
+        var result = Result(outcome: new RunSucceeded(), output: output);
+        result.Output.ShouldBe(output);
+    }
+
+    [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
         var original = Result();
@@ -49,7 +58,8 @@ public sealed class AgentLoopResultTests
         copy.ShouldBe(original);
     }
 
-    private static AgentLoopResult Result(AgentRunOutcome? outcome = null, ImmutableArray<AgentMessage> newMessages = default, SessionVersion? finalVersion = null) =>
+    private static AgentLoopResult Result(
+        AgentRunOutcome? outcome = null, ImmutableArray<AgentMessage> newMessages = default, SessionVersion? finalVersion = null, ValidatedOutput? output = null) =>
         new(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId,
-            outcome ?? new AgentRunIdle(), newMessages.IsDefault ? [] : newMessages, finalVersion);
+            outcome ?? new RunIdle(), newMessages.IsDefault ? [] : newMessages, finalVersion, output);
 }

@@ -232,39 +232,12 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     [Fact]
-    public void ThrowIfNotSuccessfulRunOutcome_WhenAgentRunCompletedHasIncompleteMessage_ThrowsArgumentException()
+    public void ThrowIfNotSuccessfulRunOutcome_WhenOutcomeIsNeitherSuccessNorIdle_ThrowsArgumentException()
     {
-        AgentRunOutcome outcome = new AgentRunCompleted(AssistantMessage(MessageState.Interrupted));
+        AgentRunOutcome outcome = new RunFailed(new RunFailure(RunResultTestData.Error(AgentErrorCodes.InvalidState)));
         var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome));
         exception.ParamName.ShouldBe(nameof(outcome));
     }
-
-    [Fact]
-    public void ThrowIfNotSuccessfulRunOutcome_WhenAgentRunCompletedHasCompleteMessage_DoesNotThrow()
-    {
-        AgentRunOutcome outcome = new AgentRunCompleted(AssistantMessage(MessageState.Complete));
-        Should.NotThrow(() => ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome));
-    }
-
-    private static AssistantMessage AssistantMessage(MessageState state) => new(
-        new MessageId(Guid.NewGuid()),
-        new AgentId(Guid.NewGuid()),
-        new SessionId(Guid.NewGuid()),
-        null,
-        new BranchId(Guid.NewGuid()),
-        new RunId(Guid.NewGuid()),
-        new TurnId(Guid.NewGuid()),
-        DateTimeOffset.UnixEpoch,
-        state,
-        [new TextPart("done", TextSemantics.Plain, ExtensionData.Empty)],
-        new AssistantResponseMetadata(
-            new ModelRequestId(Guid.NewGuid()),
-            new ProviderResponseIdentity(new ProviderId("test"), null, new ApiFamilyId("test"), new ModelId("test"), new ModelId("test"), null, null, null),
-            NormalizedStopReason.Completed,
-            null,
-            ModelUsage.NotReported,
-            ExtensionData.Empty),
-        ExtensionData.Empty);
 
     [Fact]
     public void ThrowIfIssuerMismatch_WhenIssuerMatches_DoesNotThrow()

@@ -3,12 +3,14 @@
 
 namespace AgentKit.Abstractions.Tests.Continuation;
 
+using AgentKit.TestSupport;
+
 public sealed class HaltRunTests
 {
     [Fact]
     public void HaltRun_WhenOutcomeIsSuccessful_ThrowsArgumentException()
     {
-        var exception = Should.Throw<ArgumentException>(() => _ = new HaltRun(new AgentRunIdle()));
+        var exception = Should.Throw<ArgumentException>(() => _ = new HaltRun(new RunIdle()));
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("outcome");
     }
@@ -16,7 +18,7 @@ public sealed class HaltRunTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new HaltRun(new AgentRunTurnLimitReached(1));
+        var original = new HaltRun(new RunFailed(new RunFailure(RunResultTestData.Error(AgentErrorCodes.InvalidState))));
         var copy = original with { };
         copy.ShouldBe(original);
     }
@@ -24,7 +26,7 @@ public sealed class HaltRunTests
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
-        var outcome = new AgentRunTurnLimitReached(1);
+        AgentRunOutcome outcome = new RunFailed(new RunFailure(RunResultTestData.Error(AgentErrorCodes.InvalidState)));
         var decision = new HaltRun(outcome);
         decision.Outcome.ShouldBe(outcome);
     }

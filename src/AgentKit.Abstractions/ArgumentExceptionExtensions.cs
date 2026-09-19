@@ -933,19 +933,9 @@ public static class ArgumentExceptionExtensions
             [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
         {
             ArgumentNullException.ThrowIfNull(outcome, paramName);
-            if (outcome is not AgentRunCompleted and not AgentRunIdle and not RunSucceeded and not RunIdle)
+            if (outcome is not RunSucceeded and not RunIdle)
             {
                 throw new ArgumentException("Outcome must represent successful output or idle completion.", paramName);
-            }
-
-            if (outcome is AgentRunCompleted completed
-                && (completed.FinalMessage is not { State: MessageState.Complete }
-                    || completed.FinalMessage.RunId is not { } runId
-                    || runId == default
-                    || completed.FinalMessage.TurnId is not { } turnId
-                    || turnId == default))
-            {
-                throw new ArgumentException("Successful output completion requires a complete message with initialized run and turn identities.", paramName);
             }
         }
 
@@ -959,7 +949,7 @@ public static class ArgumentExceptionExtensions
             [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
         {
             ArgumentNullException.ThrowIfNull(outcome, paramName);
-            if (outcome is AgentRunCompleted or AgentRunIdle or RunSucceeded or RunIdle)
+            if (outcome is RunSucceeded or RunIdle)
             {
                 throw new ArgumentException("A halt proposal cannot carry a successful outcome.", paramName);
             }

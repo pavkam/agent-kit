@@ -26,9 +26,9 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
 
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
 
-        var completed = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunCompleted>();
-        completed.FinalMessage.ShouldBeSameAs(boundary.Response);
-        completed.Output.ShouldBeSameAs(accepted.Output);
+        // The policy's own outcome no longer carries the response or output: DefaultAgentLoop reads
+        // CommittedTurnContinuationBoundary.OutputDecision itself to populate the loop result's Output.
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
 
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunCompleted>().Output.ShouldBeNull();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var fixture = CreateFixture();
         var context = fixture.CreateContext(fixture.CreateCommittedBoundary(decision: null, requiresOutput: true), [new ExplicitPolicyContinuationCause("follow-up")]);
         var decision = await fixture.Policy.DecideAsync(context, TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>();
     }
 
     [Fact]
@@ -73,7 +73,10 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var boundary = fixture.CreateCommittedBoundary(rejected, requiresOutput: true);
         var promoted = new PromotedInputContinuationCause(fixture.CreatePromotion(boundary.Response.TurnId!.Value));
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, [promoted]), TestContext.Current.CancellationToken);
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunOutputRejected>().Rejection.ShouldBeSameAs(rejected);
+        // Unifying the outcome family reduces the rich OutputProcessingResult to a safe-message summary inside
+        // PolicyHalt; the original typed rejection is no longer retained by reference.
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunPolicyHalted>()
+            .Reason.Error.SafeMessage.ShouldBe(rejected.Failure.SafeMessage);
     }
 
     [Theory]
@@ -86,7 +89,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
     {
         var fixture = CreateFixture();
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), [], state: state), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>();
     }
 
     [Fact]
@@ -94,7 +97,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
     {
         var fixture = CreateFixture();
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(fixture.CreateCommittedBoundary(), [], state: AgentRunState.StreamingModel), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        _ = decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>();
     }
 
     [Fact]
@@ -104,7 +107,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         ActivitySource.AddActivityListener(listener);
         var fixture = CreateFixture();
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
     }
 
     [Fact]
@@ -115,7 +118,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         ActivitySource.AddActivityListener(listener);
         var fixture = CreateFixture();
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
         Activity.Current.ShouldBeSameAs(parent);
     }
 
@@ -131,7 +134,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
             fixture.CreateContext(new IdleContinuationBoundary(), [], state: state), TestContext.Current.CancellationToken);
 
         var halt = decision.ShouldBeOfType<HaltRun>();
-        halt.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain(state.ToString());
+        halt.Outcome.ShouldBeOfType<RunFailed>().Failure.Error.SafeMessage.ShouldContain(state.ToString());
     }
 
     [Fact]
@@ -142,8 +145,8 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var boundary = fixture.CreateCommittedBoundary(retry, requiresOutput: true);
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
-            .SafeMessage.ShouldContain("output retry decision");
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>()
+            .Failure.Error.SafeMessage.ShouldContain("output retry decision");
     }
 
     [Fact]
@@ -156,8 +159,8 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
 
         var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
-            .SafeMessage.ShouldContain("Committed tool results");
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>()
+            .Failure.Error.SafeMessage.ShouldContain("Committed tool results");
     }
 
     [Fact]
@@ -169,8 +172,8 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var decision = await fixture.Policy.DecideAsync(
             fixture.CreateContext(boundary, [], state: AgentRunState.WaitingRetry), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
-            .SafeMessage.ShouldContain("retry boundary");
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>()
+            .Failure.Error.SafeMessage.ShouldContain("retry boundary");
     }
 
     [Fact]
@@ -182,8 +185,8 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var decision = await fixture.Policy.DecideAsync(
             fixture.CreateContext(boundary, [], state: AgentRunState.SuspendedDeferred), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
-            .SafeMessage.ShouldContain("deferred boundary");
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<RunFailed>()
+            .Failure.Error.SafeMessage.ShouldContain("deferred boundary");
     }
 
     [Fact]
@@ -333,7 +336,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         using var listener = MeterListenerForContinuation(onCount: (_, tags) => tagSets.Add(tags.ToArray()), onDuration: (measurement, _) => durations.Add(measurement));
         var policy = new DefaultRunContinuationPolicy(clock);
         var decision = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
         durations.ShouldHaveSingleItem().ShouldBe(0.25);
         var tags = tagSets.ShouldHaveSingleItem();
         tags.Select(static tag => tag.Key).ShouldBe([AgentKitTagNames.ContinuationBoundary, AgentKitTagNames.Outcome], ignoreOrder: true);
@@ -349,7 +352,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         using var listener = MeterListenerForContinuation(onCount: (measurement, _) => counts += measurement, onDuration: (_, _) => durations++);
         var policy = new DefaultRunContinuationPolicy(new ThrowingTimeProvider(throwOnCall: 1));
         var decision = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
         counts.ShouldBe(1);
         durations.ShouldBe(0);
     }
@@ -363,7 +366,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         using var listener = MeterListenerForContinuation(onCount: (measurement, _) => counts += measurement, onDuration: (_, _) => durations++);
         var policy = new DefaultRunContinuationPolicy(new ThrowingTimeProvider(throwOnCall: 2));
         var decision = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
         counts.ShouldBe(1);
         durations.ShouldBe(0);
     }
@@ -374,7 +377,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var fixture = new Fixture();
         var policy = new DefaultRunContinuationPolicy(TimeProvider.System, new ThrowingLogger());
         var decision = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
     }
 
     [Fact]
@@ -384,7 +387,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         using var listener = MeterListenerForContinuation(onCount: static (_, _) => throw new InvalidOperationException("observer"), onDuration: null);
         var policy = new DefaultRunContinuationPolicy(TimeProvider.System);
         var decision = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
-        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<AgentRunIdle>();
+        _ = decision.ShouldBeOfType<CompleteRun>().Outcome.ShouldBeOfType<RunIdle>();
     }
 
     [Fact]
@@ -438,7 +441,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var policy = new DefaultRunContinuationPolicy(TimeProvider.System);
         _ = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), []), TestContext.Current.CancellationToken);
         _ = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), [new ExplicitPolicyContinuationCause("follow-up")]), TestContext.Current.CancellationToken);
-        _ = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), [], new AgentRunTurnLimitReached(2)), TestContext.Current.CancellationToken);
+        _ = await policy.DecideAsync(fixture.CreateContext(new IdleContinuationBoundary(), [], RunOutcomes.TurnLimitReached(2)), TestContext.Current.CancellationToken);
         var rejected = new OutputRejected(new OutputValidationFailure(OutputValidationFailureKind.ValidatorFailed, "safe rejection", []));
         _ = await policy.DecideAsync(fixture.CreateContext(fixture.CreateCommittedBoundary(rejected, requiresOutput: true), []), TestContext.Current.CancellationToken);
         stopped.Count.ShouldBe(4);

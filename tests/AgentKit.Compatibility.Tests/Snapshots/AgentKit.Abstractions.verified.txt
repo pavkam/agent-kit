@@ -286,12 +286,13 @@ namespace AgentKit
     }
     public sealed class AgentLoopResult : System.IEquatable<AgentKit.AgentLoopResult>
     {
-        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion? finalVersion) { }
+        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion? finalVersion, AgentKit.ValidatedOutput? output = null) { }
         public AgentKit.AgentId AgentId { get; init; }
         public AgentKit.BranchId BranchId { get; init; }
         public AgentKit.SessionVersion? FinalVersion { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> NewMessages { get; init; }
         public AgentKit.AgentRunOutcome Outcome { get; init; }
+        public AgentKit.ValidatedOutput? Output { get; init; }
         public AgentKit.RunId RunId { get; init; }
         public AgentKit.SessionId SessionId { get; init; }
         public bool Equals(AgentKit.AgentLoopResult? other) { }
@@ -313,41 +314,7 @@ namespace AgentKit
         public virtual bool Equals(AgentKit.AgentMessage? other) { }
         public override int GetHashCode() { }
     }
-    public sealed class AgentRunAuthorizationUnavailable : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunAuthorizationUnavailable>
-    {
-        public AgentRunAuthorizationUnavailable(string safeReason) { }
-        public string SafeReason { get; init; }
-    }
-    public sealed class AgentRunBudgetExhausted : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunBudgetExhausted>
-    {
-        public AgentRunBudgetExhausted(AgentKit.BudgetLimitFailure failure) { }
-        public AgentRunBudgetExhausted(AgentKit.BudgetDimension dimension, string safeMessage) { }
-        public AgentKit.BudgetDimension Dimension { get; }
-        public AgentKit.BudgetLimitFailure? Failure { get; }
-        public string SafeMessage { get; }
-    }
-    public sealed class AgentRunCancelled : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunCancelled>
-    {
-        public AgentRunCancelled(string safeMessage) { }
-        public string SafeMessage { get; init; }
-    }
-    public sealed class AgentRunCompleted : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunCompleted>
-    {
-        public AgentRunCompleted(AgentKit.AssistantMessage finalMessage) { }
-        public AgentKit.AssistantMessage FinalMessage { get; init; }
-        public AgentKit.ValidatedOutput? Output { get; init; }
-    }
-    public sealed class AgentRunContextPreparationFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunContextPreparationFailed>
-    {
-        public AgentRunContextPreparationFailed(AgentKit.ContextPreparationFailure failure) { }
-        public AgentKit.ContextPreparationFailure Failure { get; init; }
-    }
     public abstract class AgentRunEvent : System.IEquatable<AgentKit.AgentRunEvent> { }
-    public sealed class AgentRunFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunFailed>
-    {
-        public AgentRunFailed(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
     public sealed class AgentRunFinished<TOutput> : AgentKit.AgentRunResult<TOutput>, System.IEquatable<AgentKit.AgentRunFinished<TOutput>>
     {
         public AgentRunFinished(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, AgentKit.RunSettlementOutcome settlement, TOutput? output, AgentKit.MessageCursor previousCursor, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.RunUsage usage, System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> deferredRequests, AgentKit.ExtensionData metadata) { }
@@ -367,43 +334,15 @@ namespace AgentKit
         public bool Equals(AgentKit.AgentRunFinished<TOutput>? other) { }
         public override int GetHashCode() { }
     }
-    public sealed class AgentRunIdle : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunIdle>
-    {
-        public AgentRunIdle() { }
-    }
-    public sealed class AgentRunInvalidState : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunInvalidState>
-    {
-        public AgentRunInvalidState(string safeMessage) { }
-        public string SafeMessage { get; }
-    }
     public sealed class AgentRunModelResponseEvent : AgentKit.AgentRunEvent, System.IEquatable<AgentKit.AgentRunModelResponseEvent>
     {
         public AgentRunModelResponseEvent(AgentKit.TurnId turnId, AgentKit.ModelResponseEvent responseEvent) { }
         public AgentKit.ModelResponseEvent ResponseEvent { get; init; }
         public AgentKit.TurnId TurnId { get; init; }
     }
-    public sealed class AgentRunModelSelectionFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunModelSelectionFailed>
-    {
-        public AgentRunModelSelectionFailed(string safeReason, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> Diagnostics { get; init; }
-        public string SafeReason { get; init; }
-    }
     public abstract class AgentRunOutcome : System.IEquatable<AgentKit.AgentRunOutcome>
     {
         protected AgentRunOutcome(AgentKit.AgentRunOutcome original) { }
-    }
-    public sealed class AgentRunOutputLengthLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunOutputLengthLimitReached>
-    {
-        public AgentRunOutputLengthLimitReached(AgentKit.ModelRequestId modelRequestId, bool hasPartialOutput, string safeMessage) { }
-        public bool HasPartialOutput { get; }
-        public AgentKit.ModelRequestId ModelRequestId { get; }
-        public string SafeMessage { get; }
-    }
-    public sealed class AgentRunOutputRejected : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunOutputRejected>
-    {
-        public AgentRunOutputRejected(AgentKit.OutputConfigurationRejected rejection) { }
-        public AgentRunOutputRejected(AgentKit.OutputRejected rejection) { }
-        public AgentKit.OutputProcessingResult Rejection { get; }
     }
     public sealed class AgentRunProfilePublication : System.IEquatable<AgentKit.AgentRunProfilePublication>
     {
@@ -503,11 +442,6 @@ namespace AgentKit
         public AgentKit.ISessionCoordinator Session { get; }
         public AgentKit.IToolInvoker Tools { get; }
     }
-    public sealed class AgentRunSessionOperationFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunSessionOperationFailed>
-    {
-        public AgentRunSessionOperationFailed(string safeMessage) { }
-        public string SafeMessage { get; init; }
-    }
     public enum AgentRunState
     {
         Accepted = 0,
@@ -552,11 +486,6 @@ namespace AgentKit
         public AgentRunToolCallStarted(AgentKit.TurnId turnId, AgentKit.ToolCallPart call) { }
         public AgentKit.ToolCallPart Call { get; init; }
         public AgentKit.TurnId TurnId { get; init; }
-    }
-    public sealed class AgentRunTurnLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunTurnLimitReached>
-    {
-        public AgentRunTurnLimitReached(int maxTurns) { }
-        public int MaxTurns { get; init; }
     }
     public abstract class AgentScopedHookEventArgs : AgentKit.AgentHookEventArgs
     {

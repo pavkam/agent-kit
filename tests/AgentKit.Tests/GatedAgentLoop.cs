@@ -72,11 +72,11 @@ internal sealed class GatedAgentLoop: IAgentLoop
                     ModelUsage.NotReported,
                     ExtensionData.Empty),
                 ExtensionData.Empty);
-            var outcome = OutcomeOverride?.Invoke(request) ?? new AgentRunCompleted(assistant);
+            var outcome = OutcomeOverride?.Invoke(request) ?? new RunSucceeded();
             var finalVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
             return new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome,
-                outcome is AgentRunCompleted ? [assistant] : [], finalVersion);
+                outcome is RunSucceeded ? [assistant] : [], finalVersion);
         }
         finally
         {

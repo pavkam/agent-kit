@@ -332,7 +332,7 @@ public sealed class AgentTests
         request.Identity.ShouldBe(identity);
         request.Authorization.Scope.SessionId.ShouldBe(result.SessionId);
         request.Authorization.Scope.Correlation.ShouldBeOfType<InRunOperationCorrelation>().RunId.ShouldBe(result.RunId);
-        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>
 /// Deterministic builders and fakes for engine composition tests.
 /// </summary>
@@ -18,7 +20,7 @@ internal static class CompositionTestData
         new(Guid.Parse("c0000000-0000-0000-0000-000000000003"));
 
     public static ExecutionIdentity Identity() =>
-        TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
     public static AgentDefinition Definition(
         AgentId? id = null,
@@ -86,17 +88,17 @@ internal static class CompositionTestData
     /// </summary>
     public static void AddRunServicesFakes(IServiceCollection services)
     {
-        services.TryAddSingleton<ISessionCoordinator, TestSupport.UnsupportedSessionCoordinator>();
-        services.TryAddSingleton<ISessionRunCoordinator, TestSupport.UnsupportedSessionRunCoordinator>();
-        services.TryAddSingleton<IContextAssembler, TestSupport.UnsupportedContextAssembler>();
-        services.TryAddSingleton<IToolInvoker, TestSupport.CaptureTestToolInvoker>();
+        services.TryAddSingleton<ISessionCoordinator, UnsupportedSessionCoordinator>();
+        services.TryAddSingleton<ISessionRunCoordinator, UnsupportedSessionRunCoordinator>();
+        services.TryAddSingleton<IContextAssembler, UnsupportedContextAssembler>();
+        services.TryAddSingleton<IToolInvoker, CaptureTestToolInvoker>();
         services.TryAddSingleton<IModelCatalog>(
-            new TestSupport.StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
+            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
         services.TryAddSingleton<IModelSelector>(
-            new TestSupport.ScriptedModelSelector(new InvalidModelPolicy("This test double never selects a model.")));
-        services.TryAddSingleton<ILlmModelResolver>(new TestSupport.AliasLlmModelResolver());
+            new ScriptedModelSelector(new InvalidModelPolicy("This test double never selects a model.")));
+        services.TryAddSingleton<ILlmModelResolver>(new AliasLlmModelResolver());
         services.TryAddKeyedSingleton<IRunContinuationPolicy>(
-            AgentLoopComponentDefaults.ContinuationPolicyKeyValue, new TestSupport.UnsupportedRunContinuationPolicy());
+            AgentLoopComponentDefaults.ContinuationPolicyKeyValue, new UnsupportedRunContinuationPolicy());
     }
 
     public static void AddRequiredSecurityGrantStore(IServiceCollection services) =>
@@ -122,7 +124,7 @@ internal static class CompositionTestData
     /// </summary>
     public static AgentEngineBuilder SendableBuilder(
         IAgentLoop loop,
-        TestSupport.InMemoryTestSessionCoordinator sessions,
+        InMemoryTestSessionCoordinator sessions,
         SessionBusyBehavior busyBehavior = SessionBusyBehavior.Reject,
         params AgentDefinition[] definitions)
     {
@@ -197,7 +199,7 @@ internal sealed class RecordingAgentLoop: IAgentLoop
             request.SessionId,
             request.BranchId,
             request.RunId,
-            new AgentRunTurnLimitReached(request.MaxTurns),
+            new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.RequestLimit))),
             [],
             new SessionVersion(0)));
     }

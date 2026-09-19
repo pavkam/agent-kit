@@ -110,7 +110,7 @@ public sealed class RunContinuationContextTests
     {
         var exception = Should.Throw<ArgumentException>(() => new RunContinuationContext(
             _agentId, _sessionId, _laneId, _operationId, _runId, AgentRunState.Driving, _revision, Cursor(), _cutoff,
-            new ConfigurationVersion(2), new RunPolicyVersion(1), new IdleContinuationBoundary(), new AgentRunIdle(), []));
+            new ConfigurationVersion(2), new RunPolicyVersion(1), new IdleContinuationBoundary(), new RunIdle(), []));
         exception.ParamName.ShouldBe("requiredStopOutcome");
     }
 

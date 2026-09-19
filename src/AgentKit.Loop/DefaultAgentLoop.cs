@@ -38,9 +38,9 @@ using Microsoft.Extensions.Options;
 /// <see cref="NormalizedStopReason.ToolUse"/>, that output is first committed
 /// as an <see cref="MessageState.Interrupted"/> <see cref="AssistantMessage"/>
 /// so it is never discarded, before the run settles with the typed outcome
-/// naming the cause: <see cref="AgentRunFailed"/>, <see cref="AgentRunCancelled"/>,
-/// <see cref="AgentRunOutputLengthLimitReached"/>, or <see cref="AgentRunInvalidState"/>
-/// for a deferral this loop cannot resume.
+/// naming the cause: <see cref="RunFailed"/> or <see cref="RunCancelled"/>, both preserving the normalized cause
+/// through <see cref="RunFailure"/>/<see cref="CancellationReason"/>, or <see cref="RunFailed"/> for a deferral
+/// this loop cannot resume.
 /// </para>
 /// <para>
 /// History is loaded under one pinned snapshot and reconstructed from the
@@ -59,7 +59,7 @@ using Microsoft.Extensions.Options;
 /// only while this run has committed nothing. After the first durable commit,
 /// cancellation observed anywhere (a cancelled model attempt, a cancelled or
 /// skipped tool call, or a cancelled wait between turns) settles the run with a
-/// typed <see cref="AgentRunCancelled"/> outcome. The result then carries every
+/// typed <see cref="RunCancelled"/> outcome. The result then carries every
 /// committed message and the exact branch version, and every requested tool
 /// call in an interrupted batch has already received its terminal result.
 /// </para>
@@ -270,7 +270,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
 
             var outcome = result.Outcome.GetType().Name;
-            if (result.Outcome is AgentRunCompleted)
+            if (result.Outcome is RunSucceeded)
             {
                 activity.SetSuccessful(outcome);
                 LoopLog.RunCompleted(_logger, request.RunId, result.NewMessages.Length);
@@ -402,7 +402,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             return BuildResult(
                 request,
-                new AgentRunSessionOperationFailed("The run's eligible session history could not be loaded."),
+                RunOutcomes.SessionOperationFailed("The run's eligible session history could not be loaded."),
                 [],
                 finalVersion: null);
         }
@@ -478,7 +478,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 LoopLog.BudgetAuthorityMissing(_logger, request.RunId);
                 return BuildResult(
                     request,
-                    new AgentRunInvalidState("The run declares budget limits but the composition provides no budget authority."),
+                    RunOutcomes.InvalidState("The run declares budget limits but the composition provides no budget authority."),
                     committedMessages.ToImmutable(),
                     currentVersion);
             }
@@ -496,7 +496,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 LoopLog.BudgetScopeNotCreated(_logger, request.RunId, scopeResult.GetType().Name);
                 return BuildResult(
                     request,
-                    new AgentRunInvalidState("The run's budget scope could not be created."),
+                    RunOutcomes.InvalidState("The run's budget scope could not be created."),
                     committedMessages.ToImmutable(),
                     currentVersion);
             }
@@ -527,7 +527,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 && await turnBudget.CountAsync(BudgetDimensions.Turns, operationId, $"turn:{turn}", cancellationToken).ConfigureAwait(false) is { } turnExhausted)
             {
                 LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
-                return BuildResult(request, turnExhausted, committedMessages.ToImmutable(), currentVersion);
+                return BuildResult(
+                    request, RunOutcomes.BudgetExhausted(turnExhausted, hasPartialOutput: committedMessages.Count > 0),
+                    committedMessages.ToImmutable(), currentVersion);
             }
 
             if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
@@ -570,14 +572,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 // with a typed cancelled outcome carrying every committed message and the exact branch version.
                 return BuildResult(
                     request,
-                    new AgentRunCancelled("The run was cancelled after at least one message had been committed."),
+                    RunOutcomes.Cancelled("The run was cancelled after at least one message had been committed."),
                     committedMessages.ToImmutable(),
                     currentVersion);
             }
 
             if (result.Outcome is not null)
             {
-                return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version);
+                return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, result.Output);
             }
 
             currentVersion = result.Version;
@@ -636,14 +638,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
             case InvalidModelPolicy invalid:
                 LoopLog.ModelSelectionFailed(_logger, request.RunId, invalid.Reason);
                 return ModelResolution.Failed(
-                    new AgentRunModelSelectionFailed(invalid.Reason, []));
+                    RunOutcomes.ModelSelectionFailed(invalid.Reason, []));
 
             case NoCompatibleModel none:
                 LoopLog.ModelSelectionFailed(
                     _logger,
                     request.RunId,
                     "no compatible model");
-                return ModelResolution.Failed(new AgentRunModelSelectionFailed(
+                return ModelResolution.Failed(RunOutcomes.ModelSelectionFailed(
                     "No configured model satisfies this run's requirements.",
                     none.Diagnostics));
 
@@ -656,7 +658,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         _logger,
                         request.RunId,
                         "no adapter registered for the selected model");
-                    return ModelResolution.Failed(new AgentRunModelSelectionFailed(
+                    return ModelResolution.Failed(RunOutcomes.ModelSelectionFailed(
                         $"Model alias '{descriptor.Alias}' is configured in the catalog but no "
                         + "LLM model adapter is registered to execute it.",
                         selected.Decision.Diagnostics));
@@ -800,7 +802,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             turnActivity.SetFailed("context_preparation_failed", prepFailed.Failure.Kind.ToString());
             LoopLog.TurnFailed(_logger, request.RunId, turnId, "context_preparation_failed");
-            return TurnOutcome.Settled(new AgentRunContextPreparationFailed(prepFailed.Failure), currentVersion);
+            return TurnOutcome.Settled(RunOutcomes.ContextPreparationFailed(prepFailed.Failure), currentVersion);
         }
 
         var context = ((ContextReady) assembleResult).Context;
@@ -828,7 +830,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.BeforeModelRequest, exception.GetType().FullName ?? exception.GetType().Name);
                 turnActivity.SetFailed("hook_failed", exception.GetType().Name);
                 return TurnOutcome.Settled(
-                    new AgentRunInvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
+                    RunOutcomes.InvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
             }
 
             if (hookArgs.SettingsChanged)
@@ -842,7 +844,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.BudgetExhausted(_logger, request.RunId, requestExhausted.Dimension);
             turnActivity.SetFailed("budget_exhausted", requestExhausted.Dimension.Value);
-            return TurnOutcome.Settled(requestExhausted, currentVersion);
+            return TurnOutcome.Settled(
+                RunOutcomes.BudgetExhausted(requestExhausted, hasPartialOutput: committedMessages.Count > 0), currentVersion);
         }
 
         var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
@@ -898,14 +901,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ModelAttemptFailed failed => await SettleInterruptedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 failed.PartialParts, failed.Usage, NormalizedStopReason.Error, failed.Failure.RequestId,
-                new AgentRunFailed(failed.Failure), committedMessages, currentVersion)
+                RunOutcomes.ModelAttemptFailed(failed.Failure), committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
             // A cancelled attempt with no partial parts and no earlier turn commit is a zero-effect
             // cancellation: the documented contract (see the class remarks) is that caller cancellation
             // propagates as OperationCanceledException while the run has committed nothing, exactly like the
             // top-level catch around RunTurnAsync already enforces for an adapter that throws OCE directly
-            // instead of returning ModelAttemptCancelled. Settling with a typed AgentRunCancelled outcome here
+            // instead of returning ModelAttemptCancelled. Settling with a typed RunCancelled outcome here
             // instead would make the same user cancellation throw for one adapter and return for another.
             ModelAttemptCancelled { PartialParts.IsEmpty: true } cancelled
                 when cancellationToken.IsCancellationRequested && committedMessages.Count == 0 =>
@@ -914,7 +917,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ModelAttemptCancelled cancelled => await SettleInterruptedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 cancelled.PartialParts, cancelled.Usage, NormalizedStopReason.Cancelled,
-                cancelled.Cancellation.RequestId, new AgentRunCancelled(cancelled.Cancellation.SafeMessage),
+                cancelled.Cancellation.RequestId, RunOutcomes.Cancelled(cancelled.Cancellation.SafeMessage),
                 committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
@@ -927,7 +930,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 $"Unrecognized {nameof(ModelAttemptResult)} kind '{attemptResult.GetType()}'."),
         };
 
-        if (turnOutcome.Outcome is null or AgentRunCompleted)
+        if (turnOutcome.Outcome is null or RunSucceeded)
         {
             turnActivity.SetSuccessful(turnOutcome.Outcome?.GetType().Name ?? "continue");
             LoopLog.TurnCompleted(_logger, request.RunId, turnId, turnOutcome.Outcome?.GetType().Name ?? "continue");
@@ -982,7 +985,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return await SettleInterruptedAsync(
                 request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
-                new AgentRunFailed(new ProviderFailure(
+                RunOutcomes.ModelAttemptFailed(new ProviderFailure(
                     ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
                     statusCode: null, providerCode: null, retryAfter: null,
                     "The model response reported a tool-use stop but requested no tool call.",
@@ -998,7 +1001,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return await SettleInterruptedAsync(
                 request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
-                new AgentRunFailed(new ProviderFailure(
+                RunOutcomes.ModelAttemptFailed(new ProviderFailure(
                     ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
                     statusCode: null, providerCode: null, retryAfter: null,
                     "The model response requested the same tool call identity more than once.",
@@ -1052,7 +1055,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "a concurrent message was committed before the response");
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(
+                RunOutcomes.SessionOperationFailed(
                     "A concurrent writer committed a message to the branch while the model response was pending; " +
                     "the response is stale and was not committed."),
                 currentVersion);
@@ -1061,7 +1064,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (appendAttempt.Result is not SessionAppended appended)
         {
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+                RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         currentVersion = appended.NewVersion;
@@ -1091,7 +1094,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             // The response is committed; the run stops here rather than spending past the limit on another request.
             LoopLog.BudgetExhausted(_logger, request.RunId, usageExhausted.Dimension);
-            return TurnOutcome.Settled(usageExhausted, currentVersion);
+            return TurnOutcome.Settled(RunOutcomes.BudgetExhausted(usageExhausted, hasPartialOutput: true), currentVersion);
         }
 
         var toolCalls = requestedCalls;
@@ -1149,13 +1152,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <see cref="RuntimeMessage"/>, which the provider translation carries with user-level trust and never with
     /// system authority, and continues to the next turn so the model can correct its answer; the turn limit still
     /// applies. An <see cref="OutputRejected"/> or <see cref="OutputConfigurationRejected"/> decision halts the run
-    /// as <see cref="AgentRunOutputRejected"/>. The processor never sees a turn that requested tools: output is
+    /// as <see cref="RunPolicyHalted"/>. The processor never sees a turn that requested tools: output is
     /// validated only on a terminal response.
     /// </para>
     /// <para>
     /// The attempt counter is per run, not per turn, so repairs consumed on earlier turns count against the
     /// definition's retry policy. A composition that selects an output definition without an output processor fails
-    /// closed as <see cref="AgentRunInvalidState"/> rather than completing with unvalidated text.
+    /// closed as <see cref="RunFailed"/> rather than completing with unvalidated text.
     /// </para>
     /// </remarks>
     private async Task<TurnOutcome> ValidateOutputAsync(
@@ -1183,7 +1186,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.OutputProcessorMissing(_logger, request.RunId, turnId, definition.Id);
             return TurnOutcome.Settled(
-                new AgentRunInvalidState("The run selects an output definition but the composition provides no output processor."),
+                RunOutcomes.InvalidState("The run selects an output definition but the composition provides no output processor."),
                 currentVersion);
         }
 
@@ -1198,14 +1201,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.OutputValidationCancelled(_logger, request.RunId, turnId, definition.Id, attempt);
             return TurnOutcome.Settled(
-                new AgentRunCancelled("The run was cancelled while its output was being validated; the response is committed."),
+                RunOutcomes.Cancelled("The run was cancelled while its output was being validated; the response is committed."),
                 currentVersion);
         }
         catch (Exception exception)
         {
             LoopLog.OutputValidationFaulted(_logger, request.RunId, turnId, definition.Id, attempt, exception.GetType().FullName ?? exception.GetType().Name);
             return TurnOutcome.Settled(
-                new AgentRunInvalidState("The output processor faulted while validating the response."),
+                RunOutcomes.InvalidState("The output processor faulted while validating the response."),
                 currentVersion);
         }
 
@@ -1257,7 +1260,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (appendAttempt.Result is not SessionAppended appended)
         {
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+                RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         committedMessages.Add(repairMessage);
@@ -1540,8 +1543,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
         return appendAttempt.Result is SessionAppended appended
-            ? TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), appended.NewVersion)
-            : TurnOutcome.Settled(new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+            ? TurnOutcome.Settled(RunOutcomes.TurnLimitReached(request.MaxTurns), appended.NewVersion)
+            : TurnOutcome.Settled(RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
     }
 
     /// <summary>
@@ -1777,7 +1780,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             activity.SetFailed("session_append_failed", appendAttempt.Result.GetType().Name);
             LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendAttempt.Result.GetType().Name);
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+                RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         var toolMessage = committedMessages[^1];
@@ -1809,7 +1812,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             activity.SetFailed("cancelled", "cancellation");
             LoopLog.ToolBatchInterrupted(_logger, request.RunId, turnId);
             return TurnOutcome.Settled(
-                new AgentRunCancelled("The run was cancelled while its tool calls were being invoked; every requested call was settled with a terminal result before the run stopped."),
+                RunOutcomes.Cancelled("The run was cancelled while its tool calls were being invoked; every requested call was settled with a terminal result before the run stopped."),
                 appended.NewVersion);
         }
 
@@ -1876,11 +1879,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <remarks>
     /// <para>
     /// <see cref="ContinueRun"/> continues while a turn remains; on the final turn it settles with
-    /// <see cref="AgentRunTurnLimitReached"/> because the policy cannot widen the hard limit.
+    /// <see cref="RunPolicyHalted"/> because the policy cannot widen the hard limit.
     /// <see cref="CompleteRun"/> and <see cref="HaltRun"/> settle with the proposed outcome. Cancellation while the
-    /// policy evaluates settles with <see cref="AgentRunCancelled"/>: the turn's messages are already committed,
+    /// policy evaluates settles with <see cref="RunCancelled"/>: the turn's messages are already committed,
     /// so the caller must receive them. A context the abstractions reject fails closed as
-    /// <see cref="AgentRunInvalidState"/>.
+    /// <see cref="RunFailed"/>.
     /// </para>
     /// <para>
     /// The lane identity and operation-state revision presented to the policy are <paramref name="laneState"/>'s
@@ -1957,7 +1960,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ContinuationFailed(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
             return TurnOutcome.Settled(
-                new AgentRunInvalidState("The committed turn could not be described as continuation evidence."), version);
+                RunOutcomes.InvalidState("The committed turn could not be described as continuation evidence."), version);
         }
 
         // The promotion, if any, is durably committed regardless of what the policy decides below: the lane's
@@ -1981,7 +1984,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ContinuationCancelled(_logger, request.RunId);
             return TurnOutcome.Settled(
-                new AgentRunCancelled("The run was cancelled while its continuation was being decided; the turn's messages are committed."),
+                RunOutcomes.Cancelled("The run was cancelled while its continuation was being decided; the turn's messages are committed."),
                 version);
         }
 
@@ -2007,8 +2010,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return decision switch
         {
             ContinueRun when turn < request.MaxTurns => TurnOutcome.Continue(nextCursor, newMessages),
-            ContinueRun => TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), version),
-            CompleteRun complete => TurnOutcome.Settled(complete.Outcome, version),
+            ContinueRun => TurnOutcome.Settled(RunOutcomes.TurnLimitReached(request.MaxTurns), version),
+            CompleteRun complete => TurnOutcome.Settled(complete.Outcome, version, outputDecision is OutputAccepted accepted ? accepted.Output : null),
             HaltRun halt => TurnOutcome.Settled(halt.Outcome, version),
             _ => throw new InvalidOperationException(
                 $"Unrecognized {nameof(RunContinuationDecision)} kind '{decision.GetType()}'."),
@@ -2094,10 +2097,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     /// <param name="response">The completed response carrying the unaccepted stop reason.</param>
     /// <returns>
-    /// <see cref="AgentRunCancelled"/> for <see cref="NormalizedStopReason.Cancelled"/>;
-    /// <see cref="AgentRunOutputLengthLimitReached"/> for <see cref="NormalizedStopReason.Length"/>;
-    /// <see cref="AgentRunInvalidState"/> for <see cref="NormalizedStopReason.Deferred"/>, which this loop has no
-    /// deferred-operation handoff to honour; and <see cref="AgentRunFailed"/> with
+    /// <see cref="RunCancelled"/> for <see cref="NormalizedStopReason.Cancelled"/>;
+    /// a <see cref="RunFailed"/> with a <see cref="AgentErrorCodes.TokenLimit"/> error for
+    /// <see cref="NormalizedStopReason.Length"/>; <see cref="RunFailed"/> with
+    /// <see cref="AgentErrorCodes.InvalidState"/> for <see cref="NormalizedStopReason.Deferred"/>, which this loop
+    /// has no deferred-operation handoff to honour; and <see cref="RunFailed"/> with
     /// <see cref="ProviderFailureKind.ProtocolViolation"/> for <see cref="NormalizedStopReason.Pending"/>,
     /// <see cref="NormalizedStopReason.Error"/>, or an undefined value, none of which a completed attempt may report.
     /// </returns>
@@ -2110,13 +2114,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         return response.StopReason switch
         {
-            NormalizedStopReason.Cancelled => new AgentRunCancelled(
+            NormalizedStopReason.Cancelled => RunOutcomes.Cancelled(
                 "The model reported that its response was cancelled before it completed."),
-            NormalizedStopReason.Length => new AgentRunOutputLengthLimitReached(
+            NormalizedStopReason.Length => RunOutcomes.OutputLengthLimitReached(
                 response.RequestId,
                 hasPartialOutput: !response.Parts.IsEmpty,
                 "The model reached its output length limit before it finished its response."),
-            NormalizedStopReason.Deferred => new AgentRunInvalidState(
+            NormalizedStopReason.Deferred => RunOutcomes.InvalidState(
                 "The model reported a deferred response, but this loop has no deferred-operation handoff to resume it."),
             NormalizedStopReason.Pending or NormalizedStopReason.Error => ProtocolViolation(
                 response, $"The provider reported a completed attempt with a non-terminal stop reason ({response.StopReason})."),
@@ -2126,7 +2130,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 response, $"The provider reported a completed attempt with an undefined stop reason ({response.StopReason})."),
         };
 
-        static AgentRunFailed ProtocolViolation(ModelResponse response, string safeMessage) => new(new ProviderFailure(
+        static AgentRunOutcome ProtocolViolation(ModelResponse response, string safeMessage) => RunOutcomes.ModelAttemptFailed(new ProviderFailure(
             ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
             statusCode: null, providerCode: null, retryAfter: null, safeMessage, diagnosticCause: null, ExtensionData.Empty));
     }
@@ -2135,7 +2139,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="toolCall">The call that was not attempted.</param>
     /// <param name="exhausted">The exhaustion that refused it.</param>
     /// <returns>A rejected, not-performed result recording <see cref="ToolTerminalStatus.ResourceLimitExceeded"/>.</returns>
-    private static ToolResultPart BudgetRejectedResultPart(ToolCallPart toolCall, AgentRunBudgetExhausted exhausted) => new(
+    private static ToolResultPart BudgetRejectedResultPart(ToolCallPart toolCall, BudgetExhaustion exhausted) => new(
         toolCall.CallId,
         toolCall.Tool,
         new ToolCallOutcome(
@@ -2582,7 +2586,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (appendAttempt.Result is not SessionAppended appended)
         {
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+                RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         committedMessages.Add(interruptedMessage);
@@ -2729,7 +2733,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (appendAttempt.Result is not SessionAppended appended)
         {
-            return (new HistoryView(cursor, messages, []), new AgentRunSessionOperationFailed(
+            return (new HistoryView(cursor, messages, []), RunOutcomes.SessionOperationFailed(
                 "A previous run left tool calls without terminal results and the recovery settlement could not be committed: " +
                 DescribeAppendFailure(appendAttempt.Result)));
         }
@@ -2899,9 +2903,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="correlation">The operation (run or turn) the authorization is captured for.</param>
     /// <param name="cancellationToken">Cancels the capture.</param>
     /// <returns>
-    /// The captured authorization, or the typed outcome that settles the run:
-    /// <see cref="AgentRunAuthorizationUnavailable"/> when the authority could not capture authorization, and
-    /// <see cref="AgentRunInvalidState"/> when the captured evidence contradicts the run-start evidence.
+    /// The captured authorization, or the typed outcome that settles the run: a <see cref="RunFailed"/> with an
+    /// <see cref="AgentErrorCodes.AuthorizationDenied"/> error when the authority could not capture authorization,
+    /// and a <see cref="RunFailed"/> with an <see cref="AgentErrorCodes.InvalidState"/> error when the captured
+    /// evidence contradicts the run-start evidence.
     /// </returns>
     private async ValueTask<(SecurityAuthorizationContext? Authorization, AgentRunOutcome? Failure)>
         CaptureAuthorizationAsync(
@@ -2927,7 +2932,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (result is not SecurityAuthorizationCaptured captured)
         {
             LoopLog.AuthorizationCaptureUnavailable(_logger, request.RunId, correlation.TurnId);
-            return (null, new AgentRunAuthorizationUnavailable(result is SecurityAuthorizationCaptureUnavailable unavailable
+            return (null, RunOutcomes.AuthorizationUnavailable(result is SecurityAuthorizationCaptureUnavailable unavailable
                 ? unavailable.SafeReason
                 : "The security profile could not be captured for this operation."));
         }
@@ -2943,7 +2948,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             || authorization.ConfigurationVersion != baseline.ConfigurationVersion)
         {
             LoopLog.AuthorizationEvidenceMismatch(_logger, request.RunId, correlation.TurnId);
-            return (null, new AgentRunInvalidState("The captured security profile differs from the run-start evidence."));
+            return (null, RunOutcomes.InvalidState("The captured security profile differs from the run-start evidence."));
         }
 
         return (authorization, null);
@@ -3103,8 +3108,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
     };
 
     private static AgentLoopResult BuildResult(
-        AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion) =>
-        new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion);
+        AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion, ValidatedOutput? output = null) =>
+        new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion, output);
 
     /// <summary>
     /// The result of choosing this run's model: either a terminal outcome
@@ -3251,12 +3256,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private readonly struct TurnOutcome
     {
-        private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, MessageCursor? cursor, ImmutableArray<AgentMessage> newMessages)
+        private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, MessageCursor? cursor, ImmutableArray<AgentMessage> newMessages, ValidatedOutput? output)
         {
             Outcome = outcome;
             Version = version;
             Cursor = cursor;
             NewMessages = newMessages;
+            Output = output;
         }
 
         /// <summary>Gets the terminal outcome, when the run settled during this turn.</summary>
@@ -3271,14 +3277,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// <summary>Gets the messages newly visible to the next turn's history, when continuing.</summary>
         public ImmutableArray<AgentMessage> NewMessages { get; }
 
+        /// <summary>Gets the validated structured output accepted for a <see cref="RunSucceeded"/> settlement.</summary>
+        public ValidatedOutput? Output { get; }
+
         /// <summary>Creates a settled outcome.</summary>
-        public static TurnOutcome Settled(AgentRunOutcome outcome, SessionVersion version) => new(outcome, version, null, []);
+        public static TurnOutcome Settled(AgentRunOutcome outcome, SessionVersion version, ValidatedOutput? output = null) => new(outcome, version, null, [], output);
 
         /// <summary>Creates a continuation outcome.</summary>
         public static TurnOutcome Continue(MessageCursor cursor, ImmutableArray<AgentMessage> newMessages)
         {
             ArgumentNullException.ThrowIfNull(cursor);
-            return new(null, cursor.Version, cursor, newMessages);
+            return new(null, cursor.Version, cursor, newMessages, null);
         }
     }
 }

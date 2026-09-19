@@ -60,7 +60,7 @@ internal static partial class LoopLog
     internal static partial void ToolBatchFailed(ILogger logger, RunId runId, TurnId turnId, string outcome);
 
     /// <summary>Logs that caller cancellation interrupted a tool batch after at least one call had already started.</summary>
-    /// <remarks>Every call in the batch still commits with a matching terminal result, after which the run settles with a typed <see cref="AgentRunCancelled"/> outcome.</remarks>
+    /// <remarks>Every call in the batch still commits with a matching terminal result, after which the run settles with a typed <see cref="RunCancelled"/> outcome.</remarks>
     [LoggerMessage(1033, LogLevel.Information, "Tool batch for turn {TurnId} in run {RunId} was interrupted by cancellation; every call still committed a matching terminal result.")]
     internal static partial void ToolBatchInterrupted(ILogger logger, RunId runId, TurnId turnId);
 

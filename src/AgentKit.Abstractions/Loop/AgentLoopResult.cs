@@ -25,6 +25,10 @@ public sealed record AgentLoopResult
     /// run observed when it committed nothing; <see langword="null"/> when the
     /// run settled before it observed the branch at all.
     /// </param>
+    /// <param name="output">
+    /// The validated structured output a <see cref="RunSucceeded"/> run's selected definition accepted, or
+    /// <see langword="null"/> for a free-text run or any outcome other than <see cref="RunSucceeded"/>.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="newMessages"/> is a default, uninitialized array.
@@ -36,7 +40,8 @@ public sealed record AgentLoopResult
         RunId runId,
         AgentRunOutcome outcome,
         ImmutableArray<AgentMessage> newMessages,
-        SessionVersion? finalVersion)
+        SessionVersion? finalVersion,
+        ValidatedOutput? output = null)
     {
         ArgumentNullException.ThrowIfNull(outcome);
         ArgumentException.ThrowIfDefault(newMessages);
@@ -48,6 +53,7 @@ public sealed record AgentLoopResult
         Outcome = outcome;
         NewMessages = newMessages;
         FinalVersion = finalVersion;
+        Output = output;
     }
 
     /// <summary>Gets the agent this run belonged to.</summary>
@@ -79,6 +85,14 @@ public sealed record AgentLoopResult
     /// </value>
     public SessionVersion? FinalVersion { get; init; }
 
+    /// <summary>Gets the validated structured output a successful run's selected definition accepted.</summary>
+    /// <value>
+    /// The accepted output validated by the run's <see cref="IOutputProcessor"/>, or <see langword="null"/> for a
+    /// free-text run or any outcome other than <see cref="RunSucceeded"/>. A run with an output definition never
+    /// settles as <see cref="RunSucceeded"/> without it.
+    /// </value>
+    public ValidatedOutput? Output { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(AgentLoopResult? other) =>
         other is not null
@@ -88,7 +102,8 @@ public sealed record AgentLoopResult
         && RunId.Equals(other.RunId)
         && Outcome.Equals(other.Outcome)
         && NewMessages.SequenceEqual(other.NewMessages)
-        && FinalVersion.Equals(other.FinalVersion);
+        && FinalVersion.Equals(other.FinalVersion)
+        && Equals(Output, other.Output);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -105,6 +120,7 @@ public sealed record AgentLoopResult
         }
 
         hash.Add(FinalVersion);
+        hash.Add(Output);
         return hash.ToHashCode();
     }
 }

@@ -78,7 +78,7 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
             request.SessionId,
             request.BranchId,
             request.RunId,
-            new AgentRunCompleted(FakeMessages.Assistant(request, "ok")),
+            new RunSucceeded(),
             [],
             new SessionVersion(1));
 }

@@ -117,9 +117,9 @@ public sealed class EngineDelegationChannel: ITaskDelegationChannel
 
         var status = result.Outcome switch
         {
-            AgentRunCompleted => TaskDelegationStatus.Succeeded,
-            AgentRunCancelled => TaskDelegationStatus.Cancelled,
-            AgentRunTurnLimitReached => TaskDelegationStatus.Blocked,
+            RunSucceeded => TaskDelegationStatus.Succeeded,
+            RunCancelled => TaskDelegationStatus.Cancelled,
+            RunPolicyHalted => TaskDelegationStatus.Blocked,
             _ => TaskDelegationStatus.Failed,
         };
         EngineDelegationLog.ChildSettled(_logger, prompt.Id, prompt.TargetAgentId, result.SessionId, result.RunId, status);

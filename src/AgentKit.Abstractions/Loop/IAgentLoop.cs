@@ -51,7 +51,7 @@ public interface IAgentLoop
     /// Cancellation follows one rule: the operation may fault with
     /// <see cref="OperationCanceledException"/> only while the run has produced
     /// no durable effect. Once the run has committed at least one message, an
-    /// implementation must settle with a typed <see cref="AgentRunCancelled"/>
+    /// implementation must settle with a typed <see cref="RunCancelled"/>
     /// outcome whose <see cref="AgentLoopResult.NewMessages"/> and
     /// <see cref="AgentLoopResult.FinalVersion"/> report exactly what was
     /// committed, so a caller never loses track of durable state because its

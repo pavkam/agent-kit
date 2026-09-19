@@ -9,7 +9,7 @@ public sealed class AgentRunOutcomeTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new AgentRunIdle();
+        var original = new RunIdle();
         var copy = original with { };
         copy.ShouldBe(original);
     }

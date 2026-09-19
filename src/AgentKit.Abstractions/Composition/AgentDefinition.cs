@@ -220,7 +220,7 @@ public sealed record AgentDefinition
     /// The immutable definition the loop hands to the selected <see cref="IOutputProcessor"/> after each terminal
     /// assistant response, or <see langword="null"/> when the agent's final answer is free text. When set, a run
     /// completes only with an <see cref="OutputAccepted"/> decision; a rejected candidate is repaired within the
-    /// definition's retry policy or the run halts with <see cref="AgentRunOutputRejected"/>.
+    /// definition's retry policy or the run halts with <see cref="RunPolicyHalted"/>.
     /// </value>
     /// <remarks>
     /// The definition owner is responsible for telling the model what to produce: in <see cref="OutputMode.Prompted"/>
@@ -233,7 +233,7 @@ public sealed record AgentDefinition
     /// Hard or soft limits over first-party or host dimensions, or empty when runs are bounded only by turns and
     /// timeouts. When non-empty the composition must select an <see cref="IBudgetAuthority"/>; the loop creates one
     /// run scope with these limits, reserves before each turn, model request, and tool call, accounts reported usage,
-    /// and settles the run as <see cref="AgentRunBudgetExhausted"/> when a reservation is refused.
+    /// and settles the run as <see cref="RunLimitReached"/> or <see cref="RunFailed"/> when a reservation is refused, depending on whether the refusal carried full budget-limit evidence.
     /// </value>
     /// <exception cref="ArgumentException">An initializer assigns a default array or one containing a null element.</exception>
     public ImmutableArray<BudgetLimit> BudgetLimits

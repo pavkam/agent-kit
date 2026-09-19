@@ -357,7 +357,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         reviewerAgent.Definition.RunDefaults.MaxTurns.ShouldBe(3);
         reviewerAgent.Definition.Tools.ShouldBeEmpty();
         defaultAgent.Definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
-        _ = first.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = first.Outcome.ShouldBeOfType<RunSucceeded>();
         second.SessionId.ShouldBe(first.SessionId);
         other.SessionId.ShouldNotBe(first.SessionId);
         viaConversation.ShouldBe("reply");
@@ -388,7 +388,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             Enumerable.Range(0, 4).Select(i => agent.SendAsync(new AgentSendRequest(engine.Identity, $"job {i}"), TestContext.Current.CancellationToken)));
 
         results.Select(static r => r.SessionId).Distinct().Count().ShouldBe(4);
-        results.ShouldAllBe(static r => r.Outcome is AgentRunCompleted);
+        results.ShouldAllBe(static r => r.Outcome is RunSucceeded);
         handler.Bodies.Count.ShouldBe(4);
     }
 
@@ -655,7 +655,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         handler.Bodies[2].ShouldContain("RetryPolicy.cs");
         var specialistSessions = await (await engine.GetAgentAsync(specialist, TestContext.Current.CancellationToken))!
             .SendAsync(new AgentSendRequest(engine.Identity, "and now?"), TestContext.Current.CancellationToken);
-        _ = specialistSessions.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = specialistSessions.Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]

@@ -27,13 +27,4 @@ public sealed class AgentRunOutcomeTests
     }
 
     private sealed record ForeignVariant(AgentRunOutcome Original): AgentRunOutcome(Original);
-
-    [Fact]
-    public void CopyConstructor_WhenLegacyOutcomeCopies_PreservesCompatibility()
-    {
-        AgentRunOutcome original = new AgentRunIdle();
-        var copy = original with { };
-        copy.ShouldBe(original); copy.ShouldNotBeSameAs(original);
-        copy.GetType().ShouldBe(typeof(AgentRunIdle));
-    }
 }

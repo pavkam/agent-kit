@@ -109,7 +109,7 @@ internal sealed class DefaultRunContinuationPolicy: IRunContinuationPolicy
                 OutputDecision: OutputRejected rejected,
             })
         {
-            return new HaltRun(new AgentRunOutputRejected(rejected));
+            return new HaltRun(RunOutcomes.OutputRejected(rejected));
         }
 
         if (context.Boundary is CommittedTurnContinuationBoundary
@@ -117,7 +117,7 @@ internal sealed class DefaultRunContinuationPolicy: IRunContinuationPolicy
                 OutputDecision: OutputConfigurationRejected configurationRejected,
             })
         {
-            return new HaltRun(new AgentRunOutputRejected(configurationRejected));
+            return new HaltRun(RunOutcomes.OutputRejected(configurationRejected));
         }
 
         if (context.Boundary is CommittedTurnContinuationBoundary
@@ -159,12 +159,10 @@ internal sealed class DefaultRunContinuationPolicy: IRunContinuationPolicy
                 Invalid("Committed tool results require explicit continuation evidence."),
             CommittedTurnContinuationBoundary { RequiresOutputValidation: true, OutputDecision: not OutputAccepted } =>
                 Invalid("Required output validation is missing an accepted terminal decision."),
-            CommittedTurnContinuationBoundary { OutputDecision: OutputAccepted accepted } committed =>
-                new CompleteRun(new AgentRunCompleted(committed.Response) { Output = accepted.Output }),
-            CommittedTurnContinuationBoundary committed =>
-                new CompleteRun(new AgentRunCompleted(committed.Response)),
+            CommittedTurnContinuationBoundary =>
+                new CompleteRun(RunOutcomes.Completed()),
             IdleContinuationBoundary =>
-                new CompleteRun(new AgentRunIdle()),
+                new CompleteRun(RunOutcomes.Idle()),
             RetryContinuationBoundary =>
                 Invalid("A retry boundary requires explicit retry evidence."),
             DeferredContinuationBoundary =>
@@ -195,7 +193,7 @@ internal sealed class DefaultRunContinuationPolicy: IRunContinuationPolicy
         };
 
     private static HaltRun Invalid(string safeMessage) =>
-        new HaltRun(new AgentRunInvalidState(safeMessage));
+        new HaltRun(RunOutcomes.InvalidState(safeMessage));
 
     private long? TryGetTimestamp()
     {

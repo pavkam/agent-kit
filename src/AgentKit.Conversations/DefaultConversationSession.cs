@@ -619,9 +619,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             : WithOutputProcessor(_runServices, loopScope.ServiceProvider.GetService<IOutputProcessor>());
         var loopResult = await agentLoop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);
-        if (loopResult.Outcome is AgentRunCompleted completed)
+        if (loopResult.Outcome is RunSucceeded)
         {
-            if (completed.Output is { } output)
+            if (loopResult.Output is { } output)
             {
                 var outputEvent = new ConversationOutputEvent(output);
                 await ObserveAsync(observer, outputEvent, cancellationToken).ConfigureAwait(false);
@@ -671,20 +671,17 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     }
 
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>
-    /// <param name="outcome">The run's terminal outcome, which is not <see cref="AgentRunCompleted"/>.</param>
+    /// <param name="outcome">The run's terminal outcome, which is not <see cref="RunSucceeded"/>.</param>
     /// <returns>A stable, low-cardinality token distinguishing why the run did not complete.</returns>
     private static string RunOutcomeKind(AgentRunOutcome outcome) => outcome switch
     {
-        AgentRunTurnLimitReached => "turn_limit",
-        AgentRunCancelled => "cancelled",
-        AgentRunFailed => "provider_failed",
-        AgentRunSessionOperationFailed => "session_operation_failed",
-        AgentRunModelSelectionFailed => "model_selection_failed",
-        AgentRunContextPreparationFailed => "context_preparation_failed",
-        AgentRunInvalidState => "invalid_state",
-        AgentRunOutputRejected => "output_rejected",
-        AgentRunBudgetExhausted => "budget_exhausted",
-        AgentRunIdle => "idle",
+        RunIdle => "idle",
+        RunDeferred => "deferred",
+        RunCancelled => "cancelled",
+        RunLimitReached => "budget_exhausted",
+        RunPolicyHalted { Reason.Error.Code: var code } when code == AgentErrorCodes.RequestLimit => "turn_limit",
+        RunPolicyHalted => "output_rejected",
+        RunFailed => "failed",
         _ => "run_not_completed",
     };
 
@@ -940,39 +937,31 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         }
     }
 
-    /// <summary>Describes a run outcome other than <see cref="AgentRunCompleted"/> in safe, non-sensitive text.</summary>
+    /// <summary>Describes a run outcome other than <see cref="RunSucceeded"/> in safe, non-sensitive text.</summary>
     /// <param name="outcome">The non-default terminal outcome to describe.</param>
     /// <returns>A human-readable sentence explaining why the run did not reach a final assistant message.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
     private static string DescribeIncompleteOutcome(AgentRunOutcome outcome)
     {
         ArgumentNullException.ThrowIfNull(outcome);
+        // Only each failure's bounded safe message is user-visible. AgentError.Diagnostics may carry provider or
+        // transport detail and is for logs and diagnostics only.
         return outcome switch
         {
-            AgentRunSessionOperationFailed sessionFailed =>
-                $"The run stopped: a session operation failed ({sessionFailed.SafeMessage}).",
-            AgentRunTurnLimitReached limitReached =>
-                $"The run stopped after reaching its {limitReached.MaxTurns}-turn limit with tool calls still pending.",
-            AgentRunModelSelectionFailed modelSelectionFailed =>
-                $"The run stopped: no usable model could be selected ({modelSelectionFailed.SafeReason}).",
-            AgentRunContextPreparationFailed contextFailed =>
-                $"The run stopped: context preparation failed ({contextFailed.Failure.Kind}: {contextFailed.Failure.SafeMessage}).",
-            // Only the failure's bounded safe fields are user-visible. ProviderFailure.DiagnosticCause and
-            // Extensions may carry transport detail or secrets and are for logs and diagnostics only.
-            AgentRunFailed runFailed =>
-                $"The run stopped: the model provider attempt failed ({runFailed.Failure.Kind}: {runFailed.Failure.SafeMessage}).",
-            AgentRunCancelled cancelled =>
-                $"The run stopped: {cancelled.SafeMessage}",
-            AgentRunIdle =>
+            RunIdle =>
                 "The run ended idle with no pending work and no final assistant message.",
-            AgentRunInvalidState invalidState =>
-                $"The run stopped: its captured lifecycle evidence was inconsistent ({invalidState.SafeMessage}).",
-            AgentRunOutputRejected { Rejection: OutputRejected outputRejected } =>
-                $"The run stopped: its terminal output was rejected ({outputRejected.Failure.Kind}: {outputRejected.Failure.SafeMessage}).",
-            AgentRunOutputRejected =>
-                "The run stopped: its output definition could not be applied.",
-            AgentRunBudgetExhausted exhausted =>
-                $"The run stopped: the {exhausted.Dimension.Value} budget is exhausted ({exhausted.SafeMessage}).",
+            RunDeferred =>
+                "The run ended with work handed off to durable external ownership.",
+            RunCancelled cancelled =>
+                $"The run stopped: {cancelled.Reason.Error.SafeMessage}",
+            RunLimitReached limitReached =>
+                $"The run stopped: the {limitReached.Limit.Limit.Dimension.Value} budget is exhausted ({limitReached.Limit.Limit.SafeMessage}).",
+            RunPolicyHalted { Reason.Error.Code: var code } policyHalted when code == AgentErrorCodes.RequestLimit =>
+                $"The run stopped: {policyHalted.Reason.Error.SafeMessage}",
+            RunPolicyHalted policyHalted =>
+                $"The run stopped: its output was rejected ({policyHalted.Reason.Error.SafeMessage}).",
+            RunFailed failed =>
+                $"The run stopped: {failed.Failure.Error.SafeMessage}",
             _ => $"The run ended without a final assistant message (outcome: {outcome.GetType().Name}).",
         };
     }
