@@ -3121,7 +3121,7 @@ public sealed class DefaultAgentLoopTests
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.NewGuid());
         var modelCalls = 0;
-        ToolCallRequest? invoked = null;
+        LegacyToolCallRequest? invoked = null;
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
@@ -3962,8 +3962,8 @@ public sealed class DefaultAgentLoopTests
         Func<LlmModelRequest, ModelAttemptResult> respond,
         int maxTurns = 8,
         ToolInvocationResult? toolResult = null,
-        Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
-        Func<ToolCallRequest, ResolvedToolInvocation>? resolvedToolHandler = null,
+        Func<LegacyToolCallRequest, ToolInvocationResult>? toolHandler = null,
+        Func<LegacyToolCallRequest, ResolvedToolInvocation>? resolvedToolHandler = null,
         ModelResponseEvent? modelEvent = null,
         IContextAssembler? contextAssembler = null,
         IRunContinuationPolicy? continuationPolicy = null,

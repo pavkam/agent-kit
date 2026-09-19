@@ -51,4 +51,28 @@ public sealed class SecurityDecisionTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void SecurityApprovalRequired_WhenApprovalIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new SecurityApprovalRequired(new SecurityRequestId(Guid.NewGuid()), new SecurityPolicyVersion(1), null!)).ParamName.ShouldBe("approval");
+
+    [Fact]
+    public void SecurityApprovalRequired_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var requestId = new SecurityRequestId(Guid.NewGuid());
+        var approval = new ApprovalRequest(new ApprovalRequestId(Guid.NewGuid()), SecurityAbstractionsTestData.ScopeBinding(), "presentation", DateTimeOffset.UnixEpoch);
+        var decision = new SecurityApprovalRequired(requestId, new SecurityPolicyVersion(1), approval);
+        decision.RequestId.ShouldBe(requestId);
+        decision.PolicyVersion.ShouldBe(new SecurityPolicyVersion(1));
+        decision.Approval.ShouldBe(approval);
+    }
+
+    [Fact]
+    public void SecurityApprovalRequired_With_WhenApplied_ProducesEqualCopy()
+    {
+        var approval = new ApprovalRequest(new ApprovalRequestId(Guid.NewGuid()), SecurityAbstractionsTestData.ScopeBinding(), "presentation", DateTimeOffset.UnixEpoch);
+        var original = new SecurityApprovalRequired(new SecurityRequestId(Guid.NewGuid()), new SecurityPolicyVersion(1), approval);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

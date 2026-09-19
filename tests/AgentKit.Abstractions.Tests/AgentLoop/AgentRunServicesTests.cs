@@ -146,7 +146,7 @@ public sealed class AgentRunServicesTests
 
     private sealed class FakeToolInvoker: IToolInvoker
     {
-        public Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeModelCatalog: IModelCatalog

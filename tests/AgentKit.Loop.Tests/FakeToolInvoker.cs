@@ -10,7 +10,7 @@ namespace AgentKit.Loop.Tests;
 /// </summary>
 internal sealed class FakeToolInvoker: IToolInvoker
 {
-    private readonly Func<ToolCallRequest, ResolvedToolInvocation> _handler;
+    private readonly Func<LegacyToolCallRequest, ResolvedToolInvocation> _handler;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FakeToolInvoker"/> class that always resolves the requested
@@ -18,7 +18,7 @@ internal sealed class FakeToolInvoker: IToolInvoker
     /// registered tool.
     /// </summary>
     /// <param name="handler">Produces the invocation result for each received call.</param>
-    public FakeToolInvoker(Func<ToolCallRequest, ToolInvocationResult> handler)
+    public FakeToolInvoker(Func<LegacyToolCallRequest, ToolInvocationResult> handler)
         : this(request =>
         {
             var resolvedTool = request.Tool.Id is null
@@ -34,13 +34,13 @@ internal sealed class FakeToolInvoker: IToolInvoker
     /// tool reference and projection policy the fake reports, for exercising an unresolved (unknown-tool) outcome.
     /// </summary>
     /// <param name="handler">Produces the complete resolved invocation for each received call.</param>
-    public FakeToolInvoker(Func<ToolCallRequest, ResolvedToolInvocation> handler) => _handler = handler;
+    public FakeToolInvoker(Func<LegacyToolCallRequest, ResolvedToolInvocation> handler) => _handler = handler;
 
     /// <summary>Gets every request this fake received, in call order.</summary>
-    public List<ToolCallRequest> ReceivedRequests { get; } = [];
+    public List<LegacyToolCallRequest> ReceivedRequests { get; } = [];
 
     /// <inheritdoc/>
-    public Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
+    public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ReceivedRequests.Add(request);

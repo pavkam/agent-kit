@@ -16,7 +16,7 @@ namespace AgentKit;
 /// resolution attempt against its registered <see cref="IToolCatalog"/>; a
 /// caller building a <see cref="ToolResultPart"/> from this value must use
 /// <see cref="Tool"/>, not the reference it originally submitted in
-/// <see cref="ToolCallRequest.Tool"/>, so a successful resolution is
+/// <see cref="LegacyToolCallRequest.Tool"/>, so a successful resolution is
 /// reflected in durable history.
 /// </remarks>
 public sealed record ResolvedToolInvocation

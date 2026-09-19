@@ -40,6 +40,8 @@ internal static class SecurityAbstractionsTestData
 
     public static ProtectedResource Resource() => new(ProtectedResourceKind.ApplicationState, "session:test");
 
+    public static SecurityPolicySnapshotReference PolicySnapshotReference() => Authorization().PolicySnapshot;
+
     public static SecurityRequest Request() =>
         new(new SecurityRequestId(Guid.Parse("f0000000-0000-0000-0000-000000000005")), Scope(), null, Identity(),
             Authorization(), new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe,

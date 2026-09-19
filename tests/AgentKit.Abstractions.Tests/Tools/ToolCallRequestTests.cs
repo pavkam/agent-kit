@@ -3,53 +3,91 @@
 
 namespace AgentKit.Abstractions.Tests.Tools;
 
-using System.Text.Json;
-
 using AgentKit;
+
+using static ToolRuntimeTestFixture;
 
 /// <summary>Verifies ToolCallRequest behavior and contracts.</summary>
 public sealed class ToolCallRequestTests
 {
     [Fact]
-    public void ToolCallRequest_Constructor_WhenToolNull_ThrowsArgumentNullException()
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ToolCallRequest(null!, ExecutionContext(), default, DateTimeOffset.UnixEpoch));
-        exception.ParamName.ShouldBe("tool");
-    }
+        var authorization = Authorization();
+        var request = new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, authorization, CatalogVersion(),
+            3, ProviderAlias(), [1, 2, 3], DateTimeOffset.UnixEpoch);
 
-    [Fact]
-    public void ToolCallRequest_Constructor_WhenContextNull_ThrowsArgumentNullException()
-    {
-        var exception = Should.Throw<ArgumentNullException>(() => new ToolCallRequest(new ToolReference(new ToolAlias("t"), null, null), null!, default, DateTimeOffset.UnixEpoch));
-        exception.ParamName.ShouldBe("context");
-    }
-
-    [Fact]
-    public void ToolCallRequest_Constructor_WhenValid_RoundTripsProperties()
-    {
-        var context = ExecutionContext();
-        var arguments = JsonDocument.Parse("{}").RootElement;
-        var tool = new ToolReference(new ToolAlias("t"), null, null);
-        var request = new ToolCallRequest(tool, context, arguments, DateTimeOffset.UnixEpoch);
-        request.Tool.ShouldBe(tool);
-        request.Context.ShouldBe(context);
-        request.Arguments.GetRawText().ShouldBe(arguments.GetRawText());
+        request.AgentId.ShouldBe(TestAgentId);
+        request.SessionId.ShouldBe(TestSessionId);
+        request.RunId.ShouldBe(TestRunId);
+        request.TurnId.ShouldBe(TestTurnId);
+        request.OperationId.ShouldBe(TestOperationId);
+        request.CallId.ShouldBe(CallId);
+        request.Authorization.ShouldBe(authorization);
+        request.CatalogVersion.ShouldBe(CatalogVersion());
+        request.SourceOrdinal.ShouldBe(3);
+        request.ProviderAlias.ShouldBe(ProviderAlias());
+        ImmutableArray<byte> expectedArguments = [1, 2, 3];
+        request.RawArguments.ShouldBe(expectedArguments);
         request.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void Constructor_WhenAuthorizationIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, null!, CatalogVersion(),
+            0, ProviderAlias(), [1], DateTimeOffset.UnixEpoch)).ParamName.ShouldBe("authorization");
+
+    [Fact]
+    public void Constructor_WhenAuthorizationDoesNotMatchIdentity_ThrowsExactParameter()
+    {
+        var wrongAgentId = new AgentId(Guid.NewGuid());
+        var exception = Should.Throw<ArgumentException>(() => new ToolCallRequest(
+            wrongAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(),
+            0, ProviderAlias(), [1], DateTimeOffset.UnixEpoch));
+        exception.ParamName.ShouldBe("authorization");
+    }
+
+    [Fact]
+    public void Constructor_WhenCatalogVersionIsDefault_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), default,
+            0, ProviderAlias(), [1], DateTimeOffset.UnixEpoch)).ParamName.ShouldBe("catalogVersion");
+
+    [Fact]
+    public void Constructor_WhenSourceOrdinalIsNegative_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(),
+            -1, ProviderAlias(), [1], DateTimeOffset.UnixEpoch)).ParamName.ShouldBe("sourceOrdinal");
+
+    [Fact]
+    public void Constructor_WhenProviderAliasIsDefault_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(),
+            0, default, [1], DateTimeOffset.UnixEpoch)).ParamName.ShouldBe("providerAlias");
+
+    [Fact]
+    public void Constructor_WhenRawArgumentsIsDefault_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(),
+            0, ProviderAlias(), default, DateTimeOffset.UnixEpoch)).ParamName.ShouldBe("rawArguments");
+
+    [Fact]
+    public void Equals_WhenRawArgumentsDiffer_ReturnsFalse()
+    {
+        var first = CallRequest();
+        var second = new ToolCallRequest(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(),
+            0, ProviderAlias(), [9, 9, 9], DateTimeOffset.UnixEpoch);
+        first.Equals(second).ShouldBeFalse();
     }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var tool = new ToolReference(new ToolAlias("t"), null, null);
-        var original = new ToolCallRequest(tool, ExecutionContext(), default, DateTimeOffset.UnixEpoch);
+        var original = CallRequest();
         var copy = original with { };
         copy.ShouldBe(original);
     }
-
-    private static AgentId AgentId() => new(Guid.NewGuid());
-    private static SessionId SessionId() => new(Guid.NewGuid());
-    private static ToolCallId ToolCallId() => new(Guid.NewGuid());
-    private static InRunOperationCorrelation Correlation() => new(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
-    private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);
-    private static ToolExecutionContext ExecutionContext() => TestSupport.TestSecurityEvidence.ToolContext(AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());
 }

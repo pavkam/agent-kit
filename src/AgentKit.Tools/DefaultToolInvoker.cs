@@ -116,7 +116,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
     }
 
     /// <inheritdoc/>
-    public async Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
+    public async Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -296,7 +296,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
         };
     }
 
-    private static ActivityTagsCollection CreateActivityTags(ToolCallRequest request, ToolId candidateId)
+    private static ActivityTagsCollection CreateActivityTags(LegacyToolCallRequest request, ToolId candidateId)
     {
         Debug.Assert(request is not null, "A validated request is required to create tool activity tags.");
         var tags = new ActivityTagsCollection

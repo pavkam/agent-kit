@@ -24,7 +24,7 @@ public sealed class CaptureTestToolInvoker: IToolInvoker, IAsyncDisposable
     /// <returns>No result; valid calls always throw.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="InvalidOperationException">A tool invocation was attempted.</exception>
-    public Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
+    public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         _ = Interlocked.Increment(ref _invocations);

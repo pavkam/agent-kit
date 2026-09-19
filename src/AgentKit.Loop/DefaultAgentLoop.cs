@@ -1714,7 +1714,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 }
 
                 var resolved = await services.Tools.InvokeAsync(
-                    new ToolCallRequest(toolCall.Tool, toolContext, arguments, _timeProvider.GetUtcNow()),
+                    new LegacyToolCallRequest(toolCall.Tool, toolContext, arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
                 resultPart = new ToolResultPart(

@@ -41,7 +41,7 @@ internal static class TestFactory
         new ToolSourceId("agentkit.tools.tests"),
         ExtensionData.Empty);
 
-    public static ToolCallRequest CallRequest(ToolId toolId, JsonElement? arguments = null) => new(
+    public static LegacyToolCallRequest CallRequest(ToolId toolId, JsonElement? arguments = null) => new(
         new ToolReference(new ToolAlias(toolId.Value), null, null),
         ExecutionContext(),
         arguments ?? JsonDocument.Parse("{}").RootElement,

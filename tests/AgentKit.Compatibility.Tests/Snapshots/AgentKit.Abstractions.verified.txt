@@ -3496,11 +3496,60 @@ namespace AgentKit
         public bool Equals(AgentKit.HistoryView? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class HookActivationScope : System.IAsyncDisposable
+    {
+        public HookActivationScope(AgentKit.HookCatalogSnapshot catalog, AgentKit.IHookActivationLease activation) { }
+        public AgentKit.HookCatalogSnapshot Catalog { get; }
+        public AgentKit.HookDispatchContext CreateDispatch(AgentKit.HookDispatchMetadata dispatch) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public sealed class HookCatalogRequest : System.IEquatable<AgentKit.HookCatalogRequest>
+    {
+        public HookCatalogRequest(AgentKit.HookProfileKey profileKey) { }
+        public AgentKit.HookProfileKey ProfileKey { get; }
+    }
+    public sealed class HookCatalogSnapshot : System.IEquatable<AgentKit.HookCatalogSnapshot>
+    {
+        public HookCatalogSnapshot(AgentKit.HookProfileKey profileKey, AgentKit.HookCatalogVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> registrations) { }
+        public AgentKit.HookProfileKey ProfileKey { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> Registrations { get; }
+        public AgentKit.HookCatalogVersion Version { get; }
+        public bool Equals(AgentKit.HookCatalogSnapshot? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct HookCatalogVersion : System.IEquatable<AgentKit.HookCatalogVersion>
+    {
+        public HookCatalogVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class HookCompositionException : System.Exception
     {
         public HookCompositionException() { }
         public HookCompositionException(string message) { }
         public HookCompositionException(string message, System.Exception innerException) { }
+    }
+    public sealed class HookDispatchContext : System.IEquatable<AgentKit.HookDispatchContext>
+    {
+        public HookDispatchContext(AgentKit.HookCatalogSnapshot catalog, AgentKit.HookDispatchMetadata dispatch, AgentKit.IHookActivationLease activation) { }
+        public AgentKit.IHookActivationLease Activation { get; }
+        public AgentKit.HookCatalogSnapshot Catalog { get; }
+        public AgentKit.HookDispatchMetadata Dispatch { get; }
+    }
+    public readonly struct HookDispatchId : System.IEquatable<AgentKit.HookDispatchId>
+    {
+        public HookDispatchId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class HookDispatchMetadata : System.IEquatable<AgentKit.HookDispatchMetadata>
+    {
+        public HookDispatchMetadata(AgentKit.HookPointId point, AgentKit.HookDispatchId dispatchId, AgentKit.OperationCorrelation correlation, System.DateTimeOffset timestamp, System.DateTimeOffset deadline) { }
+        public AgentKit.OperationCorrelation Correlation { get; }
+        public System.DateTimeOffset Deadline { get; }
+        public AgentKit.HookDispatchId DispatchId { get; }
+        public AgentKit.HookPointId Point { get; }
+        public System.DateTimeOffset Timestamp { get; }
     }
     public sealed class HookDispatchScope : System.IEquatable<AgentKit.HookDispatchScope>
     {
@@ -3522,17 +3571,132 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public abstract class HookInstanceResolution<THook> : System.IEquatable<AgentKit.HookInstanceResolution<THook>>
+        where THook :  class { }
+    public sealed class HookInstanceResolved<THook> : AgentKit.HookInstanceResolution<THook>, System.IEquatable<AgentKit.HookInstanceResolved<THook>>
+        where THook :  class
+    {
+        public HookInstanceResolved(THook hook) { }
+        public THook Hook { get; }
+    }
+    public sealed class HookInstanceUnavailable<THook> : AgentKit.HookInstanceResolution<THook>, System.IEquatable<AgentKit.HookInstanceUnavailable<THook>>
+        where THook :  class
+    {
+        public HookInstanceUnavailable(string reason) { }
+        public string Reason { get; }
+    }
+    public sealed class HookInvocationAttempt : System.IEquatable<AgentKit.HookInvocationAttempt>
+    {
+        public HookInvocationAttempt(AgentKit.HookPointId point, AgentKit.HookDispatchId dispatchId, AgentKit.HookReentrancyPolicy reentrancy) { }
+        public AgentKit.HookDispatchId DispatchId { get; }
+        public AgentKit.HookPointId Point { get; }
+        public AgentKit.HookReentrancyPolicy Reentrancy { get; }
+    }
+    public sealed class HookInvocationContext : System.IEquatable<AgentKit.HookInvocationContext>
+    {
+        public HookInvocationContext(AgentKit.HookRegistrationId registrationId, AgentKit.HookInvocationId invocationId, AgentKit.HookDispatchId dispatchId, int depth) { }
+        public int Depth { get; }
+        public AgentKit.HookDispatchId DispatchId { get; }
+        public AgentKit.HookInvocationId InvocationId { get; }
+        public AgentKit.HookRegistrationId RegistrationId { get; }
+    }
+    public sealed class HookInvocationDiagnostic : System.IEquatable<AgentKit.HookInvocationDiagnostic>
+    {
+        public HookInvocationDiagnostic(AgentKit.HookPointId point, AgentKit.HookInvocationContext invocation, AgentKit.HookInvocationOutcome outcome, System.DateTimeOffset startedAt, System.TimeSpan duration) { }
+        public System.TimeSpan Duration { get; }
+        public AgentKit.HookInvocationContext Invocation { get; }
+        public AgentKit.HookInvocationOutcome Outcome { get; }
+        public AgentKit.HookPointId Point { get; }
+        public System.DateTimeOffset StartedAt { get; }
+    }
     public readonly struct HookInvocationId : System.IEquatable<AgentKit.HookInvocationId>
     {
         public HookInvocationId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public enum HookInvocationOutcome
+    {
+        Succeeded = 0,
+        IsolatedFault = 1,
+        Failed = 2,
+        Rejected = 3,
+    }
+    public sealed class HookInvocationTrackingEntered : AgentKit.HookInvocationTrackingResult, System.IEquatable<AgentKit.HookInvocationTrackingEntered>
+    {
+        public HookInvocationTrackingEntered(int depth) { }
+        public int Depth { get; }
+    }
+    public sealed class HookInvocationTrackingRejected : AgentKit.HookInvocationTrackingResult, System.IEquatable<AgentKit.HookInvocationTrackingRejected>
+    {
+        public HookInvocationTrackingRejected(int activeDepth, int permittedDepth) { }
+        public int ActiveDepth { get; }
+        public int PermittedDepth { get; }
+    }
+    public abstract class HookInvocationTrackingResult : System.IEquatable<AgentKit.HookInvocationTrackingResult> { }
+    public delegate System.Threading.Tasks.ValueTask HookInvoker<THook, TEventArgs>(THook hook, TEventArgs eventArgs, AgentKit.HookInvocationContext invocation, System.Threading.CancellationToken cancellationToken);
+    public enum HookLifetime
+    {
+        Singleton = 0,
+        Scoped = 1,
+        Transient = 2,
+    }
+    public enum HookMutationDispatchMode
+    {
+        Sequential = 0,
+        Concurrent = 1,
+    }
+    public sealed class HookOrder : System.IEquatable<AgentKit.HookOrder>
+    {
+        public HookOrder(AgentKit.HookOrderAnchor anchor) { }
+        public AgentKit.HookOrderAnchor Anchor { get; }
+        public static AgentKit.HookOrder First { get; }
+        public static AgentKit.HookOrder Last { get; }
+        public static AgentKit.HookOrder Normal { get; }
+    }
+    public enum HookOrderAnchor
+    {
+        Normal = 0,
+        First = 1,
+        Last = 2,
+    }
+    public sealed class HookOrderInvalid : AgentKit.HookOrderResult, System.IEquatable<AgentKit.HookOrderInvalid>
+    {
+        public HookOrderInvalid(System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> diagnostics) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> Diagnostics { get; }
+        public bool Equals(AgentKit.HookOrderInvalid? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class HookOrderResolved : AgentKit.HookOrderResult, System.IEquatable<AgentKit.HookOrderResolved>
+    {
+        public HookOrderResolved(System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> ordered) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> Ordered { get; }
+        public bool Equals(AgentKit.HookOrderResolved? other) { }
+        public override int GetHashCode() { }
+    }
+    public abstract class HookOrderResult : System.IEquatable<AgentKit.HookOrderResult> { }
+    public sealed class HookPointDefinition<THook, TEventArgs> : System.IEquatable<AgentKit.HookPointDefinition<THook, TEventArgs>>
+        where THook :  class
+        where TEventArgs : AgentKit.AgentHookEventArgs
+    {
+        public HookPointDefinition(AgentKit.HookPointId id, AgentKit.HookPointKind kind, AgentKit.HookFailureMode failureInvariant, AgentKit.IHookMutationValidator<TEventArgs> validator, AgentKit.HookInvoker<THook, TEventArgs> invoke) { }
+        public AgentKit.HookFailureMode FailureInvariant { get; }
+        public AgentKit.HookPointId Id { get; }
+        public AgentKit.HookInvoker<THook, TEventArgs> Invoke { get; }
+        public AgentKit.HookPointKind Kind { get; }
+        public AgentKit.IHookMutationValidator<TEventArgs> Validator { get; }
+    }
     public readonly struct HookPointId : System.IEquatable<AgentKit.HookPointId>
     {
         public HookPointId(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public enum HookPointKind
+    {
+        Observational = 0,
+        Mutating = 1,
+        ShortCircuiting = 2,
     }
     public enum HookPriority
     {
@@ -3546,11 +3710,67 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class HookProfileSelected : AgentKit.HookProfileSelectionResult, System.IEquatable<AgentKit.HookProfileSelected>
+    {
+        public HookProfileSelected(AgentKit.HookProfileKey profileKey) { }
+        public AgentKit.HookProfileKey ProfileKey { get; }
+    }
+    public sealed class HookProfileSelectionRequest : System.IEquatable<AgentKit.HookProfileSelectionRequest>
+    {
+        public HookProfileSelectionRequest(AgentKit.HookProfileKey? requestedProfile, AgentKit.AgentId? agentId) { }
+        public AgentKit.AgentId? AgentId { get; }
+        public AgentKit.HookProfileKey? RequestedProfile { get; }
+    }
+    public abstract class HookProfileSelectionResult : System.IEquatable<AgentKit.HookProfileSelectionResult> { }
+    public sealed class HookProfileUnavailable : AgentKit.HookProfileSelectionResult, System.IEquatable<AgentKit.HookProfileUnavailable>
+    {
+        public HookProfileUnavailable(AgentKit.HookProfileKey requestedProfile) { }
+        public AgentKit.HookProfileKey RequestedProfile { get; }
+    }
     public sealed class HookReentrancyException : System.Exception
     {
         public HookReentrancyException() { }
         public HookReentrancyException(string message) { }
         public HookReentrancyException(string message, System.Exception innerException) { }
+    }
+    public enum HookReentrancyPolicy
+    {
+        Forbidden = 0,
+        Bounded = 1,
+    }
+    public sealed class HookRegistrationDescriptor : System.IEquatable<AgentKit.HookRegistrationDescriptor>
+    {
+        public HookRegistrationDescriptor(AgentKit.HookRegistrationId id, AgentKit.HookPointId point, AgentKit.HookProfileKey profileKey, AgentKit.HookOrder order, AgentKit.HookLifetime lifetime, AgentKit.HookFailureMode requestedFailureMode, AgentKit.HookReentrancyPolicy reentrancy, System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> before, System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> after, System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> dependsOn) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> After { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> Before { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> DependsOn { get; }
+        public AgentKit.HookRegistrationId Id { get; }
+        public AgentKit.HookLifetime Lifetime { get; }
+        public AgentKit.HookOrder Order { get; }
+        public AgentKit.HookPointId Point { get; }
+        public AgentKit.HookProfileKey ProfileKey { get; }
+        public AgentKit.HookReentrancyPolicy Reentrancy { get; }
+        public AgentKit.HookFailureMode RequestedFailureMode { get; }
+        public bool Equals(AgentKit.HookRegistrationDescriptor? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct HookRegistrationId : System.IEquatable<AgentKit.HookRegistrationId>
+    {
+        public HookRegistrationId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class HookRegistrationSnapshot : System.IEquatable<AgentKit.HookRegistrationSnapshot>
+    {
+        public HookRegistrationSnapshot(System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> registrations) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> Registrations { get; }
+        public bool Equals(AgentKit.HookRegistrationSnapshot? other) { }
+        public override int GetHashCode() { }
+    }
+    public enum HookReloadBoundary
+    {
+        NextRun = 0,
+        NextTurn = 1,
     }
     public sealed class HookValidationException : System.Exception
     {
@@ -3857,11 +4077,55 @@ namespace AgentKit
         System.Collections.Immutable.ImmutableArray<AgentKit.HookId> RunsAfter { get; }
         System.Collections.Immutable.ImmutableArray<AgentKit.HookId> RunsBefore { get; }
     }
+    public interface IHookActivationLease : System.IAsyncDisposable
+    {
+        AgentKit.IHookInvocationTracker InvocationTracker { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.HookInstanceResolution<THook>> ResolveAsync<THook>(AgentKit.HookRegistrationId registrationId, System.Threading.CancellationToken cancellationToken)
+            where THook :  class;
+    }
+    public interface IHookCatalog
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.HookCatalogSnapshot> CaptureAsync(AgentKit.HookCatalogRequest request, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IHookDiagnosticDispatcher
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.HookInvocationDiagnostic diagnostic, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IHookDiagnosticSink
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.HookInvocationDiagnostic diagnostic, System.Threading.CancellationToken cancellationToken);
+    }
     public interface IHookDispatcher
     {
         System.Threading.Tasks.Task DispatchAsync<THook, TArgs>(AgentKit.HookPointId point, System.Collections.Generic.IEnumerable<THook> hooks, TArgs args, System.Func<THook, TArgs, AgentKit.HookDispatchScope, System.Threading.CancellationToken, System.Threading.Tasks.Task> invoke, AgentKit.HookDispatchScope scope, AgentKit.HookFailureMode failureMode = 0, int maxReentrantDepth = 1, System.Threading.CancellationToken cancellationToken = default)
             where THook : AgentKit.IHook
             where TArgs : AgentKit.AgentHookEventArgs;
+    }
+    public interface IHookInstanceFactory
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.IHookActivationLease> CreateAsync(AgentKit.HookCatalogSnapshot catalog, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IHookInvocationTracker
+    {
+        void Leave(AgentKit.HookDispatchId dispatchId);
+        AgentKit.HookInvocationTrackingResult TryEnter(AgentKit.HookInvocationAttempt attempt);
+    }
+    public interface IHookMutationValidator<in TEventArgs>
+        where in TEventArgs : AgentKit.AgentHookEventArgs
+    {
+        void Validate(TEventArgs eventArgs);
+    }
+    public interface IHookOrderResolver
+    {
+        AgentKit.HookOrderResult Resolve(System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> registrations);
+    }
+    public interface IHookProfileSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.HookProfileSelectionResult> SelectAsync(AgentKit.HookProfileSelectionRequest request, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IHookRegistrationSource
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.HookRegistrationSnapshot> DiscoverAsync(AgentKit.HookCatalogRequest request, System.Threading.CancellationToken cancellationToken);
     }
     public interface IHumanQuestionBroker
     {

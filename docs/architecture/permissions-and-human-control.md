@@ -296,11 +296,11 @@ public interface ISecurityAuthority
 }
 ```
 
-**Interim types (WS3-C1).** The following shapes are not shown elsewhere in
-this document. They are additive contracts introduced ahead of the chunks that
-wire them into `ISecurityPolicy`, the policy catalog, and the authority so that
-later chunks add behavior to an existing shape rather than inventing it under
-schedule pressure.
+**Interim types (WS3-C1).** The following shapes are not shown elsewhere in this
+document. They are additive contracts introduced ahead of the chunks that wire
+them into `ISecurityPolicy`, the policy catalog, and the authority so that later
+chunks add behavior to an existing shape rather than inventing it under schedule
+pressure.
 
 ```csharp
 namespace AgentKit;
@@ -491,10 +491,10 @@ public interface ISecurityGrantStore
 }
 ```
 
-**Interim types (WS3-C1).** The following shapes are not shown elsewhere in
-this document. They are additive contracts that later chunks (C6a grant
-issuer/decision store, C7a typed revocation, C8a handler dispatcher, C8b
-durable resolution) wire into the authority and broker.
+**Interim types (WS3-C1).** The following shapes are not shown elsewhere in this
+document. They are additive contracts that later chunks (C6a grant
+issuer/decision store, C7a typed revocation, C8a handler dispatcher, C8b durable
+resolution) wire into the authority and broker.
 
 ```csharp
 namespace AgentKit;
