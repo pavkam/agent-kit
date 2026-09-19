@@ -866,11 +866,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
             {
                 attemptResult = await llmModel.ExecuteAsync(
                     chatRequest,
-                    request.Observer is null
+                    request.Observer is null && services.Publisher is null
                         ? NoOpModelResponseObserver.Instance
                         : new RunModelResponseObserver(
                             turnId,
-                            (runEvent, token) => ObserveAsync(request, runEvent, token)),
+                            (runEvent, token) => ObserveAsync(request, services, laneState, history.SourceCursor.ConversationId, runEvent, token)),
                     cancellationToken).ConfigureAwait(false);
                 if (attemptResult is ModelAttemptCompleted)
                 {
@@ -1067,6 +1067,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
         currentVersion = appended.NewVersion;
         committedMessages.Add(assistantMessage);
 
+        if (services.Publisher is { } assistantPublisher)
+        {
+            // A required sink's failure must propagate rather than be swallowed here: the message is already
+            // durably committed, and silently continuing past a required sink's failure would misrepresent the
+            // run as having delivered evidence it did not.
+            await assistantPublisher.PublishAsync(
+                new MessageCommittedEvent(
+                    request.AgentId,
+                    request.SessionId,
+                    sourceCursor.ConversationId,
+                    request.RunId,
+                    turnId,
+                    laneState.AllocateSequence(),
+                    _timeProvider.GetUtcNow(),
+                    assistantMessage.Id,
+                    currentVersion),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (tracking.Budget is { } usageBudget
             && await usageBudget.AccountUsageAsync(response.Usage, turnCorrelation.OperationId, $"turn:{turnId}:usage", cancellationToken).ConfigureAwait(false) is { } usageExhausted)
         {
@@ -1106,7 +1125,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// hands the processor's typed decision to the continuation policy.
     /// </summary>
     /// <param name="request">The run being driven.</param>
-    /// <param name="services">The compiled per-run collaborator bundle, whose <see cref="AgentRunServices.Output"/> performs the validation.</param>
+    /// <param name="services">The compiled per-run collaborator bundle, whose <see cref="AgentRunServices.OutputProcessor"/> performs the validation.</param>
     /// <param name="sourceCursor">The history cursor the turn started from.</param>
     /// <param name="turnSessionContext">The turn's session operation context.</param>
     /// <param name="turnCorrelation">The turn's in-run correlation.</param>
@@ -1160,7 +1179,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     {
         Debug.Assert(request.Output is not null, "Output validation runs only when the request selects a definition.");
 
-        if (services.Output is not { } processor)
+        if (services.OutputProcessor is not { } processor)
         {
             LoopLog.OutputProcessorMissing(_logger, request.RunId, turnId, definition.Id);
             return TurnOutcome.Settled(
@@ -1763,6 +1782,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var toolMessage = committedMessages[^1];
 
+        if (services.Publisher is { } toolPublisher)
+        {
+            // Published regardless of the interruption/cancellation check below: the tool message is already
+            // durably committed at this point, and a required sink's failure must propagate rather than be
+            // swallowed, exactly as for the assistant message commit.
+            await toolPublisher.PublishAsync(
+                new MessageCommittedEvent(
+                    request.AgentId,
+                    request.SessionId,
+                    sourceCursor.ConversationId,
+                    request.RunId,
+                    turnId,
+                    laneState.AllocateSequence(),
+                    _timeProvider.GetUtcNow(),
+                    toolMessage.Id,
+                    appended.NewVersion),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (interrupted || cancellationToken.IsCancellationRequested)
         {
             // The tool message is now durably committed. Cancellation observed at this point settles the run
@@ -2186,6 +2224,57 @@ public sealed class DefaultAgentLoop: IAgentLoop
         catch (Exception)
         {
             LoopLog.RunObserverFailed(_logger, request.RunId, runEvent.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Delivers optional run progress to the legacy <see cref="AgentRunRequest.Observer"/>, exactly as
+    /// <see cref="ObserveAsync(AgentRunRequest, AgentRunEvent, CancellationToken)"/> does, and additionally
+    /// translates a streamed model content fragment into a <see cref="ContentDeltaEvent"/> published through
+    /// <see cref="AgentRunServices.Publisher"/> when one is composed.
+    /// </summary>
+    /// <param name="request">The run whose observer and publisher receive the event.</param>
+    /// <param name="services">The compiled per-run collaborator bundle, whose optional <see cref="AgentRunServices.Publisher"/> receives the translated event.</param>
+    /// <param name="laneState">The run's tracked lane state, whose <see cref="LoopLaneState.AllocateSequence"/> stamps the published event.</param>
+    /// <param name="conversationId">The conversation correlated with the run's history, or <see langword="null"/>.</param>
+    /// <param name="runEvent">The immutable legacy event to deliver.</param>
+    /// <param name="cancellationToken">Cancels publisher delivery; legacy observer delivery is isolated like every observer failure.</param>
+    /// <returns>An operation completing after both deliveries finish.</returns>
+    /// <remarks>
+    /// Unlike legacy observer delivery, a publisher fault is not isolated here: <see cref="IOutputPublisher.PublishAsync"/>
+    /// already isolates a best-effort sink's own failure internally, so a fault that reaches this call means a
+    /// required sink failed, which the run must observe rather than silently continue past.
+    /// </remarks>
+    private async ValueTask ObserveAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        LoopLaneState laneState,
+        ConversationId? conversationId,
+        AgentRunEvent runEvent,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required for observer delivery.");
+        Debug.Assert(services is not null, "The compiled per-run collaborator bundle is required for observer delivery.");
+        Debug.Assert(laneState is not null, "The run's tracked lane state is required to stamp a published event's sequence.");
+        Debug.Assert(runEvent is not null, "A run event is required for observer delivery.");
+
+        await ObserveAsync(request, runEvent, cancellationToken).ConfigureAwait(false);
+
+        if (services.Publisher is { } publisher
+            && runEvent is AgentRunModelResponseEvent { ResponseEvent: ModelPartDelta delta } modelEvent)
+        {
+            var contentEvent = new ContentDeltaEvent(
+                request.AgentId,
+                request.SessionId,
+                conversationId,
+                request.RunId,
+                modelEvent.TurnId,
+                laneState.AllocateSequence(),
+                _timeProvider.GetUtcNow(),
+                delta.RequestId,
+                delta.PartIndex,
+                delta.Delta);
+            await publisher.PublishAsync(contentEvent, cancellationToken).ConfigureAwait(false);
         }
     }
 

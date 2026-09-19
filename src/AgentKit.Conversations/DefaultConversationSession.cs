@@ -367,7 +367,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _loopScopeFactory = loopScopeFactory;
         _runServices = new AgentRunServices(
             sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
-            modelCatalog, modelSelector, llmModelResolver, continuationPolicy, output: null, compactor, budgets);
+            modelCatalog, modelSelector, llmModelResolver, continuationPolicy, outputProcessor: null, compactor, budgets);
         _runIds = runIds;
         _operationIds = operationIds;
         _messageIds = messageIds;
@@ -652,7 +652,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <summary>Copies the run collaborator bundle with the turn-scoped output processor attached.</summary>
     /// <param name="services">The bundle built at construction.</param>
     /// <param name="processor">The processor resolved from the turn's scope, or <see langword="null"/> when none is composed.</param>
-    /// <returns>An equivalent bundle whose <see cref="AgentRunServices.Output"/> is <paramref name="processor"/>.</returns>
+    /// <returns>An equivalent bundle whose <see cref="AgentRunServices.OutputProcessor"/> is <paramref name="processor"/>.</returns>
     private static AgentRunServices WithOutputProcessor(AgentRunServices services, IOutputProcessor? processor)
     {
         Debug.Assert(services is not null, "The construction-time bundle always exists.");

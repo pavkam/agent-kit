@@ -27,11 +27,15 @@ namespace AgentKit;
 /// reduced loop consults one replaceable, engine-wide policy rather than a policy selected per keyed loop.
 /// </para>
 /// <para>
-/// The output processor, the compactor, and the budget authority are optional and resolved unkeyed from the run scope:
-/// <c>AddAgentOutput</c> forwards the default keyed processor to that unkeyed registration, and
-/// <c>AddContextCompaction</c> registers the compactor. A definition that selects an output contract without a
-/// composed processor fails closed inside the loop rather than at compilation; a composition without a compactor
-/// simply never compacts.
+/// The output processor, the compactor, the budget authority, the run coordinator, the input coordinator, and
+/// the output publisher are all optional and resolved unkeyed from the run scope: <c>AddAgentOutput</c> forwards
+/// the default keyed processor to that unkeyed registration, and <c>AddContextCompaction</c> registers the
+/// compactor. A definition that selects an output contract without a composed processor fails closed inside the
+/// loop rather than at compilation; a composition without a compactor simply never compacts. The input
+/// coordinator and output publisher are resolved unkeyed even though <c>AgentDefinition</c> carries
+/// <c>InputCoordinatorKey</c> and <c>OutputPublisherKey</c> for <c>AgentIORegistration</c>'s own keyed
+/// registrations — routing this factory's resolution through those keys is a known follow-up, not yet needed
+/// while most compositions register exactly one of each.
 /// </para>
 /// </remarks>
 internal static class AgentRunServicesFactory
@@ -63,7 +67,8 @@ internal static class AgentRunServicesFactory
             provider.GetService<ICompactor>(),
             provider.GetService<IBudgetAuthority>(),
             provider.GetService<ISessionRunCoordinator>(),
-            provider.GetService<IInputCoordinator>());
+            provider.GetService<IInputCoordinator>(),
+            provider.GetService<IOutputPublisher>());
     }
 
     /// <summary>Resolves a collaborator keyed to the run's exact loop selection, falling back to the engine-wide unkeyed registration.</summary>

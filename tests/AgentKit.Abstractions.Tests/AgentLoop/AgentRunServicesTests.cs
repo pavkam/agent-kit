@@ -58,11 +58,12 @@ public sealed class AgentRunServicesTests
         services.ModelSelector.ShouldBeSameAs(modelSelector);
         services.ModelResolver.ShouldBeSameAs(modelResolver);
         services.ContinuationPolicy.ShouldBeSameAs(continuationPolicy);
-        services.Output.ShouldBeNull();
+        services.OutputProcessor.ShouldBeNull();
         services.Compactor.ShouldBeNull();
         services.Budgets.ShouldBeNull();
         services.RunCoordinator.ShouldBeNull();
         services.Input.ShouldBeNull();
+        services.Publisher.ShouldBeNull();
     }
 
     [Fact]
@@ -71,7 +72,7 @@ public sealed class AgentRunServicesTests
         var runCoordinator = new FakeSessionRunCoordinator();
         var services = new AgentRunServices(
             Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
-            output: null, compactor: null, budgets: null, runCoordinator: runCoordinator);
+            outputProcessor: null, compactor: null, budgets: null, runCoordinator: runCoordinator);
 
         services.RunCoordinator.ShouldBeSameAs(runCoordinator);
     }
@@ -82,7 +83,7 @@ public sealed class AgentRunServicesTests
         var input = new FakeInputCoordinator();
         var services = new AgentRunServices(
             Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
-            output: null, compactor: null, budgets: null, runCoordinator: null, input: input);
+            outputProcessor: null, compactor: null, budgets: null, runCoordinator: null, input: input);
 
         services.Input.ShouldBeSameAs(input);
     }
@@ -93,6 +94,25 @@ public sealed class AgentRunServicesTests
         var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy());
 
         services.Input.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenPublisherIsSupplied_RoundTripsProperty()
+    {
+        var publisher = new FakeOutputPublisher();
+        var services = new AgentRunServices(
+            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            outputProcessor: null, compactor: null, budgets: null, runCoordinator: null, input: null, publisher: publisher);
+
+        services.Publisher.ShouldBeSameAs(publisher);
+    }
+
+    [Fact]
+    public void Constructor_WhenPublisherIsOmitted_DefaultsToNull()
+    {
+        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy());
+
+        services.Publisher.ShouldBeNull();
     }
 
     private static FakeSessionCoordinator Session() => new();
@@ -158,5 +178,11 @@ public sealed class AgentRunServicesTests
     {
         public ValueTask<InputAdmissionResult> AdmitAsync(InputAdmissionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<InputPromotionResult> PromoteAsync(InputPromotionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeOutputPublisher: IOutputPublisher
+    {
+        public ValueTask PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask CompleteAsync<TOutput>(AgentRunFinished<TOutput> result, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

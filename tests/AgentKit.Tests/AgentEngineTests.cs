@@ -214,7 +214,7 @@ public sealed class AgentEngineTests
 
         _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
-        loop.ReceivedServices.ShouldHaveSingleItem().Output.ShouldBeSameAs(processor);
+        loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeSameAs(processor);
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public sealed class AgentEngineTests
 
         _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
-        loop.ReceivedServices.ShouldHaveSingleItem().Output.ShouldBeNull();
+        loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeNull();
     }
 
     [Fact]

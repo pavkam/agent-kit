@@ -3827,6 +3827,95 @@ public sealed class DefaultAgentLoopTests
         input.Requests.Count.ShouldBe(3);
     }
 
+    [Fact]
+    public async Task RunAsync_WhenPublisherIsComposedAndTheModelStreams_PublishesAContentDeltaEvent()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var delta = new TextContentDelta("partial");
+        var streamed = new ModelPartDelta(requestId, 1, 0, delta);
+        var publisher = new RecordingOutputPublisher();
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), modelEvent: streamed,
+            outputPublisher: publisher);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var contentEvent = publisher.Events.OfType<ContentDeltaEvent>().ShouldHaveSingleItem();
+        contentEvent.AgentId.ShouldBe(request.AgentId);
+        contentEvent.SessionId.ShouldBe(request.SessionId);
+        contentEvent.RunId.ShouldBe(request.RunId);
+        contentEvent.RequestId.ShouldBe(requestId);
+        contentEvent.PartIndex.ShouldBe(0);
+        contentEvent.Delta.ShouldBeSameAs(delta);
+        contentEvent.Durability.ShouldBe(RunEventDurability.Live);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPublisherIsComposed_PublishesAMessageCommittedEventForTheAssistantMessage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var publisher = new RecordingOutputPublisher();
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputPublisher: publisher);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var committed = publisher.Events.OfType<MessageCommittedEvent>().ShouldHaveSingleItem();
+        committed.AgentId.ShouldBe(request.AgentId);
+        committed.SessionId.ShouldBe(request.SessionId);
+        committed.RunId.ShouldBe(request.RunId);
+        committed.Durability.ShouldBe(RunEventDurability.Durable);
+        result.FinalVersion.ShouldBe(committed.SessionVersion);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPublisherIsComposedAndAToolBatchCommits_PublishesAMessageCommittedEventForTheToolMessage()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var calls = 0;
+        var publisher = new RecordingOutputPublisher();
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            outputPublisher: publisher);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        // Three commits land: the tool-requesting assistant message, the tool result message, and the second
+        // turn's final assistant message.
+        publisher.Events.OfType<MessageCommittedEvent>().Count().ShouldBe(3);
+        var sequences = publisher.Events.Select(static publishedEvent => publishedEvent.Sequence).ToArray();
+        sequences.ShouldBe([.. sequences.OrderBy(static sequence => sequence)]);
+        sequences.Distinct().Count().ShouldBe(sequences.Length);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARequiredSinkFailsThroughThePublisher_PropagatesTheFailureRatherThanCompleting()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var fault = new InvalidOperationException("required sink failed");
+        var publisher = new RecordingOutputPublisher(fault);
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputPublisher: publisher);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => loop.RunAsync(request, _services, TestContext.Current.CancellationToken));
+
+        exception.ShouldBeSameAs(fault);
+    }
+
     private (AgentRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
     {
         var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
@@ -3876,7 +3965,8 @@ public sealed class DefaultAgentLoopTests
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
-        IInputCoordinator? inputCoordinator = null)
+        IInputCoordinator? inputCoordinator = null,
+        IOutputPublisher? outputPublisher = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -3899,7 +3989,8 @@ public sealed class DefaultAgentLoopTests
             compactor,
             budgets,
             runCoordinator,
-            inputCoordinator);
+            inputCoordinator,
+            outputPublisher);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
@@ -3935,7 +4026,7 @@ public sealed class DefaultAgentLoopTests
             selector,
             resolver,
             new DefaultRunContinuationPolicy(TimeProvider.System),
-            output: null,
+            outputProcessor: null,
             compactor);
 
         return new DefaultAgentLoop(

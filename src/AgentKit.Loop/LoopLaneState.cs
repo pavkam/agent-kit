@@ -24,9 +24,18 @@ namespace AgentKit.Loop;
 /// live value by reference through the run so every reader after such an advance observes it, rather than each
 /// call site continuing to reason from the value admission first installed.
 /// </para>
+/// <para>
+/// This instance also allocates this run's <see cref="RunEvent.Sequence"/> values through
+/// <see cref="AllocateSequence"/>. A run event's sequence must be known before the immutable record is
+/// constructed, so whatever publishes one needs a live per-run counter; since this type is already threaded
+/// through every place the loop commits a message or observes a model event, it is the natural single owner of
+/// that counter rather than a second object requiring identical threading for no other purpose.
+/// </para>
 /// </remarks>
 internal sealed class LoopLaneState
 {
+    private long _nextSequence;
+
     /// <summary>Initializes the lane state a run observes from the moment it starts.</summary>
     /// <param name="executionLaneId">The lane every session operation for this run must name.</param>
     /// <param name="operationStateRevision">The lane's total-state revision as of the start of the run.</param>
@@ -48,4 +57,8 @@ internal sealed class LoopLaneState
     /// <summary>Gets or sets the lane's total-state revision as last observed by this run.</summary>
     /// <value>A non-default revision, initially the value installed at admission (or 1 without one).</value>
     public OperationStateRevision OperationStateRevision { get; set; }
+
+    /// <summary>Allocates the next positive, strictly increasing <see cref="RunEvent.Sequence"/> for this run.</summary>
+    /// <returns>A positive value greater than every value this instance has already allocated.</returns>
+    public long AllocateSequence() => Interlocked.Increment(ref _nextSequence);
 }

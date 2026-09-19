@@ -30,7 +30,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C3 loop promotes input at three boundaries
 - [x] WS1-C4 `IRunEventSink`, registration, backpressure contracts
 - [x] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
-- [ ] WS1-C6 loop publishes `RunEvent`s
+- [x] WS1-C6 loop publishes `RunEvent`s
 - [ ] WS1-C7 unified outcome family
 - [ ] WS1-C8 facade result types and `AgentRunOptions` reshape
 - [ ] WS1-C9 `AgentEngineRuntime`, run plan, `RunAsync<T>`, delete
@@ -145,13 +145,14 @@ address, conversation, and run identity are known — mirroring
 `SessionExecutionCapability`'s existing holder pattern. `AgentDefinition` gained
 matching optional `InputCoordinatorKey`/`OutputPublisherKey` properties and
 `AgentCompositionValidator` validates them when explicitly set (optional
-collaborators are not required merely by existing). Still MISSING:
-`AgentRunServicesFactory` does not yet resolve `IOutputPublisher` into
-`AgentRunServices` (that is WS1-C6, which also adds the `Publisher` slot), and
-`IInputCoordinator` resolution in `AgentRunServicesFactory.Compile` remains
-unkeyed (`provider.GetService<IInputCoordinator>()`, from WS1-C2) rather than
-routed through `AgentDefinition.InputCoordinatorKey` — a known interim gap for a
-later chunk to close alongside WS1-C6's publisher wiring.
+collaborators are not required merely by existing). ~~`AgentRunServicesFactory`
+does not yet resolve `IOutputPublisher` into `AgentRunServices`~~ fixed in
+WS1-C6: `Compile` now resolves `provider.GetService<IOutputPublisher>()` into
+the new `Publisher` slot. Still MISSING: this resolution, and
+`IInputCoordinator`'s (`provider.GetService<IInputCoordinator>()`, from WS1-C2),
+both remain unkeyed rather than routed through
+`AgentDefinition.InputCoordinatorKey`/`OutputPublisherKey` — a known interim gap
+for a later chunk, now explicitly the same follow-up for both collaborators.
 
 ### Conversations and Simple
 
@@ -403,6 +404,51 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
 - Deliverables: publisher-side sequence allocation; three loop tests with a
   recording publisher. Snapshots: Abstractions, Loop.
 - Open: who stamps `Sequence` on immutable `RunEvent` records.
+- Landed: `AgentRunServices.Output` renamed to `OutputProcessor`; new
+  `Publisher` (`IOutputPublisher?`) property added, resolved unkeyed by
+  `AgentRunServicesFactory.Compile` (`provider.GetService<IOutputPublisher>()`,
+  the same unkeyed pattern already used for `IInputCoordinator` — routing both
+  through `AgentDefinition`'s keys remains the one open interim gap, now
+  explicitly the same follow-up for both). `Sequence` is stamped by a new
+  `LoopLaneState.AllocateSequence()` (an `Interlocked.Increment` counter):
+  `LoopLaneState` was already threaded through every place the loop commits a
+  message or observes a model event, so it is the natural single owner of the
+  run's event-sequence counter rather than a second object requiring identical
+  threading for no other purpose. Two commit sites publish a
+  `MessageCommittedEvent` when `services.Publisher` is set: the assistant
+  message commit in `SettleCompletedAsync` and the tool-result message commit in
+  `InvokeToolsAsync`; both let a publish failure propagate uncaught, since the
+  message is already durably committed and a required sink's failure must reach
+  the run rather than be silently swallowed. The rejected-tool-calls commit
+  inside `SettleRejectedAtTurnLimitAsync` (the turn-limit edge case) is
+  deliberately NOT wired to the publisher in this chunk — it has no
+  `LoopLaneState` in scope and is a narrow enough edge case to defer. Streamed
+  model content is translated to a `ContentDeltaEvent` through a new
+  `ObserveAsync` overload (`request`, `services`, `laneState`, `conversationId`,
+  `runEvent`, `cancellationToken`) that first delivers to the legacy
+  `AgentRunRequest.Observer` exactly as before, then additionally publishes when
+  `runEvent is AgentRunModelResponseEvent { ResponseEvent: ModelPartDelta }`;
+  the model-response-observer construction gate now also activates when
+  `services.Publisher is not null`, not only when
+  `request.Observer is not null`. `ObserveDetachedAsync` (tool-call
+  started/completed events) is untouched: those events have no defined
+  `RunEvent` translation yet, so it keeps calling the original 3-argument
+  `ObserveAsync` overload unchanged — this is a deliberate scope cut, not an
+  oversight. New `RecordingOutputPublisher` test double
+  (`tests/AgentKit.Loop.Tests/RecordingOutputPublisher.cs`) records every
+  published event in order, or throws a scripted exception instead. Four new
+  loop tests cover: a content-delta event during streaming, a
+  `MessageCommittedEvent` for the assistant message, two
+  `MessageCommittedEvent`s across a tool-call turn plus a final turn (three
+  total, with strictly increasing, distinct sequences), and a required-sink
+  failure propagating out of `RunAsync` rather than being swallowed. Full build:
+  0 errors, 0 warnings. Tests run: `AgentKit.Loop.Tests` (238 passed),
+  `AgentKit.Abstractions.Tests` (6081 passed), `AgentKit.Tests` (403 passed),
+  `AgentKit.Conversations.Tests` (266 passed). Snapshots regenerated: only
+  `AgentKit.Abstractions.verified.txt` changed (the `AgentRunServices`
+  constructor and property rename/addition); `AgentKit.Loop.verified.txt` was
+  unaffected because `LoopLaneState` and the new `ObserveAsync` overload are
+  internal.
 
 ### WS1-C7: Unified outcome family (the documented break)
 

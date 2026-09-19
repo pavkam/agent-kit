@@ -11,12 +11,12 @@ namespace AgentKit;
 /// <remarks>
 /// <para>
 /// This is a deliberately reduced stand-in for the fuller <c>AgentRunServices</c> described by the agent-runtime
-/// architecture, which additionally carries an <c>IInputCoordinator</c>, a <c>SessionExecutionCapability</c>, an
-/// <c>IModelRequestExecutor</c>, an <c>IToolExecutor</c>, an <c>IOutputProcessor</c>, an
-/// <c>IOutputPublisher</c>, an <c>IHookDispatcher</c>, and a <c>BudgetExecutionCapability</c>. Until those
-/// packages exist and are wired into the reduced loop, this bundle carries exactly the collaborators
-/// <c>DefaultAgentLoop</c> uses today: session coordination, fresh per-operation authorization capture, context
-/// assembly, tool invocation, model catalog and selection, model resolution, and the run continuation policy.
+/// architecture, which additionally carries a <c>SessionExecutionCapability</c>, an <c>IModelRequestExecutor</c>,
+/// an <c>IToolExecutor</c>, an <c>IHookDispatcher</c>, and a <c>BudgetExecutionCapability</c>. Until those exist
+/// and are wired into the reduced loop, this bundle carries the collaborators <c>DefaultAgentLoop</c> uses today:
+/// session coordination, fresh per-operation authorization capture, context assembly, tool invocation, model
+/// catalog and selection, model resolution, the run continuation policy, and — now that
+/// <see cref="Input"/> and <see cref="Publisher"/> are wired — input promotion and run-event publication.
 /// </para>
 /// <para>
 /// The run-activation boundary (the facade's <c>AgentEngine</c>) compiles one instance of this bundle per run,
@@ -43,7 +43,7 @@ public sealed class AgentRunServices
     /// <param name="modelSelector">Chooses one configured model for this run.</param>
     /// <param name="modelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
     /// <param name="continuationPolicy">Decides, at every committed-turn boundary, whether the run continues, completes, or halts.</param>
-    /// <param name="output">
+    /// <param name="outputProcessor">
     /// Validates the terminal assistant response against the run's selected <see cref="OutputDefinition"/>, or
     /// <see langword="null"/> when the composition selects no output processor. A run whose request names an
     /// output definition fails closed when this is <see langword="null"/>.
@@ -67,6 +67,11 @@ public sealed class AgentRunServices
     /// <see langword="null"/> when the composition selects no input coordinator; the loop then never promotes
     /// mid-run input and drives only the messages present when the run started.
     /// </param>
+    /// <param name="publisher">
+    /// Receives every <see cref="RunEvent"/> the loop produces — content deltas as the model streams and a
+    /// durable marker after each committed message — or <see langword="null"/> when the composition selects no
+    /// output publisher; the loop then produces no <see cref="RunEvent"/> for this run.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -77,11 +82,12 @@ public sealed class AgentRunServices
         IModelSelector modelSelector,
         ILlmModelResolver modelResolver,
         IRunContinuationPolicy continuationPolicy,
-        IOutputProcessor? output = null,
+        IOutputProcessor? outputProcessor = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
-        IInputCoordinator? input = null)
+        IInputCoordinator? input = null,
+        IOutputPublisher? publisher = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -100,11 +106,12 @@ public sealed class AgentRunServices
         ModelSelector = modelSelector;
         ModelResolver = modelResolver;
         ContinuationPolicy = continuationPolicy;
-        Output = output;
+        OutputProcessor = outputProcessor;
         Compactor = compactor;
         Budgets = budgets;
         RunCoordinator = runCoordinator;
         Input = input;
+        Publisher = publisher;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -133,7 +140,7 @@ public sealed class AgentRunServices
 
     /// <summary>Gets the processor that validates terminal responses against a selected output definition.</summary>
     /// <value><see langword="null"/> when the composition selects no output processor; runs with an output definition then fail closed.</value>
-    public IOutputProcessor? Output { get; }
+    public IOutputProcessor? OutputProcessor { get; }
 
     /// <summary>Gets the compactor the loop asks to checkpoint older history under context pressure.</summary>
     /// <value><see langword="null"/> when the composition selects no compactor; the loop then never compacts.</value>
@@ -153,4 +160,8 @@ public sealed class AgentRunServices
     /// <summary>Gets the collaborator that promotes already-durably-admitted input onto the run's history.</summary>
     /// <value><see langword="null"/> when the composition selects no input coordinator; the loop then never promotes mid-run input.</value>
     public IInputCoordinator? Input { get; }
+
+    /// <summary>Gets the collaborator that receives every <see cref="RunEvent"/> the loop produces.</summary>
+    /// <value><see langword="null"/> when the composition selects no output publisher; the loop then produces no <see cref="RunEvent"/> for this run.</value>
+    public IOutputPublisher? Publisher { get; }
 }

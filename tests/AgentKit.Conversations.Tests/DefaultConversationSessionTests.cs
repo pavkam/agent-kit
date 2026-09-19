@@ -1282,7 +1282,7 @@ public sealed class DefaultConversationSessionTests
         _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
 
         loop.LastRequest.ShouldNotBeNull().Output.ShouldBeSameAs(definition);
-        loop.LastServices.ShouldNotBeNull().Output.ShouldBeSameAs(processor);
+        loop.LastServices.ShouldNotBeNull().OutputProcessor.ShouldBeSameAs(processor);
     }
 
     [Fact]
@@ -1323,7 +1323,7 @@ public sealed class DefaultConversationSessionTests
         _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
 
         loop.LastRequest.ShouldNotBeNull().Output.ShouldBeNull();
-        loop.LastServices.ShouldNotBeNull().Output.ShouldBeNull();
+        loop.LastServices.ShouldNotBeNull().OutputProcessor.ShouldBeNull();
     }
 
     [Fact]
