@@ -62,7 +62,8 @@ internal static class AgentRunServicesFactory
             provider.GetService<IOutputProcessor>(),
             provider.GetService<ICompactor>(),
             provider.GetService<IBudgetAuthority>(),
-            provider.GetService<ISessionRunCoordinator>());
+            provider.GetService<ISessionRunCoordinator>(),
+            provider.GetService<IInputCoordinator>());
     }
 
     /// <summary>Resolves a collaborator keyed to the run's exact loop selection, falling back to the engine-wide unkeyed registration.</summary>
@@ -71,7 +72,13 @@ internal static class AgentRunServicesFactory
     /// <param name="key">The exact loop key this run selected.</param>
     /// <returns>The keyed registration for <paramref name="key"/> when one exists; otherwise the unkeyed registration.</returns>
     /// <exception cref="InvalidOperationException">Neither a keyed nor an unkeyed registration exists.</exception>
-    private static TService ResolveKeyedOrShared<TService>(IServiceProvider provider, string key)
+    /// <remarks>
+    /// Exposed at assembly visibility so <see cref="AgentEngine"/> can resolve the exact same
+    /// <see cref="ISessionCoordinator"/> instance this factory would compile into <see cref="AgentRunServices"/>
+    /// before the full bundle is compiled — specifically to build <see cref="SessionExecutionCapability"/> and
+    /// populate <see cref="RunScopeState"/> ahead of resolving any scoped collaborator that depends on it.
+    /// </remarks>
+    internal static TService ResolveKeyedOrShared<TService>(IServiceProvider provider, string key)
         where TService : class
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(key), "A validated loop key is required to resolve a per-run collaborator.");

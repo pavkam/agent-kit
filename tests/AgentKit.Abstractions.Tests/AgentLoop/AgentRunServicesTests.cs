@@ -62,6 +62,7 @@ public sealed class AgentRunServicesTests
         services.Compactor.ShouldBeNull();
         services.Budgets.ShouldBeNull();
         services.RunCoordinator.ShouldBeNull();
+        services.Input.ShouldBeNull();
     }
 
     [Fact]
@@ -73,6 +74,25 @@ public sealed class AgentRunServicesTests
             output: null, compactor: null, budgets: null, runCoordinator: runCoordinator);
 
         services.RunCoordinator.ShouldBeSameAs(runCoordinator);
+    }
+
+    [Fact]
+    public void Constructor_WhenInputIsSupplied_RoundTripsProperty()
+    {
+        var input = new FakeInputCoordinator();
+        var services = new AgentRunServices(
+            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            output: null, compactor: null, budgets: null, runCoordinator: null, input: input);
+
+        services.Input.ShouldBeSameAs(input);
+    }
+
+    [Fact]
+    public void Constructor_WhenInputIsOmitted_DefaultsToNull()
+    {
+        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy());
+
+        services.Input.ShouldBeNull();
     }
 
     private static FakeSessionCoordinator Session() => new();
@@ -132,5 +152,11 @@ public sealed class AgentRunServicesTests
     private sealed class FakeSessionRunCoordinator: ISessionRunCoordinator
     {
         public ValueTask<SessionRunLeaseResult> AcquireAsync(SessionRunLeaseRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeInputCoordinator: IInputCoordinator
+    {
+        public ValueTask<InputAdmissionResult> AdmitAsync(InputAdmissionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<InputPromotionResult> PromoteAsync(InputPromotionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

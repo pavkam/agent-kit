@@ -478,11 +478,12 @@ namespace AgentKit
     }
     public sealed class AgentRunServices
     {
-        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null, AgentKit.IBudgetAuthority? budgets = null, AgentKit.ISessionRunCoordinator? runCoordinator = null) { }
+        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy, AgentKit.IOutputProcessor? output = null, AgentKit.ICompactor? compactor = null, AgentKit.IBudgetAuthority? budgets = null, AgentKit.ISessionRunCoordinator? runCoordinator = null, AgentKit.IInputCoordinator? input = null) { }
         public AgentKit.IBudgetAuthority? Budgets { get; }
         public AgentKit.ICompactor? Compactor { get; }
         public AgentKit.IContextAssembler Context { get; }
         public AgentKit.IRunContinuationPolicy ContinuationPolicy { get; }
+        public AgentKit.IInputCoordinator? Input { get; }
         public AgentKit.ILlmModelResolver ModelResolver { get; }
         public AgentKit.IModelSelector ModelSelector { get; }
         public AgentKit.IModelCatalog Models { get; }

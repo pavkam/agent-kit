@@ -62,6 +62,11 @@ public sealed class AgentRunServices
     /// carries a <see cref="AgentRunRequest.LaneAdmission"/>. <see langword="null"/> when the composition selects
     /// no run coordinator; a request that carries a lane admission then cannot release it.
     /// </param>
+    /// <param name="input">
+    /// Lets the loop promote already-durably-admitted input onto the run's history at a safe boundary, or
+    /// <see langword="null"/> when the composition selects no input coordinator; the loop then never promotes
+    /// mid-run input and drives only the messages present when the run started.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -75,7 +80,8 @@ public sealed class AgentRunServices
         IOutputProcessor? output = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
-        ISessionRunCoordinator? runCoordinator = null)
+        ISessionRunCoordinator? runCoordinator = null,
+        IInputCoordinator? input = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -98,6 +104,7 @@ public sealed class AgentRunServices
         Compactor = compactor;
         Budgets = budgets;
         RunCoordinator = runCoordinator;
+        Input = input;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -142,4 +149,8 @@ public sealed class AgentRunServices
     /// <see cref="AgentRunRequest.LaneAdmission"/> then settles without releasing its lane.
     /// </value>
     public ISessionRunCoordinator? RunCoordinator { get; }
+
+    /// <summary>Gets the collaborator that promotes already-durably-admitted input onto the run's history.</summary>
+    /// <value><see langword="null"/> when the composition selects no input coordinator; the loop then never promotes mid-run input.</value>
+    public IInputCoordinator? Input { get; }
 }

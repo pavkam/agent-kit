@@ -40,6 +40,7 @@ public sealed class AgentEngine: IAsyncDisposable
     private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
+    private readonly IIdentifierGenerator<InputId> _inputIds;
     private readonly SessionLaneRegistry _lanes = new();
     private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
@@ -87,6 +88,7 @@ public sealed class AgentEngine: IAsyncDisposable
         _entryIds = services.GetRequiredService<IIdentifierGenerator<SessionEntryId>>();
         _turnIds = services.GetRequiredService<IIdentifierGenerator<TurnId>>();
         _admissionIds = services.GetRequiredService<IIdentifierGenerator<AdmissionId>>();
+        _inputIds = services.GetRequiredService<IIdentifierGenerator<InputId>>();
         ComponentRegistrations = validatedComposition.ComponentRegistrations;
         _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
             static publication => (
@@ -274,8 +276,17 @@ public sealed class AgentEngine: IAsyncDisposable
             await using var scope = Services.CreateAsyncScope();
             var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
             var loop = scope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
+
+            // The session coordinator and run coordinator are resolved directly, ahead of compiling the full
+            // AgentRunServices bundle, so SessionExecutionCapability can be built and installed into this scope's
+            // RunScopeState before anything else in the scope resolves it. AgentRunServicesFactory.Compile
+            // resolves the session coordinator through the exact same keyed-or-shared lookup below, so
+            // runServices.Session below is this same instance, not a second resolution.
+            var sessions = AgentRunServicesFactory.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
+            var runCoordinator = scope.ServiceProvider.GetRequiredService<ISessionRunCoordinator>();
+            var capability = new SessionExecutionCapability(sessionProfile, sessions, runCoordinator);
+            scope.ServiceProvider.GetRequiredService<RunScopeState>().Session = capability;
             var runServices = AgentRunServicesFactory.Compile(scope.ServiceProvider, loopKey);
-            var sessions = runServices.Session;
 
             var descriptor = request.SessionId is { } requested
                 ? await OpenSessionAsync(definition, catalogVersion, security, sessionProfile, sessions, requested, request.Identity, cancellationToken).ConfigureAwait(false)
@@ -284,9 +295,7 @@ public sealed class AgentEngine: IAsyncDisposable
             var branchId = descriptor.ActiveBranchId;
             _ = activity?.SetTag(AgentKitTagNames.SessionId, sessionId.ToString());
 
-            var runCoordinator = scope.ServiceProvider.GetRequiredService<ISessionRunCoordinator>();
             var executionLaneId = new ExecutionLaneId(sessionId.Value);
-            var capability = new SessionExecutionCapability(sessionProfile, sessions, runCoordinator);
 
             var runId = _runIds.Create();
             using var lane = await _lanes.EnterAsync(definition.Id, sessionId, runId, sessionProfile.BusyBehavior, cancellationToken)
@@ -343,7 +352,7 @@ public sealed class AgentEngine: IAsyncDisposable
 
             var admissionId = _admissionIds.Create();
             var admissionEntryId = _entryIds.Create();
-            var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.Steer, request.Parts, ExtensionData.Empty);
+            var input = new AgentInput(_inputIds.Create(), InputDelivery.Steer, request.Parts, ExtensionData.Empty);
             var fingerprint = InputPayloadFingerprint.Create(input);
             var preprocessing = new InputPreprocessingManifest(new ConfigurationVersion(1), fingerprint, fingerprint);
             var admissionResult = await sessions.AdmitInputAsync(

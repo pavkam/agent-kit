@@ -26,7 +26,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
       (`d54a38c9`, `aa4e46a8`)
 - [x] Prerequisite: `SessionBackedInputQueue` in `AgentKit.IO` (`05bdea28`)
 - [x] WS1-C1 lane identity and live revision in the loop
-- [ ] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
+- [x] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
 - [ ] WS1-C3 loop promotes input at three boundaries
 - [ ] WS1-C4 `IRunEventSink`, registration, backpressure contracts
 - [ ] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
@@ -58,18 +58,19 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 
 ### Invocation and services
 
-| Type                                                         | State                      | Evidence                                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `IAgentLoop.RunAsync(AgentRunRequest, AgentRunServices, CT)` | EXISTS-AS-REDUCED-STAND-IN | `Loop/IAgentLoop.cs`; `agent-runtime.md:286-309` documents the reduction                                                                                                                                                                                  |
-| `AgentRunInvocation`                                         | MISSING                    | spec `agent-runtime.md:171-185`; needs `HookDispatchContext` (WS2) and `RunPolicySnapshot` (no spec)                                                                                                                                                      |
-| `AgentRunServices`                                           | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentRunServices.cs`: 8 required + 4 optional; spec `agent-runtime.md:187-199` adds `IInputCoordinator`, `SessionExecutionCapability`, `IModelRequestExecutor`, `IToolExecutor`, `IOutputPublisher`, `IHookDispatcher`, `BudgetExecutionCapability` |
-| `AgentRunServicesFactory.Compile`                            | EXISTS-AND-USED            | `src/AgentKit/AgentRunServicesFactory.cs:46`; pure resolver, registers nothing into the scope, does not resolve `IInputCoordinator`                                                                                                                       |
-| `LoopLaneAdmission`                                          | EXISTS-AND-USED            | produced `AgentEngine.cs:379`, consumed `DefaultAgentLoop.cs` to seed `LoopLaneState` (WS1-C1)                                                                                                                                                            |
-| `LoopLaneState`                                              | EXISTS-AND-USED            | `Loop/LoopLaneState.cs` (WS1-C1); one instance per run threaded through `RunCoreAsync`→`RunTurnAsync`→`SettleCompletedAsync`/`ValidateOutputAsync`/`InvokeToolsAsync`→`DecideContinuationAsync`, and into `ReleaseLaneAsync`                              |
-| `IInputCoordinator` / `DefaultInputCoordinator`              | EXISTS-UNWIRED (loop)      | `src/AgentKit.IO/DefaultInputCoordinator.cs`, registered singleton at `IO/ServiceExtensions.cs:62`; no loop or engine caller                                                                                                                              |
-| `SessionBackedInputQueue`                                    | EXISTS-UNWIRED             | `IO/SessionBackedInputQueue.cs:27`; scoped registration requires a scoped `SessionExecutionCapability` nothing registers                                                                                                                                  |
-| `PromotionBoundary`                                          | EXISTS                     | `Input/PromotionBoundary.cs`                                                                                                                                                                                                                              |
-| `PromotedInputContinuationCause`                             | EXISTS-UNWIRED             | never produced by `DefaultAgentLoop.ContinuationCauses` (`:1216`)                                                                                                                                                                                         |
+| Type                                                         | State                      | Evidence                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IAgentLoop.RunAsync(AgentRunRequest, AgentRunServices, CT)` | EXISTS-AS-REDUCED-STAND-IN | `Loop/IAgentLoop.cs`; `agent-runtime.md:286-309` documents the reduction                                                                                                                                                                                          |
+| `AgentRunInvocation`                                         | MISSING                    | spec `agent-runtime.md:171-185`; needs `HookDispatchContext` (WS2) and `RunPolicySnapshot` (no spec)                                                                                                                                                              |
+| `AgentRunServices`                                           | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentRunServices.cs`: 9 required/optional-with-default + 3 optional; spec `agent-runtime.md:187-199` still needs `SessionExecutionCapability`, `IModelRequestExecutor`, `IToolExecutor`, `IOutputPublisher`, `IHookDispatcher`, `BudgetExecutionCapability` |
+| `AgentRunServicesFactory.Compile`                            | EXISTS-AND-USED            | `src/AgentKit/AgentRunServicesFactory.cs:46`; resolves `IInputCoordinator` (WS1-C2); registers nothing into the scope itself — `RunScopeState` is populated by its caller first                                                                                   |
+| `LoopLaneAdmission`                                          | EXISTS-AND-USED            | produced `AgentEngine.cs:379`, consumed `DefaultAgentLoop.cs` to seed `LoopLaneState` (WS1-C1)                                                                                                                                                                    |
+| `LoopLaneState`                                              | EXISTS-AND-USED            | `Loop/LoopLaneState.cs` (WS1-C1); one instance per run threaded through `RunCoreAsync`→`RunTurnAsync`→`SettleCompletedAsync`/`ValidateOutputAsync`/`InvokeToolsAsync`→`DecideContinuationAsync`, and into `ReleaseLaneAsync`                                      |
+| `RunScopeState`                                              | EXISTS-AND-USED            | `src/AgentKit/RunScopeState.cs` (WS1-C2); scoped holder, `Session` set by `AgentEngine.SendAgentAsync` before `AgentRunServicesFactory.Compile` runs                                                                                                              |
+| `IInputCoordinator` / `DefaultInputCoordinator`              | EXISTS-AND-USED            | `src/AgentKit.IO/DefaultInputCoordinator.cs`, scoped at `IO/ServiceExtensions.cs` (WS1-C2); resolved by `AgentRunServicesFactory.Compile` into `AgentRunServices.Input`; still no loop caller (WS1-C3)                                                            |
+| `SessionBackedInputQueue`                                    | EXISTS-AND-USED            | `IO/SessionBackedInputQueue.cs:27`; scoped `SessionExecutionCapability` now resolves through `RunScopeState` (WS1-C2)                                                                                                                                             |
+| `PromotionBoundary`                                          | EXISTS                     | `Input/PromotionBoundary.cs`                                                                                                                                                                                                                                      |
+| `PromotedInputContinuationCause`                             | EXISTS-UNWIRED             | never produced by `DefaultAgentLoop.ContinuationCauses` (`:1216`)                                                                                                                                                                                                 |
 
 Loop state relevant to promotion: `currentVersion` is threaded through
 `RunCoreAsync`; `history.SourceCursor` carries branch, version, sequence.
@@ -146,12 +147,16 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
 3. `IModelRequestExecutor` (WS7) and `IToolExecutor` (WS4) are MISSING. Do not
    add throwaway adapters; keep `ILlmModelResolver` and `IToolInvoker` on
    `AgentRunServices` until those workstreams replace them.
-4. Captive dependency: `DefaultInputCoordinator` is singleton but
-   `SessionBackedInputQueue` is scoped; both must be scoped
+4. ~~Captive dependency: `DefaultInputCoordinator` is singleton but
+   `SessionBackedInputQueue` is scoped~~ — fixed by WS1-C2: both are now scoped
    (`input-and-output.md:523`).
-5. The engine builds `SessionExecutionCapability` after creating the scope
-   (`AgentEngine.cs:274,289`); a scoped holder type is required to place it in
-   the scope's provider.
+5. ~~The engine builds `SessionExecutionCapability` after creating the scope~~ —
+   fixed by WS1-C2's `RunScopeState`. `SendAgentAsync` now resolves the session
+   and run coordinators directly (via
+   `AgentRunServicesFactory.ResolveKeyedOrShared`, made assembly-visible for
+   this), builds the capability, and installs it into `RunScopeState` _before_
+   calling `AgentRunServicesFactory.Compile` — `Compile` itself may need to
+   resolve a scoped `IInputCoordinator` that depends on the capability.
 6. ~~`ExecutionLaneId` identity mismatch between engine and loop~~ — fixed by
    WS1-C1's `LoopLaneState`. `AgentEngine.cs:633`'s own best-effort fallback
    release still hard-codes revision 1, which stays correct only because it
@@ -233,6 +238,20 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   Snapshots: Abstractions, AgentKit, IO.
 - Done when: an engine composed with `AddSessionBackedInputQueue` and
   `AddInputCoordinator` resolves `IInputCoordinator` inside the run scope.
+- Landed: `SendAgentAsync` resolves `ISessionCoordinator` and
+  `ISessionRunCoordinator` directly (via a newly internal-visibility
+  `AgentRunServicesFactory.ResolveKeyedOrShared`) and installs
+  `SessionExecutionCapability` into `RunScopeState` **before** calling
+  `AgentRunServicesFactory.Compile`, not after — `Compile` itself resolves
+  `IInputCoordinator`, which for a session-backed queue needs the capability
+  immediately, before session/lane discovery even runs.
+  `IO/ServiceExtensions.cs`'s `AddInputCoordinator` is scoped, not singleton,
+  matching the scoped `SessionBackedInputQueue` it composes with. Test:
+  `AgentTests.SendAsync_WhenSessionBackedInputQueueAndInputCoordinatorAreComposed_ResolvesInputCoordinatorInsideTheRunScope`
+  (`tests/AgentKit.Tests` now references `AgentKit.IO` for this one integration
+  test). No lifetime assertions in `AgentKit.IO.Tests/ServiceExtensionsTests.cs`
+  needed changing; its existing resolution tests pass unchanged under scoped
+  registration.
 
 ### WS1-C3: `DefaultAgentLoop` calls `PromoteAsync` at three boundaries
 

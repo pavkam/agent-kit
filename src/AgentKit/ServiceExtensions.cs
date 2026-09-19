@@ -28,12 +28,21 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>
         /// Registration is idempotent and uses <c>TryAdd</c> semantics. The
-        /// engine, clock, catalog, and the run, operation, message, and
+        /// engine, clock, catalog, and the run, operation, message, input, and
         /// session-entry identifier generators are singular, thread-safe
         /// singletons; a host that registered deterministic generators first
         /// keeps them. A resolved engine does not own the external host's
         /// provider; the host remains responsible for scopes, shutdown, and
         /// disposal.
+        /// </para>
+        /// <para>
+        /// This also registers a scoped <see cref="SessionExecutionCapability"/>
+        /// resolver, backed by an internal per-scope holder the engine's own
+        /// admission path fills in once it has compiled the capability for the
+        /// run. A collaborator resolved from the same run scope before that
+        /// point — for example a session-backed input queue resolved too
+        /// early — fails with <see cref="InvalidOperationException"/> rather
+        /// than silently observing a different run's capability.
         /// </para>
         /// <para>
         /// This registers no loop, provider, store, tool, or security
@@ -66,8 +75,16 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<TurnId>(static () => new TurnId(Guid.NewGuid())));
             services.TryAddSingleton<IIdentifierGenerator<AdmissionId>>(
                 new DelegateIdentifierGenerator<AdmissionId>(static () => new AdmissionId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<InputId>>(
+                new DelegateIdentifierGenerator<InputId>(static () => new InputId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
+            services.TryAddScoped<RunScopeState>();
+            services.TryAddScoped(static provider => provider.GetRequiredService<RunScopeState>().Session
+                ?? throw new InvalidOperationException(
+                    "No SessionExecutionCapability has been compiled for this run scope yet. This is resolved "
+                    + "only after the engine admits a run into its session lane; nothing outside that admission "
+                    + "path can resolve it."));
             services.TryAddSingleton(
                 static provider =>
                 {

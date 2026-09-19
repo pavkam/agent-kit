@@ -41,6 +41,13 @@ public static class ServiceExtensions
         /// <c>services.Configure&lt;InputCoordinatorOptions&gt;(...)</c> registered before or after this call, while the
         /// coordinator, clock, and identity generator are registered once.
         /// </para>
+        /// <para>
+        /// The coordinator is registered scoped, not singleton, because the selected <see cref="IInputQueue"/> may
+        /// itself be scoped — for example <see cref="AddSessionBackedInputQueue"/>'s queue is
+        /// bound to one run's <see cref="SessionExecutionCapability"/>. A singleton coordinator would capture
+        /// whichever queue instance happened to be resolved first and hold it for the lifetime of the process,
+        /// silently reusing one run's queue for every later run.
+        /// </para>
         /// </remarks>
         /// <param name="configure">An optional delegate that adjusts the coordinator bounds and preprocessing evidence, or <see langword="null"/> to keep this package's documented defaults.</param>
         /// <returns>The same service collection for composition chaining.</returns>
@@ -59,7 +66,7 @@ public static class ServiceExtensions
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<AdmissionId>, GuidAdmissionIdGenerator>();
-            services.TryAddSingleton<IInputCoordinator>(static provider => new DefaultInputCoordinator(
+            services.TryAddScoped<IInputCoordinator>(static provider => new DefaultInputCoordinator(
                 provider.GetRequiredService<IInputQueue>(),
                 provider.GetRequiredService<IIdentifierGenerator<AdmissionId>>(),
                 provider.GetRequiredService<TimeProvider>(),

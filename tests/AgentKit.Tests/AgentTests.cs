@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 
+using AgentKit.IO;
 using AgentKit.Observability;
 using AgentKit.TestSupport;
 
@@ -332,6 +333,24 @@ public sealed class AgentTests
         request.Authorization.Scope.SessionId.ShouldBe(result.SessionId);
         request.Authorization.Scope.Correlation.ShouldBeOfType<InRunOperationCorrelation>().RunId.ShouldBe(result.RunId);
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenSessionBackedInputQueueAndInputCoordinatorAreComposed_ResolvesInputCoordinatorInsideTheRunScope()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        var builder = CompositionTestData.SendableBuilder(loop, sessions);
+        _ = builder.Services.AddSessionBackedInputQueue();
+        _ = builder.Services.AddInputCoordinator();
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var identity = CompositionTestData.Identity();
+
+        _ = await agent.SendAsync(new AgentSendRequest(identity, "hello"), TestContext.Current.CancellationToken);
+
+        var services = loop.Services.ShouldHaveSingleItem();
+        _ = services.Input.ShouldNotBeNull();
     }
 
     [Fact]
