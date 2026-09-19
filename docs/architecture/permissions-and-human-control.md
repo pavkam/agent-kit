@@ -296,6 +296,46 @@ public interface ISecurityAuthority
 }
 ```
 
+**Interim types (WS3-C1).** The following shapes are not shown elsewhere in
+this document. They are additive contracts introduced ahead of the chunks that
+wire them into `ISecurityPolicy`, the policy catalog, and the authority so that
+later chunks add behavior to an existing shape rather than inventing it under
+schedule pressure.
+
+```csharp
+namespace AgentKit;
+
+/// <summary>Classifies how a responder authenticated to a trusted approval channel before answering.</summary>
+public enum ApprovalAuthenticationMethod
+{
+    Password,
+    OneTimePasscode,
+    HardwareSecurityKey,
+    SingleSignOnAssertion,
+    ApiCredential,
+}
+
+/// <summary>Carries the immutable evidence a policy needs to evaluate one request. WS3-C3 adds this as a parameter to <see cref="ISecurityPolicy.EvaluateAsync"/>.</summary>
+public sealed record SecurityPolicyContext(
+    SecurityAuthorizationContext Authorization,
+    SecurityRevocationVersion RevocationVersion,
+    DateTimeOffset EvaluatedAt);
+
+/// <summary>One policy's optional intersecting bounds for an allow or approval-conditioned proposal. WS3-C3 adds this as <c>SecurityPolicyResult.Constraints</c> and wires intersection into the authority.</summary>
+public sealed record SecurityAllowConstraints(
+    ImmutableArray<ProtectedResource>? Resources,
+    SecurityEffect? Effect,
+    DateTimeOffset? NotBefore,
+    DateTimeOffset? ExpiresAt,
+    int? AllowedUses);
+
+/// <summary>Closed terminal result of resolving or selecting one effective policy snapshot reference through <see cref="ISecurityPolicyCatalog"/> or <see cref="ISecurityPolicySelector"/>.</summary>
+public abstract record SecurityPolicySnapshotResult;
+public sealed record SecurityPolicySnapshotResolved(SecurityPolicySnapshotReference Reference): SecurityPolicySnapshotResult;
+public sealed record SecurityPolicySnapshotStale(SecurityPolicySnapshotReference Reference, string SafeReason): SecurityPolicySnapshotResult;
+public sealed record SecurityPolicySnapshotUnavailable(string SafeReason): SecurityPolicySnapshotResult;
+```
+
 Policies are additive, ordered contributors. They return typed match, abstain,
 deny, require-approval, or bounded-allow proposals; they never issue grants. The
 profile selector captures the effective policy snapshot, profile/configuration
@@ -449,6 +489,61 @@ public interface ISecurityGrantStore
         RevocationReason reason,
         CancellationToken cancellationToken);
 }
+```
+
+**Interim types (WS3-C1).** The following shapes are not shown elsewhere in
+this document. They are additive contracts that later chunks (C6a grant
+issuer/decision store, C7a typed revocation, C8a handler dispatcher, C8b
+durable resolution) wire into the authority and broker.
+
+```csharp
+namespace AgentKit;
+
+/// <summary>Routes one approval request to the configured additive handlers and returns the first decisive outcome. WS3-C8a wires this into <c>ApprovalBroker</c> in place of a single injected handler.</summary>
+public interface IApprovalHandlerDispatcher
+{
+    ValueTask<ApprovalHandlerResult> TryResolveAsync(
+        ApprovalRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Mints bounded security grants from an already-decided allow or approved scope. WS3-C6a extracts this from the authority's inline minting logic.</summary>
+public interface ISecurityGrantIssuer
+{
+    ValueTask<SecurityGrant> IssueAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        SecurityRevocationVersion revocationVersion,
+        ApprovalScopeBinding? approvedBinding,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Durably records every terminal security decision, independent of grant, approval, and audit-sink storage. WS3-C6a wires this into the authority.</summary>
+public interface ISecurityDecisionStore
+{
+    ValueTask RecordAsync(SecurityDecision decision, CancellationToken cancellationToken);
+}
+
+/// <summary>Names the trigger and a non-sensitive explanation for retiring a bounded grant.</summary>
+public sealed record RevocationReason(SecurityRevocationTrigger Trigger, string SafeMessage);
+
+/// <summary>Closed terminal outcome of attempting to revoke one bounded security grant through the typed <c>RevokeAsync</c> overload.</summary>
+public abstract record GrantRevocationResult
+{
+    public GrantId GrantId { get; }
+}
+public sealed record GrantRevoked(GrantId GrantId, RevocationReason Reason): GrantRevocationResult;
+public sealed record GrantAlreadyRevoked(GrantId GrantId): GrantRevocationResult;
+public sealed record GrantRevocationNotFound(GrantId GrantId): GrantRevocationResult;
+public sealed record GrantRevocationUnavailable(GrantId GrantId, string SafeReason): GrantRevocationResult;
+
+/// <summary>Closed terminal result of resolving one durable approval request through the broker's durable resolution path. WS3-C8b adds <c>IApprovalBroker.ResolveAsync(ApprovalResponse, CancellationToken)</c> returning this type.</summary>
+public abstract record ApprovalResolutionResult;
+public sealed record ApprovalResolved(ApprovalResponse Response): ApprovalResolutionResult;
+public sealed record ApprovalAlreadyResolved(ApprovalResponse Response): ApprovalResolutionResult;
+public sealed record ApprovalResolutionExpired: ApprovalResolutionResult;
+public sealed record ApprovalResolutionConflict(string SafeReason): ApprovalResolutionResult;
+public sealed record ApprovalResolutionUnavailable(string SafeReason): ApprovalResolutionResult;
 ```
 
 `IApprovalHandler` implementations are additive transports such as CLI, UI, or
