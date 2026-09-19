@@ -29,6 +29,8 @@ public static class AgentKitActivityNames
     public const string ToolCatalogMerge = "tool.catalog.merge";
     /// <summary>Identifies one complete catalog collision-policy decision.</summary>
     public const string ToolCatalogMergePolicy = "tool.catalog.merge.policy";
+    /// <summary>Identifies coordinated discovery, merge, and per-descriptor schema/capability preflight producing one catalog capture or a typed rejection.</summary>
+    public const string ToolCatalogCoordinate = "tool.catalog.coordinate";
     /// <summary>Names source discovery that transfers a retained tool-provider capture, without invoking a tool.</summary>
     public const string ToolProviderDiscover = "tool.provider.discover";
 

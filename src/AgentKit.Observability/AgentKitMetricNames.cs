@@ -23,6 +23,10 @@ public static class AgentKitMetricNames
     public const string ToolCatalogMergeCount = "agentkit.tool.catalog.merge.count";
     /// <summary>Measures elapsed seconds for catalog merge and merge-policy operations with a valid diagnostic clock.</summary>
     public const string ToolCatalogMergeDuration = "agentkit.tool.catalog.merge.duration";
+    /// <summary>Counts completed catalog coordination attempts using bounded outcome dimensions.</summary>
+    public const string ToolCatalogCoordinationCount = "agentkit.tool.catalog.coordination.count";
+    /// <summary>Measures catalog coordination elapsed seconds when the diagnostic clock is available.</summary>
+    public const string ToolCatalogCoordinationDuration = "agentkit.tool.catalog.coordination.duration";
     /// <summary>Counts completed tool-source discovery operations using bounded outcome dimensions.</summary>
     public const string ToolProviderDiscoveryCount = "agentkit.tool.provider.discovery.count";
     /// <summary>Measures tool-source discovery duration in seconds when the diagnostic clock is available.</summary>

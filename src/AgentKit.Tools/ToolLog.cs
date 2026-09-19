@@ -6,6 +6,16 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records entry to coordinated discovery, merge, and schema/capability preflight without publication content.</summary>
+    /// <param name="logger">The coordinator's type-specific logger.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
+    [LoggerMessage(4100, LogLevel.Debug, "Starting tool catalog coordination for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]
+    internal static partial void CatalogCoordinationStarted(ILogger logger, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId);
+
+    /// <summary>Records a bounded terminal coordination outcome without publication, schema, or exception content.</summary>
+    /// <param name="logger">The coordinator's type-specific logger.</param><param name="level">Severity matching the semantic outcome.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="outcome">A closed coordination result.</param>
+    [LoggerMessage(EventId = 4101, Message = "Completed tool catalog coordination for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} with outcome {Outcome}.")]
+    internal static partial void CatalogCoordinationCompleted(ILogger logger, LogLevel level, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, string outcome);
+
     /// <summary>Records entry to canonical schema compilation or validation without content.</summary>
     /// <param name="logger">The emitting-type logger.</param><param name="operation">The bounded schema stage.</param>
     [LoggerMessage(4090, LogLevel.Debug, "Starting tool schema operation {Operation}.")]

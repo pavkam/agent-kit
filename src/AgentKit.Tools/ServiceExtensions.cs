@@ -215,6 +215,37 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Registers the replaceable internal coordinator chaining discovery, merge, and schema/capability preflight.</summary>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Idempotent default registration composes <see cref="AddToolRegistrationCatalog"/>, <see cref="AddToolCatalogMerging"/>,
+        /// and <see cref="AddToolSchemaEngine"/>, preserving host clock and logging choices. The default schema-preflight
+        /// bounds match the built-in argument-validation defaults and are a reduced stand-in pending workstream 4's
+        /// <c>ToolRuntimeOptions</c> (chunk C8). This coordinator is internal and not yet reachable through the public
+        /// <c>IToolCatalog</c> surface (chunk C10b); it activates no service and discovers no source at registration time.
+        /// </remarks>
+        internal IServiceCollection AddToolCatalogCoordinator()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddToolRegistrationCatalog();
+            _ = services.AddToolCatalogMerging();
+            _ = services.AddToolSchemaEngine();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IIdentifierGenerator<ToolCatalogVersion>>(
+                static _ => new GuidIdentifierGenerator<ToolCatalogVersion>(static value => new ToolCatalogVersion(value.ToString())));
+            services.TryAddSingleton(new ToolSchemaLimits(maximumUtf8Bytes: 262_144, maximumDepth: 64, maximumNodes: 10_000, maximumWork: 100_000));
+            services.TryAddSingleton(static provider => new ToolCatalogCoordinator(
+                provider.GetRequiredService<ToolCatalogDiscovery>(),
+                provider.GetRequiredService<ToolCatalogMerger>(),
+                provider.GetRequiredService<IToolSchemaEngine>(),
+                provider.GetRequiredService<ToolSchemaLimits>(),
+                provider.GetRequiredService<IIdentifierGenerator<ToolCatalogVersion>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<ToolCatalogCoordinator>>()));
+            return services;
+        }
+
         /// <summary>Registers an immutable application tool source under its exact typed source key.</summary>
         /// <param name="snapshot">The nonnull explicit source publication, including its source version.</param>
         /// <param name="invokers">The complete nonnull borrowed binding map for the publication; the host owner keeps every instance alive through all captures and leases.</param>
