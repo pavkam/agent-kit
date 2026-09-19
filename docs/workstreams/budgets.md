@@ -84,8 +84,10 @@ Owning documents: [Budgets](../architecture/budgets.md),
   builds
   `BudgetExecutionCapability(profileKey, version, identity, correlation, scope)`
   in `RunTracking`, offers it to `OutputProcessingRequest.Budget`, the
-  compactor, and later the executor; `AgentRunRequest.BudgetProfile?`; test that
-  after-run work cannot reuse the capability. Snapshots: Abstractions, Loop.
+  compactor, and later the executor; `AgentLoopRunRequest.BudgetProfile?`
+  (renamed from `AgentRunRequest` in WS1-C8, since that name now belongs to the
+  facade-level request); test that after-run work cannot reuse the capability.
+  Snapshots: Abstractions, Loop.
 
 ### WS11-C4: Unknown-cost enforcement
 
@@ -110,9 +112,9 @@ Owning documents: [Budgets](../architecture/budgets.md),
 - Depends on: C2, C3. Size: S.
 - Deliverables: when any definition has a budget profile or limits, require an
   unkeyed `IBudgetAuthority` and a resolvable profile at build time (replaces
-  the runtime `AgentRunInvalidState` at `DefaultAgentLoop.cs:441-448`); extend
-  `BudgetLedgerConformanceTests` with concurrent-children exactness (runs in all
-  three fixtures automatically).
+  the runtime `RunFailed` from `RunOutcomes.InvalidState` at
+  `DefaultAgentLoop.cs:481`); extend `BudgetLedgerConformanceTests` with
+  concurrent-children exactness (runs in all three fixtures automatically).
 
 ## Totals
 

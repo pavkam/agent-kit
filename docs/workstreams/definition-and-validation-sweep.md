@@ -87,7 +87,7 @@ optional-capability collaborators, toolset ⇔ executor coherence.
 `tests/AgentKit.Abstractions.Tests/Composition/CompositionTestData.cs:10`;
 `AgentDefinitionTests.cs:157`; `with { }` users at `AgentTests.cs:584`,
 `AgentEngineTests.cs:150,151,240,269`, `AgentDefinitionTests.cs:65,73,80,113`.
-Readers: `AgentRunRequest.cs:143-160`, `AgentEngine.cs:275,477,721-724`,
+Readers: `AgentLoopRunRequest.cs:143-160`, `AgentEngine.cs:275,477,721-724`,
 `DefaultAgentLoop`, `DefaultContextAssembler`,
 `DefaultConversationSession.cs:609-610`, `ConversationSessionOptions.cs`,
 `RunPolicyVersioning.cs` (22 source files, 14 test files reference the type).
@@ -134,7 +134,7 @@ Readers: `AgentRunRequest.cs:143-160`, `AgentEngine.cs:275,477,721-724`,
   Abstractions. Size: L.
 - Deliverables: spec constructor (`:167-181`); delete `LoopKey`, `Tools`,
   `ToolChoice`, `Settings`, `ModelRequirements`, `BudgetLimits`, the legacy
-  constructor; rewrite `AgentRunRequest`'s definition constructor and the
+  constructor; rewrite `AgentLoopRunRequest`'s definition constructor and the
   readers; delete `AgentEngineBuilderTests.cs:662`; snapshot; break note in the
   commit.
 - Done when: `rg "LoopKey|\.BudgetLimits" src` is empty.

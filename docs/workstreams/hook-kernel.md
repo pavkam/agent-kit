@@ -249,7 +249,8 @@ are no test implementers of `IHookDispatcher`.
 
 - Depends on: C8, WS18-C3 if landed. Risk: ADDITIVE. Size: M.
 - Deliverables: `HookProfileKey HookProfile` (default `"default"`),
-  `AgentRunRequest.HookProfile`, engine passes it, loop uses it in
+  `AgentLoopRunRequest.HookProfile` (the loop-level request type, renamed from
+  `AgentRunRequest` in WS1-C8), engine passes it, loop uses it in
   `HookCatalogRequest`; validator resolves each definition's profile. Snapshots:
   Abstractions, AgentKit.
 

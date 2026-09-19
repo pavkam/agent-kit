@@ -23,13 +23,14 @@ ledger operation. Replacing `IBudgetAuthority` removes that ledger requirement.
 Captured overrun policy and truthful held outcomes are supported. The agent loop
 consumes the authority: a definition with `BudgetLimits` gets one run scope,
 reservations before each turn, model request, and tool call, and post-response
-accounting of reported tokens and cost, settling as `AgentRunBudgetExhausted`
-when a reservation is refused. Unknown-cost pre-effect estimation remains a
-separate runtime contract gap; the presence of `BudgetUnknownCostBehavior` does
-not imply that policy is enforced here. Named run profiles and parent
-host/tenant scopes are also pending: ordinary created scopes implement
-`IBudgetScope` and are never promoted to `IRunBudget` by guessing from nullable
-address fields.
+accounting of reported tokens and cost, settling as `RunLimitReached` naming the
+dimension when a reservation is refused with full evidence, or `RunFailed` when
+the authority reports a held overrun or an unsupported outcome with no such
+evidence. Unknown-cost pre-effect estimation remains a separate runtime contract
+gap; the presence of `BudgetUnknownCostBehavior` does not imply that policy is
+enforced here. Named run profiles and parent host/tenant scopes are also
+pending: ordinary created scopes implement `IBudgetScope` and are never promoted
+to `IRunBudget` by guessing from nullable address fields.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

@@ -102,6 +102,41 @@ sequence range, records no publication intent, delivers to no required external
 sink, bounds no event payload bytes, and decides no semantic outcome. Those
 durable publication responsibilities remain open.
 
+## `DefaultOutputPublisher` and `AddAgentIO`
+
+`DefaultOutputPublisher` is a second, DI-registered `IOutputPublisher`: unlike
+`AgentRunOutputPublisher` above, `AddAgentIO` registers it as a keyed, scoped
+service resolved inside the run's own scope, built from a `RunScopeIdentity` the
+facade populates once the session address, conversation, and run identity are
+known. It fans every published `RunEvent` out to the run's `RunEventHub` and to
+every registered `IRunEventSink`, in `RunEventSinkRegistration.Order`. A
+`RunEventDelivery.Required` sink's `PublishAsync` failure propagates out of
+`PublishAsync` itself, so a caller can tell a required sink actually failed
+rather than silently losing an event; a `RunEventDelivery.BestEffort` sink's
+failure and any backpressure decision short of `Wait` (see
+`IOutputBackpressurePolicy`, whose first-party `DefaultOutputBackpressurePolicy`
+always returns `Wait` for a required sink and waits-then-drops a best-effort one
+past `AgentIOOptions.MaximumBestEffortSinkWait`) are isolated and logged
+instead.
+
+```csharp
+services.AddAgentIO(inputKey, outputKey, o => o.MaximumBestEffortSinkWait = TimeSpan.FromSeconds(5));
+services.AddRunEventSink<MySink>(new RunEventSinkRegistration("my-sink", RunEventDelivery.BestEffort, order: 0));
+```
+
+`AddAgentIO` also binds `InputCoordinatorOptions` with this package's defaults,
+so it is self-sufficient without a separate `AddInputCoordinator` call, and
+validates that a definition's explicit
+`InputCoordinatorKey`/`OutputPublisherKey` resolve to a real registration.
+`AgentDefinition` leaves both keys unset by default, resolving to
+`AgentIOComponentDefaults`. `AgentKit.Loop`'s `DefaultAgentLoop` publishes
+through `AgentRunServices.Publisher` when one is composed: a `ContentDeltaEvent`
+for each streamed model fragment, and a `MessageCommittedEvent` after each
+durable message commit (assistant and tool result); it does not yet publish for
+the final settled outcome, and `AgentRunServicesFactory.Compile` resolves both
+`IInputCoordinator` and `IOutputPublisher` unkeyed rather than routing through
+those per-definition keys — a known interim gap.
+
 ## Related projects
 
 - [AgentKit.Tools.Question](../AgentKit.Tools.Question/README.md) — ask a human

@@ -113,8 +113,9 @@ Each of these is one more line on the same builder; each has its own guide.
   `Add<Provider>KnownLlmModel` where the catalog covers it) and select the alias
   with `UseModel`. See [Composing an application](guides/composition.md).
 - **Host several agents.** `.AddAgent(agentId, o => o.Instructions.Add(...))`
-  publishes a second definition on the same engine. Drive it with
-  `var agent = await engine.GetAgentAsync(agentId)` and
+  publishes a second definition on the same engine. Drive it by resolving
+  `var resolution = await engine.GetAgentAsync(agentId)`, unwrapping the
+  `ResolvedAgent` case, and calling
   `agent.SendAsync(new AgentSendRequest(engine.Identity, text, sessionId))`;
   each turn names the session it ran in, and different sessions run
   concurrently.

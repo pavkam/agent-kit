@@ -78,7 +78,7 @@ var builder = AgentEngine.CreateBuilder()
     .AddAgent(ReviewerId, o => { o.Instructions.Add("You review code."); o.IncludeRegisteredTools = false; });
 await using var engine = builder.Build();
 
-var reviewer = (await engine.GetAgentAsync(ReviewerId))!;
+var reviewer = ((ResolvedAgent) await engine.GetAgentAsync(ReviewerId)).Agent;
 var first = await reviewer.SendAsync(new AgentSendRequest(engine.Identity, "Review PR 42"));
 var next = await reviewer.SendAsync(new AgentSendRequest(engine.Identity, "And the tests?", first.SessionId));
 ```

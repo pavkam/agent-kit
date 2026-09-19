@@ -96,8 +96,8 @@ agent for one customer:
 app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, HttpContext http, AgentEngine engine, CancellationToken ct) =>
 {
     var customer = IdentityFor(http.User, authenticatedAt, expiresAt);   // from the auth ticket
-    var agent = (await engine.GetAgentsAsync(ct)).Single();
-    var support = (await engine.GetAgentAsync(agent.Id, ct))!;
+    var definition = (await engine.GetAgentsAsync(ct)).Definitions.Single();
+    var support = ((ResolvedAgent) await engine.GetAgentAsync(definition.Id, ct)).Agent;
 
     http.Response.ContentType = "text/event-stream";
     var observer = new SseObserver(http.Response);
@@ -163,8 +163,7 @@ session id that belongs to someone else is rejected before anything is appended.
   sessions are unaffected.
 - **Client disconnect is a clean cancellation.** Cancelling `ct` before the
   message is committed leaves no trace; afterwards the run settles with
-  `AgentRunCancelled` and the next `SendAsync` continues from the committed
-  history.
+  `RunCancelled` and the next `SendAsync` continues from the committed history.
 - **Audit is required, not hoped for.** With `SecurityAuditDelivery.Required`
   and a durable sink, an audited operation whose record cannot be delivered does
   not run.

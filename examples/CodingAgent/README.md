@@ -275,16 +275,19 @@ enough that a single cancelled command silently broke every future turn in the
 session:
 
 1. **`DefaultConversationSession.SendAsync` ignored `AgentRunOutcome`
-   entirely.** Any outcome other than `AgentRunCompleted` — a turn limit, a
+   entirely.** Any outcome other than the successful case — a turn limit, a
    cancelled run, a context-preparation failure, anything — was reported back as
    `Succeeded = true` with zero events, because `SendCoreAsync` never inspected
    which outcome variant it got. This turned every real failure into a silent,
    empty "success," which is exactly how the bug below stayed invisible until
-   traced by hand. **Fixed:** `SendCoreAsync` now checks for `AgentRunCompleted`
-   explicitly and otherwise reports `Succeeded = false` with a human-readable
-   description of the actual outcome (turn limit reached, model selection
-   failed, context preparation failed, cancelled, etc.), from a new exhaustive
-   `DescribeIncompleteOutcome` switch covering every outcome type.
+   traced by hand. **Fixed:** `SendCoreAsync` now checks for the successful
+   outcome (`RunSucceeded`, since a later workstream unified the outcome family
+   onto the canonical `RunSucceeded`/`RunIdle`/`RunCancelled`/`RunLimitReached`/
+   `RunPolicyHalted`/`RunFailed` set) explicitly and otherwise reports
+   `Succeeded = false` with a human-readable description of the actual outcome
+   (turn limit reached, model selection failed, context preparation failed,
+   cancelled, etc.), from a new exhaustive `DescribeIncompleteOutcome` switch
+   covering every outcome type.
 2. **A tool call cancelled mid-batch permanently corrupted the session.**
    `DefaultAgentLoop.InvokeToolsAsync` had no cancellation handling around
    `_toolInvoker.InvokeAsync`: cancelling while a tool was running either threw
@@ -335,19 +338,21 @@ tool like `todo` could trigger:
    tool result) then failed with `SessionAppendConflict`, and — because of the
    bug above, before it was fixed — that failure surfaced first as a silent
    phantom "success" and only later as `ContextPreparationFailure`. With that
-   bug fixed, it instead surfaced honestly as `AgentRunSessionOperationFailed`,
-   but the run still never completed: asking this example to combine two files
-   "using the todo tool to track your steps" reliably failed with _"the session
-   branch advanced from the expected version 2 to 3 before the append
-   committed"_ the moment the `todo` tool ran between two of the loop's own
-   appends. `SessionAppendConflict`'s own remarks are explicit that this is
-   deliberate — "the store never rebases the request against the newer version
-   or silently retries; the caller decides whether to reload and reattempt with
-   a fresh expected version" — but `DefaultAgentLoop` never did. **Fixed:**
-   `AppendWithDiagnosticsAsync` now retries a conflicting append (bounded to 5
-   attempts) by rebasing both the request's `ExpectedVersion` and every entry's
-   own `Sequence` onto the conflict's reported `ActualVersion` before
-   resubmitting — rebasing only the version and not the entries' sequence
+   bug fixed, it instead surfaced honestly as a session-operation failure
+   (`AgentRunSessionOperationFailed` at the time; the outcome family was later
+   unified onto the canonical set, so this reports as `RunFailed` with a safe
+   message today), but the run still never completed: asking this example to
+   combine two files "using the todo tool to track your steps" reliably failed
+   with _"the session branch advanced from the expected version 2 to 3 before
+   the append committed"_ the moment the `todo` tool ran between two of the
+   loop's own appends. `SessionAppendConflict`'s own remarks are explicit that
+   this is deliberate — "the store never rebases the request against the newer
+   version or silently retries; the caller decides whether to reload and
+   reattempt with a fresh expected version" — but `DefaultAgentLoop` never did.
+   **Fixed:** `AppendWithDiagnosticsAsync` now retries a conflicting append
+   (bounded to 5 attempts) by rebasing both the request's `ExpectedVersion` and
+   every entry's own `Sequence` onto the conflict's reported `ActualVersion`
+   before resubmitting — rebasing only the version and not the entries' sequence
    numbers looked like a fix on the first pass but just traded one error for
    another (a sequence-continuity rejection), since each entry's sequence had
    been computed from the stale version at build time. Both call sites (the

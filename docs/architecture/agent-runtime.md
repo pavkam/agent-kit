@@ -288,21 +288,24 @@ The reduced first-party loop implements a narrower, request-based
 
 ```csharp
 Task<AgentLoopResult> RunAsync(
-    AgentRunRequest request,
+    AgentLoopRunRequest request,
     AgentRunServices services,
     CancellationToken cancellationToken = default);
 ```
 
 — rather than the fuller `AgentRunInvocation`-based signature above, and its
-`AgentRunServices` bundle correspondingly carries only the collaborators the
-reduced loop actually drives a run with: `ISessionCoordinator`,
+`AgentRunServices` bundle correspondingly carries the collaborators the reduced
+loop actually drives a run with: `ISessionCoordinator`,
 `ISecurityProfileSelector`, `IContextAssembler`, `IToolInvoker`,
 `IModelCatalog`, `IModelSelector`, `ILlmModelResolver`, and
-`IRunContinuationPolicy`. It does not yet carry `IInputCoordinator`,
-`SessionExecutionCapability`, `IModelRequestExecutor`, `IToolExecutor`,
-`IOutputProcessor`, `IOutputPublisher`, `IHookDispatcher`, or
-`BudgetExecutionCapability`, because those packages are not yet wired into the
-reduced loop. What the reduced shape already delivers, matching this document's
+`IRunContinuationPolicy` as required members, plus `IOutputProcessor`,
+`ICompactor`, `IBudgetAuthority`, `ISessionRunCoordinator`, `IInputCoordinator`,
+and `IOutputPublisher` as optional members resolved unkeyed from the run scope.
+It does not yet carry `SessionExecutionCapability`, `IModelRequestExecutor`,
+`IToolExecutor`, or `BudgetExecutionCapability`, because those packages are not
+yet wired into the reduced loop; `IHookDispatcher` and its typed hook
+collections reach the loop through constructor injection rather than through
+this bundle. What the reduced shape already delivers, matching this document's
 normative intent exactly, is that every collaborator in its `AgentRunServices`
 arrives through `RunAsync` rather than constructor injection, and is compiled
 per run by the facade's run-activation boundary honoring the run's selected
@@ -463,12 +466,12 @@ states the commit outcome is unknown; the loop never hangs on settlement and
 never claims a lost append committed.
 
 Authorization is captured fresh for the run and for every turn. When the
-security authority cannot capture it, the run settles with the typed
-`AgentRunAuthorizationUnavailable` outcome and attempts no protected work under
-that operation; captured evidence that contradicts the run-start evidence fails
-closed as invalid state. A result reports a branch version only when the loop
-actually observed one: a run that settles before loading history carries no
-final version rather than a fabricated zero.
+security authority cannot capture it, the run settles with a typed `RunFailed`
+outcome and attempts no protected work under that operation; captured evidence
+that contradicts the run-start evidence fails closed the same way. A result
+reports a branch version only when the loop actually observed one: a run that
+settles before loading history carries no final version rather than a fabricated
+zero.
 
 Composition validates each definition's loop and continuation-policy keys, scope
 graph, non-negative bounded limits, and required collaborators. Conformance

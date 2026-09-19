@@ -624,10 +624,10 @@ each defined in `AgentKit.Abstractions` under `AgentHookPoints`:
 A veto short-circuits later hooks and settles the call as a rejected,
 not-performed terminal result carrying the veto's safe reason; it is not a
 security decision. Rewritten arguments still pass schema validation and the
-security authority. A transform-point failure settles the turn as
-`AgentRunInvalidState` without sending the request or invoking the tool. A loop
-that finds registered hooks without a dispatcher fails closed at construction.
-`AgentKit.Hooks` registers hooks per point through `AddRunStartedHook<T>`,
+security authority. A transform-point failure settles the turn as `RunFailed`
+without sending the request or invoking the tool. A loop that finds registered
+hooks without a dispatcher fails closed at construction. `AgentKit.Hooks`
+registers hooks per point through `AddRunStartedHook<T>`,
 `AddBeforeModelRequestHook<T>`, and `AddBeforeToolInvocationHook<T>`.
 
 ## Ordering and dispatch
