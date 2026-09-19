@@ -41,24 +41,21 @@ public sealed class SessionLaneStateTests
     }
 
     [Fact]
-    public void Constructor_WhenAcceptedStateRevisionDiffers_ThrowsExactArgumentException()
+    public void Constructor_WhenLiveRevisionExceedsAcceptedStateRevision_RoundTripsBothValues()
     {
+        // A run's acceptance-time SessionAcceptedRunState.LaneRevision/CommittedCursor stay fixed while the lane
+        // remains accepted; subsequent admission or mid-run promotion still advances the lane's own live revision
+        // and cursor independently, so the two are no longer required to match.
         var accepted = SessionsTestData.AcceptedRunState();
-        var exception = Should.Throw<ArgumentException>(() => new SessionLaneState(
-            accepted.ExecutionLaneId, new SessionLaneRevision(accepted.LaneRevision.Value + 1),
-            accepted.CommittedCursor, accepted));
-        exception.ParamName.ShouldBe("acceptedState");
-    }
-
-    [Fact]
-    public void Constructor_WhenAcceptedStateCursorDiffers_ThrowsExactArgumentException()
-    {
-        var accepted = SessionsTestData.AcceptedRunState();
-        var otherCursor = new SessionBranchCursor(
+        var advancedRevision = new SessionLaneRevision(accepted.LaneRevision.Value + 1);
+        var advancedCursor = new SessionBranchCursor(
             SessionsTestData.BranchId, new SessionEntryId(Guid.Parse("b0000000-0000-0000-0000-000000000002")));
-        var exception = Should.Throw<ArgumentException>(() => new SessionLaneState(
-            accepted.ExecutionLaneId, accepted.LaneRevision, otherCursor, accepted));
-        exception.ParamName.ShouldBe("acceptedState");
+
+        var state = new SessionLaneState(accepted.ExecutionLaneId, advancedRevision, advancedCursor, accepted);
+
+        state.Revision.ShouldBe(advancedRevision);
+        state.BranchCursor.ShouldBe(advancedCursor);
+        state.AcceptedState.ShouldBe(accepted);
     }
 
     [Fact]

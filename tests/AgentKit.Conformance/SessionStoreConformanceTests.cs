@@ -582,6 +582,160 @@ public abstract class SessionStoreConformanceTests<TFixture>
         loaded.State.AcceptedState.ShouldBeEquivalentTo(accepted.State);
     }
 
+    /// <summary>Verifies a durably admitted, not-yet-promoted input is discoverable in admitted order.</summary>
+    [Fact]
+    public async Task LoadPendingInputsAsync_WhenLaneHoldsAnUnpromotedAdmission_ReportsItInAdmittedOrder()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (_, context, _, _, acceptedInput) = await ProvisionAndAdmitAsync(fixture, store, 900, "pending-idle");
+        var load = new SessionPendingInputsRequest(context);
+
+        var loaded = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.Pending.Length.ShouldBe(1);
+        loaded.Pending[0].AdmissionId.ShouldBe(acceptedInput.Receipt.AdmissionId);
+        loaded.Pending[0].PromotedSequence.ShouldBeNull();
+    }
+
+    /// <summary>Verifies acceptance consuming the lane's only admission leaves nothing pending.</summary>
+    [Fact]
+    public async Task LoadPendingInputsAsync_AfterRunAcceptedConsumesTheOnlyAdmission_ReportsEmpty()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 910, "pending-consumed");
+        var start = StartRequest(prepared, 920);
+        _ = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var load = new SessionPendingInputsRequest(prepared.Context);
+
+        var loaded = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.Pending.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies a durably admitted input can be atomically promoted into an already-accepted run's active turn.</summary>
+    [Fact]
+    public async Task PromoteInputAsync_WhenSelectionIsCurrent_CommitsIntoTheActiveTurnAndAdvancesState()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 930, "promote-accept");
+        var start = StartRequest(prepared, 940);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var steering = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(950), Identifier<InputId>(951),
+            Identifier<SessionEntryId>(952), new SessionVersion(prepared.Provisioned.SessionVersion.Value + 2),
+            accepted.State.LaneRevision, accepted.State.CommittedCursor, "steer");
+        var admittedSteering = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, steering, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var laneAfterSteering = (SessionLaneStateLoaded) await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, new SessionLaneStateRequest(prepared.Context),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var promote = PromoteRequest(prepared, accepted, admittedSteering, laneAfterSteering.State, [steering.AdmissionId], 960);
+
+        var promoted = (SessionInputPromoted) await store.PromoteInputAsync(
+            await AuthorizeAsync(fixture, promote, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var replay = await store.PromoteInputAsync(
+            await AuthorizeAsync(fixture, promote, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var inRunContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        var runState = (SessionRunStateLoaded) await store.LoadRunStateAsync(
+            await AuthorizeAsync(fixture, new SessionRunStateRequest(inRunContext),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var page = (SessionPage) await ReadAllAsync(fixture, store, prepared.Descriptor, prepared.Context);
+
+        promoted.Promoted.Length.ShouldBe(1);
+        promoted.Promoted[0].AdmissionId.ShouldBe(steering.AdmissionId);
+        _ = promoted.Promoted[0].PromotedSequence.ShouldNotBeNull();
+        promoted.OperationStateRevision.ShouldBe(new OperationStateRevision(accepted.State.OperationStateRevision.Value + 1));
+        replay.ShouldBeEquivalentTo(promoted);
+        runState.State.OperationStateRevision.ShouldBe(promoted.OperationStateRevision);
+        runState.State.CommittedCursor.ShouldBe(promoted.CommittedCursor);
+        page.Entries.OfType<InputPromotedSessionEntry>().Count().ShouldBe(2);
+        page.Entries.OfType<InputPromotedSessionEntry>().Last().AdmissionIds.ShouldBe([steering.AdmissionId]);
+        page.Entries.Count(static entry => entry is MessageSessionEntry).ShouldBe(2);
+    }
+
+    /// <summary>Verifies promotion against a lane holding no accepted run is rejected without mutation.</summary>
+    [Fact]
+    public async Task PromoteInputAsync_WhenLaneHasNoAcceptedRun_ReturnsTypedRejection()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context, provisioned, admission, acceptedInput) =
+            await ProvisionAndAdmitAsync(fixture, store, 970, "promote-no-run");
+        var inRunCorrelation = new InRunOperationCorrelation(
+            context.Correlation.OperationId, Identifier<RunId>(980), Identifier<TurnId>(981));
+        var inRunContext = LaneContext(
+            descriptor.Address, context.ExecutionLaneId!.Value, context.Identity, inRunCorrelation);
+        var promote = new SessionInputPromotionRequest(
+            inRunContext, [acceptedInput.Receipt.AdmissionId], acceptedInput.Receipt.AdmittedSequence,
+            provisioned.LaneRevision, provisioned.SessionVersion,
+            new SessionBranchCursor(descriptor.ActiveBranchId, admission.EntryId),
+            Identifier<SessionEntryId>(982), [Identifier<SessionEntryId>(983)], [Identifier<MessageId>(984)],
+            new OperationStateRevision(1), Timestamp(970), new IdempotencyKey("promote-no-run"));
+
+        var result = await store.PromoteInputAsync(
+            await AuthorizeAsync(fixture, promote, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionInputPromotionRejected>();
+    }
+
+    /// <summary>Verifies a stale expected state revision is rejected without mutating the accepted run.</summary>
+    [Fact]
+    public async Task PromoteInputAsync_WhenExpectedStateRevisionIsStale_ReturnsTypedRejection()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 990, "promote-stale");
+        var start = StartRequest(prepared, 1000);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var steering = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(1010), Identifier<InputId>(1011),
+            Identifier<SessionEntryId>(1012), new SessionVersion(prepared.Provisioned.SessionVersion.Value + 2),
+            accepted.State.LaneRevision, accepted.State.CommittedCursor, "stale-steer");
+        var admittedSteering = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, steering, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var laneAfterSteering = (SessionLaneStateLoaded) await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, new SessionLaneStateRequest(prepared.Context),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var inRunContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        var stalePromote = new SessionInputPromotionRequest(
+            inRunContext, [steering.AdmissionId], admittedSteering.Receipt.AdmittedSequence,
+            laneAfterSteering.State.Revision, new SessionVersion(prepared.Provisioned.SessionVersion.Value + 3),
+            laneAfterSteering.State.BranchCursor, Identifier<SessionEntryId>(1020), [Identifier<SessionEntryId>(1021)],
+            [Identifier<MessageId>(1022)], new OperationStateRevision(accepted.State.OperationStateRevision.Value + 5),
+            Timestamp(1000), new IdempotencyKey("promote-stale"));
+
+        var result = await store.PromoteInputAsync(
+            await AuthorizeAsync(fixture, stalePromote, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionInputPromotionRejected>();
+    }
+
     /// <summary>Verifies a lane-owned append advances the lane cursor so a later run acceptance can name the real branch tip.</summary>
     [Fact]
     public async Task AcceptRunAsync_AfterAppendOnLaneBranch_UsesAdvancedCursor()
@@ -1387,6 +1541,27 @@ public abstract class SessionStoreConformanceTests<TFixture>
             Identifier<SessionEntryId>(offset + 5), new OperationStateRevision(1),
             Profile(), Configuration(), inRunAuthorization, Timestamp(offset),
             new IdempotencyKey("accept"));
+    }
+
+    private static SessionInputPromotionRequest PromoteRequest(
+        (SessionDescriptor Descriptor, SessionOperationContext Context,
+            SessionExecutionLaneProvisioned Provisioned, SessionInputAdmissionRequest Admission,
+            AcceptedInput Accepted) prepared,
+        SessionRunAccepted accepted,
+        AcceptedInput admittedSteering,
+        SessionLaneState laneState,
+        ImmutableArray<AdmissionId> selected,
+        int offset)
+    {
+        var inRunContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        return new SessionInputPromotionRequest(
+            inRunContext, selected, admittedSteering.Receipt.AdmittedSequence, laneState.Revision,
+            new SessionVersion(prepared.Provisioned.SessionVersion.Value + 3), laneState.BranchCursor,
+            Identifier<SessionEntryId>(offset), [Identifier<SessionEntryId>(offset + 1)],
+            [Identifier<MessageId>(offset + 2)], accepted.State.OperationStateRevision, Timestamp(offset),
+            new IdempotencyKey("promote"));
     }
 
     private static SessionInputAdmissionRequest AdmissionRequest(

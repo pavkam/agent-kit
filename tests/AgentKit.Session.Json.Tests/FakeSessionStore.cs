@@ -80,4 +80,14 @@ internal sealed class FakeSessionStore: ISessionStore
     public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
         AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake store is never invoked.");
+
+    /// <inheritdoc/>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This fake store is never invoked.");
+
+    /// <inheritdoc/>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        AuthorizedSessionStoreRequest<SessionInputPromotionRequest> request, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This fake store is never invoked.");
 }

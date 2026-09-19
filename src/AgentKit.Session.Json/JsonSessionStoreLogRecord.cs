@@ -32,6 +32,7 @@ namespace AgentKit.Session.Json;
 /// <param name="Admit">The accepted admission request, present only for <see cref="JsonSessionStoreLogRecordKind.InputAdmitted"/>.</param>
 /// <param name="Start">The accepted run-start request, present only for <see cref="JsonSessionStoreLogRecordKind.RunAccepted"/>.</param>
 /// <param name="Release">The accepted release request, present only for <see cref="JsonSessionStoreLogRecordKind.RunReleased"/>.</param>
+/// <param name="Promote">The accepted mid-run promotion request, present only for <see cref="JsonSessionStoreLogRecordKind.InputPromoted"/>.</param>
 /// <param name="NewBranchId">The branch identity the store generated for this commit, present only for session creation and branch creation.</param>
 /// <param name="CommittedAt">The clock-derived instant the store stamped on this commit, present only for transitions that read the clock rather than a caller-supplied timestamp.</param>
 public sealed record JsonSessionStoreLogRecord(
@@ -44,6 +45,7 @@ public sealed record JsonSessionStoreLogRecord(
     SessionInputAdmissionRequest? Admit,
     SessionRunStartRequest? Start,
     SessionRunReleaseRequest? Release,
+    SessionInputPromotionRequest? Promote,
     Guid? NewBranchId,
     DateTimeOffset? CommittedAt)
 {
@@ -58,7 +60,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.SessionCreated, request, null, null, null, null, null, null, null,
+            JsonSessionStoreLogRecordKind.SessionCreated, request, null, null, null, null, null, null, null, null,
             branchId.Value, createdAt);
     }
 
@@ -70,7 +72,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.LaneProvisioned, null, request, null, null, null, null, null, null,
+            JsonSessionStoreLogRecordKind.LaneProvisioned, null, request, null, null, null, null, null, null, null,
             null, null);
     }
 
@@ -83,7 +85,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.EntriesAppended, null, null, request, null, null, null, null, null,
+            JsonSessionStoreLogRecordKind.EntriesAppended, null, null, request, null, null, null, null, null, null,
             null, committedAt);
     }
 
@@ -98,7 +100,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.BranchCreated, null, null, null, request, null, null, null, null,
+            JsonSessionStoreLogRecordKind.BranchCreated, null, null, null, request, null, null, null, null, null,
             branchId.Value, committedAt);
     }
 
@@ -110,7 +112,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.SessionDeleted, null, null, null, null, request, null, null, null,
+            JsonSessionStoreLogRecordKind.SessionDeleted, null, null, null, null, request, null, null, null, null,
             null, null);
     }
 
@@ -127,7 +129,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.InputAdmitted, null, null, null, null, null, request, null, null,
+            JsonSessionStoreLogRecordKind.InputAdmitted, null, null, null, null, null, request, null, null, null,
             null, null);
     }
 
@@ -139,7 +141,7 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.RunAccepted, null, null, null, null, null, null, request, null,
+            JsonSessionStoreLogRecordKind.RunAccepted, null, null, null, null, null, null, request, null, null,
             null, null);
     }
 
@@ -153,7 +155,19 @@ public sealed record JsonSessionStoreLogRecord(
     {
         ArgumentNullException.ThrowIfNull(request);
         return new JsonSessionStoreLogRecord(
-            JsonSessionStoreLogRecordKind.RunReleased, null, null, null, null, null, null, null, request,
+            JsonSessionStoreLogRecordKind.RunReleased, null, null, null, null, null, null, null, request, null,
             null, committedAt);
+    }
+
+    /// <summary>Creates the record describing one atomic mid-run input promotion.</summary>
+    /// <param name="request">The accepted promotion request, which already carries its deterministic commit timestamp.</param>
+    /// <returns>A promotion record covering message materialization and the advanced accepted-run revision.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public static JsonSessionStoreLogRecord ForInputPromoted(SessionInputPromotionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new JsonSessionStoreLogRecord(
+            JsonSessionStoreLogRecordKind.InputPromoted, null, null, null, null, null, null, null, null, request,
+            null, null);
     }
 }

@@ -167,6 +167,29 @@ public sealed partial class JsonSessionStore
             static reason => new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, reason),
             cancellationToken);
 
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The store was disposed.</exception>
+    /// <exception cref="InvalidOperationException">The store was used before <see cref="InitializeAsync"/> completed.</exception>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
+            token => LoadPendingInputsCore(request.Request, token),
+            static result => result is SessionPendingInputsLoaded,
+            static reason => new SessionPendingInputsUnavailable(reason), cancellationToken);
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The store was disposed.</exception>
+    /// <exception cref="InvalidOperationException">The store was used before <see cref="InitializeAsync"/> completed.</exception>
+    /// <exception cref="IOException">The promotion record could not be appended and flushed, in which case nothing was promoted.</exception>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        AuthorizedSessionStoreRequest<SessionInputPromotionRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            token => PromoteInputCore(request.Request, token),
+            static result => result is SessionInputPromoted,
+            static reason => new SessionInputPromotionRejected(reason), cancellationToken);
+
     private ValueTask<TResult> ObserveAuthorizedAsync<TRequest, TResult>(
         AuthorizedSessionStoreRequest<TRequest> request, SecurityOperationKind kind, SecurityEffect effect,
         Func<CancellationToken, TResult> action, Func<TResult, bool> succeeded,
@@ -409,6 +432,8 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest => "run_accept",
             SessionRunStateRequest => "run_state_load",
             SessionRunReleaseRequest => "run_release",
+            SessionPendingInputsRequest => "pending_inputs_load",
+            SessionInputPromotionRequest => "input_promote",
             _ => "unknown",
         };
 
@@ -435,6 +460,8 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest value => value.Context,
             SessionRunStateRequest value => value.Context,
             SessionRunReleaseRequest value => value.Context,
+            SessionPendingInputsRequest value => value.Context,
+            SessionInputPromotionRequest value => value.Context,
             _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
         };
 
@@ -453,6 +480,8 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+            SessionPendingInputsRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+            SessionInputPromotionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
         };
 }

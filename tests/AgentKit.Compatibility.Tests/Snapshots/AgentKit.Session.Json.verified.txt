@@ -76,8 +76,10 @@ namespace AgentKit.Session.Json
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionLaneStateResult> LoadLaneStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionLaneStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionPendingInputsResult> LoadPendingInputsAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionPendingInputsRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionInputPromotionResult> PromoteInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputPromotionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionRunReleaseResult> ReleaseRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunReleaseRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
@@ -90,7 +92,7 @@ namespace AgentKit.Session.Json
     }
     public sealed class JsonSessionStoreLogRecord : System.IEquatable<AgentKit.Session.Json.JsonSessionStoreLogRecord>
     {
-        public JsonSessionStoreLogRecord(AgentKit.Session.Json.JsonSessionStoreLogRecordKind Kind, AgentKit.SessionStoreCreateRequest? Create, AgentKit.SessionExecutionLaneProvisionRequest? Provision, AgentKit.SessionAppendRequest? Append, AgentKit.SessionBranchRequest? Branch, AgentKit.SessionDeleteRequest? Delete, AgentKit.SessionInputAdmissionRequest? Admit, AgentKit.SessionRunStartRequest? Start, AgentKit.SessionRunReleaseRequest? Release, System.Guid? NewBranchId, System.DateTimeOffset? CommittedAt) { }
+        public JsonSessionStoreLogRecord(AgentKit.Session.Json.JsonSessionStoreLogRecordKind Kind, AgentKit.SessionStoreCreateRequest? Create, AgentKit.SessionExecutionLaneProvisionRequest? Provision, AgentKit.SessionAppendRequest? Append, AgentKit.SessionBranchRequest? Branch, AgentKit.SessionDeleteRequest? Delete, AgentKit.SessionInputAdmissionRequest? Admit, AgentKit.SessionRunStartRequest? Start, AgentKit.SessionRunReleaseRequest? Release, AgentKit.SessionInputPromotionRequest? Promote, System.Guid? NewBranchId, System.DateTimeOffset? CommittedAt) { }
         public AgentKit.SessionInputAdmissionRequest? Admit { get; init; }
         public AgentKit.SessionAppendRequest? Append { get; init; }
         public AgentKit.SessionBranchRequest? Branch { get; init; }
@@ -99,6 +101,7 @@ namespace AgentKit.Session.Json
         public AgentKit.SessionDeleteRequest? Delete { get; init; }
         public AgentKit.Session.Json.JsonSessionStoreLogRecordKind Kind { get; init; }
         public System.Guid? NewBranchId { get; init; }
+        public AgentKit.SessionInputPromotionRequest? Promote { get; init; }
         public AgentKit.SessionExecutionLaneProvisionRequest? Provision { get; init; }
         public AgentKit.SessionRunReleaseRequest? Release { get; init; }
         public AgentKit.SessionRunStartRequest? Start { get; init; }
@@ -107,6 +110,7 @@ namespace AgentKit.Session.Json
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForBranch(AgentKit.SessionBranchRequest request, AgentKit.BranchId branchId, System.DateTimeOffset committedAt) { }
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForCreate(AgentKit.SessionStoreCreateRequest request, AgentKit.BranchId branchId, System.DateTimeOffset createdAt) { }
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForDelete(AgentKit.SessionDeleteRequest request) { }
+        public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForInputPromoted(AgentKit.SessionInputPromotionRequest request) { }
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForProvision(AgentKit.SessionExecutionLaneProvisionRequest request) { }
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForRunAccepted(AgentKit.SessionRunStartRequest request) { }
         public static AgentKit.Session.Json.JsonSessionStoreLogRecord ForRunReleased(AgentKit.SessionRunReleaseRequest request, System.DateTimeOffset committedAt) { }
@@ -121,6 +125,7 @@ namespace AgentKit.Session.Json
         InputAdmitted = 6,
         RunAccepted = 7,
         RunReleased = 8,
+        InputPromoted = 9,
     }
     public sealed class JsonSessionStoreOptions
     {

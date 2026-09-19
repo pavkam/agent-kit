@@ -358,6 +358,40 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                     cancellationToken), cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(SessionPendingInputsRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionPendingInputsLoad, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsUnavailable(
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateRead, SecurityEffect.Observe,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.LoadPendingInputsAsync(wrapper, token),
+                    static reason => new SessionPendingInputsUnavailable(reason), cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(SessionInputPromotionRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionInputPromote, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionInputPromotionResult>(new SessionInputPromotionRejected(
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.PromoteInputAsync(wrapper, token),
+                    static reason => new SessionInputPromotionRejected(reason), cancellationToken), cancellationToken);
+    }
+
     private async ValueTask<SessionCreateResult> CreateCoreAsync(SessionCreateRequest request,
         SessionProfileSnapshot profile, CancellationToken cancellationToken)
     {

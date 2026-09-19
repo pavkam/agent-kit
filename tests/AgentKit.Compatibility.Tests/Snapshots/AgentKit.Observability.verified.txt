@@ -78,10 +78,12 @@ namespace AgentKit.Observability
         public const string SessionEventPublish = "session.event.publish";
         public const string SessionInputAdmit = "session.input.admit";
         public const string SessionInputLookup = "session.input.lookup";
+        public const string SessionInputPromote = "session.input.promote";
         public const string SessionLaneProvision = "session.lane.provision";
         public const string SessionLaneStateLoad = "session.lane.state.load";
         public const string SessionLeaseAcquire = "session.lease.acquire";
         public const string SessionLoad = "session.load";
+        public const string SessionPendingInputsLoad = "session.pending-inputs.load";
         public const string SessionRead = "session.read";
         public const string SessionRunAccept = "session.run.accept";
         public const string SessionRunRelease = "session.run.release";

@@ -169,6 +169,12 @@ public static class AgentKitActivityNames
     /// <summary>Names protected accepted-run-state loading.</summary>
     public const string SessionRunStateLoad = "session.run.state.load";
 
+    /// <summary>Names protected pending-input discovery.</summary>
+    public const string SessionPendingInputsLoad = "session.pending-inputs.load";
+
+    /// <summary>Names atomic mid-run input promotion.</summary>
+    public const string SessionInputPromote = "session.input.promote";
+
     /// <summary>Gets the name for publishing a session event to one sink.</summary>
     public const string SessionEventPublish = "session.event.publish";
 

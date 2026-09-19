@@ -961,6 +961,228 @@ public sealed partial class InMemorySessionStore: ISessionStore
         }
     }
 
+    private ValueTask<SessionPendingInputsResult> LoadPendingInputsCoreAsync(
+        SessionPendingInputsRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionPendingInputsResult>(
+                    new SessionPendingInputsUnavailable("The session is unavailable."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionPendingInputsResult>(
+                    new SessionPendingInputsUnavailable("The execution lane has not been provisioned."));
+            }
+
+            var pending = record.AdmissionsById.Values
+                .Where(stored => stored.Input.ExecutionLaneId == laneId && stored.Input.PromotedSequence is null)
+                .Select(static stored => stored.Input)
+                .OrderBy(static input => input.AdmittedSequence.Value)
+                .ToImmutableArray();
+            return ValueTask.FromResult<SessionPendingInputsResult>(
+                new SessionPendingInputsLoaded(request.Context.AgentId, request.Context.SessionId, laneId, pending));
+        }
+    }
+
+    /// <summary>Atomically promotes a durably admitted selection into an already-accepted run's current turn, or reconciles a repeated identical promotion.</summary>
+    /// <param name="request">The exact protected mid-run promotion request.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The committed promotion or a typed rejection.</returns>
+    /// <remarks>
+    /// The accepted run's <see cref="SessionAcceptedRunState.PromotedAdmissionIds"/>,
+    /// <see cref="SessionAcceptedRunState.MaterializedEntryIds"/>, and <see cref="SessionAcceptedRunState.MaterializedMessageIds"/>
+    /// continue to describe only the run's initial acceptance; a mid-run promotion advances the lane's committed
+    /// cursor and <see cref="SessionAcceptedRunState.OperationStateRevision"/> without rewriting that initial record.
+    /// </remarks>
+    private ValueTask<SessionInputPromotionResult> PromoteInputCoreAsync(
+        SessionInputPromotionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The session is unavailable."));
+            }
+
+            if (record.InputPromotionIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(EquivalentPromotion(replay.Request, request)
+                    ? replay.Result
+                    : new SessionInputPromotionRejected("The promotion idempotency key was reused with different evidence."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is not { } active)
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The selected lane holds no accepted run."));
+            }
+
+            if (active.Correlation != request.Context.Correlation
+                || active.OperationStateRevision != request.ExpectedStateRevision)
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(new SessionInputPromotionRejected(
+                    "The lane's installed accepted run does not match the requested operation, run, turn, and state revision."));
+            }
+
+            if (lane.Revision != request.ExpectedLaneRevision)
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The selected lane revision is stale."));
+            }
+
+            var branch = record.Branches[lane.BranchCursor.BranchId];
+            if (lane.BranchCursor != request.BranchCursor
+                || BranchCursor(lane.BranchCursor.BranchId, branch) != request.BranchCursor)
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The selected branch cursor is stale."));
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The expected session version is stale."));
+            }
+
+            if (!TrySelectPendingAdmissions(record, request, out var selected))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("The exact promotion selection is no longer eligible."));
+            }
+
+            var reservedEntryIds = request.EntryIds.Insert(0, request.PromotionEntryId);
+            if (reservedEntryIds.Any(record.EntryIds.Contains))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("A reserved session-entry identity is already in use."));
+            }
+
+            if (request.MessageIds.Any(record.MessageIds.Contains))
+            {
+                return ValueTask.FromResult<SessionInputPromotionResult>(
+                    new SessionInputPromotionRejected("A reserved message identity is already in use."));
+            }
+
+            var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+            var promotionSequence = new SessionSequence(branch.Entries.Count + 1);
+            SessionEntryId? priorTip = branch.Entries.Count == 0 ? null : branch.Entries[^1].Id;
+            var promotionEntry = new InputPromotedSessionEntry(
+                request.PromotionEntryId, request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                promotionSequence, priorTip, request.PromotedAt, new SchemaVersion("1"), laneId,
+                request.SelectedAdmissionIds[0], request.CutoffSequence, request.SelectedAdmissionIds);
+            var appended = new List<SessionEntry>(selected.Length + 1) { promotionEntry };
+            var parent = promotionEntry.Id;
+            for (var index = 0; index < selected.Length; index++)
+            {
+                var stored = selected[index];
+                var entrySequence = new SessionSequence(branch.Entries.Count + index + 2);
+                var message = new UserMessage(
+                    request.MessageIds[index], request.Context.AgentId, request.Context.SessionId,
+                    record.ConversationId, lane.BranchCursor.BranchId, correlation.RunId, request.TargetTurnId,
+                    request.PromotedAt, MessageState.Complete, stored.Input.EffectivePayload.Parts,
+                    stored.Input.EffectivePayload.Extensions);
+                var entry = new MessageSessionEntry(
+                    request.EntryIds[index], request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                    entrySequence, parent, request.PromotedAt, new SchemaVersion("1"), message);
+                appended.Add(entry);
+                parent = entry.Id;
+            }
+
+            var committedCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, parent);
+            var installedLaneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+            var installedStateRevision = new OperationStateRevision(active.OperationStateRevision.Value + 1);
+            branch.Entries.AddRange(appended);
+            record.EntryIds.UnionWith(reservedEntryIds);
+            record.MessageIds.UnionWith(request.MessageIds);
+            var promoted = ImmutableArray.CreateBuilder<AdmittedInput>(selected.Length);
+            foreach (var stored in selected)
+            {
+                stored.Input = new AdmittedInput(
+                    stored.Input.AdmissionId, stored.Input.AgentId, stored.Input.SessionId,
+                    stored.Input.ExecutionLaneId, stored.Input.Identity, stored.Input.AdmittedSequence,
+                    stored.Input.OriginalPayload, stored.Input.EffectivePayload, stored.Input.Preprocessing,
+                    stored.Input.AdmittedAt, promotionSequence);
+                promoted.Add(stored.Input);
+            }
+
+            record.Version++;
+            record.UpdatedAt = request.PromotedAt;
+            lane.Revision = installedLaneRevision;
+            lane.BranchCursor = committedCursor;
+            lane.AcceptedState = new SessionAcceptedRunState(
+                active.Address, active.ExecutionLaneId, installedLaneRevision, active.Correlation,
+                installedStateRevision, active.Identity, active.Authorization, active.SessionProfile,
+                active.Configuration, active.PreviousCursor, committedCursor, active.PromotionCutoff,
+                active.InitiatingAdmissionId, active.PromotedAdmissionIds, active.MaterializedEntryIds,
+                active.MaterializedMessageIds, active.InitialTurnId, active.AcceptedAt);
+            var result = new SessionInputPromoted(
+                promoted.MoveToImmutable(), committedCursor, new SessionVersion(record.Version), installedStateRevision);
+            record.InputPromotionIdempotency.Add(request.IdempotencyKey, new InputPromotionReceipt(request, result));
+            return ValueTask.FromResult<SessionInputPromotionResult>(result);
+        }
+    }
+
+    private static bool TrySelectPendingAdmissions(SessionRecord record, SessionInputPromotionRequest request,
+        out ImmutableArray<StoredAdmission> selected)
+    {
+        Debug.Assert(record is not null, "A loaded session is required.");
+        Debug.Assert(request is not null, "A validated promotion request is required.");
+        var builder = ImmutableArray.CreateBuilder<StoredAdmission>(request.SelectedAdmissionIds.Length);
+        foreach (var admissionId in request.SelectedAdmissionIds)
+        {
+            if (!record.AdmissionsById.TryGetValue(admissionId, out var stored)
+                || stored.Input.PromotedSequence is not null
+                || stored.Input.ExecutionLaneId != request.Context.ExecutionLaneId
+                || stored.Input.Identity != request.Context.Identity
+                || stored.Input.AdmittedSequence.Value > request.CutoffSequence.Value)
+            {
+                selected = [];
+                return false;
+            }
+
+            builder.Add(stored);
+        }
+
+        selected = builder.MoveToImmutable();
+        return selected.Select(static value => value.Input.AdmittedSequence.Value).SequenceEqual(
+            selected.Select(static value => value.Input.AdmittedSequence.Value).Order());
+    }
+
+    private static bool EquivalentPromotion(SessionInputPromotionRequest left, SessionInputPromotionRequest right)
+    {
+        Debug.Assert(left is not null && right is not null, "Promotion requests are required.");
+        return left.Context == right.Context
+            && left.SelectedAdmissionIds.SequenceEqual(right.SelectedAdmissionIds)
+            && left.CutoffSequence == right.CutoffSequence
+            && left.ExpectedLaneRevision == right.ExpectedLaneRevision
+            && left.ExpectedVersion == right.ExpectedVersion
+            && left.BranchCursor == right.BranchCursor
+            && left.PromotionEntryId == right.PromotionEntryId
+            && left.EntryIds.SequenceEqual(right.EntryIds)
+            && left.MessageIds.SequenceEqual(right.MessageIds)
+            && left.ExpectedStateRevision == right.ExpectedStateRevision
+            && left.PromotedAt == right.PromotedAt;
+    }
+
     private bool TryGetAuthorizedRecord(SessionOperationContext context, [NotNullWhen(true)] out SessionRecord? record)
     {
         Debug.Assert(context is not null, "A validated session operation context is required.");

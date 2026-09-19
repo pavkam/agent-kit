@@ -34,4 +34,7 @@ public enum JsonSessionStoreLogRecordKind
 
     /// <summary>Records one release of a lane's installed accepted run.</summary>
     RunReleased = 8,
+
+    /// <summary>Records one atomic mid-run promotion of durably admitted input into an already-accepted run's turn.</summary>
+    InputPromoted = 9,
 }

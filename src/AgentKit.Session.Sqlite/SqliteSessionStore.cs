@@ -889,6 +889,187 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         return released;
     }
 
+    private static async ValueTask<SessionPendingInputsResult> LoadPendingInputsCoreAsync(
+        SqliteSessionUnitOfWork uow, SessionPendingInputsRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var address = request.Context.ToAddress();
+        var record = await uow.GetSessionAsync(address, cancellationToken).ConfigureAwait(false);
+        if (record is null || record.TenantId != request.Context.Identity.TenantId)
+        {
+            return new SessionPendingInputsUnavailable("The session is unavailable.");
+        }
+
+        var laneId = request.Context.ExecutionLaneId!.Value;
+        var lane = await uow.GetLaneAsync(address, laneId, cancellationToken).ConfigureAwait(false);
+        if (lane is null)
+        {
+            return new SessionPendingInputsUnavailable("The execution lane has not been provisioned.");
+        }
+
+        var pending = await uow.ListPendingAdmissionsByLaneAsync(address, laneId, cancellationToken).ConfigureAwait(false);
+        return new SessionPendingInputsLoaded(request.Context.AgentId, request.Context.SessionId, laneId, pending);
+    }
+
+    /// <summary>Atomically promotes a durably admitted selection into an already-accepted run's current turn, or reconciles a repeated identical promotion.</summary>
+    /// <param name="uow">The transaction-scoped repository.</param>
+    /// <param name="request">The exact protected mid-run promotion request.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The committed promotion or a typed rejection.</returns>
+    /// <remarks>
+    /// The accepted run's <see cref="SessionAcceptedRunState.PromotedAdmissionIds"/>,
+    /// <see cref="SessionAcceptedRunState.MaterializedEntryIds"/>, and <see cref="SessionAcceptedRunState.MaterializedMessageIds"/>
+    /// continue to describe only the run's initial acceptance; a mid-run promotion advances the lane's committed
+    /// cursor and <see cref="SessionAcceptedRunState.OperationStateRevision"/> without rewriting that initial record.
+    /// </remarks>
+    private async ValueTask<SessionInputPromotionResult> PromoteInputCoreAsync(
+        SqliteSessionUnitOfWork uow, SessionInputPromotionRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var address = request.Context.ToAddress();
+        var record = await uow.GetSessionAsync(address, cancellationToken).ConfigureAwait(false);
+        if (record is null || record.TenantId != request.Context.Identity.TenantId)
+        {
+            return new SessionInputPromotionRejected("The session is unavailable.");
+        }
+
+        var replay = await uow.GetSessionScopeReceiptAsync<SessionInputPromotionRequest, SessionInputPromoted>(
+            SqliteSessionIdempotencyScope.InputPromotion, address, branchId: null, request.IdempotencyKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (replay is not null)
+        {
+            return EquivalentPromotion(replay.Request, request)
+                ? replay.Result
+                : new SessionInputPromotionRejected("The promotion idempotency key was reused with different evidence.");
+        }
+
+        var laneId = request.Context.ExecutionLaneId!.Value;
+        var lane = await uow.GetLaneAsync(address, laneId, cancellationToken).ConfigureAwait(false);
+        if (lane is null)
+        {
+            return new SessionInputPromotionRejected("The selected lane does not exist.");
+        }
+
+        if (lane.AcceptedState is not { } active)
+        {
+            return new SessionInputPromotionRejected("The selected lane holds no accepted run.");
+        }
+
+        if (active.Correlation != request.Context.Correlation || active.OperationStateRevision != request.ExpectedStateRevision)
+        {
+            return new SessionInputPromotionRejected(
+                "The lane's installed accepted run does not match the requested operation, run, turn, and state revision.");
+        }
+
+        if (lane.Revision != request.ExpectedLaneRevision)
+        {
+            return new SessionInputPromotionRejected("The selected lane revision is stale.");
+        }
+
+        var tip = await uow.GetBranchTipAsync(address, lane.BranchCursor.BranchId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("A provisioned lane's owned branch is missing.");
+        var actualCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, tip.TipEntryId);
+        if (lane.BranchCursor != request.BranchCursor || actualCursor != request.BranchCursor)
+        {
+            return new SessionInputPromotionRejected("The selected branch cursor is stale.");
+        }
+
+        if (record.Version != request.ExpectedVersion.Value)
+        {
+            return new SessionInputPromotionRejected("The expected session version is stale.");
+        }
+
+        var candidates = new Dictionary<AdmissionId, StoredAdmission>();
+        foreach (var admissionId in request.SelectedAdmissionIds)
+        {
+            if (await uow.GetAdmissionByIdAsync(address, admissionId, cancellationToken).ConfigureAwait(false) is { } admission)
+            {
+                candidates[admissionId] = admission;
+            }
+        }
+
+        if (!TrySelectPendingAdmissions(candidates, request, out var selected))
+        {
+            return new SessionInputPromotionRejected("The exact promotion selection is no longer eligible.");
+        }
+
+        var reservedEntryIds = request.EntryIds.Insert(0, request.PromotionEntryId);
+        if (await AnyReservedAsync(uow, address, reservedEntryIds, cancellationToken).ConfigureAwait(false))
+        {
+            return new SessionInputPromotionRejected("A reserved session-entry identity is already in use.");
+        }
+
+        if (await AnyMessageReservedAsync(uow, address, request.MessageIds, cancellationToken).ConfigureAwait(false))
+        {
+            return new SessionInputPromotionRejected("A reserved message identity is already in use.");
+        }
+
+        var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+        var promotionSequence = new SessionSequence(tip.TipSequence + 1);
+        var promotionEntry = new InputPromotedSessionEntry(
+            request.PromotionEntryId, address, correlation, lane.BranchCursor.BranchId, promotionSequence, tip.TipEntryId,
+            request.PromotedAt, new SchemaVersion("1"), laneId, request.SelectedAdmissionIds[0], request.CutoffSequence,
+            request.SelectedAdmissionIds);
+        var appended = new List<SessionEntry>(selected.Length + 1) { promotionEntry };
+        var parent = promotionEntry.Id;
+        for (var index = 0; index < selected.Length; index++)
+        {
+            var stored = selected[index];
+            var entrySequence = new SessionSequence(tip.TipSequence + index + 2);
+            var message = new UserMessage(
+                request.MessageIds[index], request.Context.AgentId, request.Context.SessionId, record.ConversationId,
+                lane.BranchCursor.BranchId, correlation.RunId, request.TargetTurnId, request.PromotedAt, MessageState.Complete,
+                stored.Input.EffectivePayload.Parts, stored.Input.EffectivePayload.Extensions);
+            var entry = new MessageSessionEntry(
+                request.EntryIds[index], address, correlation, lane.BranchCursor.BranchId, entrySequence, parent,
+                request.PromotedAt, new SchemaVersion("1"), message);
+            appended.Add(entry);
+            parent = entry.Id;
+        }
+
+        if (!CanPersist(appended, out var codecRejection))
+        {
+            return new SessionInputPromotionRejected(codecRejection);
+        }
+
+        foreach (var entry in appended)
+        {
+            await uow.InsertEntryAsync(address, lane.BranchCursor.BranchId, entry, cancellationToken).ConfigureAwait(false);
+        }
+
+        var committedCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, parent);
+        var installedLaneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+        var installedStateRevision = new OperationStateRevision(active.OperationStateRevision.Value + 1);
+        var promoted = ImmutableArray.CreateBuilder<AdmittedInput>(selected.Length);
+        foreach (var stored in selected)
+        {
+            var updated = new AdmittedInput(
+                stored.Input.AdmissionId, stored.Input.AgentId, stored.Input.SessionId, stored.Input.ExecutionLaneId,
+                stored.Input.Identity, stored.Input.AdmittedSequence, stored.Input.OriginalPayload, stored.Input.EffectivePayload,
+                stored.Input.Preprocessing, stored.Input.AdmittedAt, promotionSequence);
+            await uow.MarkAdmissionPromotedAsync(address, updated, cancellationToken).ConfigureAwait(false);
+            promoted.Add(updated);
+        }
+
+        var newState = new SessionAcceptedRunState(
+            active.Address, active.ExecutionLaneId, installedLaneRevision, active.Correlation, installedStateRevision,
+            active.Identity, active.Authorization, active.SessionProfile, active.Configuration, active.PreviousCursor,
+            committedCursor, active.PromotionCutoff, active.InitiatingAdmissionId, active.PromotedAdmissionIds,
+            active.MaterializedEntryIds, active.MaterializedMessageIds, active.InitialTurnId, active.AcceptedAt);
+        await uow.UpdateLaneAcceptedStateAsync(address, laneId, committedCursor, installedLaneRevision, newState, cancellationToken)
+            .ConfigureAwait(false);
+        await uow.UpdateSessionVersionAsync(address, record.Version, record.Version + 1, request.PromotedAt, cancellationToken)
+            .ConfigureAwait(false);
+        var result = new SessionInputPromoted(
+            promoted.MoveToImmutable(), committedCursor, new SessionVersion(record.Version + 1), installedStateRevision);
+        await uow.PutSessionScopeReceiptAsync(
+            SqliteSessionIdempotencyScope.InputPromotion, address, branchId: null, request.IdempotencyKey, request, result, cancellationToken)
+            .ConfigureAwait(false);
+        return result;
+    }
+
     /// <summary>
     /// Proves every proposed entry has a durable codec and encodes within
     /// <see cref="SqliteSessionStoreSettings.MaximumEntryPayloadBytes"/> before any row is written.
@@ -1058,6 +1239,48 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             && left.Configuration == right.Configuration
             && left.InRunAuthorization == right.InRunAuthorization
             && left.AcceptedAt == right.AcceptedAt;
+    }
+
+    private static bool TrySelectPendingAdmissions(
+        Dictionary<AdmissionId, StoredAdmission> candidates, SessionInputPromotionRequest request,
+        out ImmutableArray<StoredAdmission> selected)
+    {
+        Debug.Assert(request is not null, "A validated promotion request is required.");
+        var builder = ImmutableArray.CreateBuilder<StoredAdmission>(request.SelectedAdmissionIds.Length);
+        foreach (var admissionId in request.SelectedAdmissionIds)
+        {
+            if (!candidates.TryGetValue(admissionId, out var stored)
+                || stored.Input.PromotedSequence is not null
+                || stored.Input.ExecutionLaneId != request.Context.ExecutionLaneId
+                || stored.Input.Identity != request.Context.Identity
+                || stored.Input.AdmittedSequence.Value > request.CutoffSequence.Value)
+            {
+                selected = [];
+                return false;
+            }
+
+            builder.Add(stored);
+        }
+
+        selected = builder.MoveToImmutable();
+        return selected.Select(static value => value.Input.AdmittedSequence.Value).SequenceEqual(
+            selected.Select(static value => value.Input.AdmittedSequence.Value).Order());
+    }
+
+    private static bool EquivalentPromotion(SessionInputPromotionRequest left, SessionInputPromotionRequest right)
+    {
+        Debug.Assert(left is not null && right is not null, "Promotion requests are required.");
+        return left.Context == right.Context
+            && left.SelectedAdmissionIds.SequenceEqual(right.SelectedAdmissionIds)
+            && left.CutoffSequence == right.CutoffSequence
+            && left.ExpectedLaneRevision == right.ExpectedLaneRevision
+            && left.ExpectedVersion == right.ExpectedVersion
+            && left.BranchCursor == right.BranchCursor
+            && left.PromotionEntryId == right.PromotionEntryId
+            && left.EntryIds.SequenceEqual(right.EntryIds)
+            && left.MessageIds.SequenceEqual(right.MessageIds)
+            && left.ExpectedStateRevision == right.ExpectedStateRevision
+            && left.PromotedAt == right.PromotedAt;
     }
 
     private SessionDescriptor ToDescriptor(SessionRecord record) => new(

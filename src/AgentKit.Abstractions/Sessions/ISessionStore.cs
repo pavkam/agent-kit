@@ -121,6 +121,18 @@ public interface ISessionStore
         AuthorizedSessionStoreRequest<SessionRunStartRequest> request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Loads one execution lane's currently pending, not-yet-promoted admissions in admission order.</summary>
+    /// <param name="request">The exact protected pending-input discovery request.</param><param name="cancellationToken">Cancels before protected access begins.</param><returns>The lane's pending admissions or a typed unavailable outcome.</returns>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Atomically promotes a durably admitted selection into an already-accepted run's current turn.</summary>
+    /// <param name="request">The exact protected mid-run promotion request.</param><param name="cancellationToken">Cancels before the atomic mutation begins.</param><returns>The committed promotion or a typed no-mutation outcome.</returns>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        AuthorizedSessionStoreRequest<SessionInputPromotionRequest> request,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Loads complete accepted state for one exact authorized operation.</summary>
     /// <param name="request">The exact protected state request.</param><param name="cancellationToken">Cancels before protected access begins.</param><returns>The complete state or a typed unavailable outcome.</returns>
     public ValueTask<SessionRunStateResult> LoadRunStateAsync(

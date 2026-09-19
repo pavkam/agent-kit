@@ -80,6 +80,31 @@ internal sealed partial class SqliteSessionUnitOfWork
         _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Loads every not-yet-promoted admission for one execution lane, in ascending admitted-sequence order.</summary>
+    /// <param name="address">The addressed session.</param>
+    /// <param name="laneId">The lane identity.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The lane's pending admissions in admitted-sequence order.</returns>
+    internal async ValueTask<ImmutableArray<AdmittedInput>> ListPendingAdmissionsByLaneAsync(
+        SessionAddress address, ExecutionLaneId laneId, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"""
+            SELECT {_admissionColumns} FROM {SqliteSessionSchema.AdmissionsTable}
+            WHERE agent_id = $agent AND session_id = $session AND execution_lane_id = $lane AND promoted_sequence IS NULL
+            ORDER BY admitted_sequence ASC;
+            """);
+        AddAddress(command, address);
+        _ = command.Parameters.AddWithValue("$lane", ToText(laneId.Value));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var builder = ImmutableArray.CreateBuilder<AdmittedInput>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            builder.Add(ReadAdmission(reader).Input);
+        }
+
+        return builder.ToImmutable();
+    }
+
     /// <summary>Records that one admission was consumed by a promotion at a given sequence.</summary>
     /// <param name="address">The addressed session.</param>
     /// <param name="updated">The admission with its updated <see cref="AdmittedInput.PromotedSequence"/> already set.</param>

@@ -119,4 +119,14 @@ internal sealed class FakeSessionStore: ISessionStore
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(OnReleaseRun?.Invoke(request.Request)
             ?? new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, "not configured"));
+
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsUnavailable("not configured"));
+
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        AuthorizedSessionStoreRequest<SessionInputPromotionRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SessionInputPromotionResult>(new SessionInputPromotionRejected("not configured"));
 }

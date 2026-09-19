@@ -5,10 +5,15 @@ namespace AgentKit;
 
 /// <summary>Captures one provisioned execution lane's current durable revision, branch cursor, and optional accepted run.</summary>
 /// <remarks>
-/// This is the truthful discovery evidence a caller needs before admitting input into, or starting a run on, an
-/// already-provisioned lane without retaining its own non-durable copy of that state. When
+/// This is the truthful discovery evidence a caller needs before admitting input into, promoting input into, or
+/// starting a run on, an already-provisioned lane without retaining its own non-durable copy of that state. When
 /// <see cref="AcceptedState"/> is present the lane is currently busy with that run; when it is
-/// <see langword="null"/> the lane is idle and eligible for a new <see cref="SessionRunStartRequest"/>.
+/// <see langword="null"/> the lane is idle and eligible for a new <see cref="SessionRunStartRequest"/>. While a run
+/// is accepted, admitting further input independently advances <see cref="Revision"/> and
+/// <see cref="BranchCursor"/> past <see cref="SessionAcceptedRunState.LaneRevision"/> and
+/// <see cref="SessionAcceptedRunState.CommittedCursor"/>, which remain the fixed values installed at acceptance; a
+/// mid-run <see cref="SessionInputPromotionRequest"/> observes this state's live revision and cursor, not the
+/// accepted state's acceptance-time snapshot.
 /// </remarks>
 public sealed record SessionLaneState
 {
@@ -19,9 +24,7 @@ public sealed record SessionLaneState
     /// <param name="acceptedState">The lane's currently installed accepted run, or <see langword="null"/> when idle.</param>
     /// <exception cref="ArgumentNullException"><paramref name="branchCursor"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="executionLaneId"/> or <paramref name="revision"/> is default.</exception>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="acceptedState"/> is present and its lane, revision, or committed cursor does not match.
-    /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="acceptedState"/> is present and its lane does not match.</exception>
     public SessionLaneState(
         ExecutionLaneId executionLaneId,
         SessionLaneRevision revision,
@@ -34,8 +37,6 @@ public sealed record SessionLaneState
         if (acceptedState is not null)
         {
             ArgumentException.ThrowIfNotEqual(acceptedState.ExecutionLaneId, executionLaneId, nameof(acceptedState));
-            ArgumentException.ThrowIfNotEqual(acceptedState.LaneRevision, revision, nameof(acceptedState));
-            ArgumentException.ThrowIfNotEqual(acceptedState.CommittedCursor, branchCursor, nameof(acceptedState));
         }
 
         ExecutionLaneId = executionLaneId;
@@ -49,11 +50,18 @@ public sealed record SessionLaneState
     public ExecutionLaneId ExecutionLaneId { get; }
 
     /// <summary>Gets the lane's current revision.</summary>
-    /// <value>The positive revision advanced by every accepted run installed on this lane.</value>
+    /// <value>
+    /// The positive revision advanced by provisioning, every accepted run installed on this lane, every
+    /// subsequent admission, and every mid-run promotion; it may exceed
+    /// <see cref="SessionAcceptedRunState.LaneRevision"/> while a run is accepted.
+    /// </value>
     public SessionLaneRevision Revision { get; }
 
     /// <summary>Gets the lane's current branch cursor.</summary>
-    /// <value>The tip a caller must observe to admit input or accept a run without a stale-cursor rejection.</value>
+    /// <value>
+    /// The tip a caller must observe to admit input, promote input, or accept a run without a stale-cursor
+    /// rejection; it may differ from <see cref="SessionAcceptedRunState.CommittedCursor"/> while a run is accepted.
+    /// </value>
     public SessionBranchCursor BranchCursor { get; }
 
     /// <summary>Gets the lane's currently installed accepted run, if any.</summary>

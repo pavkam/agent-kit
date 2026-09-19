@@ -233,4 +233,42 @@ public interface ISessionCoordinator
             new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported,
                 "The coordinator does not support protected run release."));
     }
+
+    /// <summary>Loads one execution lane's currently pending, not-yet-promoted admissions in admission order.</summary>
+    /// <param name="request">The exact lane-bound in-run pending-input discovery request.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing the lane's pending admissions or a typed unavailable outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        SessionPendingInputsRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionPendingInputsResult>(
+            new SessionPendingInputsUnavailable("The coordinator does not support protected pending-input discovery."));
+    }
+
+    /// <summary>Atomically promotes a durably admitted selection into an already-accepted run's current turn.</summary>
+    /// <param name="request">The exact lane-bound in-run mid-run promotion request.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing the committed promotion or a typed no-mutation outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        SessionInputPromotionRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionInputPromotionResult>(
+            new SessionInputPromotionRejected("The coordinator does not support protected mid-run input promotion."));
+    }
 }
