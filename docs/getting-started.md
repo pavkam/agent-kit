@@ -20,7 +20,7 @@ The path below is the direct, in-process one: one conversation with one agent,
 composed by `AgentKit.Simple` over `AgentKit.Conversations`. The same
 `AgentEngine` hosts further agents and many concurrent sessions through
 `Agent.SendAsync`; queue-backed input admission is still tracked in the
-[implementation ledger](implementation-progress.md#component-coverage).
+[run envelope and admission workstream](workstreams/run-envelope-and-admission.md).
 
 ## Set up the repository
 

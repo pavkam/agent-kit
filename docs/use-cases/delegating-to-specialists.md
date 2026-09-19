@@ -152,7 +152,7 @@ The broker, the `task` tool, multi-agent hosting on one engine, and the
 engine-backed channel are implemented. What the architecture describes beyond
 this, durable goal and attempt records, joins over several children, and worker
 hosting for detached child work, is tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage). Until
+[goals and delegation workstream](../workstreams/goals-and-delegation.md). Until
 then a child is a synchronous run inside the parent's tool call, bounded by the
 deadline it was given.
 

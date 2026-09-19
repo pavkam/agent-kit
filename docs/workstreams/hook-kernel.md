@@ -190,8 +190,9 @@ are no test implementers of `IHookDispatcher`.
 
 - Depends on: C3, C4b. Risk: ADDITIVE (interface gains a member; no test
   implementers). Size: M.
-- Deliverables:
-  `IHookDispatcher.DispatchAsync<THook,TEventArgs>(HookPointDefinition, HookDispatchContext, TEventArgs, HookFailureMode?, CT)`;
+- Deliverables: a new `IHookDispatcher.DispatchAsync<THook,TEventArgs>` overload
+  taking `HookPointDefinition`, `HookDispatchContext`, the event args, an
+  optional `HookFailureMode` tightening, and a cancellation token;
   `DefaultHookDispatcher` implements the three-way point/dispatch match, catalog
   selection, per-invocation context, tracker enter/exit, lease resolution,
   invoke, validate, isolation only for observational points under

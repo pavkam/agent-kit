@@ -9,9 +9,8 @@ the finished engine is used.
 Every page starts from the same working shape as
 [Getting started](../getting-started.md) and grows it through
 `builder.Services`. Where a use case leans on a package whose integration into
-the turn loop is still tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage), the
-page says so in a **Status** section rather than presenting the design as
+the turn loop is still tracked in the [workstreams](../workstreams/index.md),
+the page says so in a **Status** section rather than presenting the design as
 finished.
 
 ## Worked examples in the repository

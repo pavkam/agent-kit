@@ -190,8 +190,8 @@ kinds, resources, decision codes, and timestamps, never prompts, file contents,
 or credentials. Today the approval flow (requests, outcomes, and the grants it
 issues) and session-store enforcement are audited; ordinary allow/deny decisions
 and file or process enforcement are not yet, and the
-[implementation ledger](../implementation-progress.md#component-coverage) tracks
-closing that gap.
+[permissions workstream](../workstreams/permissions-approvals-and-audit.md)
+tracks closing that gap.
 
 With `UseLocalDevelopmentDefaults` delivery is best-effort because no sink is
 registered. A real host registers a sink and keeps delivery `Required`, which

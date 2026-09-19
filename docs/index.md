@@ -17,7 +17,7 @@ architecture and concept specifications define the complete intended design.
 | Find a package and its related projects         | [Project catalog](packages/index.md)                |
 | Select a provider and check its wire behavior   | [Provider reference](providers/index.md)            |
 | Check what still needs implementation or proof  | [Current status](getting-started.md#current-status) |
-| See the ordered plan to complete the runtime    | [Implementation plan](implementation-plan.md)       |
+| See the ordered plan to complete the runtime    | [Workstreams](workstreams/index.md)                 |
 | Run focused tests or add a regression           | [Testing guide](testing/index.md)                   |
 
 ## Go deeper

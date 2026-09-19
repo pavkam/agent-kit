@@ -172,9 +172,9 @@ in place. `WithBudget` counts turns, model requests, and tool calls before each
 attempt and accounts reported tokens and cost after each response, so a single
 response may cross a token or cost cap before the run stops; pre-effect
 estimation of unknown token cost is tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage). The
-in-memory ledger accounts within this process; register `AddSqliteBudgetLedger`
-before `WithBudget` for durable accounting.
+[budgets workstream](../workstreams/budgets.md). The in-memory ledger accounts
+within this process; register `AddSqliteBudgetLedger` before `WithBudget` for
+durable accounting.
 
 ## What lives where
 

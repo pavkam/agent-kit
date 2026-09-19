@@ -176,7 +176,7 @@ session id that belongs to someone else is rejected before anything is appended.
 The engine path above is complete for in-process hosting: one engine, many
 customers, concurrent sessions, per-session exclusion. Two refinements are
 tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage):
+[run envelope and admission workstream](../workstreams/run-envelope-and-admission.md):
 queue-backed admission through `AgentKit.IO` (so a double-submit can be queued
 as a follow-up instead of rejected) and attaching a second request to a run in
 progress by `RunId`. Audit coverage is also still widening: the approval flow
