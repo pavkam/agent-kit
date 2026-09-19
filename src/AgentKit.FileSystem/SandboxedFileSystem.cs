@@ -980,11 +980,11 @@ public sealed partial class SandboxedFileSystem:
 
     private static int CreateFlag => OperatingSystem.IsMacOS() ? 0x0200 : 0x0040;
 
-    private static int DirectoryFlag => OperatingSystem.IsMacOS() ? 0x00100000 : 0x00010000;
+    private static int DirectoryFlag => PosixOpenFlags.Directory;
 
     private static int ExclusiveFlag => OperatingSystem.IsMacOS() ? 0x0800 : 0x0080;
 
-    private static int NoFollowFlag => OperatingSystem.IsMacOS() ? 0x0100 : 0x00020000;
+    private static int NoFollowFlag => PosixOpenFlags.NoFollow;
 
     private static int TruncateFlag => OperatingSystem.IsMacOS() ? 0x0400 : 0x0200;
 

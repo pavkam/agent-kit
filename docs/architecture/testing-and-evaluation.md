@@ -139,11 +139,18 @@ public interface IConformanceFixture<TContract> : IAsyncDisposable
     ValueTask<TContract> CreateAsync(
         CancellationToken cancellationToken);
 }
+
+public sealed record ConformanceCapabilities(
+    bool SupportsDurability = true,
+    bool SupportsConcurrentCreators = true);
 ```
 
 Capability flags permit a suite to omit only behavior the implementation
-declared unsupported before use. They cannot skip required contract behavior or
-inspect private state.
+declared unsupported before use. `SupportsDurability` is false for subjects
+whose acknowledged state does not survive disposal. `SupportsConcurrentCreators`
+is false when overlapping `CreateAsync` calls are rejected. Both default to
+true, so an omitted declaration still runs those optional cases. Flags cannot
+skip required contract behavior or inspect private state.
 
 Evaluation-specific provider-neutral contracts live in the optional
 AgentKit.Evaluation package; core engine, result, event, session, identity, and

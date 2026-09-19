@@ -826,7 +826,12 @@ public interface IModelRequestExecutor
 ```
 
 The adapter and executor return `Task` because network execution and ordered
-event delivery are inherently asynchronous. The observer uses `ValueTask` to
+event delivery are inherently asynchronous. Interim (WS7-C1): the shipped
+`ModelExecutionRequest` uses `LlmRequestContext` rather than
+`ModelRequestContext`, and `Budget` and `Hooks` are nullable until a budget
+scope or hook dispatch exists. `ProviderRetryPolicy` bounds same-model retries:
+at least one attempt, a non-negative initial delay, and a maximum delay no
+smaller than that initial delay. Jitter stays in the executor. The observer uses `ValueTask` to
 support synchronous bounded fan-out without allocating per event. Backpressure
 is explicit: the adapter awaits each observer call and cannot continue emitting
 after a terminal event. Observer cancellation and run cancellation retain their

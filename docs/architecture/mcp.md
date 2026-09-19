@@ -265,6 +265,44 @@ public interface IMcpPrimitiveHandler
 }
 ```
 
+The types above that this chunk introduces live in `AgentKit.Mcp`, not
+`AgentKit`. The spec block keeps the provider-neutral shape; the package
+namespace keeps MCP contracts out of the core abstractions assembly.
+
+```csharp
+namespace AgentKit.Mcp;
+
+public abstract record McpTransportProfile;
+
+public sealed record McpStdioTransportProfile(
+    string Command,
+    ImmutableArray<string> Arguments) : McpTransportProfile;
+
+public sealed record McpHttpTransportProfile(Uri Endpoint) : McpTransportProfile;
+
+public sealed record McpAuthenticationReference(
+    string CredentialProfileKey,
+    string Audience);
+
+public sealed record McpEndpointBounds(
+    TimeSpan HandshakeTimeout,
+    TimeSpan RequestTimeout,
+    TimeSpan ShutdownTimeout,
+    int MaximumFrameBytes,
+    int MaximumMessageBytes,
+    int MaximumInFlightRequests);
+```
+
+`McpStdioTransportProfile` stores the command and arguments only. Environment
+variables stay with the later process grant so a catalog snapshot cannot carry
+secrets. `McpHttpTransportProfile.Endpoint` is an absolute credential-free
+HTTP(S) URI; user info is rejected. `McpAuthenticationReference` names a
+credential profile and audience and never stores a token. `McpEndpointBounds`
+are the positive limits captured from client options when the endpoint is
+registered. `McpCapabilityProfile` accepts only `McpCapabilityIds.Client`.
+`McpClientOpenRequest` requires the endpoint key to already be listed on that
+profile.
+
 `McpRequest` is a closed, typed request hierarchy for tools, resources, prompts,
 roots, sampling, elicitation, and other negotiated operations; it is not an
 event-name plus `object` escape hatch. `McpResponse` is a discriminated result

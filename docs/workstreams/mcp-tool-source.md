@@ -12,7 +12,7 @@ Owning documents: [MCP](../architecture/mcp.md),
 
 ## Progress
 
-- [ ] WS6-C1a identities, endpoint, profile values
+- [x] WS6-C1a identities, endpoint, profile values
 - [ ] WS6-C1b session, request, response contracts
 - [ ] WS6-C2 client options, catalogs, DI
 - [ ] WS6-C3 `McpClientSession` over the SDK client
@@ -29,7 +29,8 @@ Owning documents: [MCP](../architecture/mcp.md),
 
 | Item                                                                                                                                                                                                                                                                                                                                                                                                                    | State             | Evidence                                                                                                                                                                                                                                                                                          |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| every client/server/transport/primitive spec type (`McpEndpoint`, `McpServerKey`, `McpTransportProfile`, `McpAuthenticationReference`, `McpEndpointBounds`, `McpSessionId`, `McpRequestId`, `McpEndpointKey`, `IMcpClientSession(Factory)`, catalogs, `McpRequest/Response/Notification`, `McpCatalogSnapshot`, transport factories, `McpToolProvider/Invoker`, sources, `IMcpServer`, `IMcpPrimitiveHandler`, options) | MISSING           | grep `src/`                                                                                                                                                                                                                                                                                       |
+| identities, endpoint, and profile values from WS6-C1a (`McpSessionId`, `McpRequestId`, `McpEndpointKey`, `McpServerKey`, revisions, `McpCapabilityIds`, `McpEndpoint`, `McpTransportProfile`, `McpAuthenticationReference`, `McpEndpointBounds`, `McpCapabilityProfile`, `McpClientOpenRequest`) | EXISTS-UNWIRED (WS6-C1a) | `src/AgentKit.Mcp/`; no production consumer |
+| remaining client/server/transport/primitive spec types (`IMcpClientSession(Factory)`, catalogs, `McpRequest/Response/Notification`, `McpCatalogSnapshot`, transport factories, `McpToolProvider/Invoker`, sources, `IMcpServer`, `IMcpPrimitiveHandler`, options) | MISSING | grep `src/` |
 | `AgentKit.Mcp`                                                                                                                                                                                                                                                                                                                                                                                                          | reflection slice  | `McpCatalogVersion.cs:11`, `McpProtocolEra.cs:15`, `McpProtocolVersion.cs:14`, `McpProtocolVersions.cs:7`, `McpToolAttribute.cs:13`, `McpToolContract<TTools>.cs:15`, `McpToolMethodDescriptor.cs:9`, `McpToolName.cs:7`, `McpMetadataKeys.cs:7`, `AddMcpToolContract<TTools>`                    |
 | `AgentKit.Mcp.Client`                                                                                                                                                                                                                                                                                                                                                                                                   | typed client only | `McpToolClientFactory<TTools>.ConnectAsync(IClientTransport, …)` (`:51-52`, caller supplies the raw SDK transport), `McpToolClient<TTools>`, internal `SdkMcpToolCaller.cs:12`, `McpClientToolCatalogSnapshot`, `McpClientVersionPolicy`, `McpRemoteTool(Descriptor)`, `AddMcpToolClient<TTools>` |
 | `AgentKit.Mcp.Server`                                                                                                                                                                                                                                                                                                                                                                                                   | SDK builder only  | `AddAgentKitMcpServer(McpServerVersionPolicy?)`, `WithAgentKitTools<TTools>`, `McpServerVersionPolicy`                                                                                                                                                                                            |
@@ -67,7 +68,7 @@ No `IMcp*` test fakes exist.
 | `McpUnknownNotificationPolicy`, `McpClientOptions`, client `ServiceExtensions`                                                                                                                                                                                                                              | `mcp.md:382-474`         |
 | server `ServiceExtensions`                                                                                                                                                                                                                                                                                  | `mcp.md:476-494`         |
 | first-party class table                                                                                                                                                                                                                                                                                     | `mcp.md:296-306` (prose) |
-| ~20 value types (`McpTransportProfile`, `McpAuthenticationReference`, `McpEndpointBounds`, `McpResponse`, `McpNotification`, `McpSessionState`, `McpInitializeResult`, descriptors, `McpCapabilitySet`, `McpPeerContext`, `McpServerEndpoint`, transport factory interfaces, endpoint options, resolutions) | NO-SPEC                  |
+| ~20 value types (`McpResponse`, `McpNotification`, `McpSessionState`, `McpInitializeResult`, descriptors, `McpCapabilitySet`, `McpPeerContext`, `McpServerEndpoint`, transport factory interfaces, endpoint options, resolutions) | NO-SPEC. `McpTransportProfile`, `McpAuthenticationReference`, and `McpEndpointBounds` landed in WS6-C1a; see the interim block below the contract shape in `mcp.md`. |
 | Simple `WithMcpServer`, `AddMcpToolSource`                                                                                                                                                                                                                                                                  | NO-SPEC                  |
 
 ## Chunks
@@ -81,6 +82,17 @@ No `IMcp*` test fakes exist.
   `McpTransportProfile` (closed Stdio/Http), `McpAuthenticationReference`,
   `McpEndpointBounds`, `McpCapabilityProfile`, `McpClientOpenRequest`; tests.
   Snapshot: Mcp.
+- Landed: types live in `AgentKit.Mcp`, not the spec block's `AgentKit`
+  namespace, because `mcp.md` places them in the MCP packages. Guid and string
+  identities reject empty values. Revisions are positive generations.
+  `McpTransportProfile` is closed over stdio (command plus arguments, no
+  environment) and HTTP (absolute credential-free HTTP(S) URI).
+  `McpAuthenticationReference` stores a credential-profile key and audience,
+  never a secret. `McpEndpointBounds` copies the positive limits later owned
+  by `McpClientOptions`. Profiles accept only `McpCapabilityIds.Client`.
+  `McpClientOpenRequest` rejects an endpoint key that the profile does not
+  list. No production consumer yet. The compatibility snapshot is still
+  outstanding until the shared solution build is green.
 
 ### WS6-C1b: Session, request, response contracts
 

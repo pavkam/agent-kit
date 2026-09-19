@@ -11,7 +11,7 @@ generic conformance fixture.
 
 ## Progress
 
-- [ ] WS16-C1 `IConformanceFixture<T>` and `ConformanceCapabilities`
+- [x] WS16-C1 `IConformanceFixture<T>` and `ConformanceCapabilities`
 - [ ] WS16-C2 issuer, validation-policy, deriver conformance suites
 - [ ] WS16-C3 admission revalidation in the facade
 - [ ] WS16-C4 `IdentityAssertion` ingress overloads
@@ -29,7 +29,7 @@ generic conformance fixture.
 | revocation source                                              | MISSING, NO-SPEC              | `identity.md:118-120` prose                                                                                                        |
 | normalizer/resolver conformance                                | EXISTS                        | `Conformance/IdentityNormalizerConformanceTests.cs` (5 cases)                                                                      |
 | issuer, validation-policy, deriver conformance                 | MISSING                       | –                                                                                                                                  |
-| `IConformanceFixture<TContract>`, `ConformanceCapabilities`    | MISSING                       | existing fixtures are bespoke interfaces                                                                                           |
+| `IConformanceFixture<TContract>`, `ConformanceCapabilities`    | EXISTS-UNWIRED (WS16-C1)      | `Conformance/IConformanceFixture.cs`, `ConformanceCapabilities.cs`; existing fixtures are not retrofitted |
 
 Test doubles: issuers (`ConformanceIssuer`, `GatedIssuer`,
 `MutableDescriptorIssuer`, `TestIssuer`), validation policies (3), normalization
@@ -62,6 +62,9 @@ project.
 - Deliverables: `tests/AgentKit.Conformance/IConformanceFixture.cs`,
   `ConformanceCapabilities.cs`; document in `testing-and-evaluation.md`. No
   retrofit of existing fixtures.
+- Landed: both optional flags default to true. Suites may skip only a case
+  documented as optional for a flag the fixture set false before use. No
+  existing fixture was converted.
 
 ### WS16-C2: Issuer, validation-policy, deriver suites
 

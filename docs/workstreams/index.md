@@ -26,9 +26,9 @@ hours, L three to six hours.
 | 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | –                    |
 | 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1                   |
 | 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | –                    |
-| 5   | [Host access](host-access.md)                                         | 3          | 18     | –                    |
-| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | –                    |
-| 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | –                    |
+| 5   | [Host access](host-access.md)                                         | 3          | 18     | C1                   |
+| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a                  |
+| 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1                   |
 | 8   | [Structured output](structured-output.md)                             | 2, 7       | 12     | –                    |
 | 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | –                    |
 | 10  | [Context compaction](context-compaction.md)                           | 7, 9       | 8      | –                    |
@@ -37,7 +37,7 @@ hours, L three to six hours.
 | 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12      | 12     | –                    |
 | 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9       | 15     | –                    |
 | 15  | [Artifacts](artifacts.md)                                             | 4, 12      | 9      | –                    |
-| 16  | [Identity ingress](identity-ingress.md)                               | 1          | 5      | –                    |
+| 16  | [Identity ingress](identity-ingress.md)                               | 1          | 5      | C1                   |
 | 17  | [Observability](observability.md)                                     | 1          | 9      | –                    |
 | 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17       | 11     | –                    |
 | 19  | [Evaluation](evaluation.md)                                           | 1, 18      | 8      | –                    |

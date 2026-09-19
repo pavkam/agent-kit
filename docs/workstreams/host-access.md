@@ -14,7 +14,7 @@ concept specifications for access bounds, egress, and sandboxing.
 
 ## Progress
 
-- [ ] WS5-C1 arm64 Linux `O_NOFOLLOW`/`O_DIRECTORY`
+- [x] WS5-C1 arm64 Linux `O_NOFOLLOW`/`O_DIRECTORY`
 - [ ] WS5-C2 file-system value types
 - [ ] WS5-C3 file-system capability contracts
 - [ ] WS5-C4a `OperatingSystemFileReader`
@@ -49,7 +49,7 @@ Abstractions live under `src/AgentKit.Abstractions/Host/`.
 | `FileTarget`, `ResolvedFileTarget`, `AuthorizedFileRead/Write`, `FileWriteContent`, `FileReadBounds`, `FileWriteDisposition`, `FileWriteOutcomeKind`, `FileWriteSuccess`, `IFileReader`, `IFileReadHandle`, `IFileWriter`, `IFileMetadataReader`, `IFileChangeSource`, `ITemporaryFileStore`, `IFileSystemSelector`, `FileSystemCapabilities`, `FileSystemProfileKey`, `IDirectoryCreator`, `OperatingSystemFileReader/Writer` | MISSING                                                                                                                                                                                                   | `:127-235,385-425`                                                                                           |
 | keyed registration `AddOperatingSystemFileSystem(FileSystemProfileKey, …)`, `AddInMemoryFileSystem(key, …)`                                                                                                                                                                                                                                                                                                                    | MISSING; unkeyed `AddSandboxedFileSystem(root, …)`, `AddInMemoryFileSystem(Action?)`                                                                                                                      | `:465-486`                                                                                                   |
 | audit in FS/Network/Processes                                                                                                                                                                                                                                                                                                                                                                                                  | MISSING (zero `ISecurityAuditDispatcher` references)                                                                                                                                                      | `:407-408`                                                                                                   |
-| arm64 constants                                                                                                                                                                                                                                                                                                                                                                                                                | GAP: Linux `DirectoryFlag=0x00010000`, `NoFollowFlag=0x00020000` (x86_64) with no arch branch at `SandboxedFileSystem.cs:983,987`                                                                         | –                                                                                                            |
+| arm64 constants                                                                                                                                                                                                                                                                                                                                                                                                                | EXISTS (WS5-C1) | `PosixOpenFlags` selects aarch64 `O_DIRECTORY=0x4000` / `O_NOFOLLOW=0x8000`; macOS and other Linux arches keep their previous constants. `SandboxedFileSystem` open flags call it. |
 
 Test doubles: `IFileSystem` 4 (`ReplacementFileSystem` ×2, `FakeFileSystem` ×2),
 `IDirectoryReader` 1, `IFileGlobber` 1, `IFileContentSearcher` 1,
@@ -127,6 +127,11 @@ Conformance suites for all three boundaries are MISSING.
 - Deliverables: `RuntimeInformation.ProcessArchitecture` branch (aarch64 Linux:
   `O_DIRECTORY=0x4000`, `O_NOFOLLOW=0x8000`); behavior tests per OS/arch in
   `tests/AgentKit.FileSystem.Tests`.
+- Landed: `PosixOpenFlags` is the single flag table. macOS wins over arm64.
+  Linux arm64 uses `0x4000`/`0x8000`; other Linux architectures keep the
+  historical x86_64 constants, which also match riscv64. Tests cover each
+  branch without requiring that host. Existing symlink-rejection tests still
+  exercise the live flags on the current OS.
 
 ### WS5-C2: File-system value types
 
