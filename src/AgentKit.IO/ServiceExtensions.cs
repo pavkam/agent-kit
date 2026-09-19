@@ -93,6 +93,46 @@ public static class ServiceExtensions
             });
         }
 
+        /// <summary>Registers the first-party session-backed <see cref="IInputQueue"/> for the currently compiled run scope.</summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="SessionBackedInputQueue"/> is bound to one run's compiled <see cref="SessionExecutionCapability"/>
+        /// and is therefore scoped, not singleton: it must be resolved from a scope that also resolves the exact
+        /// <see cref="SessionExecutionCapability"/> for that run. No first-party engine composition registers
+        /// <see cref="SessionExecutionCapability"/> as a resolvable service today; a host that calls this method must
+        /// register it in the same scope (for example, from a compiled per-run <c>AgentRunPlan</c>) before resolving
+        /// <see cref="IInputQueue"/>, or resolution fails with <see cref="InvalidOperationException"/>.
+        /// </para>
+        /// <para>
+        /// <see cref="AgentIOOptions"/> is bound through the standard options pattern; this registration does not
+        /// validate it beyond the type's own property defaults, since every bound value already has a safe default.
+        /// </para>
+        /// </remarks>
+        /// <param name="configure">An optional delegate that adjusts queue bounds, or <see langword="null"/> to keep this package's documented defaults.</param>
+        /// <returns>The same service collection for composition chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection AddSessionBackedInputQueue(Action<AgentIOOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            var options = services.AddOptions<AgentIOOptions>();
+            if (configure is not null)
+            {
+                _ = options.Configure(configure);
+            }
+
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>, GuidSessionEntryIdGenerator>();
+            services.TryAddSingleton<IIdentifierGenerator<MessageId>, GuidMessageIdGenerator>();
+            services.TryAddScoped<IInputQueue>(static provider => new SessionBackedInputQueue(
+                provider.GetRequiredService<ISessionCoordinator>(),
+                provider.GetRequiredService<SessionExecutionCapability>(),
+                provider.GetRequiredService<IIdentifierGenerator<SessionEntryId>>(),
+                provider.GetRequiredService<IIdentifierGenerator<MessageId>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<AgentIOOptions>>()));
+            return services;
+        }
+
         /// <summary>Registers the protected human-question broker over an application-provided channel.</summary>
         /// <returns>The same service collection for composition chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

@@ -3,6 +3,12 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.IO
 {
+    public sealed class AgentIOOptions
+    {
+        public AgentIOOptions() { }
+        public int MaximumFollowUpPromotionsPerIdleBoundary { get; set; }
+        public int MaximumPendingInputsPerLane { get; set; }
+    }
     public sealed class AgentRunOutputPublisher : AgentKit.IOutputPublisher, System.IAsyncDisposable
     {
         public AgentRunOutputPublisher(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, System.TimeProvider timeProvider, AgentKit.IO.RunOutputPublisherOptions? options = null, Microsoft.Extensions.Logging.ILogger<AgentKit.IO.AgentRunOutputPublisher>? logger = null) { }
@@ -39,7 +45,14 @@ namespace AgentKit.IO
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputPromotionPolicy() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(System.Action<AgentKit.IO.InputCoordinatorOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(AgentKit.IO.InputCoordinatorOptions options) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionBackedInputQueue(System.Action<AgentKit.IO.AgentIOOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
         }
+    }
+    public sealed class SessionBackedInputQueue : AgentKit.IInputQueue
+    {
+        public SessionBackedInputQueue(AgentKit.ISessionCoordinator session, AgentKit.SessionExecutionCapability capability, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.IO.AgentIOOptions>? options = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AppendAsync(AgentKit.InputAdmissionRequest request, AgentKit.AdmissionId admissionId, AgentKit.AgentInput effectiveInput, AgentKit.InputPreprocessingManifest preprocessing, System.DateTimeOffset admittedAt, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.InputPromotionResult> PromoteAsync(AgentKit.InputPromotionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
 }
