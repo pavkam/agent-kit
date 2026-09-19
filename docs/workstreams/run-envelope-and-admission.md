@@ -28,7 +28,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C1 lane identity and live revision in the loop
 - [x] WS1-C2 scoped `IInputCoordinator` and `SessionExecutionCapability`
 - [x] WS1-C3 loop promotes input at three boundaries
-- [ ] WS1-C4 `IRunEventSink`, registration, backpressure contracts
+- [x] WS1-C4 `IRunEventSink`, registration, backpressure contracts
 - [ ] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
 - [ ] WS1-C6 loop publishes `RunEvent`s
 - [ ] WS1-C7 unified outcome family
@@ -131,9 +131,11 @@ Two correctness fixes were required to land this without violating
 
 ### IO package
 
-`AddAgentIO`, `DefaultOutputPublisher`, `IOutputBackpressurePolicy`,
-`IRunEventSink`, `RunEventSinkRegistration`, `AddRunEventSink<T>` are all
-MISSING. `AgentIOOptions` exists minimally (`IO/AgentIOOptions.cs`).
+`IRunEventSink`, `RunEventSinkRegistration`, `RunEventDelivery`,
+`IOutputBackpressurePolicy`, `BackpressureDecision` exist in
+`src/AgentKit.Abstractions/Results/` (WS1-C4) but have no production caller yet.
+`AddAgentIO`, `DefaultOutputPublisher`, `AddRunEventSink<T>` remain MISSING
+(WS1-C5). `AgentIOOptions` exists minimally (`IO/AgentIOOptions.cs`).
 `RunEventHub` is internal with a per-run constructor (`IO/RunEventHub.cs:20`)
 and is not DI-constructible.
 
@@ -225,8 +227,8 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
 | `AgentRunPlan`, `IAgentRunPlanCompiler`, `IAgentRunScopeFactory`, `AgentRunScopeLease`           | `composition-and-configuration.md:482-536`   | SPEC; `AgentOptionalCapabilitySelection` from WS18 |
 | `IAgentRunScopeValidator`                                                                        | –                                            | NO-SPEC                                            |
 | `AgentRunOptions` as narrowing overrides                                                         | prose `composition-and-configuration.md:987` | NO-SPEC                                            |
-| `DefaultOutputPublisher` ctor                                                                    | `input-and-output.md:494-501`                | SPEC; `IOutputBackpressurePolicy` members NO-SPEC  |
-| `AddAgentIO` and related registrations                                                           | `input-and-output.md:531-570`                | SPEC; `RunEventSinkRegistration` members NO-SPEC   |
+| `DefaultOutputPublisher` ctor                                                                    | `input-and-output.md:494-501`                | SPEC; `IOutputBackpressurePolicy` SPEC (WS1-C4)    |
+| `AddAgentIO` and related registrations                                                           | `input-and-output.md:531-570`                | SPEC; `RunEventSinkRegistration` SPEC (WS1-C4)     |
 | `IRunEventSink`                                                                                  | `observability.md:104-109`                   | SPEC                                               |
 | `SteerAsync`, `FollowUpAsync`, `AttachAsync`, `CancelAsync`, `OpenSessionAsync`, abort primitive | prose only                                   | NO-SPEC; design sections required first            |
 | promotion at steps 2/11/12                                                                       | `agent-loop-state-machine.md:56-85`          | SPEC-prose; `InputPromotionRequest` exists         |
@@ -326,6 +328,18 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   C# blocks into `input-and-output.md` first; tests in
   `AgentKit.Abstractions.Tests/Results/`. Snapshot: Abstractions.
 - Open: exact `IOutputBackpressurePolicy` signature.
+- Landed: wrote the NO-SPEC C# blocks into `input-and-output.md` (after the
+  `IAgentRunStream<TOutput>` interface in the normative output-contracts block)
+  plus prose settling the open signature question: `RunEventSinkRegistration`
+  takes a sink name, a `RunEventDelivery`, and a fan-out `Order`;
+  `IOutputBackpressurePolicy.DecideAsync` takes the delivery, how long the
+  attempt has been blocked, and a cancellation token, returning a
+  `BackpressureDecision` (`Wait`, `Drop`, `Disconnect`) — a required sink can
+  only ever be told to `Wait` (enforced by prose, not yet by a runtime check
+  since no caller exists before WS1-C5). One test file,
+  `RunEventSinkRegistrationTests.cs`; the four other new types are an interface
+  and two enums, matching the existing convention that pure interfaces and enums
+  in `Results/` have no dedicated test file. Snapshot: Abstractions.
 
 ### WS1-C5: `DefaultOutputPublisher`, `AddAgentIO`, `AddRunEventSink<T>`
 

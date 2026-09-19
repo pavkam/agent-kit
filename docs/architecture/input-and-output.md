@@ -378,6 +378,32 @@ public interface IAgentRunStream<TOutput> : IAsyncDisposable
 
     Task<AgentRunFinished<TOutput>> Completion { get; }
 }
+
+public enum RunEventDelivery
+{
+    Required,
+    BestEffort
+}
+
+public sealed record RunEventSinkRegistration(
+    string SinkName,
+    RunEventDelivery Delivery,
+    int Order);
+
+public enum BackpressureDecision
+{
+    Wait,
+    Drop,
+    Disconnect
+}
+
+public interface IOutputBackpressurePolicy
+{
+    ValueTask<BackpressureDecision> DecideAsync(
+        RunEventDelivery delivery,
+        TimeSpan blockedFor,
+        CancellationToken cancellationToken = default);
+}
 ```
 
 An expected rejection before run acceptance returns `AgentRunRejected`, without
@@ -438,6 +464,29 @@ A run event's stable protocol identity is the composite `(RunId, Sequence)`.
 Sequence is monotonic within that run and is not a process-global identity;
 publishers, sinks, durable projections, and reconnecting subscribers use the
 same composite for deduplication and resume.
+
+`RunEventSinkRegistration` is how `AddRunEventSink<TSink>` declares one sink's
+stable identity, delivery requirement, and position in the deterministic fan-out
+order. `SinkName` is unique per registered publisher composition; registering
+the same name twice with different delivery or a different implementation type
+fails build rather than silently replacing the earlier registration.
+`RunEventDelivery.Required` means the publisher's acceptance boundary
+(`PublishAsync`, `CompleteAsync`) does not complete until that sink has durably
+accepted the event; `RunEventDelivery.BestEffort` means the publisher may
+isolate that sink's failure or backpressure without blocking other sinks or the
+run.
+
+`IOutputBackpressurePolicy` is consulted whenever a delivery attempt to one sink
+or subscriber cannot proceed immediately — a fan-out buffer at capacity or a
+`ReadAllAsync` consumer that has stopped pulling. `BackpressureDecision.Wait`
+retries after the caller's own backoff; a required sink can only ever be told to
+`Wait` or have the run fail closed, since `Drop` would silently lose durable
+evidence and `Disconnect` would silently stop a required delivery without
+failing the run. Only a best-effort sink or a live subscriber may be told `Drop`
+(skip this event, continue the stream) or `Disconnect` (close the subscription;
+the run itself is unaffected). The policy receives how long the attempt has
+already been blocked so it can escalate from `Wait` to `Drop` or `Disconnect`
+under a configured deadline rather than blocking indefinitely.
 
 The I/O publisher is the sole sequence allocator for one run. For recoverable
 runs it reserves bounded sequence ranges through the session mutation boundary

@@ -1224,6 +1224,12 @@ namespace AgentKit
         public TRequest Request { get; }
         public AgentKit.SessionStoreKey StoreKey { get; }
     }
+    public enum BackpressureDecision
+    {
+        Wait = 0,
+        Drop = 1,
+        Disconnect = 2,
+    }
     public sealed class BeforeModelRequestEventArgs : AgentKit.AgentScopedHookEventArgs
     {
         public BeforeModelRequestEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.InRunOperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId, int turn, AgentKit.LlmRequestContext request) { }
@@ -4018,6 +4024,10 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.OAuthTokenProviderCredential> GetAccessTokenAsync(System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IOutputBackpressurePolicy
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.BackpressureDecision> DecideAsync(AgentKit.RunEventDelivery delivery, System.TimeSpan blockedFor, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IOutputDefinitionResolver
     {
         System.Threading.Tasks.ValueTask<AgentKit.OutputDefinitionResult> ResolveAsync(AgentKit.OutputDefinitionRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -4079,6 +4089,10 @@ namespace AgentKit
     public interface IRunContinuationPolicy
     {
         System.Threading.Tasks.ValueTask<AgentKit.RunContinuationDecision> DecideAsync(AgentKit.RunContinuationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IRunEventSink
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.RunEvent runEvent, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IRunStartedHook : AgentKit.IHook
     {
@@ -6554,10 +6568,22 @@ namespace AgentKit
         public AgentKit.SessionId SessionId { get; }
         public AgentKit.TurnId? TurnId { get; }
     }
+    public enum RunEventDelivery
+    {
+        Required = 0,
+        BestEffort = 1,
+    }
     public enum RunEventDurability
     {
         Live = 0,
         Durable = 1,
+    }
+    public sealed class RunEventSinkRegistration : System.IEquatable<AgentKit.RunEventSinkRegistration>
+    {
+        public RunEventSinkRegistration(string sinkName, AgentKit.RunEventDelivery delivery, int order) { }
+        public AgentKit.RunEventDelivery Delivery { get; }
+        public int Order { get; }
+        public string SinkName { get; }
     }
     public sealed class RunFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunFailed>
     {
