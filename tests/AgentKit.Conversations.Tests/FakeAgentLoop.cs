@@ -25,13 +25,13 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
     }
 
     /// <summary>Gets the most recent request observed.</summary>
-    public AgentRunRequest? LastRequest { get; private set; }
+    public AgentLoopRunRequest? LastRequest { get; private set; }
 
     /// <summary>Gets the collaborator bundle supplied with the most recent call.</summary>
     public AgentRunServices? LastServices { get; private set; }
 
     /// <summary>Gets or sets the result factory used to build the run result; a trivial idle-turn result by default.</summary>
-    public Func<AgentRunRequest, AgentLoopResult>? ResultFactory { get; set; }
+    public Func<AgentLoopRunRequest, AgentLoopResult>? ResultFactory { get; set; }
 
     /// <summary>Gets or sets a gate <see cref="RunAsync"/> awaits before completing, for serialization tests.</summary>
     public TaskCompletionSource? Gate { get; set; }
@@ -43,7 +43,7 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
     public AgentRunEvent? ProgressEvent { get; set; }
 
     public async Task<AgentLoopResult> RunAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default)
     {
@@ -72,7 +72,7 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
             : DefaultResult(request);
     }
 
-    private static AgentLoopResult DefaultResult(AgentRunRequest request) =>
+    private static AgentLoopResult DefaultResult(AgentLoopRunRequest request) =>
         new(
             request.AgentId,
             request.SessionId,

@@ -254,7 +254,7 @@ public sealed class ServiceExtensionsTests
     private sealed class ScriptedRunContinuationPolicyHostLoop: IAgentLoop
     {
         public Task<AgentLoopResult> RunAsync(
-            AgentRunRequest request,
+            AgentLoopRunRequest request,
             AgentRunServices services,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }

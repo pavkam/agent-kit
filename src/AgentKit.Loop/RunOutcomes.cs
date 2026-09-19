@@ -17,7 +17,7 @@ using System.Text.Json;
 /// <see cref="RunLimitFailure"/> is scoped to genuine budget-authority evidence: its <see cref="RunLimitFailure.Limit"/>
 /// is a <see cref="BudgetLimitFailure"/>, which always names a real <see cref="BudgetScopeId"/> a reservation was
 /// evaluated against. A loop-configured ceiling the budget authority never reserved against — the request's own
-/// <see cref="AgentRunRequest.MaxTurns"/>, or a provider's own generation-length ceiling — has no such scope, and
+/// <see cref="AgentLoopRunRequest.MaxTurns"/>, or a provider's own generation-length ceiling — has no such scope, and
 /// fabricating one would misrepresent the cause. Those two cases settle as <see cref="RunPolicyHalted"/> and
 /// <see cref="RunFailed"/> respectively instead; see <see cref="TurnLimitReached"/> and
 /// <see cref="OutputLengthLimitReached"/> for the rationale specific to each.
@@ -47,7 +47,7 @@ internal static class RunOutcomes
         new RunCancelled(new CancellationReason(Error(AgentErrorCodes.Cancelled, safeMessage)));
 
     /// <summary>
-    /// Builds the outcome for a run halted because it reached <see cref="AgentRunRequest.MaxTurns"/> while tool
+    /// Builds the outcome for a run halted because it reached <see cref="AgentLoopRunRequest.MaxTurns"/> while tool
     /// calls were still pending resolution.
     /// </summary>
     /// <param name="maxTurns">The configured maximum number of turns that was reached.</param>

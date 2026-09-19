@@ -7,7 +7,7 @@ namespace AgentKit.Tools;
 /// <remarks>
 /// <see cref="ToolDescriptor"/> and <see cref="LlmToolDefinition"/> describe the same tool for two different
 /// audiences: the catalog/authorization pipeline and a chat model request, respectively. Nothing else in
-/// <c>AgentKit.Abstractions</c> converts between them, so every host composing an <see cref="AgentRunRequest"/>
+/// <c>AgentKit.Abstractions</c> converts between them, so every host composing an <see cref="AgentLoopRunRequest"/>
 /// from a resolved <see cref="IToolCatalog"/> would otherwise hand-write this exact mapping.
 /// </remarks>
 public static class ToolDescriptorExtensions

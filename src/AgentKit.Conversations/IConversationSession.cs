@@ -9,7 +9,7 @@ namespace AgentKit.Conversations;
 /// Composing a single working conversational turn otherwise requires an application to call
 /// <c>ISessionCoordinator</c> to create and load a session, capture authorization through
 /// <c>ISecurityProfileSelector</c> twice (once to admit the user's message, once to authorize the run), append a
-/// <c>MessageSessionEntry</c> itself, build an <c>AgentRunRequest</c> from its own instructions and tools, and run
+/// <c>MessageSessionEntry</c> itself, build an <c>AgentLoopRunRequest</c> from its own instructions and tools, and run
 /// <c>IAgentLoop</c> directly — all of it bypassing the <c>AgentEngine</c>/<c>Agent</c> facade, which has no method
 /// to admit a message into a session before starting a run. <see cref="IConversationSession"/> performs all of
 /// that consistently for the common case of one long-lived, single-branch conversation against one composed agent.

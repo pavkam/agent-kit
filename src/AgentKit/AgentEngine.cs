@@ -713,7 +713,7 @@ public sealed class AgentEngine: IAsyncDisposable
     }
 
     /// <summary>Builds the loop request from the pinned publication, preferring the configuration-bearing constructor.</summary>
-    private static AgentRunRequest BuildRunRequest(
+    private static AgentLoopRunRequest BuildRunRequest(
         AgentDefinition definition,
         AgentRunProfilePublication pinnedPublication,
         SessionId sessionId,
@@ -724,10 +724,10 @@ public sealed class AgentEngine: IAsyncDisposable
         int maxTurns,
         TimeSpan attemptTimeout) =>
         pinnedPublication.Configuration is { } configuration
-            ? new AgentRunRequest(
+            ? new AgentLoopRunRequest(
                 definition, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
                 configuration, maxTurns, attemptTimeout, definition.Extensions)
-            : new AgentRunRequest(
+            : new AgentLoopRunRequest(
                 definition.Id, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
                 definition.Models, definition.ModelRequirements, definition.Instructions, definition.Tools,
                 definition.ToolChoice, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)

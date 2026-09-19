@@ -230,7 +230,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <inheritdoc/>
     public async Task<AgentLoopResult> RunAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default)
     {
@@ -317,7 +317,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// admitted input) releases against the revision it actually last observed.
     /// </remarks>
     private async Task ReleaseLaneAsync(
-        AgentRunRequest request, AgentRunServices services, LoopLaneAdmission admission, LoopLaneState laneState, SessionVersion finalVersion)
+        AgentLoopRunRequest request, AgentRunServices services, LoopLaneAdmission admission, LoopLaneState laneState, SessionVersion finalVersion)
     {
         Debug.Assert(request is not null, "A validated run request is required to release its lane.");
         Debug.Assert(admission is not null, "Lane-release evidence is required.");
@@ -370,7 +370,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="cancellationToken">The caller's cancellation.</param>
     /// <returns>The complete result of the run.</returns>
     private async Task<AgentLoopResult> RunCoreAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         OperationId operationId,
         Activity? runActivity,
@@ -606,7 +606,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// identities, so selection diagnostics always correlate to one real attempt.
     /// </remarks>
     private async Task<ModelResolution> ResolveModelAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         OperationId operationId,
         CancellationToken cancellationToken)
@@ -706,7 +706,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     private async Task<TurnOutcome> RunTurnAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         ModelDescriptor model,
         ILlmModel llmModel,
@@ -946,7 +946,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     private async Task<TurnOutcome> SettleCompletedAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         ModelDescriptor model,
         MessageCursor sourceCursor,
@@ -1162,7 +1162,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </para>
     /// </remarks>
     private async Task<TurnOutcome> ValidateOutputAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -1276,7 +1276,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// Attempts one atomic input-promotion transition at a safe loop boundary, best-effort: a rejection,
     /// stale-evidence conflict, or fault is logged and treated as nothing to promote rather than failing the run.
     /// </summary>
-    /// <param name="request">The run being driven; promotion is skipped entirely when it carries no <see cref="AgentRunRequest.LaneAdmission"/>.</param>
+    /// <param name="request">The run being driven; promotion is skipped entirely when it carries no <see cref="AgentLoopRunRequest.LaneAdmission"/>.</param>
     /// <param name="services">The compiled per-run collaborator bundle; promotion is skipped entirely when <see cref="AgentRunServices.Input"/> is <see langword="null"/>.</param>
     /// <param name="laneState">
     /// The run's tracked lane identity and current total-state revision. Not mutated here on a successful
@@ -1299,7 +1299,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// anything the store already committed.
     /// </remarks>
     private async Task<PromotionAttemptOutcome?> TryPromoteInputAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         LoopLaneState laneState,
         PromotionBoundary boundary,
@@ -1404,7 +1404,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The advanced cursor, newly visible messages in sequence order, and the last entry's identity; <see langword="null"/> when the read failed.</returns>
     private async Task<(MessageCursor Cursor, ImmutableArray<AgentMessage> Messages, SessionEntryId? LastEntryId)?> LoadEntriesAfterAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         SessionOperationContext sessionContext,
         MessageCursor fromCursor,
@@ -1505,7 +1505,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// already-committed assistant message never leaves a call without its exactly-one result.
     /// </summary>
     private async Task<TurnOutcome> SettleRejectedAtTurnLimitAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -1555,7 +1555,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// interleaved entries are returned so the next turn's history reflects them.
     /// </summary>
     private async ValueTask<AppendAttempt> CommitToolMessageAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -1613,7 +1613,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     private async Task<TurnOutcome> InvokeToolsAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -1905,7 +1905,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </para>
     /// </remarks>
     private async ValueTask<TurnOutcome> DecideContinuationAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         InRunOperationCorrelation turnCorrelation,
         int turn,
@@ -2210,7 +2210,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="cancellationToken">Bounds delivery; cancellation is isolated like every observer failure.</param>
     /// <returns>An operation completing after delivery succeeds or is safely dropped.</returns>
     private async ValueTask ObserveAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunEvent runEvent,
         CancellationToken cancellationToken)
     {
@@ -2232,8 +2232,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     /// <summary>
-    /// Delivers optional run progress to the legacy <see cref="AgentRunRequest.Observer"/>, exactly as
-    /// <see cref="ObserveAsync(AgentRunRequest, AgentRunEvent, CancellationToken)"/> does, and additionally
+    /// Delivers optional run progress to the legacy <see cref="AgentLoopRunRequest.Observer"/>, exactly as
+    /// <see cref="ObserveAsync(AgentLoopRunRequest, AgentRunEvent, CancellationToken)"/> does, and additionally
     /// translates a streamed model content fragment into a <see cref="ContentDeltaEvent"/> published through
     /// <see cref="AgentRunServices.Publisher"/> when one is composed.
     /// </summary>
@@ -2250,7 +2250,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// required sink failed, which the run must observe rather than silently continue past.
     /// </remarks>
     private async ValueTask ObserveAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         LoopLaneState laneState,
         ConversationId? conversationId,
@@ -2342,7 +2342,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="request">The run whose observer receives the event.</param>
     /// <param name="runEvent">The immutable event to deliver.</param>
     /// <returns>An operation completing after delivery succeeds, times out, or is safely dropped.</returns>
-    private async ValueTask ObserveDetachedAsync(AgentRunRequest request, AgentRunEvent runEvent)
+    private async ValueTask ObserveDetachedAsync(AgentLoopRunRequest request, AgentRunEvent runEvent)
     {
         Debug.Assert(request is not null, "A validated run request is required for observer delivery.");
         if (request.Observer is null)
@@ -2509,7 +2509,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     private async Task<TurnOutcome> SettleInterruptedAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         ModelDescriptor model,
         MessageCursor sourceCursor,
@@ -2624,7 +2624,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// entry. The settlement never invokes a tool.
     /// </remarks>
     private async ValueTask<(HistoryView History, AgentRunOutcome? Failure)> SettleDanglingToolCallsAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         SessionOperationContext sessionContext,
         InRunOperationCorrelation runCorrelation,
@@ -2910,7 +2910,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </returns>
     private async ValueTask<(SecurityAuthorizationContext? Authorization, AgentRunOutcome? Failure)>
         CaptureAuthorizationAsync(
-            AgentRunRequest request,
+            AgentLoopRunRequest request,
             AgentRunServices services,
             InRunOperationCorrelation correlation,
             CancellationToken cancellationToken)
@@ -3010,7 +3010,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// request fits. The checkpoint is a durable session entry, so later runs benefit even when this one does not.
     /// </remarks>
     private async Task<HistoryView> CompactUnderPressureAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         ICompactor compactor,
         SessionOperationContext sessionContext,
@@ -3108,7 +3108,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     };
 
     private static AgentLoopResult BuildResult(
-        AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion, ValidatedOutput? output = null) =>
+        AgentLoopRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion, ValidatedOutput? output = null) =>
         new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion, output);
 
     /// <summary>

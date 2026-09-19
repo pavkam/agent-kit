@@ -6,7 +6,7 @@ namespace AgentKit;
 /// <summary>Names the durable execution lane an admission boundary accepted this run on.</summary>
 /// <remarks>
 /// <para>
-/// When present on an <see cref="AgentRunRequest"/>, this bundle tells the loop it is driving a run that a
+/// When present on an <see cref="AgentLoopRunRequest"/>, this bundle tells the loop it is driving a run that a
 /// caller already admitted through the session lane protocol (<c>ProvisionLaneAsync</c>, <c>AdmitInputAsync</c>,
 /// <c>AcceptRunAsync</c>), rather than one whose only durable record is whatever the loop itself appends. The loop
 /// uses <see cref="ExecutionLaneId"/> for every session operation it performs so its commits advance the same

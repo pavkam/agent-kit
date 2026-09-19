@@ -25,9 +25,9 @@ using System.Diagnostics;
 /// boundary yet.
 /// </para>
 /// </remarks>
-public sealed record AgentRunRequest
+public sealed record AgentLoopRunRequest
 {
-    /// <summary>Initializes a new instance of the <see cref="AgentRunRequest"/> record.</summary>
+    /// <summary>Initializes a new instance of the <see cref="AgentLoopRunRequest"/> record.</summary>
     /// <param name="agentId">The agent this run belongs to.</param>
     /// <param name="sessionId">The session this run reads from and commits to.</param>
     /// <param name="branchId">The branch this run reads from and commits to.</param>
@@ -59,7 +59,7 @@ public sealed record AgentRunRequest
     /// <paramref name="maxTurns"/> is not positive, or
     /// <paramref name="attemptTimeout"/> is not positive.
     /// </exception>
-    public AgentRunRequest(
+    public AgentLoopRunRequest(
         AgentId agentId,
         SessionId sessionId,
         BranchId branchId,
@@ -121,7 +121,7 @@ public sealed record AgentRunRequest
     /// <exception cref="ArgumentNullException">A required reference is null.</exception>
     /// <exception cref="ArgumentException">The definition or configuration revision differs from authorization evidence, or an inherited request invariant is violated.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An inherited identity, count, or timeout invariant is violated.</exception>
-    public AgentRunRequest(
+    public AgentLoopRunRequest(
         AgentDefinition agent,
         SessionId sessionId,
         BranchId branchId,
@@ -427,7 +427,7 @@ public sealed record AgentRunRequest
     }
 
     /// <inheritdoc/>
-    public bool Equals(AgentRunRequest? other) =>
+    public bool Equals(AgentLoopRunRequest? other) =>
         other is not null
         && AgentId.Equals(other.AgentId)
         && SessionId.Equals(other.SessionId)

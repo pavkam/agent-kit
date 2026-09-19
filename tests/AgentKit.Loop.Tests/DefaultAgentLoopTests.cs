@@ -1589,7 +1589,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenExactEvidenceIsPresent_PropagatesSnapshotAndUsesAgentInsteadOfMutableMirrors()
     {
-        // AgentRunRequest's ModelPolicy/Instructions init accessors now reject any value that
+        // AgentLoopRunRequest's ModelPolicy/Instructions init accessors now reject any value that
         // diverges from the pinned Agent's own (see AgentRunRequestTests), so the request can no
         // longer be constructed in a "poisoned" state to prove the loop ignores the mirrors at run
         // time; the mirrors are provably identical to Agent's own values for every request that
@@ -3930,7 +3930,7 @@ public sealed class DefaultAgentLoopTests
         exception.ShouldBeSameAs(fault);
     }
 
-    private (AgentRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
+    private (AgentLoopRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
     {
         var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
         var acceptedCorrelation = new InRunOperationCorrelation(

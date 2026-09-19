@@ -568,7 +568,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
         var runAuthorization = await CaptureAuthorizationAsync(_sessionId, correlation, cancellationToken).ConfigureAwait(false);
         var request = (_agent, _configuration) is ({ } agent, { } configuration)
-            ? new AgentRunRequest(
+            ? new AgentLoopRunRequest(
                 agent,
                 _sessionId.Value,
                 _branchId,
@@ -580,7 +580,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 _maxTurns,
                 _attemptTimeout,
                 ExtensionData.Empty)
-            : new AgentRunRequest(
+            : new AgentLoopRunRequest(
                 _agentId,
                 _sessionId.Value,
                 _branchId,

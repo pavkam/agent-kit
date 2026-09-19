@@ -21,7 +21,7 @@ internal sealed class ScopedRecordingAgentLoop: IAgentLoop
 
     /// <inheritdoc/>
     public Task<AgentLoopResult> RunAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default)
     {

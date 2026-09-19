@@ -9,7 +9,7 @@ namespace AgentKit.Loop;
 /// Every session operation the loop performs for one run — the history load, every turn's context, every commit,
 /// and the eventual continuation decision and lane release — must agree on exactly which lane they are operating
 /// against and exactly which revision of that lane's installed state they last observed. When the run was durably
-/// admitted through the session lane protocol (<see cref="AgentRunRequest.LaneAdmission"/> is not
+/// admitted through the session lane protocol (<see cref="AgentLoopRunRequest.LaneAdmission"/> is not
 /// <see langword="null"/>), both facts come from that admission: <see cref="ExecutionLaneId"/> is the lane
 /// acceptance installed, and the initial <see cref="OperationStateRevision"/> is the revision acceptance recorded.
 /// When the run carries no admission — a caller driving the loop directly, outside the engine's lane protocol —

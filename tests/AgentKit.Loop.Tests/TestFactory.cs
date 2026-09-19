@@ -40,7 +40,7 @@ internal static class TestFactory
     public static ModelCatalogSnapshot Catalog(params ModelDescriptor[] models) =>
         new(new ModelCatalogVersion(1), [.. models]);
 
-    public static AgentRunRequest RunRequest(
+    public static AgentLoopRunRequest RunRequest(
         AgentId agentId,
         SessionId sessionId,
         BranchId branchId,
@@ -53,7 +53,7 @@ internal static class TestFactory
         var identity = Identity();
         var correlation = new InRunOperationCorrelation(
             new OperationId(Guid.NewGuid()), selectedRunId, turnId: null);
-        return new AgentRunRequest(
+        return new AgentLoopRunRequest(
             agentId,
             sessionId,
             branchId,
@@ -73,7 +73,7 @@ internal static class TestFactory
     }
 
     /// <summary>Builds a fully evidenced run request from one exact agent definition.</summary>
-    public static AgentRunRequest ExactRunRequest(
+    public static AgentLoopRunRequest ExactRunRequest(
         AgentId agentId,
         SessionId sessionId,
         BranchId branchId,
@@ -103,7 +103,7 @@ internal static class TestFactory
             profile.ConfigurationFingerprint,
             [],
             []);
-        return new AgentRunRequest(
+        return new AgentLoopRunRequest(
             agent,
             sessionId,
             branchId,

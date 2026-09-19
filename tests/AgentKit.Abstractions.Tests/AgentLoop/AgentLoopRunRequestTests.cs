@@ -3,19 +3,19 @@
 
 namespace AgentKit.Abstractions.Tests.AgentLoop;
 
-/// <summary>Verifies AgentRunRequest behavior and contracts.</summary>
+/// <summary>Verifies AgentLoopRunRequest behavior and contracts.</summary>
 public sealed class AgentRunRequestTests
 {
     [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, null!,
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("identity");
 
     [Fact]
     public void Constructor_WhenAuthorizationIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             null!, LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("authorization");
@@ -23,7 +23,7 @@ public sealed class AgentRunRequestTests
     [Fact]
     public void Constructor_WhenAuthorizationScopeAgentDiffers_ThrowsExactArgumentException()
     {
-        var exception = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        var exception = Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             new AgentId(Guid.NewGuid()), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
@@ -32,70 +32,70 @@ public sealed class AgentRunRequestTests
 
     [Fact]
     public void Constructor_WhenSessionProfileIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), null!, Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("sessionProfile");
 
     [Fact]
     public void Constructor_WhenModelPolicyIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), null!, ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("modelPolicy");
 
     [Fact]
     public void Constructor_WhenModelRequirementsIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), null!, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("modelRequirements");
 
     [Fact]
     public void Constructor_WhenInstructionsIsDefault_ThrowsExactArgumentException() =>
-        Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, default, [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("instructions");
 
     [Fact]
     public void Constructor_WhenToolsIsDefault_ThrowsExactArgumentException() =>
-        Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], default,
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("tools");
 
     [Fact]
     public void Constructor_WhenToolChoiceIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             null!, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("toolChoice");
 
     [Fact]
     public void Constructor_WhenSettingsIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, null!, 8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("settings");
 
     [Fact]
     public void Constructor_WhenMaxTurnsIsNotPositive_ThrowsExactArgumentOutOfRangeException() =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentOutOfRangeException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 0, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("maxTurns");
 
     [Fact]
     public void Constructor_WhenAttemptTimeoutIsNotPositive_ThrowsExactArgumentOutOfRangeException() =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentOutOfRangeException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.Zero, ExtensionData.Empty)).ParamName.ShouldBe("attemptTimeout");
 
     [Fact]
     public void Constructor_WhenExtensionsIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), Policy(), ModelRequirements.None, [], [],
             LlmToolChoice.Auto, LlmRequestSettings.Default, 8, TimeSpan.FromMinutes(1), null!)).ParamName.ShouldBe("extensions");
@@ -149,14 +149,14 @@ public sealed class AgentRunRequestTests
 
     [Fact]
     public void SecondConstructor_WhenAgentIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             null!, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), LoopTestData.Configuration(),
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("agent");
 
     [Fact]
     public void SecondConstructor_WhenConfigurationIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+        Should.Throw<ArgumentNullException>(() => new AgentLoopRunRequest(
             LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), null!,
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("configuration");
@@ -165,7 +165,7 @@ public sealed class AgentRunRequestTests
     public void SecondConstructor_WhenAgentRevisionDiffersFromAuthorization_ThrowsExactArgumentException()
     {
         var agent = LoopTestData.Definition() with { Revision = new AgentDefinitionRevision(2) };
-        var exception = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        var exception = Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             agent, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), LoopTestData.Configuration(),
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
@@ -176,7 +176,7 @@ public sealed class AgentRunRequestTests
     public void SecondConstructor_WhenConfigurationVersionDiffersFromAuthorization_ThrowsExactArgumentException()
     {
         var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(2), new ContentHash("sha256:test-session-profile"), [], []);
-        _ = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        _ = Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), configuration,
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
@@ -186,7 +186,7 @@ public sealed class AgentRunRequestTests
     public void SecondConstructor_WhenConfigurationFingerprintDiffersFromSessionProfile_ThrowsExactArgumentException()
     {
         var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(1), new ContentHash("sha256:other"), [], []);
-        _ = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+        _ = Should.Throw<ArgumentException>(() => new AgentLoopRunRequest(
             LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
             LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), configuration,
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty));

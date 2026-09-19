@@ -410,14 +410,14 @@ public sealed class AgentEngineBuilderTests
 
         public static int ConstructorCalls { get; set; }
 
-        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgentLoopResult> RunAsync(AgentLoopRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class DisposableAgentLoop: IAgentLoop, IDisposable
     {
         public int DisposeCount { get; private set; }
 
-        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgentLoopResult> RunAsync(AgentLoopRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public void Dispose() => DisposeCount++;
     }
 

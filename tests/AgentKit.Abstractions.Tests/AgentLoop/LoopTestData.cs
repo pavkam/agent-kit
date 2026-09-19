@@ -70,7 +70,7 @@ internal static class LoopTestData
 
     public static SessionProfileSnapshot SessionProfile() => TestSecurityEvidence.SessionProfile();
 
-    public static AgentRunRequest RunRequest() =>
+    public static AgentLoopRunRequest RunRequest() =>
         new(
             AgentId,
             SessionId,
@@ -109,7 +109,7 @@ internal static class LoopTestData
     public static EffectiveConfigurationSnapshot Configuration() =>
         new(new ConfigurationVersion(1), new ContentHash("sha256:test-session-profile"), [], []);
 
-    public static AgentRunRequest RunRequestFromDefinition() =>
+    public static AgentLoopRunRequest RunRequestFromDefinition() =>
         new(Definition(), SessionId, BranchId, RunId, Identity(), RunAuthorization(), SessionProfile(), Configuration(),
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty);
 

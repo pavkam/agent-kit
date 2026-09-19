@@ -62,7 +62,7 @@ public interface IAgentLoop
     /// <paramref name="cancellationToken"/> was cancelled before this run committed any message.
     /// </exception>
     public Task<AgentLoopResult> RunAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default);
 }

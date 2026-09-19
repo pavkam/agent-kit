@@ -10,7 +10,7 @@ internal sealed class AdmissionRunEffects
     public int Scopes { get; set; }
 
     /// <summary>Gets loop requests in the order they were received.</summary>
-    public List<AgentRunRequest> Requests { get; } = [];
+    public List<AgentLoopRunRequest> Requests { get; } = [];
 
     /// <summary>Gets or sets the exception returned by the scoped loop after recording a request.</summary>
     public Exception? LoopException { get; set; }

@@ -178,13 +178,13 @@ internal static class CompositionTestData
 internal sealed class RecordingAgentLoop: IAgentLoop
 {
     /// <summary>Gets every request this loop received, in call order.</summary>
-    public List<AgentRunRequest> ReceivedRequests { get; } = [];
+    public List<AgentLoopRunRequest> ReceivedRequests { get; } = [];
 
     /// <summary>Gets every compiled per-run collaborator bundle this loop received, in call order.</summary>
     public List<AgentRunServices> ReceivedServices { get; } = [];
 
     public Task<AgentLoopResult> RunAsync(
-        AgentRunRequest request,
+        AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default)
     {

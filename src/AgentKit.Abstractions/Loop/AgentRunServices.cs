@@ -59,7 +59,7 @@ public sealed class AgentRunServices
     /// <param name="runCoordinator">
     /// Backs the local run-ownership lease the composed session store may require, and lets the loop release a
     /// durably admitted run's lane through <see cref="ISessionCoordinator.ReleaseRunAsync"/> when the request
-    /// carries a <see cref="AgentRunRequest.LaneAdmission"/>. <see langword="null"/> when the composition selects
+    /// carries a <see cref="AgentLoopRunRequest.LaneAdmission"/>. <see langword="null"/> when the composition selects
     /// no run coordinator; a request that carries a lane admission then cannot release it.
     /// </param>
     /// <param name="input">
@@ -153,7 +153,7 @@ public sealed class AgentRunServices
     /// <summary>Gets the collaborator that lets the loop release a durably admitted run's lane on settlement.</summary>
     /// <value>
     /// <see langword="null"/> when the composition selects no run coordinator; a request carrying a
-    /// <see cref="AgentRunRequest.LaneAdmission"/> then settles without releasing its lane.
+    /// <see cref="AgentLoopRunRequest.LaneAdmission"/> then settles without releasing its lane.
     /// </value>
     public ISessionRunCoordinator? RunCoordinator { get; }
 

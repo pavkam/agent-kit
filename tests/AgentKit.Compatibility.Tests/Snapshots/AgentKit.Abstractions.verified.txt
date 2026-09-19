@@ -298,6 +298,51 @@ namespace AgentKit
         public bool Equals(AgentKit.AgentLoopResult? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class AgentLoopRunRequest : System.IEquatable<AgentKit.AgentLoopRunRequest>
+    {
+        public AgentLoopRunRequest(AgentKit.AgentDefinition agent, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.SessionProfileSnapshot sessionProfile, AgentKit.EffectiveConfigurationSnapshot configuration, int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ExtensionData extensions) { }
+        public AgentLoopRunRequest(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.BranchId branchId,
+                    AgentKit.RunId runId,
+                    AgentKit.ExecutionIdentity identity,
+                    AgentKit.SecurityAuthorizationContext authorization,
+                    AgentKit.SessionProfileSnapshot sessionProfile,
+                    AgentKit.ModelSelectionPolicy modelPolicy,
+                    AgentKit.ModelRequirements modelRequirements,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools,
+                    AgentKit.LlmToolChoice toolChoice,
+                    AgentKit.LlmRequestSettings settings,
+                    int maxTurns,
+                    System.TimeSpan attemptTimeout,
+                    AgentKit.ExtensionData extensions) { }
+        public AgentKit.AgentDefinition? Agent { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public System.TimeSpan AttemptTimeout { get; init; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.BranchId BranchId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
+        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
+        public AgentKit.LoopLaneAdmission? LaneAdmission { get; init; }
+        public int MaxTurns { get; init; }
+        public AgentKit.ModelSelectionPolicy ModelPolicy { get; init; }
+        public AgentKit.ModelRequirements ModelRequirements { get; init; }
+        public AgentKit.IAgentRunObserver? Observer { get; init; }
+        public AgentKit.OutputDefinition? Output { get; init; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.SessionProfileSnapshot SessionProfile { get; }
+        public AgentKit.LlmRequestSettings Settings { get; init; }
+        public AgentKit.LlmToolChoice ToolChoice { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> Tools { get; init; }
+        public bool Equals(AgentKit.AgentLoopRunRequest? other) { }
+        public override int GetHashCode() { }
+    }
     public abstract class AgentMessage : System.IEquatable<AgentKit.AgentMessage>
     {
         public AgentKit.AgentId AgentId { get; init; }
@@ -374,51 +419,6 @@ namespace AgentKit
         public AgentKit.AgentId AgentId { get; }
         public AgentKit.AgentError Failure { get; }
         public AgentKit.SessionId SessionId { get; }
-    }
-    public sealed class AgentRunRequest : System.IEquatable<AgentKit.AgentRunRequest>
-    {
-        public AgentRunRequest(AgentKit.AgentDefinition agent, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.SessionProfileSnapshot sessionProfile, AgentKit.EffectiveConfigurationSnapshot configuration, int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ExtensionData extensions) { }
-        public AgentRunRequest(
-                    AgentKit.AgentId agentId,
-                    AgentKit.SessionId sessionId,
-                    AgentKit.BranchId branchId,
-                    AgentKit.RunId runId,
-                    AgentKit.ExecutionIdentity identity,
-                    AgentKit.SecurityAuthorizationContext authorization,
-                    AgentKit.SessionProfileSnapshot sessionProfile,
-                    AgentKit.ModelSelectionPolicy modelPolicy,
-                    AgentKit.ModelRequirements modelRequirements,
-                    System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions,
-                    System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools,
-                    AgentKit.LlmToolChoice toolChoice,
-                    AgentKit.LlmRequestSettings settings,
-                    int maxTurns,
-                    System.TimeSpan attemptTimeout,
-                    AgentKit.ExtensionData extensions) { }
-        public AgentKit.AgentDefinition? Agent { get; }
-        public AgentKit.AgentId AgentId { get; }
-        public System.TimeSpan AttemptTimeout { get; init; }
-        public AgentKit.SecurityAuthorizationContext Authorization { get; }
-        public AgentKit.BranchId BranchId { get; init; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
-        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
-        public AgentKit.ExtensionData Extensions { get; init; }
-        public AgentKit.ExecutionIdentity Identity { get; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
-        public AgentKit.LoopLaneAdmission? LaneAdmission { get; init; }
-        public int MaxTurns { get; init; }
-        public AgentKit.ModelSelectionPolicy ModelPolicy { get; init; }
-        public AgentKit.ModelRequirements ModelRequirements { get; init; }
-        public AgentKit.IAgentRunObserver? Observer { get; init; }
-        public AgentKit.OutputDefinition? Output { get; init; }
-        public AgentKit.RunId RunId { get; }
-        public AgentKit.SessionId SessionId { get; }
-        public AgentKit.SessionProfileSnapshot SessionProfile { get; }
-        public AgentKit.LlmRequestSettings Settings { get; init; }
-        public AgentKit.LlmToolChoice ToolChoice { get; init; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> Tools { get; init; }
-        public bool Equals(AgentKit.AgentRunRequest? other) { }
-        public override int GetHashCode() { }
     }
     public abstract class AgentRunResult<TOutput> : System.IEquatable<AgentKit.AgentRunResult<TOutput>>
     {
@@ -3643,7 +3643,7 @@ namespace AgentKit
     }
     public interface IAgentLoop
     {
-        System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentLoopRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IAgentRunObserver
     {

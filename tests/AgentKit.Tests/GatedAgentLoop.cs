@@ -12,7 +12,7 @@ internal sealed class GatedAgentLoop: IAgentLoop
     private readonly Lock _gate = new();
 
     /// <summary>Gets every request received, in order.</summary>
-    public List<AgentRunRequest> Requests { get; } = [];
+    public List<AgentLoopRunRequest> Requests { get; } = [];
 
     /// <summary>Gets every services bundle received, in order.</summary>
     public List<AgentRunServices> Services { get; } = [];
@@ -27,12 +27,12 @@ internal sealed class GatedAgentLoop: IAgentLoop
     public int PeakConcurrency { get; private set; }
 
     /// <summary>Gets or sets a factory that replaces the completed outcome, for settlement tests.</summary>
-    public Func<AgentRunRequest, AgentRunOutcome>? OutcomeOverride { get; init; }
+    public Func<AgentLoopRunRequest, AgentRunOutcome>? OutcomeOverride { get; init; }
 
     private int _active;
 
     /// <inheritdoc/>
-    public async Task<AgentLoopResult> RunAsync(AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default)
+    public async Task<AgentLoopResult> RunAsync(AgentLoopRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(services);
@@ -93,7 +93,7 @@ internal sealed class GatedAgentLoop: IAgentLoop
     /// loop was ever entered, so a fixed version would be stale and fail a caller's later lane release.
     /// </summary>
     private static async Task<SessionVersion?> CurrentVersionAsync(
-        AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken)
+        AgentLoopRunRequest request, AgentRunServices services, CancellationToken cancellationToken)
     {
         var context = new SessionOperationContext(
             request.AgentId, request.SessionId, executionLaneId: null, request.Authorization.Scope.Correlation,

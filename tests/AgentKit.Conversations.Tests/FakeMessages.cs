@@ -7,15 +7,15 @@ namespace AgentKit.Conversations.Tests;
 internal static class FakeMessages
 {
     /// <summary>Builds a complete assistant message carrying a single non-blank text part.</summary>
-    public static AssistantMessage Assistant(AgentRunRequest request, string text) =>
+    public static AssistantMessage Assistant(AgentLoopRunRequest request, string text) =>
         Assistant(request, [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)]);
 
     /// <summary>Builds a complete assistant message carrying the supplied content parts.</summary>
-    public static AssistantMessage Assistant(AgentRunRequest request, ImmutableArray<ContentPart> parts) =>
+    public static AssistantMessage Assistant(AgentLoopRunRequest request, ImmutableArray<ContentPart> parts) =>
         Assistant(request, parts, ModelUsage.NotReported);
 
     /// <summary>Builds a complete assistant message carrying the supplied content parts and reported usage.</summary>
-    public static AssistantMessage Assistant(AgentRunRequest request, ImmutableArray<ContentPart> parts, ModelUsage usage) =>
+    public static AssistantMessage Assistant(AgentLoopRunRequest request, ImmutableArray<ContentPart> parts, ModelUsage usage) =>
         new(
             new MessageId(Guid.NewGuid()),
             request.AgentId,
@@ -31,7 +31,7 @@ internal static class FakeMessages
             ExtensionData.Empty);
 
     /// <summary>Builds a complete tool message carrying the supplied content parts.</summary>
-    public static ToolMessage Tool(AgentRunRequest request, ImmutableArray<ContentPart> parts) =>
+    public static ToolMessage Tool(AgentLoopRunRequest request, ImmutableArray<ContentPart> parts) =>
         new(
             new MessageId(Guid.NewGuid()),
             request.AgentId,
