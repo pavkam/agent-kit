@@ -19,7 +19,8 @@ var builder = AgentEngine.CreateBuilder();
 builder.Services.AddAgent(definition);
 
 await using var engine = builder.Build();
-var agent = await engine.GetAgentAsync(definition.Id, cancellationToken);
+var resolution = await engine.GetAgentAsync(definition.Id, cancellationToken);
+var agent = ((ResolvedAgent) resolution).Agent;
 
 // One turn: creates a session for this identity, records the message, runs the agent.
 var first = await agent.SendAsync(new AgentSendRequest(identity, "Hello"), cancellationToken);
@@ -33,8 +34,9 @@ principal own it), enters a per-session lane that applies the pinned session
 profile's `SessionBusyBehavior`, appends the user message under the run's
 identity, and runs the agent in a fresh keyed scope. Turns on different sessions
 run concurrently; a `Reject` profile fails a contender with
-`AgentSessionBusyException`. `Agent.RunAsync(AgentRunOptions)` remains for a
-caller that already admitted input into an existing session and branch.
+`AgentSessionBusyException`. `Agent.RunAsync(sessionId, branchId, identity, options)`
+remains for a caller that already admitted input into an existing session and
+branch, bypassing the lane protocol entirely.
 
 `AddEngineDelegationChannel()` registers the engine-backed
 `ITaskDelegationChannel`: with `AgentKit.Goals`'s broker and the `task` tool,

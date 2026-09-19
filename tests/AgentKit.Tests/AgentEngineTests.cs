@@ -48,35 +48,35 @@ public sealed class AgentEngineTests
     {
         await using var engine = CompositionTestData.RunnableBuilder().Build();
 
-        var agent = await engine.GetAgentAsync(
+        var resolution = await engine.GetAgentAsync(
             CompositionTestData.AgentId,
             TestContext.Current.CancellationToken);
 
-        _ = agent.ShouldNotBeNull();
+        var agent = resolution.ShouldBeOfType<ResolvedAgent>().Agent;
         agent.Id.ShouldBe(CompositionTestData.AgentId);
         agent.Definition.DisplayName.ShouldBe("test agent");
         agent.CatalogVersion.Value.ShouldBeGreaterThan(0);
     }
 
     [Fact]
-    public async Task GetAgentAsync_WhenAgentIsUnknown_ReturnsNullRatherThanThrowing()
+    public async Task GetAgentAsync_WhenAgentIsUnknown_ReturnsAgentNotFoundRatherThanThrowing()
     {
         await using var engine = CompositionTestData.RunnableBuilder().Build();
+        var agentId = new AgentId(Guid.NewGuid());
 
-        var agent = await engine.GetAgentAsync(
-            new AgentId(Guid.NewGuid()),
+        var resolution = await engine.GetAgentAsync(
+            agentId,
             TestContext.Current.CancellationToken);
 
-        agent.ShouldBeNull();
+        resolution.ShouldBeOfType<AgentNotFound>().AgentId.ShouldBe(agentId);
     }
 
     [Fact]
-    public async Task GetAgentAsync_WhenCatalogReportsAnInvalidDefinition_ThrowsWithDiagnostics()
+    public async Task GetAgentAsync_WhenCatalogReportsAnInvalidDefinition_ReturnsInvalidAgentWithDiagnostics()
     {
         var agentId = new AgentId(Guid.NewGuid());
-        var resolution = new InvalidAgentDefinition(
-            agentId,
-            [new CompositionDiagnostic("agentkit.test.invalid", "The definition selects a missing component.")]);
+        var diagnostic = new CompositionDiagnostic("agentkit.test.invalid", "The definition selects a missing component.");
+        var resolution = new InvalidAgentDefinition(agentId, [diagnostic]);
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
@@ -84,11 +84,11 @@ public sealed class AgentEngineTests
         await using var provider = services.BuildServiceProvider();
         await using var engine = new AgentEngine(provider, ownedProvider: null, Composition());
 
-        var exception = await Should.ThrowAsync<InvalidOperationException>(
-            async () => await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken));
+        var result = await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken);
 
-        exception.Message.ShouldContain(agentId.ToString());
-        exception.Message.ShouldContain("The definition selects a missing component.");
+        var invalid = result.ShouldBeOfType<InvalidAgent>();
+        invalid.AgentId.ShouldBe(agentId);
+        invalid.Diagnostics.ShouldHaveSingleItem().ShouldBe(diagnostic);
     }
 
     [Fact]
@@ -112,10 +112,10 @@ public sealed class AgentEngineTests
             new AgentCompositionSnapshot(
                 new AgentRunProfilePublicationSnapshot([]),
                 successfullyBuilt.ComponentRegistrations));
-        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
 
         var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(
-            async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+            async () => await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
 
         exception.Rejection.AgentId.ShouldBe(definition.Id);
         exception.Rejection.Reason.ShouldContain("no pinned run-profile publication");
@@ -134,7 +134,7 @@ public sealed class AgentEngineTests
 
         var agents = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
 
-        agents.Length.ShouldBe(2);
+        agents.Definitions.Length.ShouldBe(2);
     }
 
     [Fact]
@@ -165,14 +165,16 @@ public sealed class AgentEngineTests
         CompositionTestData.AddRunProfiles(builder.Services, firstDefinition, secondDefinition);
 
         await using var engine = builder.Build();
-        var firstAgent = (await engine.GetAgentAsync(firstDefinition.Id, TestContext.Current.CancellationToken))!;
-        var secondAgent = (await engine.GetAgentAsync(secondDefinition.Id, TestContext.Current.CancellationToken))!;
+        var firstAgent = (await engine.GetAgentAsync(firstDefinition.Id, TestContext.Current.CancellationToken)).RequireResolved();
+        var secondAgent = (await engine.GetAgentAsync(secondDefinition.Id, TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await firstAgent.RunAsync(
-            CompositionTestData.RunOptions() with { SessionId = new SessionId(Guid.NewGuid()) },
+            new SessionId(Guid.NewGuid()), CompositionTestData.BranchId, CompositionTestData.Identity(),
+            CompositionTestData.RunOptions(),
             TestContext.Current.CancellationToken);
         _ = await secondAgent.RunAsync(
-            CompositionTestData.RunOptions() with { SessionId = new SessionId(Guid.NewGuid()) },
+            new SessionId(Guid.NewGuid()), CompositionTestData.BranchId, CompositionTestData.Identity(),
+            CompositionTestData.RunOptions(),
             TestContext.Current.CancellationToken);
 
         firstLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(firstContextAssembler);
@@ -187,9 +189,10 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
         var result = await agent.RunAsync(
+            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
             CompositionTestData.RunOptions(),
             TestContext.Current.CancellationToken);
 
@@ -210,9 +213,9 @@ public sealed class AgentEngineTests
         var builder = CompositionTestData.RunnableBuilder(loop);
         _ = builder.Services.AddSingleton<IOutputProcessor>(processor);
         await using var engine = builder.Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeSameAs(processor);
     }
@@ -222,9 +225,9 @@ public sealed class AgentEngineTests
     {
         var loop = new RecordingAgentLoop();
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeNull();
     }
@@ -239,9 +242,9 @@ public sealed class AgentEngineTests
             OutputValidationPolicy.RejectOnFirstFailure, OutputRetryPolicy.None, OutputEndStrategy.Graceful);
         var definition = CompositionTestData.Definition() with { Output = output };
         await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().Output.ShouldBe(output);
     }
@@ -254,9 +257,9 @@ public sealed class AgentEngineTests
         var builder = CompositionTestData.RunnableBuilder(loop);
         _ = builder.Services.AddSingleton<IBudgetAuthority>(authority);
         await using var engine = builder.Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().Budgets.ShouldBeSameAs(authority);
     }
@@ -268,9 +271,9 @@ public sealed class AgentEngineTests
         var limit = new BudgetLimit(BudgetDimensions.Turns, 3m, new BudgetUnit("count"), BudgetLimitKind.Hard);
         var definition = CompositionTestData.Definition() with { BudgetLimits = [limit] };
         await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().BudgetLimits.ShouldBe([limit]);
     }
@@ -282,10 +285,10 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests[0].RunId.ShouldNotBe(loop.ReceivedRequests[1].RunId);
     }
@@ -297,9 +300,10 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await agent.RunAsync(
+            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
             CompositionTestData.RunOptions(maxTurns: 3),
             TestContext.Current.CancellationToken);
 
@@ -313,10 +317,11 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
         var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
             async () => await agent.RunAsync(
+                CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
                 CompositionTestData.RunOptions(maxTurns: 99),
                 TestContext.Current.CancellationToken));
 
@@ -331,10 +336,11 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await Should.ThrowAsync<ArgumentOutOfRangeException>(
             async () => await agent.RunAsync(
+                CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
                 CompositionTestData.RunOptions(attemptTimeout: TimeSpan.FromHours(1)),
                 TestContext.Current.CancellationToken));
 
@@ -342,17 +348,19 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenOptionsIsNull_ThrowsArgumentNullException()
+    public async Task RunAsync_WhenOptionsIsNull_UsesTheDefinitionsDefaults()
     {
-        await using var engine = CompositionTestData.RunnableBuilder().Build();
+        var loop = new RecordingAgentLoop();
+        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(
             CompositionTestData.AgentId,
-            TestContext.Current.CancellationToken))!;
+            TestContext.Current.CancellationToken)).RequireResolved();
 
-        var exception = await Should.ThrowAsync<ArgumentNullException>(
-            async () => await agent.RunAsync(null!, TestContext.Current.CancellationToken));
+        _ = await agent.RunAsync(
+            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
+            options: null, TestContext.Current.CancellationToken);
 
-        exception.ParamName.ShouldBe("options");
+        loop.ReceivedRequests.ShouldHaveSingleItem().MaxTurns.ShouldBe(8);
     }
 
     [Fact]

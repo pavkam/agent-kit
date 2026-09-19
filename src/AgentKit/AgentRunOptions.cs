@@ -4,8 +4,8 @@
 namespace AgentKit;
 
 /// <summary>
-/// The per-invocation facts a run needs that an agent definition cannot
-/// supply, plus the bounded overrides a caller may apply.
+/// The bounded per-invocation overrides a caller may apply on top of an agent
+/// definition's configured run policy.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,10 +13,11 @@ namespace AgentKit;
 /// safe to share across threads without synchronization.
 /// </para>
 /// <para>
-/// The split is deliberate: a definition is reusable and shared, while
-/// session, branch, and execution identity belong to one invocation. Putting
-/// them here is what allows a single immutable definition to serve many
-/// concurrent runs for different users.
+/// Session, conversation, execution identity, and input are separate,
+/// explicit parameters on <see cref="Agent.RunAsync"/> and the facade
+/// <see cref="AgentRunRequest"/> rather than fields here: this type carries
+/// only the bounded overrides, so the same immutable instance can accompany
+/// any invocation regardless of who runs it or on which session.
 /// </para>
 /// <para>
 /// Overrides are bounded and may only narrow the definition's limits. A run
@@ -27,17 +28,9 @@ namespace AgentKit;
 /// </remarks>
 public sealed record AgentRunOptions
 {
-    private readonly ExecutionIdentity _identity;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentRunOptions"/> record.
     /// </summary>
-    /// <param name="sessionId">The session this run reads from and commits to.</param>
-    /// <param name="branchId">The branch this run reads from and commits to.</param>
-    /// <param name="identity">
-    /// The already-authenticated identity on whose behalf the run is
-    /// performed. AgentKit consumes this identity; it never authenticates it.
-    /// </param>
     /// <param name="maxTurns">
     /// An optional lower turn limit for this run. Must not exceed the
     /// definition's default.
@@ -47,24 +40,13 @@ public sealed record AgentRunOptions
     /// definition's default.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="sessionId"/> or <paramref name="branchId"/> is its
-    /// default, empty identity, or a supplied <paramref name="maxTurns"/> or
-    /// <paramref name="attemptTimeout"/> is zero or negative.
-    /// </exception>
-    /// <exception cref="ArgumentNullException">
-    /// <paramref name="identity"/> is <see langword="null"/>.
+    /// A supplied <paramref name="maxTurns"/> or <paramref name="attemptTimeout"/>
+    /// is zero or negative.
     /// </exception>
     public AgentRunOptions(
-        SessionId sessionId,
-        BranchId branchId,
-        ExecutionIdentity identity,
         int? maxTurns = null,
         TimeSpan? attemptTimeout = null)
     {
-        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
-        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default, nameof(branchId));
-        ArgumentNullException.ThrowIfNull(identity);
-
         if (maxTurns is { } turns)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(turns, nameof(maxTurns));
@@ -78,31 +60,8 @@ public sealed record AgentRunOptions
                 nameof(attemptTimeout));
         }
 
-        SessionId = sessionId;
-        BranchId = branchId;
-        _identity = identity;
         MaxTurns = maxTurns;
         AttemptTimeout = attemptTimeout;
-    }
-
-    /// <summary>Gets the session this run reads from and commits to.</summary>
-    public SessionId SessionId { get; init; }
-
-    /// <summary>Gets the branch this run reads from and commits to.</summary>
-    public BranchId BranchId { get; init; }
-
-    /// <summary>Gets the authenticated identity the run is performed for.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public ExecutionIdentity Identity
-    {
-        get => _identity;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Identity));
-            _identity = value;
-        }
     }
 
     /// <summary>

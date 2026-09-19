@@ -32,7 +32,7 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C5 `DefaultOutputPublisher` and `AddAgentIO`
 - [x] WS1-C6 loop publishes `RunEvent`s
 - [x] WS1-C7 unified outcome family
-- [ ] WS1-C8 facade result types and `AgentRunOptions` reshape
+- [x] WS1-C8 facade result types and `AgentRunOptions` reshape
 - [ ] WS1-C9 `AgentEngineRuntime`, run plan, `RunAsync<T>`, delete
       `SessionLaneRegistry`
 - [ ] WS1-C10 `SteerAsync` and `FollowUpAsync`
@@ -119,15 +119,17 @@ Two correctness fixes were required to land this without violating
 
 ### Facade
 
-| Member                                                                                                                                                                                                   | State                      | Evidence                                                                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `Agent.RunAsync(AgentRunOptions)`                                                                                                                                                                        | EXISTS, bypasses lanes     | `src/AgentKit/Agent.cs:103` → `AgentEngine.RunAgentAsync` (`:452-508`), no lane protocol; 19 tests use it |
-| `Agent.SendAsync(AgentSendRequest)`                                                                                                                                                                      | EXISTS-AND-USED            | `Agent.cs:135` → `SendAgentAsync` (`:254-426`) with lane protocol plus `SessionLaneRegistry` in front     |
-| `RunAsync<T>`, `StreamAsync<T>`, `CreateSessionAsync`, `AttachAsync`, `CancelAsync`, `SteerAsync`, `FollowUpAsync`                                                                                       | MISSING                    | –                                                                                                         |
-| `AgentEngine.GetAgentAsync` → `ValueTask<Agent?>`; `GetAgentsAsync` → `ImmutableArray<AgentDefinition>`                                                                                                  | EXISTS-AS-REDUCED-STAND-IN | spec returns `AgentResolution` and `AgentCatalogSnapshot` (`composition-and-configuration.md:396-403`)    |
-| `AgentEngineRuntime`, `AgentResolution` family, `AgentSessionCreateRequest`, `AgentSessionCreationResult` family, `AgentRunPlan`, `IAgentRunPlanCompiler`, `IAgentRunScopeFactory`, `AgentRunScopeLease` | MISSING                    | –                                                                                                         |
-| `SessionLaneRegistry`                                                                                                                                                                                    | EXISTS-AND-USED            | `src/AgentKit/SessionLaneRegistry.cs`; only `AgentEngine.cs:43,292`; 6 tests                              |
-| `IIdentifierGenerator<InputId>`                                                                                                                                                                          | EXISTS-AND-USED            | registered in `AddAgentKit()` (WS1-C2); `AgentEngine.cs` uses `_inputIds.Create()`                        |
+| Member                                                                                                           | State                    | Evidence                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `Agent.RunAsync(SessionId, BranchId, ExecutionIdentity, AgentRunOptions?)`                                       | EXISTS, bypasses lanes   | `src/AgentKit/Agent.cs` → `AgentEngine.RunAgentAsync`, no lane protocol; reshaped in WS1-C8                                        |
+| `Agent.SendAsync(AgentSendRequest)`                                                                              | EXISTS-AND-USED          | `Agent.cs` → `SendAgentAsync` with lane protocol plus `SessionLaneRegistry` in front                                               |
+| `Agent.CreateSessionAsync`, `AgentEngine.CreateSessionAsync`                                                     | EXISTS-AND-USED (WS1-C8) | independent admission path, not layered on `SendAgentAsync`; typed `AgentSessionCreationResult`                                    |
+| `RunAsync<T>`, `StreamAsync<T>`, `AttachAsync`, `CancelAsync`, `SteerAsync`, `FollowUpAsync`                     | MISSING                  | –                                                                                                                                  |
+| `AgentResolution` family, `AgentSessionCreateRequest`, `AgentSessionCreationResult` family                       | EXISTS-AND-USED (WS1-C8) | `src/AgentKit/*.cs`; wired into `AgentEngine.GetAgentAsync`/`CreateSessionAsync` now                                               |
+| `AgentEngine.GetAgentAsync` → `ValueTask<AgentResolution>`; `GetAgentsAsync` → `ValueTask<AgentCatalogSnapshot>` | EXISTS-AND-USED (WS1-C8) | matches spec shape (`composition-and-configuration.md:396-403`); implementation still direct, not yet through `AgentEngineRuntime` |
+| `AgentEngineRuntime`, `AgentRunPlan`, `IAgentRunPlanCompiler`, `IAgentRunScopeFactory`, `AgentRunScopeLease`     | MISSING                  | –                                                                                                                                  |
+| `SessionLaneRegistry`                                                                                            | EXISTS-AND-USED          | `src/AgentKit/SessionLaneRegistry.cs`; only `AgentEngine.cs`; still used by `SendAgentAsync`                                       |
+| `IIdentifierGenerator<InputId>`                                                                                  | EXISTS-AND-USED          | registered in `AddAgentKit()` (WS1-C2); `AgentEngine.cs` uses `_inputIds.Create()`                                                 |
 
 ### IO package
 
@@ -662,6 +664,91 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   rewrite `composition-and-configuration.md:445-473`.
 - Done when: the records at `composition-and-configuration.md:274-313` compile
   verbatim.
+- Landed: renamed loop `AgentRunRequest` to `AgentLoopRunRequest` first (own
+  commit, 22 files, pure rename, zero behavior change) to free the name. Added
+  `SessionCreationFailureKind`/`SessionCreationFailure` to
+  `AgentKit.Abstractions/Sessions/` after writing their NO-SPEC block into
+  `composition-and-configuration.md` (a `Kind`-plus-`SafeMessage` shape matching
+  `ContextPreparationFailure`/`OutputSchemaConfigurationFailure` rather than a
+  new failure-evidence pattern). Added the facade-level
+  `AgentResolution`/`ResolvedAgent`/`AgentNotFound`/`InvalidAgent`,
+  `AgentSessionCreateRequest`/`AgentSessionCreationResult`/
+  `AgentSessionCreated`/`AgentSessionCreationFailed`, and the new facade
+  `AgentRunRequest` to `src/AgentKit/` (the facade project), not
+  `AgentKit.Abstractions`: `ResolvedAgent` wraps the concrete `Agent` class,
+  which only exists in the facade assembly, and `AgentRunOptions` (the existing
+  analog) already lived in the facade project for the same reason —
+  `AgentKit.Abstractions` stays provider-neutral and facade-agnostic.
+  `AgentResolution` is deliberately a distinct closed hierarchy from the
+  existing catalog-level `AgentDefinitionResolution`: that family resolves an
+  identity to a definition, before any facade handle exists; this one resolves
+  an identity to a live, engine-bound `Agent` handle.
+  - `AgentRunOptions` reshaped to exactly
+    `(int? MaxTurns, TimeSpan? AttemptTimeout)`, dropping
+    `SessionId`/`BranchId`/`ExecutionIdentity`.
+    `Agent.RunAsync`/`AgentEngine.RunAgentAsync` (the lane-bypassing path)
+    gained those three as explicit leading parameters instead
+    (`RunAsync(sessionId, branchId, identity, options = null, ct)`), matching
+    the shape the eventual `RunAsync<TOutput>` will need — this is a pure
+    parameter-regrouping refactor with identical behavior, not the
+    "lane-bypassing `RunAgentAsync` removed" step, which stays WS1-C9's job per
+    its own deliverables list. `options` is now optional (`null` uses the
+    definition's defaults outright) since it no longer carries anything
+    mandatory.
+  - `GetAgentAsync`/`GetAgentsAsync` reshaped to return `AgentResolution`/
+    `AgentCatalogSnapshot` now, without needing `AgentEngineRuntime`: both
+    methods' current bodies only ever needed `IAgentDefinitionCatalog` directly,
+    so the return-type contract change lands now and C9 only needs to move the
+    _implementation_ into the runtime later, not change the signature again.
+    `InvalidAgentDefinition` no longer becomes a thrown
+    `InvalidOperationException` from `GetAgentAsync`; it becomes a typed
+    `InvalidAgent` result, consistent with `AgentNotFound` already being a typed
+    result rather than `null`.
+  - `AgentEngine.CreateSessionAsync(AgentSessionCreateRequest, CT)` is a new,
+    fully independent admission path (not layered on `SendAgentAsync`): it
+    resolves the requested `AgentId` fresh against the current catalog (since a
+    caller may hold only the identity, not an already-pinned `Agent` handle),
+    captures authorization, and calls `ISessionCoordinator.CreateAsync`
+    directly, translating every failure into `AgentSessionCreationFailed` with
+    the matching `SessionCreationFailureKind` rather than throwing — including
+    catching the authorization helper's own `AgentAdmissionRejectedException`
+    and translating it to `SessionCreationFailureKind.AuthorizationUnavailable`
+    rather than reusing that exception type at this new, non-throwing boundary.
+    `Agent.CreateSessionAsync` is a thin convenience wrapper forwarding to it
+    with `Id` already filled in, matching `Agent.SendAsync`'s existing
+    delegation pattern.
+  - Test fallout: ~76 `GetAgentAsync` call sites and ~12 `GetAgentsAsync` call
+    sites across `AgentKit.Tests`, `AgentKit.Simple.Tests`, and
+    `QuickStart.Tests` updated (`(await engine.GetAgentAsync(...))!` → a new
+    `CompositionTestData.RequireResolved()` extension in `AgentKit.Tests`, or an
+    inline `.ShouldBeOfType<ResolvedAgent>().Agent` in `AgentKit.Simple.Tests`,
+    which has no shared composition-data helper of its own;
+    `GetAgentsAsync(...)` results gained a `.Definitions` accessor at every call
+    site). ~44 `Agent.RunAsync(CompositionTestData.RunOptions(...), CT)` call
+    sites updated to pass `CompositionTestData.SessionId`/`BranchId`/
+    `Identity()` as new leading arguments.
+    `AgentEngineTests .GetAgentAsync_WhenCatalogReportsAnInvalidDefinition_...`
+    rewritten from asserting a thrown `InvalidOperationException` to asserting a
+    typed `InvalidAgent` result.
+    `AgentEngineTests .RunAsync_WhenOptionsIsNull_ThrowsArgumentNullException`
+    rewritten to `..._UsesTheDefinitionsDefaults`, since `options: null` is now
+    valid input, not an error. `AgentRunOptionsTests.cs` rewritten from scratch:
+    its 3 original tests all exercised the now-removed `Identity`/`SessionId`/
+    `BranchId` fields; replaced with 4 tests covering the narrow
+    `MaxTurns`/`AttemptTimeout` shape's own validation and round-trip.
+  - Full solution: 15,885 tests passing (up from 15,882: net +3 new/replaced
+    tests in `AgentRunOptionsTests.cs` and `AgentEngineTests.cs`). Snapshots
+    regenerated: `AgentKit.Abstractions.verified.txt` (the two new session
+    types) and `AgentKit.verified.txt` (every new facade type, the
+    `AgentRunOptions`/`Agent.RunAsync`/`AgentEngine.RunAgentAsync`/
+    `GetAgentAsync`/`GetAgentsAsync`/`CreateSessionAsync` signature changes).
+  - Deferred, explicitly not touched in this chunk: the "Current admission
+    surface" prose (`composition-and-configuration.md:445-473`) describing
+    `SendAsync`'s reduced flow — that flow's behavior did not change in C8 (only
+    new, separately-reachable types and the bypass path's parameter shape did),
+    so rewriting it now would describe C9's not-yet-landed `AgentEngineRuntime`
+    wiring prematurely; C9 is the right chunk to update it alongside the runtime
+    move.
 
 ### WS1-C9: `AgentEngineRuntime`, run plan, `RunAsync<T>`, `StreamAsync<T>`
 

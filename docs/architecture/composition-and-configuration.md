@@ -442,6 +442,36 @@ file. It owns the standalone or host-managed scope boundary and is not a public
 extension point; all behavior it invokes remains selected through the public
 abstractions, definitions, options, and DI registrations described here.
 
+### Session creation failure evidence
+
+```csharp
+namespace AgentKit;
+
+public enum SessionCreationFailureKind
+{
+    AgentUnavailable,
+    AuthorizationUnavailable,
+    StoreRejected
+}
+
+public sealed record SessionCreationFailure(
+    SessionCreationFailureKind Kind,
+    string SafeMessage);
+```
+
+`SessionCreationFailure` is the safe, closed evidence
+`AgentSessionCreationFailed` carries. `AgentUnavailable` reports that the
+catalog no longer enables the requested agent (removed, disabled, or replaced
+since the caller last resolved it). `AuthorizationUnavailable` reports that
+fresh authorization could not be captured for the creating identity.
+`StoreRejected` reports that the selected `ISessionCoordinator` returned a
+result other than `SessionCreated`. The kind is a closed enum, not open text, so
+a caller can branch on cause without parsing `SafeMessage`; `SafeMessage` itself
+never repeats caller-supplied content and is safe to log or surface to an end
+user. This mirrors `ContextPreparationFailure` and
+`OutputSchemaConfigurationFailure`'s kind-plus-safe-message shape rather than
+introducing a new failure-evidence pattern.
+
 ### Current admission surface
 
 The process-level surface above is the target shape. The facade currently ships

@@ -7213,6 +7213,18 @@ namespace AgentKit
         public SessionCreatedEvent(AgentKit.SessionAddress address, System.DateTimeOffset occurredAt, AgentKit.SessionDescriptor descriptor) { }
         public AgentKit.SessionDescriptor Descriptor { get; init; }
     }
+    public sealed class SessionCreationFailure : System.IEquatable<AgentKit.SessionCreationFailure>
+    {
+        public SessionCreationFailure(AgentKit.SessionCreationFailureKind kind, string safeMessage) { }
+        public AgentKit.SessionCreationFailureKind Kind { get; init; }
+        public string SafeMessage { get; init; }
+    }
+    public enum SessionCreationFailureKind
+    {
+        AgentUnavailable = 0,
+        AuthorizationUnavailable = 1,
+        StoreRejected = 2,
+    }
     public sealed class SessionCreationLocationConflict : AgentKit.SessionCreationLocationResult, System.IEquatable<AgentKit.SessionCreationLocationConflict>
     {
         public SessionCreationLocationConflict(string safeMessage) { }

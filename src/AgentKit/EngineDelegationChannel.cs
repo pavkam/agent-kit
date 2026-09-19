@@ -78,8 +78,8 @@ public sealed class EngineDelegationChannel: ITaskDelegationChannel
         }
 
         var engine = _engine ??= _services.GetRequiredService<AgentEngine>();
-        var target = await engine.GetAgentAsync(prompt.TargetAgentId, cancellationToken).ConfigureAwait(false);
-        if (target is null)
+        var resolution = await engine.GetAgentAsync(prompt.TargetAgentId, cancellationToken).ConfigureAwait(false);
+        if (resolution is not ResolvedAgent { Agent: var target })
         {
             EngineDelegationLog.TargetUnknown(_logger, prompt.Id, prompt.TargetAgentId);
             return new TaskDelegationRejected(prompt.Id, "The target agent is not hosted by this engine.");

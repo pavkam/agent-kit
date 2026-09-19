@@ -10,6 +10,13 @@ using AgentKit.TestSupport;
 /// </summary>
 internal static class CompositionTestData
 {
+    extension(AgentResolution resolution)
+    {
+        /// <summary>Unwraps a resolution expected to be <see cref="ResolvedAgent"/>, failing the test otherwise.</summary>
+        public Agent RequireResolved() => resolution.ShouldBeOfType<ResolvedAgent>().Agent;
+    }
+
+
     public static AgentId AgentId { get; } =
         new(Guid.Parse("a0000000-0000-0000-0000-000000000001"));
 
@@ -79,7 +86,7 @@ internal static class CompositionTestData
             []));
 
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
-        new(SessionId, BranchId, Identity(), maxTurns, attemptTimeout);
+        new(maxTurns, attemptTimeout);
 
     /// <summary>
     /// Registers unbehavioral placeholder collaborators for every part of the compiled

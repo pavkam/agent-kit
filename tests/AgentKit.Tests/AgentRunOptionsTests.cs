@@ -6,36 +6,48 @@ namespace AgentKit.Tests;
 /// <summary>Verifies AgentRunOptions behavior and contracts.</summary>
 public sealed class AgentRunOptionsTests
 {
-    [Fact]
-    public void Constructor_WhenIdentityIsNull_ThrowsExactArgumentNullException()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Constructor_WhenMaxTurnsIsZeroOrNegative_ThrowsExactArgumentOutOfRangeException(int maxTurns)
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new AgentRunOptions(
-            CompositionTestData.SessionId, CompositionTestData.BranchId, null!));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new AgentRunOptions(maxTurns));
 
-        exception.GetType().ShouldBe(typeof(ArgumentNullException));
-        exception.ParamName.ShouldBe("identity");
+        exception.ParamName.ShouldBe("maxTurns");
     }
 
     [Fact]
-    public void WithExpression_WhenIdentityIsReplacedWithAnotherValidIdentity_RetainsTheNewValue()
+    public void Constructor_WhenAttemptTimeoutIsZeroOrNegative_ThrowsExactArgumentOutOfRangeException()
     {
-        var options = CompositionTestData.RunOptions();
-        var replacement = TestSupport.TestExecutionIdentity.Create(
-            new TenantId("other-tenant"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new AgentRunOptions(attemptTimeout: TimeSpan.Zero));
 
-        var updated = options with { Identity = replacement };
-
-        updated.Identity.ShouldBeSameAs(replacement);
+        exception.ParamName.ShouldBe("attemptTimeout");
     }
 
     [Fact]
-    public void WithExpression_WhenIdentityIsSetToNull_ThrowsExactArgumentNullException()
+    public void Constructor_WhenArgumentsAreOmitted_DefaultsToNull()
     {
-        var options = CompositionTestData.RunOptions();
+        var options = new AgentRunOptions();
 
-        var exception = Should.Throw<ArgumentNullException>(() => options with { Identity = null! });
+        options.MaxTurns.ShouldBeNull();
+        options.AttemptTimeout.ShouldBeNull();
+    }
 
-        exception.GetType().ShouldBe(typeof(ArgumentNullException));
-        exception.ParamName.ShouldBe("Identity");
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var options = new AgentRunOptions(3, TimeSpan.FromMinutes(1));
+
+        options.MaxTurns.ShouldBe(3);
+        options.AttemptTimeout.ShouldBe(TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = CompositionTestData.RunOptions(maxTurns: 2);
+        var copy = original with { };
+
+        copy.ShouldBe(original);
     }
 }

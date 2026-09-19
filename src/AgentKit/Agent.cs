@@ -59,12 +59,15 @@ public sealed class Agent
     public AgentCatalogVersion CatalogVersion { get; }
 
     /// <summary>
-    /// Runs this agent once in its own isolated run scope.
+    /// Runs this agent once in its own isolated run scope, bypassing the session lane protocol.
     /// </summary>
-    /// <param name="options">
-    /// The session, branch, identity, and bounded overrides for this
-    /// invocation.
+    /// <param name="sessionId">The session this run reads from and commits to.</param>
+    /// <param name="branchId">The branch this run reads from and commits to.</param>
+    /// <param name="identity">
+    /// The already-authenticated identity on whose behalf the run is performed. AgentKit consumes this identity;
+    /// it never authenticates it.
     /// </param>
+    /// <param name="options">The bounded overrides for this invocation, or <see langword="null"/> for none.</param>
     /// <param name="cancellationToken">A token that cancels the run.</param>
     /// <returns>
     /// The loop's terminal result, including the committed messages and final
@@ -78,17 +81,23 @@ public sealed class Agent
     /// retained on this handle or on the engine.
     /// </para>
     /// <para>
+    /// This overload takes no session lane and performs no admission: it never provisions or loads a session, never
+    /// enters a session lane, and never checks <see cref="SessionBusyBehavior"/> against a concurrent turn. Prefer
+    /// <see cref="SendAsync"/> for ordinary conversational turns; this overload exists for callers that already own
+    /// external serialization over the named session and branch.
+    /// </para>
+    /// <para>
     /// Overrides in <paramref name="options"/> may only narrow the
     /// definition's limits; an attempt to widen them is rejected before the
     /// run starts.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="options"/> is <see langword="null"/>.
+    /// <paramref name="identity"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// An override in <paramref name="options"/> is wider than the
-    /// definition's corresponding default.
+    /// <paramref name="sessionId"/> or <paramref name="branchId"/> is default, or an override in
+    /// <paramref name="options"/> is wider than the definition's corresponding default.
     /// </exception>
     /// <exception cref="ObjectDisposedException">
     /// The owning engine has been disposed.
@@ -101,12 +110,44 @@ public sealed class Agent
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     public Task<AgentLoopResult> RunAsync(
-        AgentRunOptions options,
+        SessionId sessionId,
+        BranchId branchId,
+        ExecutionIdentity identity,
+        AgentRunOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        return _engine.RunAgentAsync(Definition, options, cancellationToken);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
+        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default, nameof(branchId));
+        ArgumentNullException.ThrowIfNull(identity);
+        return _engine.RunAgentAsync(Definition, sessionId, branchId, identity, options, cancellationToken);
     }
+
+    /// <summary>
+    /// Creates a new session for this agent without admitting any turn.
+    /// </summary>
+    /// <param name="identity">The already-authenticated identity that will own the created session.</param>
+    /// <param name="idempotencyKey">The key making a retried creation attempt idempotent.</param>
+    /// <param name="conversationId">The optional conversation the new session correlates with.</param>
+    /// <param name="extensions">Caller-supplied forward-compatible session data, or <see langword="null"/> for none.</param>
+    /// <param name="cancellationToken">A token that cancels the creation.</param>
+    /// <returns>
+    /// <see cref="AgentSessionCreated"/> naming the new (or, for a retried idempotency key, existing) session, or
+    /// <see cref="AgentSessionCreationFailed"/> with safe, closed evidence describing why creation did not succeed.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="idempotencyKey"/> or a present <paramref name="conversationId"/> is default.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    public Task<AgentSessionCreationResult> CreateSessionAsync(
+        ExecutionIdentity identity,
+        IdempotencyKey idempotencyKey,
+        ConversationId? conversationId = null,
+        ExtensionData? extensions = null,
+        CancellationToken cancellationToken = default) =>
+        _engine.CreateSessionAsync(
+            new AgentSessionCreateRequest(Id, identity, conversationId, idempotencyKey, extensions ?? ExtensionData.Empty),
+            cancellationToken);
 
     /// <summary>
     /// Sends one user turn to this agent: the engine creates or opens the session, takes its lane, records the

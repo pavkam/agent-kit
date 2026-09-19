@@ -23,7 +23,7 @@ public sealed class QuickStartAgentTests
         await using var engine = Engine(new ThrowingHandler());
 
         _ = engine.Conversation.ShouldBeAssignableTo<IConversationSession>();
-        _ = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).ShouldHaveSingleItem();
+        _ = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.ShouldHaveSingleItem();
     }
 
     [Fact]

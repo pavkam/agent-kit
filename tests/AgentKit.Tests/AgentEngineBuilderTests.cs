@@ -145,8 +145,8 @@ public sealed class AgentEngineBuilderTests
         });
         await using var engine = builder.Build();
         factoryCalls.ShouldBe(0);
-        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
-        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
+        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
         factoryCalls.ShouldBe(1);
     }
 
@@ -324,7 +324,7 @@ public sealed class AgentEngineBuilderTests
             agentId = CompositionTestData.Definition().Id;
         }
 
-        var agent = (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        var agent = (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).RequireResolved();
         await engine.DisposeAsync();
 
         _ = await Should.ThrowAsync<ObjectDisposedException>(
@@ -332,7 +332,7 @@ public sealed class AgentEngineBuilderTests
         _ = await Should.ThrowAsync<ObjectDisposedException>(
             () => engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken).AsTask());
         _ = await Should.ThrowAsync<ObjectDisposedException>(
-            () => agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+            () => agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -795,8 +795,8 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
         CompositionTestData.AddRunServicesFakes(builder.Services);
         await using var engine = builder.Build();
-        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
-        _ = await Should.ThrowAsync<AgentAdmissionRejectedException>(async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
+        _ = await Should.ThrowAsync<AgentAdmissionRejectedException>(async () => await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
         reader.SnapshotReads.ShouldBe(1);
         runIds.Created.ShouldBe(0);
     }

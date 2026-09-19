@@ -136,20 +136,16 @@ public sealed class AgentEngine: IAsyncDisposable
     /// Lists every agent this engine currently hosts.
     /// </summary>
     /// <param name="cancellationToken">A token that cancels the read.</param>
-    /// <returns>
-    /// The immutable definitions in the current catalog snapshot, in
-    /// composition order.
-    /// </returns>
+    /// <returns>The current catalog snapshot, including its version and definitions in composition order.</returns>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
-    public async ValueTask<ImmutableArray<AgentDefinition>> GetAgentsAsync(
+    public async ValueTask<AgentCatalogSnapshot> GetAgentsAsync(
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        return snapshot.Definitions;
+        return await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -158,24 +154,19 @@ public sealed class AgentEngine: IAsyncDisposable
     /// <param name="agentId">The agent identity to resolve.</param>
     /// <param name="cancellationToken">A token that cancels the read.</param>
     /// <returns>
-    /// A handle over the resolved definition, or <see langword="null"/> when
-    /// this engine hosts no such agent.
+    /// <see cref="ResolvedAgent"/> wrapping a handle over the resolved definition, <see cref="AgentNotFound"/> when
+    /// this engine hosts no such agent, or <see cref="InvalidAgent"/> when the agent exists but its definition
+    /// cannot be used with this composition.
     /// </returns>
     /// <remarks>
-    /// An unknown identity returns <see langword="null"/> rather than
-    /// throwing, because agent identities routinely arrive from outside the
-    /// process and a host should be able to answer "no such agent" without
-    /// catching.
+    /// An unknown identity returns a typed result rather than throwing, because agent identities routinely arrive
+    /// from outside the process and a host should be able to answer "no such agent" without catching.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">
-    /// The agent exists but its definition cannot be used with this
-    /// composition.
-    /// </exception>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
-    public async ValueTask<Agent?> GetAgentAsync(
+    public async ValueTask<AgentResolution> GetAgentAsync(
         AgentId agentId,
         CancellationToken cancellationToken = default)
     {
@@ -185,11 +176,9 @@ public sealed class AgentEngine: IAsyncDisposable
         return resolution switch
         {
             ResolvedAgentDefinition resolved =>
-                new Agent(this, resolved.Definition, resolved.CatalogVersion),
-            AgentDefinitionNotFound => null,
-            InvalidAgentDefinition invalid => throw new InvalidOperationException(
-                $"Agent '{agentId}' is hosted but its definition is unusable: "
-                + string.Join("; ", invalid.Diagnostics)),
+                new ResolvedAgent(new Agent(this, resolved.Definition, resolved.CatalogVersion)),
+            AgentDefinitionNotFound notFound => new AgentNotFound(notFound.AgentId),
+            InvalidAgentDefinition invalid => new InvalidAgent(invalid.AgentId, invalid.Diagnostics),
             _ => throw new InvalidOperationException(
                 $"Unrecognized {nameof(AgentDefinitionResolution)} kind '{resolution.GetType()}'."),
         };
@@ -216,6 +205,88 @@ public sealed class AgentEngine: IAsyncDisposable
             _disposeTask ??= DisposeOwnedProviderAsync(_ownedProvider);
             return new ValueTask(_disposeTask);
         }
+    }
+
+    /// <summary>
+    /// Creates a new session for one agent without admitting any turn.
+    /// </summary>
+    /// <param name="request">The agent, identity, conversation, idempotency key, and extensions for the new session.</param>
+    /// <param name="cancellationToken">A token that cancels the creation.</param>
+    /// <returns>
+    /// <see cref="AgentSessionCreated"/> naming the new (or, for a retried idempotency key, existing) session, or
+    /// <see cref="AgentSessionCreationFailed"/> with safe, closed evidence describing why creation did not succeed.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">This engine has been disposed.</exception>
+    /// <remarks>
+    /// This resolves <see cref="AgentSessionCreateRequest.AgentId"/> fresh against the current catalog rather than
+    /// through an already-pinned <see cref="Agent"/> handle, since a caller may hold only the identity. A removed,
+    /// disabled, or otherwise unusable agent is reported as <see cref="SessionCreationFailureKind.AgentUnavailable"/>
+    /// rather than thrown, matching this method's typed-result contract.
+    /// </remarks>
+    public async Task<AgentSessionCreationResult> CreateSessionAsync(
+        AgentSessionCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var resolution = await _catalog.ResolveAsync(request.AgentId, cancellationToken).ConfigureAwait(false);
+        if (resolution is not ResolvedAgentDefinition { Definition: var definition, CatalogVersion: var catalogVersion })
+        {
+            var reason = resolution switch
+            {
+                AgentDefinitionNotFound => "The requested agent is not hosted by this engine.",
+                InvalidAgentDefinition invalid => $"The requested agent's definition is unusable: {string.Join("; ", invalid.Diagnostics)}",
+                _ => $"Unrecognized {nameof(AgentDefinitionResolution)} kind '{resolution.GetType()}'.",
+            };
+            return new AgentSessionCreationFailed(
+                request.AgentId, new SessionCreationFailure(SessionCreationFailureKind.AgentUnavailable, reason));
+        }
+
+        if (!_pinnedRunProfiles.TryGetValue((definition.Id, definition.Revision), out var pinnedPublication))
+        {
+            return new AgentSessionCreationFailed(
+                request.AgentId,
+                new SessionCreationFailure(
+                    SessionCreationFailureKind.AgentUnavailable,
+                    "The built composition has no pinned run-profile publication for this definition."));
+        }
+
+        await using var scope = Services.CreateAsyncScope();
+        var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
+        var sessions = AgentRunServicesFactory.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
+
+        SecurityAuthorizationContext authorization;
+        try
+        {
+            var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
+            authorization = await CaptureAsync(
+                definition, catalogVersion, pinnedPublication.SecurityProfile, null, correlation, request.Identity, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (AgentAdmissionRejectedException exception)
+        {
+            return new AgentSessionCreationFailed(
+                request.AgentId,
+                new SessionCreationFailure(SessionCreationFailureKind.AuthorizationUnavailable, exception.Rejection.Reason));
+        }
+
+        var result = await sessions.CreateAsync(
+            new SessionCreateRequest(definition.Id, request.Identity, authorization, request.ConversationId, request.IdempotencyKey, request.Extensions),
+            pinnedPublication.SessionProfile,
+            cancellationToken).ConfigureAwait(false);
+        if (result is not SessionCreated created)
+        {
+            return new AgentSessionCreationFailed(
+                request.AgentId,
+                new SessionCreationFailure(
+                    SessionCreationFailureKind.StoreRejected, $"The session could not be created: {result.GetType().Name}."));
+        }
+
+        AgentAdmissionLog.SessionCreated(_logger, definition.Id, created.Descriptor.Address.SessionId);
+        return new AgentSessionCreated(
+            definition.Id, created.Descriptor.Address.SessionId, created.Descriptor.ConversationId, created.Existing);
     }
 
     /// <summary>
@@ -437,18 +508,21 @@ public sealed class AgentEngine: IAsyncDisposable
     }
 
     /// <summary>
-    /// Runs one agent in a fresh, isolated run scope.
+    /// Runs one agent in a fresh, isolated run scope, bypassing the session lane protocol.
     /// </summary>
     /// <param name="definition">The immutable definition to run.</param>
-    /// <param name="options">The per-invocation facts and bounded overrides.</param>
+    /// <param name="sessionId">The session this run reads from and commits to.</param>
+    /// <param name="branchId">The branch this run reads from and commits to.</param>
+    /// <param name="identity">The already-authenticated identity the run is performed for.</param>
+    /// <param name="options">The bounded overrides for this invocation, or <see langword="null"/> for none.</param>
     /// <param name="cancellationToken">A token that cancels the run.</param>
     /// <returns>The loop's terminal result.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// An override in <paramref name="options"/> is wider than the
-    /// definition's corresponding default.
+    /// <paramref name="sessionId"/> or <paramref name="branchId"/> is default, or an override in
+    /// <paramref name="options"/> is wider than the definition's corresponding default.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="definition"/> or <paramref name="options"/> is
+    /// <paramref name="definition"/> or <paramref name="identity"/> is
     /// <see langword="null"/>.
     /// </exception>
     /// <exception cref="AgentAdmissionRejectedException">
@@ -462,11 +536,16 @@ public sealed class AgentEngine: IAsyncDisposable
     /// </exception>
     internal async Task<AgentLoopResult> RunAgentAsync(
         AgentDefinition definition,
-        AgentRunOptions options,
+        SessionId sessionId,
+        BranchId branchId,
+        ExecutionIdentity identity,
+        AgentRunOptions? options,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
+        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default, nameof(branchId));
+        ArgumentNullException.ThrowIfNull(identity);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var activity = AgentAdmissionObservability.Start(definition.Id);
         var admissionCompleted = false;
@@ -475,13 +554,13 @@ public sealed class AgentEngine: IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             var (pinnedCatalogVersion, pinnedPublication) = await ValidatePinnedDefinitionAsync(definition, activity, cancellationToken)
                 .ConfigureAwait(false);
-            var maxTurns = ResolveMaxTurns(definition, options);
-            var attemptTimeout = ResolveAttemptTimeout(definition, options);
+            var maxTurns = ResolveMaxTurns(definition, options?.MaxTurns, nameof(options));
+            var attemptTimeout = ResolveAttemptTimeout(definition, options?.AttemptTimeout, nameof(options));
 
             var runId = _runIds.Create();
             var runCorrelation = new InRunOperationCorrelation(_operationIds.Create(), runId, turnId: null);
             var authorization = await CaptureAsync(
-                definition, pinnedCatalogVersion, pinnedPublication.SecurityProfile, options.SessionId, runCorrelation, options.Identity, cancellationToken)
+                definition, pinnedCatalogVersion, pinnedPublication.SecurityProfile, sessionId, runCorrelation, identity, cancellationToken)
                 .ConfigureAwait(false);
 
             await using var scope = Services.CreateAsyncScope();
@@ -489,7 +568,7 @@ public sealed class AgentEngine: IAsyncDisposable
             var loop = scope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
             var runServices = AgentRunServicesFactory.Compile(scope.ServiceProvider, loopKey);
             var request = BuildRunRequest(
-                definition, pinnedPublication, options.SessionId, options.BranchId, runId, options.Identity, authorization, maxTurns, attemptTimeout);
+                definition, pinnedPublication, sessionId, branchId, runId, identity, authorization, maxTurns, attemptTimeout);
 
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;
@@ -762,9 +841,6 @@ public sealed class AgentEngine: IAsyncDisposable
             && authorization.ConfigurationVersion == publication.ConfigurationVersion;
     }
 
-    private static int ResolveMaxTurns(AgentDefinition definition, AgentRunOptions options) =>
-        ResolveMaxTurns(definition, options.MaxTurns, nameof(options));
-
     private static int ResolveMaxTurns(AgentDefinition definition, int? maxTurns, string paramName) =>
         maxTurns is not { } requested
             ? definition.RunDefaults.MaxTurns
@@ -775,9 +851,6 @@ public sealed class AgentEngine: IAsyncDisposable
                     requested,
                     "A run override may only narrow the definition's turn limit of "
                     + $"{definition.RunDefaults.MaxTurns}.");
-
-    private static TimeSpan ResolveAttemptTimeout(AgentDefinition definition, AgentRunOptions options) =>
-        ResolveAttemptTimeout(definition, options.AttemptTimeout, nameof(options));
 
     private static TimeSpan ResolveAttemptTimeout(AgentDefinition definition, TimeSpan? attemptTimeout, string paramName) =>
         attemptTimeout is not { } requested

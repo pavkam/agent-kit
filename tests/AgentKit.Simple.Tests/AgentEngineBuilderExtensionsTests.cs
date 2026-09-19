@@ -73,7 +73,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         await using var engine = builder.Build();
 
         _ = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hello", TestContext.Current.CancellationToken));
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
         var snapshot = await engine.Services.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
 
         var request = handler.Requests.ShouldHaveSingleItem();
@@ -284,7 +284,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .WithOutput<int>(/*lang=json,strict*/ """{"type":"object","properties":{"n":{"type":"integer"}}}""", name: "count", maximumRepairAttempts: 3)
             .Build();
 
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         var output = definition.Output.ShouldNotBeNull();
         output.Name.ShouldBe("count");
@@ -343,9 +343,9 @@ public sealed class AgentEngineBuilderExtensionsTests
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
-        var agents = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
-        var reviewerAgent = (await engine.GetAgentAsync(reviewer, TestContext.Current.CancellationToken))!;
-        var defaultAgent = (await engine.GetAgentAsync(agents.Single(a => a.Id != reviewer).Id, TestContext.Current.CancellationToken))!;
+        var agents = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions;
+        var reviewerAgent = (await engine.GetAgentAsync(reviewer, TestContext.Current.CancellationToken)).ShouldBeOfType<ResolvedAgent>().Agent;
+        var defaultAgent = (await engine.GetAgentAsync(agents.Single(a => a.Id != reviewer).Id, TestContext.Current.CancellationToken)).ShouldBeOfType<ResolvedAgent>().Agent;
 
         var first = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "review this"), TestContext.Current.CancellationToken);
         var second = await reviewerAgent.SendAsync(new AgentSendRequest(engine.Identity, "and this", first.SessionId), TestContext.Current.CancellationToken);
@@ -382,7 +382,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .AddAgent(worker, static o => o.Instructions.Add("Work."));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
-        var agent = (await engine.GetAgentAsync(worker, TestContext.Current.CancellationToken))!;
+        var agent = (await engine.GetAgentAsync(worker, TestContext.Current.CancellationToken)).ShouldBeOfType<ResolvedAgent>().Agent;
 
         var results = await Task.WhenAll(
             Enumerable.Range(0, 4).Select(i => agent.SendAsync(new AgentSendRequest(engine.Identity, $"job {i}"), TestContext.Current.CancellationToken)));
@@ -501,7 +501,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .Build();
 
-        var agents = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
+        var agents = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions;
 
         var definition = agents.ShouldHaveSingleItem();
         definition.Models.Candidates.ShouldBe([new ModelAlias("assistant")]);
@@ -523,7 +523,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         await using var engine = builder.Build();
 
         _ = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         var body = handler.Bodies.Single();
         body.IndexOf("First rule.", StringComparison.Ordinal).ShouldBeLessThan(body.IndexOf("Second rule.", StringComparison.Ordinal));
@@ -544,7 +544,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         await using var engine = builder.Build();
 
         _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         handler.Bodies.Single().ShouldContain("\"name\":\"read_file\"");
         definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
@@ -567,7 +567,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         await using var engine = builder.Build();
 
         _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         handler.Bodies.Single().ShouldContain("\"name\":\"glob\"");
         handler.Bodies.Single().ShouldNotContain("read_file");
@@ -653,7 +653,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         handler.Bodies[1].ShouldContain("Find the retry policy.");
         handler.Bodies[1].ShouldNotContain("\"name\":\"task\"");
         handler.Bodies[2].ShouldContain("RetryPolicy.cs");
-        var specialistSessions = await (await engine.GetAgentAsync(specialist, TestContext.Current.CancellationToken))!
+        var specialistSessions = await (await engine.GetAgentAsync(specialist, TestContext.Current.CancellationToken)).ShouldBeOfType<ResolvedAgent>().Agent
             .SendAsync(new AgentSendRequest(engine.Identity, "and now?"), TestContext.Current.CancellationToken);
         _ = specialistSessions.Outcome.ShouldBeOfType<RunSucceeded>();
     }
@@ -689,7 +689,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("b.txt"), "B");
 
         var result = await engine.SendAsync("read both", TestContext.Current.CancellationToken);
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Single();
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         result.Succeeded.ShouldBeTrue();
         var toolResults = result.Events.OfType<ConversationToolResultEvent>().ToList();
@@ -747,7 +747,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .WithAgentId(agentId)
             .Build();
 
-        (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).ShouldNotBeNull().Definition.Id.ShouldBe(agentId);
+        (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).ShouldBeOfType<ResolvedAgent>().Agent.Definition.Id.ShouldBe(agentId);
     }
 
     [Theory]
