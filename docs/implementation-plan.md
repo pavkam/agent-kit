@@ -221,6 +221,73 @@ uncovered four blocking gaps. Status as of commit `9c7ca08a`:
    callers targeting the same session (`Wait`/`Reject` busy behavior) before
    either one attempts durable admission. Full solution format/lint/build/test
    (15,817 tests) green after this change.
+5. **Closed at the store and domain-queue layer; blocked on (2) below for
+   engine/loop reachability.** Queue-backed admission needed a session-store
+   primitive nothing provided: `AcceptRunAsync` only installs a run on an idle
+   lane, and nothing atomically promoted more durably admitted input into an
+   already-accepted run's turn. Added across all three stores with full
+   conformance coverage (commits `d54a38c9`, `aa4e46a8`):
+   `ISessionStore.LoadPendingInputsAsync` (a lane's currently pending,
+   not-yet-promoted admissions, plus its live revision/cursor — needed because a
+   mid-run caller has no before-run context available to call
+   `LoadLaneStateAsync`, whose own request type requires one) and
+   `ISessionStore.PromoteInputAsync` (the store-level counterpart to
+   `SessionRunStartRequest`/`SessionRunAccepted` for a lane that already carries
+   an accepted run: atomically materializes a selection into the run's current
+   turn, marks each admission promoted, and advances `OperationStateRevision`
+   without rewriting the accepted run's own initial-acceptance record).
+   `SessionLaneState`'s constructor no longer requires
+   `AcceptedState.LaneRevision`/`CommittedCursor` to equal the lane's own live
+   `Revision`/`BranchCursor` — that invariant held only because nothing
+   previously advanced a lane's live revision/cursor independently of its
+   accepted state, and mid-run admission and promotion both legitimately do now.
+   `SessionBackedInputQueue` (commit `05bdea28`, `AgentKit.IO`) is the
+   first-party `IInputQueue` implementation over these primitives: `AppendAsync`
+   discovers current session version and lane revision/cursor then durably
+   admits (requires a `BeforeRunOperationCorrelation` — admission is always its
+   own independent operation at the store boundary, so a mid-run steering caller
+   mints a fresh one rather than reusing its own in-run correlation);
+   `PromoteAsync` discovers eligible pending input in one call and commits,
+   mapping store results back onto the domain `InputPromoted`/
+   `InputPromotionRejected` family (new `InputRejectionKind.NoEligibleInput` for
+   "nothing eligible", distinct from every existing rejection kind). Fully
+   unit-tested against a scripted `ISessionCoordinator`; not exercised
+   end-to-end because nothing produces the two things it needs at runtime — see
+   (2).
+
+**Prerequisite (2) is now precisely two remaining pieces, not one.** Re-reading
+this workstream's own "Design decisions" against what (5) just built:
+queue-backed admission is not reachable end-to-end yet, and closing it requires
+both of the following, in order:
+
+- `AgentRunServicesFactory`/`AgentEngine` must register the per-run
+  `SessionExecutionCapability` as a resolvable scoped service in the same DI
+  scope `SessionBackedInputQueue` resolves from (today it is a local variable
+  inside `SendAgentAsync`, never placed in the scope's `IServiceProvider`), and
+  `AgentRunServices` must gain the optional `IInputCoordinator? Input` this
+  workstream's design decisions already call for.
+- `DefaultAgentLoop` must call `services.Input.PromoteAsync` at the turn
+  algorithm's three safe boundaries (`agent-loop-state-machine.md`'s steps
+  2/11/12: `BeforeFirstModelRequest`/`AfterTurnCommitted`/`OtherwiseIdle`). This
+  is a materially riskier change than everything landed so far: none of it is
+  new files or additive methods, it is new state threaded through the existing
+  2,900-line turn loop (`RunCoreAsync`/`RunTurnAsync`/`InvokeToolsAsync`/
+  `SettleCompletedAsync`/`DecideContinuationAsync`). Every
+  `InputPromotionRequest` needs a live `OperationStateRevision` the loop does
+  not currently track at all (only `LoopLaneAdmission.OperationStateRevision`, a
+  fixed value read once at admission and used only for the release call) and the
+  same live `BranchCursor`/`SessionVersion` the loop already threads as
+  `currentVersion` for appends. Getting this wrong risks corrupting the
+  turn/continuation state machine's atomicity invariants, so it must be its own
+  carefully scoped, narrowly tested change — not folded into a session already
+  carrying the session-store and queue work above.
+- Even with both of the above, nothing can call them: no engine-level entry
+  point exists for a caller to submit steering or follow-up input into an
+  _already-running_ durable operation. `Agent.SteerAsync`/`Agent.FollowUpAsync`
+  were already scoped as part of this workstream's deferred full facade rewrite
+  (see the "Design decisions" `Agent`/`AgentEngine` surface above, itself gated
+  on the outcome-family unification) — so queue-backed admission's last mile is
+  the same deferred decision, not an independent gap.
 
 **Deliverables.** Abstractions: `AgentRunInvocation`, extended
 `AgentRunServices`, unified outcome family, `IRunEventSink`,
