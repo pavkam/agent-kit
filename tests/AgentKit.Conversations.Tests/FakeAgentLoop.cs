@@ -80,5 +80,8 @@ internal sealed class FakeAgentLoop: IAgentLoop, IAsyncDisposable
             request.RunId,
             new RunSucceeded(),
             [],
-            new SessionVersion(1));
+            new SessionVersion(1),
+            null,
+            new RunUsage(request.RunId, []),
+            new RunSettlementCompleted());
 }

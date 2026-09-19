@@ -286,7 +286,7 @@ namespace AgentKit
     }
     public sealed class AgentLoopResult : System.IEquatable<AgentKit.AgentLoopResult>
     {
-        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion? finalVersion, AgentKit.ValidatedOutput? output = null) { }
+        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion? finalVersion, AgentKit.ValidatedOutput? output, AgentKit.RunUsage usage, AgentKit.RunSettlementOutcome settlement) { }
         public AgentKit.AgentId AgentId { get; init; }
         public AgentKit.BranchId BranchId { get; init; }
         public AgentKit.SessionVersion? FinalVersion { get; init; }
@@ -295,6 +295,8 @@ namespace AgentKit
         public AgentKit.ValidatedOutput? Output { get; init; }
         public AgentKit.RunId RunId { get; init; }
         public AgentKit.SessionId SessionId { get; init; }
+        public AgentKit.RunSettlementOutcome Settlement { get; init; }
+        public AgentKit.RunUsage Usage { get; init; }
         public bool Equals(AgentKit.AgentLoopResult? other) { }
         public override int GetHashCode() { }
     }

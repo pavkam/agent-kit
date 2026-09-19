@@ -103,6 +103,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly double _estimatedCharactersPerToken;
     private readonly int _maximumPromotionsPerBoundary;
     private readonly IIdentifierGenerator<CompactionId> _compactionIds;
+    private readonly IIdentifierGenerator<UsageEntryId> _usageEntryIds;
 
     /// <summary>
     /// The first backoff before a required terminal commit that the store reported as failed is retried under its
@@ -147,6 +148,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
     /// <param name="hookInvocationIds">The generator for hook invocation identities, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
+    /// <param name="usageEntryIds">The generator for usage-accounting entry identities, or <see langword="null"/> for a GUID generator.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
@@ -175,7 +177,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
         IIdentifierGenerator<HookInvocationId>? hookInvocationIds = null,
-        IIdentifierGenerator<CompactionId>? compactionIds = null)
+        IIdentifierGenerator<CompactionId>? compactionIds = null,
+        IIdentifierGenerator<UsageEntryId>? usageEntryIds = null)
     {
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
@@ -211,6 +214,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.MaximumPromotionsPerBoundary, nameof(optionsMonitor));
         _maximumPromotionsPerBoundary = loopOptions.MaximumPromotionsPerBoundary;
         _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
+        _usageEntryIds = usageEntryIds ?? new GuidIdentifierGenerator<UsageEntryId>(static value => new UsageEntryId(value));
         _runStartedHooks = [.. runStartedHooks ?? []];
         _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
         _beforeToolInvocationHooks = [.. beforeToolInvocationHooks ?? []];
@@ -259,7 +263,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var laneState = new LoopLaneState(
             request.LaneAdmission?.ExecutionLaneId ?? new ExecutionLaneId(request.SessionId.Value),
-            request.LaneAdmission?.OperationStateRevision ?? new OperationStateRevision(1));
+            request.LaneAdmission?.OperationStateRevision ?? new OperationStateRevision(1),
+            request.RunId);
 
         try
         {
@@ -385,7 +390,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (runAuthorization is null)
         {
             // Nothing has been observed or committed: no branch version exists to report truthfully.
-            return BuildResult(request, runCaptureFailure!, [], finalVersion: null);
+            return BuildResult(request, runCaptureFailure!, [], finalVersion: null, laneState.Usage);
         }
 
         var sessionContext = new SessionOperationContext(
@@ -404,7 +409,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 request,
                 RunOutcomes.SessionOperationFailed("The run's eligible session history could not be loaded."),
                 [],
-                finalVersion: null);
+                finalVersion: null,
+                laneState.Usage);
         }
 
         var initialCursor = loaded.Cursor;
@@ -434,7 +440,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ConfigureAwait(false);
         if (recoveryFailure is not null)
         {
-            return BuildResult(request, recoveryFailure, committedMessages.ToImmutable(), currentVersion);
+            return BuildResult(request, recoveryFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage);
         }
 
         currentVersion = history.SourceCursor.Version;
@@ -462,7 +468,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (modelResolution.Outcome is { } selectionFailure)
         {
-            return BuildResult(request, selectionFailure, committedMessages.ToImmutable(), currentVersion);
+            return BuildResult(request, selectionFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage);
         }
 
         var model = modelResolution.Model!;
@@ -480,7 +486,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     request,
                     RunOutcomes.InvalidState("The run declares budget limits but the composition provides no budget authority."),
                     committedMessages.ToImmutable(),
-                    currentVersion);
+                    currentVersion,
+                    laneState.Usage);
             }
 
             var scopeResult = await budgets.CreateChildScopeAsync(
@@ -498,7 +505,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     request,
                     RunOutcomes.InvalidState("The run's budget scope could not be created."),
                     committedMessages.ToImmutable(),
-                    currentVersion);
+                    currentVersion,
+                    laneState.Usage);
             }
 
             tracking.Budget = new RunBudget(created.Scope, request.RunId, _timeProvider);
@@ -529,7 +537,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
                 return BuildResult(
                     request, RunOutcomes.BudgetExhausted(turnExhausted, hasPartialOutput: committedMessages.Count > 0),
-                    committedMessages.ToImmutable(), currentVersion);
+                    committedMessages.ToImmutable(), currentVersion, laneState.Usage);
             }
 
             if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
@@ -574,12 +582,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     request,
                     RunOutcomes.Cancelled("The run was cancelled after at least one message had been committed."),
                     committedMessages.ToImmutable(),
-                    currentVersion);
+                    currentVersion,
+                    laneState.Usage);
             }
 
             if (result.Outcome is not null)
             {
-                return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, result.Output);
+                return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, laneState.Usage, result.Output);
             }
 
             currentVersion = result.Version;
@@ -1087,6 +1096,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     assistantMessage.Id,
                     currentVersion),
                 cancellationToken).ConfigureAwait(false);
+        }
+
+        // Usage is accounted for the run's own frozen projection regardless of whether budget limits are
+        // configured; budget reservation below is a separate, optional enforcement concern over the same report.
+        if (UsageAccounting.BuildEntry(
+                _usageEntryIds.Create(), request.RunId, turnCorrelation.OperationId, model, response.RequestId, response.Usage)
+            is { } usageEntry)
+        {
+            laneState.Usage = laneState.Usage.Apply(usageEntry);
         }
 
         if (tracking.Budget is { } usageBudget
@@ -3108,8 +3126,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
     };
 
     private static AgentLoopResult BuildResult(
-        AgentLoopRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion, ValidatedOutput? output = null) =>
-        new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion, output);
+        AgentLoopRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion,
+        RunUsage usage, ValidatedOutput? output = null) =>
+        new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion, output,
+            usage, new RunSettlementCompleted());
 
     /// <summary>
     /// The result of choosing this run's model: either a terminal outcome

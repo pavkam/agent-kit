@@ -38,6 +38,9 @@ internal sealed class ScopedRecordingAgentLoop: IAgentLoop
             request.RunId,
             new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.RequestLimit))),
             [],
-            new SessionVersion(0)));
+            new SessionVersion(0),
+            null,
+            new RunUsage(request.RunId, []),
+            new RunSettlementCompleted()));
     }
 }

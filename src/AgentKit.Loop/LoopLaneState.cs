@@ -39,15 +39,19 @@ internal sealed class LoopLaneState
     /// <summary>Initializes the lane state a run observes from the moment it starts.</summary>
     /// <param name="executionLaneId">The lane every session operation for this run must name.</param>
     /// <param name="operationStateRevision">The lane's total-state revision as of the start of the run.</param>
+    /// <param name="runId">The run this lane state, and its accumulated usage, belongs to.</param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="executionLaneId"/> or <paramref name="operationStateRevision"/> is default.
+    /// <paramref name="executionLaneId"/>, <paramref name="operationStateRevision"/>, or
+    /// <paramref name="runId"/> is default.
     /// </exception>
-    public LoopLaneState(ExecutionLaneId executionLaneId, OperationStateRevision operationStateRevision)
+    public LoopLaneState(ExecutionLaneId executionLaneId, OperationStateRevision operationStateRevision, RunId runId)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(executionLaneId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(operationStateRevision, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
         ExecutionLaneId = executionLaneId;
         OperationStateRevision = operationStateRevision;
+        Usage = new RunUsage(runId, []);
     }
 
     /// <summary>Gets the lane every session operation this run performs must name.</summary>
@@ -57,6 +61,13 @@ internal sealed class LoopLaneState
     /// <summary>Gets or sets the lane's total-state revision as last observed by this run.</summary>
     /// <value>A non-default revision, initially the value installed at admission (or 1 without one).</value>
     public OperationStateRevision OperationStateRevision { get; set; }
+
+    /// <summary>Gets or sets this run's current usage projection.</summary>
+    /// <value>
+    /// Starts empty and gains one entry every time the loop accounts a model response's reported usage; the
+    /// value observed at settlement is threaded into <see cref="AgentLoopResult.Usage"/> unchanged.
+    /// </value>
+    public RunUsage Usage { get; set; }
 
     /// <summary>Allocates the next positive, strictly increasing <see cref="RunEvent.Sequence"/> for this run.</summary>
     /// <returns>A positive value greater than every value this instance has already allocated.</returns>

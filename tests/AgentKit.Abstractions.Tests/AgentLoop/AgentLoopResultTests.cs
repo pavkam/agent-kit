@@ -8,17 +8,42 @@ public sealed class AgentLoopResultTests
 {
     [Fact]
     public void Constructor_WhenOutcomeIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentLoopResult(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, null!, [], null)).ParamName.ShouldBe("outcome");
+        Should.Throw<ArgumentNullException>(() => new AgentLoopResult(
+            LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, null!, [], null, null, Usage(), new RunSettlementCompleted()))
+            .ParamName.ShouldBe("outcome");
 
     [Fact]
     public void Constructor_WhenNewMessagesIsDefault_ThrowsExactArgumentException() =>
-        Should.Throw<ArgumentException>(() => new AgentLoopResult(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), default, null)).ParamName.ShouldBe("newMessages");
+        Should.Throw<ArgumentException>(() => new AgentLoopResult(
+            LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), default, null, null, Usage(), new RunSettlementCompleted()))
+            .ParamName.ShouldBe("newMessages");
+
+    [Fact]
+    public void Constructor_WhenUsageIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new AgentLoopResult(
+            LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), [], null, null, null!, new RunSettlementCompleted()))
+            .ParamName.ShouldBe("usage");
+
+    [Fact]
+    public void Constructor_WhenUsageAddressesAnotherRun_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new AgentLoopResult(
+            LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), [], null, null,
+            new RunUsage(new RunId(Guid.NewGuid()), []), new RunSettlementCompleted()))
+            .ParamName.ShouldBe("usage");
+
+    [Fact]
+    public void Constructor_WhenSettlementIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new AgentLoopResult(
+            LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, new RunIdle(), [], null, null, Usage(), null!))
+            .ParamName.ShouldBe("settlement");
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
         var outcome = new RunIdle();
-        var result = Result(outcome: outcome);
+        var usage = Usage();
+        var settlement = new RunSettlementCompleted();
+        var result = Result(outcome: outcome, usage: usage, settlement: settlement);
         result.AgentId.ShouldBe(LoopTestData.AgentId);
         result.SessionId.ShouldBe(LoopTestData.SessionId);
         result.BranchId.ShouldBe(LoopTestData.BranchId);
@@ -27,6 +52,8 @@ public sealed class AgentLoopResultTests
         result.NewMessages.ShouldBeEmpty();
         result.FinalVersion.ShouldBeNull();
         result.Output.ShouldBeNull();
+        result.Usage.ShouldBe(usage);
+        result.Settlement.ShouldBe(settlement);
     }
 
     [Fact]
@@ -59,7 +86,11 @@ public sealed class AgentLoopResultTests
     }
 
     private static AgentLoopResult Result(
-        AgentRunOutcome? outcome = null, ImmutableArray<AgentMessage> newMessages = default, SessionVersion? finalVersion = null, ValidatedOutput? output = null) =>
+        AgentRunOutcome? outcome = null, ImmutableArray<AgentMessage> newMessages = default, SessionVersion? finalVersion = null,
+        ValidatedOutput? output = null, RunUsage? usage = null, RunSettlementOutcome? settlement = null) =>
         new(LoopTestData.AgentId, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId,
-            outcome ?? new RunIdle(), newMessages.IsDefault ? [] : newMessages, finalVersion, output);
+            outcome ?? new RunIdle(), newMessages.IsDefault ? [] : newMessages, finalVersion, output,
+            usage ?? Usage(), settlement ?? new RunSettlementCompleted());
+
+    private static RunUsage Usage() => new(LoopTestData.RunId, []);
 }

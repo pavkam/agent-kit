@@ -50,9 +50,9 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 | `AgentRunOutcome` base                                                                                                                | EXISTS-AND-USED            | `src/AgentKit.Abstractions/Loop/AgentRunOutcome.cs`; closed to the 7 canonical cases (WS1-C7)                                                                                                                                                                                              |
 | ~~13 `Loop/AgentRun*` terminals~~                                                                                                     | DELETED                    | removed in WS1-C7; `rg` for `AgentRun(Completed\|Cancelled\|Failed\|Idle\|TurnLimitReached\|BudgetExhausted\|OutputRejected\|OutputLengthLimitReached\|AuthorizationUnavailable\|ContextPreparationFailed\|ModelSelectionFailed\|SessionOperationFailed\|InvalidState)` in `src/` is empty |
 | `Results/Run*` (`RunSucceeded`, `RunIdle`, `RunDeferred`, `RunCancelled`, `RunLimitReached`, `RunPolicyHalted`, `RunFailed` + causes) | EXISTS-AND-USED            | `src/AgentKit.Abstractions/Results/*.cs`; produced by `src/AgentKit.Loop/DefaultAgentLoop.cs` (via `RunOutcomes.cs`), `RunBudget.cs`, `DefaultRunContinuationPolicy.cs`; consumed by `DefaultConversationSession.cs`, `EngineDelegationChannel.cs` (WS1-C7)                                |
-| `RunSettlementOutcome`, `RunSettlementCompleted`, `RunSettlementRecoveryRequired`                                                     | EXISTS-UNWIRED             | `Results/RunSettlement*.cs`; still no production producer — `AgentLoopResult` was not reshaped to carry `Settlement` in WS1-C7 (see its Landed note)                                                                                                                                       |
+| `RunSettlementOutcome`, `RunSettlementCompleted`, `RunSettlementRecoveryRequired`                                                     | EXISTS-AND-USED (WS1-C9)   | `Results/RunSettlement*.cs`; `DefaultAgentLoop.BuildResult` always produces `RunSettlementCompleted`; `RunSettlementRecoveryRequired` still has no producer, deferred to a future durable-recovery chunk                                                                                   |
 | `AgentRunResult<T>`, `AgentRunFinished<T>`, `AgentRunRejected<T>`, `AgentRunStreamStartResult<T>`, `IAgentRunStream<T>`               | EXISTS-UNWIRED (facade)    | only `src/AgentKit.IO/AgentRunOutputPublisher.cs`, `RunEventStream.cs`, `RunEventHub.cs` use them                                                                                                                                                                                          |
-| `AgentLoopResult`                                                                                                                     | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentLoopResult.cs`; gained `Output` (WS1-C7); still missing `ConversationId`, `Settlement`, `PreviousCursor`, `Usage` vs `agent-runtime.md:242-252` — deliberately deferred, see WS1-C7's Landed note; built only at `DefaultAgentLoop.BuildResult`                                 |
+| `AgentLoopResult`                                                                                                                     | EXISTS-AS-REDUCED-STAND-IN | `Loop/AgentLoopResult.cs`; gained `Output` (WS1-C7), `Usage`/`Settlement` (WS1-C9); `ConversationId`/`PreviousCursor` deliberately NOT added here — WS1-C9's Landed note explains why those belong at the facade instead; built only at `DefaultAgentLoop.BuildResult`                     |
 | `IOutputPublisher`                                                                                                                    | EXISTS-UNWIRED             | `Results/IOutputPublisher.cs`; `AgentRunOutputPublisher` is never registered in DI                                                                                                                                                                                                         |
 | `RunEvent`, `ContentDeltaEvent`, `MessageCommittedEvent`                                                                              | EXISTS-UNWIRED             | `Input/RunEvent.cs`; the loop emits the separate `AgentRunEvent` family via `IAgentRunObserver` (`DefaultAgentLoop.cs:836,1406,1877,1968`)                                                                                                                                                 |
 
@@ -772,6 +772,65 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   `AgentRunRejected<T>` with zero store appends.
 - Open: whether `Wait` busy behavior survives as an in-process gate inside the
   runtime.
+- **Landed (prerequisite: usage accounting)**: `AgentRunFinished<T>` requires a
+  real, non-null `RunUsage`, and nothing in the loop produced one before this
+  chunk — `RunUsage`/`UsageAccountingEntry` existed only as unwired Abstractions
+  types. Added `src/AgentKit.Loop/UsageAccounting.cs` (internal, pure): maps one
+  model response's `ModelUsage` into a `UsageAccountingEntry`, reusing
+  `RunBudget.AccountUsageAsync`'s dimension mapping for input/output/ reasoning
+  tokens and cost, but as a historical record rather than a reservation — it
+  also retains cached-read tokens (`BudgetDimensions .CachedReadTokens`; no
+  budget dimension reserves them today) and accepts any reported cost currency
+  (`new BudgetUnit(currency.ToLowerInvariant())`) rather than only `"usd"`,
+  since accounting makes no enforcement decision. Returns `null` when the
+  provider reports nothing at all (`ModelUsageReportState.NotReported` or every
+  counter absent), matching `RunBudget`'s own skip-unreported convention.
+  `LoopLaneState` (already threaded through every turn) gained a mutable `Usage`
+  property, seeded `new RunUsage(runId, [])` at construction (so
+  `LoopLaneState`'s constructor now also takes `RunId`) and updated via
+  `laneState.Usage = laneState.Usage.Apply(entry)` at the same call site as
+  `RunBudget.AccountUsageAsync` in `SettleCompletedAsync` — usage is accounted
+  for the run's own frozen projection unconditionally, regardless of whether
+  budget limits are configured, since accounting and enforcement are separate
+  concerns over the same report. Matching `RunBudget`'s own current scope, only
+  the clean-completion path accounts usage today; `SettleInterruptedAsync`'s
+  responses are not yet accounted either way (a pre-existing gap this chunk does
+  not widen or fix). `DefaultAgentLoop` gained an
+  `IIdentifierGenerator<UsageEntryId>? usageEntryIds = null` constructor
+  parameter (additive, defaults to a `GuidIdentifierGenerator<UsageEntryId>`
+  matching every other optional identifier generator on this type — not a
+  contract break). `AgentLoopResult` gained two new required constructor
+  parameters, `RunUsage usage` and `RunSettlementOutcome settlement` (a real
+  contract break for this loop-internal type, expected test fallout below):
+  **not** `ConversationId` or `PreviousCursor` as the chunk's own
+  verified-current-state table originally listed. Those two belong at the
+  facade, not the loop: `AgentEngineRuntime` already has (or, from admission,
+  can cheaply obtain) `ConversationId` from `SessionDescriptor.ConversationId`
+  and `PreviousCursor` from the branch-tip read it performs before invoking the
+  loop (`LoadBranchTipAsync`'s `SessionVersion`/`SessionBranchCursor` in today's
+  `SendAgentAsync`), so building `AgentRunFinished<T>.PreviousCursor` from
+  admission-time evidence resolves the nullability tension WS1-C7's Landed note
+  flagged (spec's `PreviousCursor` is non-nullable;
+  `AgentLoopResult.FinalVersion` is genuinely nullable for "settled before
+  observing history") without inventing a fabricated cursor for that case — a
+  run that never reached history load was never accepted, so it can never reach
+  `AgentRunFinished<T>` construction at all; it settles as `AgentRunRejected<T>`
+  instead. `Settlement` is unconditionally `RunSettlementCompleted` for now: the
+  loop only ever returns `AgentLoopResult` after its own bounded settlement
+  attempt actually finished, so this is truthful today, not a placeholder; a
+  future recovery boundary (durable abort/crash resume, no chunk yet) is what
+  would ever produce `RunSettlementRecoveryRequired`. Test fallout:
+  `AgentLoopResultTests` (4 new tests for the two added parameters'
+  null/mismatched-run-id validation), 5 dedicated `UsageAccountingTests`, 2 new
+  `DefaultAgentLoopTests` (usage accumulates on success; stays empty when
+  unreported), plus mechanical constructor-argument additions in
+  `CompositionTestData.cs`, `GatedAgentLoop.cs`, `ScopedRecordingAgentLoop.cs`
+  (`AgentKit.Tests`), `FakeAgentLoop.cs` and 11 call sites in
+  `DefaultConversationSessionTests.cs` (`AgentKit.Conversations.Tests`) — all
+  additive default evidence (`new RunUsage(request.RunId, [])`,
+  `new RunSettlementCompleted()`), no behavioral assertions changed. Snapshots:
+  Abstractions, Loop. Full solution: 16,206 passing before this piece; +9 net
+  new tests.
 
 ### WS1-C10: `Agent.SteerAsync` and `Agent.FollowUpAsync`
 

@@ -76,7 +76,8 @@ internal sealed class GatedAgentLoop: IAgentLoop
             var finalVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
             return new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome,
-                outcome is RunSucceeded ? [assistant] : [], finalVersion);
+                outcome is RunSucceeded ? [assistant] : [], finalVersion, null,
+                new RunUsage(request.RunId, []), new RunSettlementCompleted());
         }
         finally
         {

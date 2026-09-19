@@ -627,7 +627,10 @@ public sealed class DefaultConversationSessionTests
                     FakeMessages.ToolFailure(call2, "boom", "stderr details"),
                 ]),
             ],
-            new SessionVersion(2));
+            new SessionVersion(2),
+            null,
+            new RunUsage(request.RunId, []),
+            new RunSettlementCompleted());
         using var session = CreateSession(coordinator: coordinator, loop: loop);
 
         var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
@@ -672,7 +675,8 @@ public sealed class DefaultConversationSessionTests
         {
             ResultFactory = request => new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                new RunSucceeded(), [], new SessionVersion(1)),
+                new RunSucceeded(), [], new SessionVersion(1), null,
+                new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(coordinator: coordinator, loop: loop);
 
@@ -724,7 +728,10 @@ public sealed class DefaultConversationSessionTests
                     request.RunId,
                     new RunSucceeded(),
                     [assistant],
-                    new SessionVersion(1));
+                    new SessionVersion(1),
+                    null,
+                    new RunUsage(request.RunId, []),
+                    new RunSettlementCompleted());
             },
         };
         using var session = CreateSession(loop: loop);
@@ -752,7 +759,10 @@ public sealed class DefaultConversationSessionTests
                     request.RunId,
                     new RunSucceeded(),
                     [assistant],
-                    new SessionVersion(1));
+                    new SessionVersion(1),
+                    null,
+                    new RunUsage(request.RunId, []),
+                    new RunSettlementCompleted());
             },
         };
         using var session = CreateSession(loop: loop);
@@ -774,7 +784,8 @@ public sealed class DefaultConversationSessionTests
                 request.RunId,
                 new RunPolicyHalted(new PolicyHalt(TurnLimitError())),
                 [],
-                new SessionVersion(1)),
+                new SessionVersion(1), null,
+                new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(loop: loop);
 
@@ -801,7 +812,8 @@ public sealed class DefaultConversationSessionTests
                 request.RunId,
                 new RunPolicyHalted(new PolicyHalt(TurnLimitError())),
                 [],
-                new SessionVersion(1)),
+                new SessionVersion(1), null,
+                new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(loop: loop, logger: logger);
 
@@ -842,7 +854,8 @@ public sealed class DefaultConversationSessionTests
         var loop = new FakeAgentLoop
         {
             ResultFactory = request => new AgentLoopResult(
-                request.AgentId, request.SessionId, request.BranchId, request.RunId, new RunFailed(new RunFailure(error)), [], new SessionVersion(1)),
+                request.AgentId, request.SessionId, request.BranchId, request.RunId, new RunFailed(new RunFailure(error)), [], new SessionVersion(1),
+                null, new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(loop: loop);
 
@@ -871,7 +884,8 @@ public sealed class DefaultConversationSessionTests
                         ExtensionData.Empty)]);
                 return new AgentLoopResult(
                     request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                    new RunSucceeded(), [assistant], new SessionVersion(1));
+                    new RunSucceeded(), [assistant], new SessionVersion(1), null,
+                    new RunUsage(request.RunId, []), new RunSettlementCompleted());
             },
         };
         using var session = CreateSession(loop: loop);
@@ -891,7 +905,8 @@ public sealed class DefaultConversationSessionTests
         var loop = new FakeAgentLoop
         {
             ResultFactory = request => new AgentLoopResult(
-                request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, [], new SessionVersion(1)),
+                request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, [], new SessionVersion(1),
+                null, new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(loop: loop);
 
@@ -1255,7 +1270,9 @@ public sealed class DefaultConversationSessionTests
                 new RunSucceeded(),
                 [FakeMessages.Assistant(request, /*lang=json,strict*/ "{\"ok\":\"yes\"}")],
                 new SessionVersion(1),
-                output),
+                output,
+                new RunUsage(request.RunId, []),
+                new RunSettlementCompleted()),
         };
         var observer = new RecordingConversationEventObserver();
         using var session = CreateSession(loop: loop, configureOptions: o => o.Output = TestOutputDefinition());
@@ -1312,7 +1329,8 @@ public sealed class DefaultConversationSessionTests
                     AgentErrorCodes.CostLimit, $"The {BudgetDimensions.Cost.Value} budget is exhausted: cost cap reached",
                     isRetryable: false, SideEffectCertainty.NotApplicable, new ErrorOrigin("test"), externalCode: null,
                     operationId: null, externalRequestId: null, retryAfter: null, ExtensionData.Empty))),
-                [], new SessionVersion(1)),
+                [], new SessionVersion(1), null,
+                new RunUsage(request.RunId, []), new RunSettlementCompleted()),
         };
         using var session = CreateSession(loop: loop);
 

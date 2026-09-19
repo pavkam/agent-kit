@@ -3511,6 +3511,46 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenModelReportsUsage_AccumulatesRunUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => new ModelAttemptCompleted(TestFactory.Response(requestId, [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Completed) with
+            {
+                Usage = new ModelUsage(ModelUsageReportState.Final, 10, 5, 2, 1, 0.001m, "USD", ExtensionData.Empty),
+            }));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        result.Usage.RunId.ShouldBe(result.RunId);
+        result.Usage.Entries.Length.ShouldBe(1);
+        var entry = result.Usage.Entries[0];
+        _ = entry.Model.ShouldNotBeNull();
+        entry.Measurements.ShouldContain(m => m.Dimension == BudgetDimensions.InputTokens && m.Amount == BudgetQuantity.FromDecimal(10m));
+        entry.Measurements.ShouldContain(m => m.Dimension == BudgetDimensions.OutputTokens && m.Amount == BudgetQuantity.FromDecimal(5m));
+        entry.Measurements.ShouldContain(m => m.Dimension == BudgetDimensions.CachedReadTokens && m.Amount == BudgetQuantity.FromDecimal(2m));
+        entry.Measurements.ShouldContain(m => m.Dimension == BudgetDimensions.ReasoningTokens && m.Amount == BudgetQuantity.FromDecimal(1m));
+        entry.Measurements.ShouldContain(m => m.Dimension == BudgetDimensions.Cost && m.Unit == new BudgetUnit("usd"));
+        _ = result.Settlement.ShouldBeOfType<RunSettlementCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelUsageIsNotReported_RunUsageStaysEmpty()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        result.Usage.Entries.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task RunAsync_WhenNoBudgetLimitsAreDeclared_NeverTouchesTheAuthority()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

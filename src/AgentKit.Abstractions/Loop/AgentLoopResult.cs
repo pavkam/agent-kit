@@ -29,9 +29,20 @@ public sealed record AgentLoopResult
     /// The validated structured output a <see cref="RunSucceeded"/> run's selected definition accepted, or
     /// <see langword="null"/> for a free-text run or any outcome other than <see cref="RunSucceeded"/>.
     /// </param>
-    /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
+    /// <param name="usage">
+    /// This run's frozen usage projection, accumulated from every provider-reported model response the run
+    /// observed. Never <see langword="null"/>: a run that made no model call still carries an empty projection
+    /// rather than an absent one.
+    /// </param>
+    /// <param name="settlement">
+    /// The bounded settlement attempt's own outcome, independent of <paramref name="outcome"/>'s semantic result.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="outcome"/>, <paramref name="usage"/>, or <paramref name="settlement"/> is null.
+    /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="newMessages"/> is a default, uninitialized array.
+    /// <paramref name="newMessages"/> is a default, uninitialized array, or <paramref name="usage"/> addresses a
+    /// different run.
     /// </exception>
     public AgentLoopResult(
         AgentId agentId,
@@ -41,10 +52,15 @@ public sealed record AgentLoopResult
         AgentRunOutcome outcome,
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion? finalVersion,
-        ValidatedOutput? output = null)
+        ValidatedOutput? output,
+        RunUsage usage,
+        RunSettlementOutcome settlement)
     {
         ArgumentNullException.ThrowIfNull(outcome);
         ArgumentException.ThrowIfDefault(newMessages);
+        ArgumentNullException.ThrowIfNull(usage);
+        ArgumentException.ThrowIfNotEqual(usage.RunId, runId, nameof(usage));
+        ArgumentNullException.ThrowIfNull(settlement);
 
         AgentId = agentId;
         SessionId = sessionId;
@@ -54,6 +70,8 @@ public sealed record AgentLoopResult
         NewMessages = newMessages;
         FinalVersion = finalVersion;
         Output = output;
+        Usage = usage;
+        Settlement = settlement;
     }
 
     /// <summary>Gets the agent this run belonged to.</summary>
@@ -93,6 +111,21 @@ public sealed record AgentLoopResult
     /// </value>
     public ValidatedOutput? Output { get; init; }
 
+    /// <summary>Gets this run's frozen usage projection.</summary>
+    /// <value>
+    /// A nonnull snapshot accumulated from every provider-reported model response the run observed; empty for a
+    /// run that made no model call.
+    /// </value>
+    public RunUsage Usage { get; init; }
+
+    /// <summary>Gets the bounded settlement attempt's own outcome.</summary>
+    /// <value>
+    /// A nonnull result independent of <see cref="Outcome"/>'s semantic result. The loop returns only after its
+    /// own settlement attempt actually finished, so this is always <see cref="RunSettlementCompleted"/> today;
+    /// a future recovery boundary may report <see cref="RunSettlementRecoveryRequired"/> instead.
+    /// </value>
+    public RunSettlementOutcome Settlement { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(AgentLoopResult? other) =>
         other is not null
@@ -103,7 +136,9 @@ public sealed record AgentLoopResult
         && Outcome.Equals(other.Outcome)
         && NewMessages.SequenceEqual(other.NewMessages)
         && FinalVersion.Equals(other.FinalVersion)
-        && Equals(Output, other.Output);
+        && Equals(Output, other.Output)
+        && Usage.Equals(other.Usage)
+        && Settlement.Equals(other.Settlement);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -121,6 +156,8 @@ public sealed record AgentLoopResult
 
         hash.Add(FinalVersion);
         hash.Add(Output);
+        hash.Add(Usage);
+        hash.Add(Settlement);
         return hash.ToHashCode();
     }
 }
