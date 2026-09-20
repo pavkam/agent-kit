@@ -29,7 +29,7 @@ generic conformance fixture.
 | revocation source                                              | MISSING, NO-SPEC              | `identity.md:118-120` prose                                                                                                        |
 | normalizer/resolver conformance                                | EXISTS                        | `Conformance/IdentityNormalizerConformanceTests.cs` (5 cases)                                                                      |
 | issuer, validation-policy, deriver conformance                 | MISSING                       | –                                                                                                                                  |
-| `IConformanceFixture<TContract>`, `ConformanceCapabilities`    | EXISTS-UNWIRED (WS16-C1)      | `Conformance/IConformanceFixture.cs`, `ConformanceCapabilities.cs`; existing fixtures are not retrofitted |
+| `IConformanceFixture<TContract>`, `ConformanceCapabilities`    | EXISTS-UNWIRED (WS16-C1)      | `Conformance/IConformanceFixture.cs`, `ConformanceCapabilities.cs`; existing fixtures are not retrofitted                          |
 
 Test doubles: issuers (`ConformanceIssuer`, `GatedIssuer`,
 `MutableDescriptorIssuer`, `TestIssuer`), validation policies (3), normalization
