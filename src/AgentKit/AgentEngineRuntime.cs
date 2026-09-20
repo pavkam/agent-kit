@@ -303,7 +303,8 @@ internal sealed class AgentEngineRuntime
                     _ = await OpenSessionAsync(
                         definition, catalogVersion, publication.SecurityProfile, publication.SessionProfile,
                         sessions, sessionId, identity, token).ConfigureAwait(false);
-                    return new AgentRunRequest(definition.Id, sessionId, conversationId: null, identity, input, executionLaneId: executionLaneId);
+                    return new AgentRunRequest(
+                        definition.Id, sessionId, null, identity, input, executionLaneId: executionLaneId);
                 },
                 cancellationToken).ConfigureAwait(false);
             lease = prepared ?? throw AdmissionRejected(

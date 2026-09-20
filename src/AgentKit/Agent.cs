@@ -179,8 +179,10 @@ public sealed class Agent
     /// <param name="cancellationToken">Cancels the wait before admission commits.</param>
     /// <returns>The durable admission result. Acceptance does not start a run or append history.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="identity"/> or <paramref name="input"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="input"/> is not <see cref="InputDelivery.Steer"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default, or
+    /// <paramref name="input"/> is not <see cref="InputDelivery.Steer"/>.
+    /// </exception>
     /// <exception cref="AgentAdmissionRejectedException">The session, definition, authorization, or input coordinator is unavailable.</exception>
     /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before admission committed.</exception>
@@ -205,8 +207,10 @@ public sealed class Agent
     /// <param name="cancellationToken">Cancels the wait before admission commits.</param>
     /// <returns>The durable admission result. Acceptance does not start a run or append history.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="identity"/> or <paramref name="input"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="input"/> is not <see cref="InputDelivery.FollowUp"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default, or
+    /// <paramref name="input"/> is not <see cref="InputDelivery.FollowUp"/>.
+    /// </exception>
     /// <exception cref="AgentAdmissionRejectedException">The session, definition, authorization, or input coordinator is unavailable.</exception>
     /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before admission committed.</exception>

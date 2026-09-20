@@ -442,6 +442,30 @@ file. It owns the standalone or host-managed scope boundary and is not a public
 extension point; all behavior it invokes remains selected through the public
 abstractions, definitions, options, and DI registrations described here.
 
+`Agent.SteerAsync` and `Agent.FollowUpAsync` admit input into an existing
+session without starting a run. Each call opens a fresh scope, captures a new
+`BeforeRunOperationCorrelation` and matching authorization, and calls
+`IInputCoordinator.AdmitAsync`. Steering is eligible at the next safe boundary
+of the current run. Follow-up is eligible only when that run would otherwise
+finish. Neither method appends history or takes the in-process busy gate.
+Promotion stays with the loop. The input's delivery class must match the method.
+
+```csharp
+public Task<InputAdmissionResult> SteerAsync(
+    SessionId sessionId,
+    ExecutionIdentity identity,
+    AgentInput input,
+    ExecutionLaneId? executionLaneId = null,
+    CancellationToken cancellationToken = default);
+
+public Task<InputAdmissionResult> FollowUpAsync(
+    SessionId sessionId,
+    ExecutionIdentity identity,
+    AgentInput input,
+    ExecutionLaneId? executionLaneId = null,
+    CancellationToken cancellationToken = default);
+```
+
 ### Session creation failure evidence
 
 ```csharp

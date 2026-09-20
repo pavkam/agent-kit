@@ -85,6 +85,7 @@ namespace AgentKit.Observability
         public const string SessionLoad = "session.load";
         public const string SessionPendingInputsLoad = "session.pending-inputs.load";
         public const string SessionRead = "session.read";
+        public const string SessionRunAbort = "session.run.abort";
         public const string SessionRunAccept = "session.run.accept";
         public const string SessionRunRelease = "session.run.release";
         public const string SessionRunStateLoad = "session.run.state.load";
@@ -93,6 +94,7 @@ namespace AgentKit.Observability
         public const string ToolBatch = "tool.batch";
         public const string ToolCatalogCaptureClose = "tool.catalog.capture.close";
         public const string ToolCatalogCaptureDisposeSources = "tool.catalog.capture.dispose_sources";
+        public const string ToolCatalogCoordinate = "tool.catalog.coordinate";
         public const string ToolCatalogDiscover = "tool.catalog.discover";
         public const string ToolCatalogDiscoverSource = "tool.catalog.discover.source";
         public const string ToolCatalogDiscoveryClose = "tool.catalog.discovery.close";
@@ -204,6 +206,8 @@ namespace AgentKit.Observability
         public const string ToolCallDuration = "agentkit.tool.call.duration";
         public const string ToolCatalogCaptureOperationCount = "agentkit.tool.catalog.capture.operation.count";
         public const string ToolCatalogCaptureOperationDuration = "agentkit.tool.catalog.capture.operation.duration";
+        public const string ToolCatalogCoordinationCount = "agentkit.tool.catalog.coordination.count";
+        public const string ToolCatalogCoordinationDuration = "agentkit.tool.catalog.coordination.duration";
         public const string ToolCatalogDiscoveryOperationCount = "agentkit.tool.catalog.discovery.operation.count";
         public const string ToolCatalogDiscoveryOperationDuration = "agentkit.tool.catalog.discovery.operation.duration";
         public const string ToolCatalogMergeCount = "agentkit.tool.catalog.merge.count";
@@ -238,8 +242,10 @@ namespace AgentKit.Observability
         public const string ExecutionLaneId = "agentkit.execution.lane.id";
         public const string FileSystemOperation = "agentkit.filesystem.operation";
         public const string GenAiOperationName = "gen_ai.operation.name";
+        public const string HookDispatchId = "agentkit.hook.dispatch.id";
         public const string HookInvocationId = "agentkit.hook.invocation.id";
         public const string HookPoint = "agentkit.hook.point";
+        public const string HookRegistrationId = "agentkit.hook.registration.id";
         public const string IdentityIssuer = "agentkit.identity.issuer";
         public const string InputPromotionBoundary = "agentkit.input.promotion.boundary";
         public const string LanguageQueryId = "agentkit.language.query.id";

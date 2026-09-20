@@ -509,6 +509,82 @@ public sealed class AgentTests
     }
 
     [Fact]
+    public async Task SteerAsync_WhenARunHoldsTheLane_AdmitsSteeringWithoutAppendingHistory()
+    {
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
+        var sessions = new InMemoryTestSessionCoordinator();
+        var builder = CompositionTestData.SendableBuilder(loop, sessions);
+        _ = builder.Services.AddInputCoordinator().AddSessionBackedInputQueue();
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var identity = CompositionTestData.Identity();
+        var opener = await SeedSessionAsync(agent, identity, loop);
+        loop.Gate = new TaskCompletionSource();
+        var running = agent.SendAsync(new AgentSendRequest(identity, "one", opener), TestContext.Current.CancellationToken);
+        await loop.Entered.Task;
+        var before = sessions.EntriesOf(opener).Length;
+        var input = QueueInput(InputDelivery.Steer, "steer-me");
+
+        var admitted = await agent.SteerAsync(opener, identity, input, cancellationToken: TestContext.Current.CancellationToken);
+
+        var receipt = admitted.ShouldBeOfType<AcceptedInput>().Receipt;
+        receipt.InputId.ShouldBe(input.Id);
+        receipt.SessionId.ShouldBe(opener);
+        receipt.Existing.ShouldBeFalse();
+        sessions.EntriesOf(opener).Length.ShouldBe(before);
+        loop.Gate.SetResult();
+        _ = await running;
+    }
+
+    [Fact]
+    public async Task FollowUpAsync_WhenThePreviousRunHasSettled_AdmitsFollowUp()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        var builder = CompositionTestData.SendableBuilder(loop, sessions);
+        _ = builder.Services.AddInputCoordinator().AddSessionBackedInputQueue();
+        await using var engine = builder.Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var identity = CompositionTestData.Identity();
+        var opener = await SeedSessionAsync(agent, identity, loop);
+        var before = sessions.EntriesOf(opener).Length;
+        var input = QueueInput(InputDelivery.FollowUp, "later");
+
+        var admitted = await agent.FollowUpAsync(opener, identity, input, cancellationToken: TestContext.Current.CancellationToken);
+
+        var receipt = admitted.ShouldBeOfType<AcceptedInput>().Receipt;
+        receipt.InputId.ShouldBe(input.Id);
+        receipt.Existing.ShouldBeFalse();
+        sessions.EntriesOf(opener).Length.ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task SteerAsync_WhenInputIsFollowUp_ThrowsBeforeAdmission()
+    {
+        var loop = new GatedAgentLoop();
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var opener = await SeedSessionAsync(agent, CompositionTestData.Identity(), loop);
+
+        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(() =>
+            agent.SteerAsync(
+                opener,
+                CompositionTestData.Identity(),
+                QueueInput(InputDelivery.FollowUp, "not-steering"),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("input");
+    }
+
+    private static AgentInput QueueInput(InputDelivery delivery, string text) =>
+        new(
+            new InputId(Guid.NewGuid()),
+            delivery,
+            [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+
+    [Fact]
     public async Task SendAsync_WhenTwoAgentsShareTheEngine_EachRunsItsOwnDefinition()
     {
         var loop = new GatedAgentLoop();
