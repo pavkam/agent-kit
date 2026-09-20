@@ -10,12 +10,11 @@ public abstract record AgentConversationOpenResult;
 /// <param name="AgentId">The agent that owns the session.</param>
 /// <param name="SessionId">The opened or deferred session identity.</param>
 /// <param name="BranchId">The authoritative active branch when <paramref name="SessionId"/> was opened; otherwise default until the first turn.</param>
-public sealed record AgentConversationOpened(
-    AgentId AgentId,
-    SessionId SessionId,
-    BranchId BranchId) : AgentConversationOpenResult;
+public sealed record AgentConversationOpened(AgentId AgentId, SessionId SessionId, BranchId BranchId)
+    : AgentConversationOpenResult;
 
 /// <summary>Reports that the conversation could not be opened with safe, closed evidence.</summary>
 /// <param name="AgentId">The agent the caller requested.</param>
 /// <param name="SafeMessage">A bounded reason safe to log or surface.</param>
-public sealed record AgentConversationOpenRejected(AgentId AgentId, string SafeMessage) : AgentConversationOpenResult;
+public sealed record AgentConversationOpenRejected(AgentId AgentId, string SafeMessage)
+    : AgentConversationOpenResult;

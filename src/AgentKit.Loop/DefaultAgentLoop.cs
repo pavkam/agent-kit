@@ -462,6 +462,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         currentVersion = history.SourceCursor.Version;
 
+        if (request.LaneAdmission is { } admissionBeforeFirstRequest
+            && await IsDurableAbortRequestedAsync(
+                request, services, admissionBeforeFirstRequest, laneState, cancellationToken).ConfigureAwait(false))
+        {
+            return BuildResult(
+                request,
+                RunOutcomes.Cancelled("The run was durably aborted before its first model request."),
+                committedMessages.ToImmutable(),
+                currentVersion,
+                laneState.Usage);
+        }
+
         var beforeFirstModelRequest = request.LaneAdmission is { } admissionForPromotion
             ? await TryPromoteInputAsync(
                 request, services, laneState, PromotionBoundary.BeforeFirstModelRequest, previousTurnId: null,
@@ -1307,6 +1319,41 @@ public sealed class DefaultAgentLoop: IAgentLoop
             committedMessages, cancellationToken, retry).ConfigureAwait(false);
     }
 
+    /// <summary>Reads whether a durable abort marker is committed for this run before the next promotion attempt.</summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="admission">The accepted lane admission installed for this run.</param>
+    /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns><see langword="true"/> when <see cref="SessionRunStateLoaded.AbortRequested"/> is set; otherwise <see langword="false"/>.</returns>
+    private async ValueTask<bool> IsDurableAbortRequestedAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        LoopLaneAdmission admission,
+        LoopLaneState laneState,
+        CancellationToken cancellationToken)
+    {
+        if (services.RunCoordinator is not { } runCoordinator)
+        {
+            return false;
+        }
+
+        var (authorization, _) = await CaptureAuthorizationAsync(
+            request, services, admission.AcceptedCorrelation, cancellationToken).ConfigureAwait(false);
+        if (authorization is null)
+        {
+            return false;
+        }
+
+        var context = new SessionOperationContext(
+            request.AgentId, request.SessionId, laneState.ExecutionLaneId, admission.AcceptedCorrelation,
+            request.Identity, authorization);
+        var capability = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
+        var loaded = await services.Session.LoadRunStateAsync(new SessionRunStateRequest(context), capability, cancellationToken)
+            .ConfigureAwait(false);
+        return loaded is SessionRunStateLoaded { AbortRequested: true };
+    }
+
     /// <summary>
     /// Attempts one atomic input-promotion transition at a safe loop boundary, best-effort: a rejection,
     /// stale-evidence conflict, or fault is logged and treated as nothing to promote rather than failing the run.
@@ -1967,6 +2014,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // the revision, branch cursor, and cutoff below are deliberately the values observed before this
         // attempt, not the store's new state after it commits. The merged cursor/messages a Continue decision
         // actually resumes from are tracked separately below.
+        if (request.LaneAdmission is { } admissionAfterTurn
+            && await IsDurableAbortRequestedAsync(
+                request, services, admissionAfterTurn, laneState, cancellationToken).ConfigureAwait(false))
+        {
+            return TurnOutcome.Settled(
+                RunOutcomes.Cancelled("The run was durably aborted at a safe input boundary."), version);
+        }
+
         var afterTurnCommitted = await TryPromoteInputAsync(
             request, services, laneState, PromotionBoundary.AfterTurnCommitted, turnId, _turnIds.Create(), nextCursor,
             lastEntryId, cancellationToken).ConfigureAwait(false);
@@ -2029,6 +2084,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // above (which would already have produced a highest-priority PromotedInputContinuationCause).
         if (decision is CompleteRun && afterTurnCommitted is null && turn < request.MaxTurns)
         {
+            if (request.LaneAdmission is { } admissionOtherwiseIdle
+                && await IsDurableAbortRequestedAsync(
+                    request, services, admissionOtherwiseIdle, laneState, cancellationToken).ConfigureAwait(false))
+            {
+                return TurnOutcome.Settled(
+                    RunOutcomes.Cancelled("The run was durably aborted at a safe input boundary."), version);
+            }
+
             var otherwiseIdle = await TryPromoteInputAsync(
                 request, services, laneState, PromotionBoundary.OtherwiseIdle, turnId, _turnIds.Create(), nextCursor,
                 lastEntryId, cancellationToken).ConfigureAwait(false);

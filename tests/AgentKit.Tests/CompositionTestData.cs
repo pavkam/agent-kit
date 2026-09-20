@@ -188,13 +188,18 @@ internal static class CompositionTestData
         IAgentLoop loop,
         InMemoryTestSessionCoordinator sessions,
         SessionBusyBehavior busyBehavior = SessionBusyBehavior.Reject,
+        AgentDefinition? definition = null,
         params AgentDefinition[] definitions)
     {
         var builder = AgentEngine.CreateBuilder();
         _ = builder.Services.AddKeyedSingleton(AgentLoopComponentDefaults.LoopKeyValue, loop);
         _ = builder.Services.AddSingleton<ISessionCoordinator>(sessions);
         AddRunServicesFakes(builder.Services);
-        var selected = definitions.Length == 0 ? [Definition()] : definitions;
+        var selected = definition is not null
+            ? [definition, .. definitions]
+            : definitions.Length == 0
+                ? [Definition()]
+                : definitions;
         AddRunProfiles(builder.Services, busyBehavior, selected);
         foreach (var definition in selected)
         {

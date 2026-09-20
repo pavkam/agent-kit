@@ -37,8 +37,8 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
       `SessionLaneRegistry`
 - [x] WS1-C10 `SteerAsync` and `FollowUpAsync`
 - [x] WS1-C11 durable abort store primitive
-- [ ] WS1-C12 `CancelAsync` and `AttachAsync` by `RunId`
-- [ ] WS1-C13 Conversations over the engine, Simple sugar
+- [x] WS1-C12 `CancelAsync` and `AttachAsync` by `RunId`
+- [x] WS1-C13 Conversations over the engine, Simple sugar
 - [x] WS1-C14 input-queue conformance across three stores
 
 ## Verified current state

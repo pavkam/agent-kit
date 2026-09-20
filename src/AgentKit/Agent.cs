@@ -226,4 +226,42 @@ public sealed class Agent
         ArgumentOutOfRangeException.ThrowIfNotEqual(input.Delivery, InputDelivery.FollowUp, nameof(input));
         return _runtime.AdmitInputAsync(this, sessionId, identity, input, executionLaneId, cancellationToken);
     }
+
+    /// <summary>Requests durable abort for one active run in this process.</summary>
+    /// <param name="runId">The accepted run to abort.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels the wait before the abort commits.</param>
+    /// <returns>The session store's typed abort outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The run is not active in this process or the session is unavailable.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    public Task<SessionRunAbortResult> CancelAsync(
+        RunId runId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+        return _runtime.CancelAsync(this, runId, identity, cancellationToken);
+    }
+
+    /// <summary>Attaches to one active run's durable replay and live event tail.</summary>
+    /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
+    /// <param name="runId">The accepted run to attach to.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels attachment setup. It does not abort the run.</param>
+    /// <returns>A started stream, or a rejection when the run settled or cannot be tailed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    public Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
+        RunId runId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+        return _runtime.AttachAsync<TOutput>(this, runId, identity, cancellationToken);
+    }
 }

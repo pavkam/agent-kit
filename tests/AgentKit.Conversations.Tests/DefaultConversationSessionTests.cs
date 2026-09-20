@@ -140,9 +140,7 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            null!, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler, args.ToolInvoker,
-            args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
+            null!, args.SecurityProfileSelector, args.TurnExecutor, args.OperationIds, args.TimeProvider, args.Options));
 
         exception.ParamName.ShouldBe("sessionCoordinator");
     }
@@ -153,115 +151,20 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, null!, args.LoopScopeFactory, args.ContextAssembler, args.ToolInvoker,
-            args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
+            args.SessionCoordinator, null!, args.TurnExecutor, args.OperationIds, args.TimeProvider, args.Options));
 
         exception.ParamName.ShouldBe("securityProfileSelector");
     }
 
     [Fact]
-    public void Constructor_WhenLoopScopeFactoryIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenTurnExecutorIsNull_ThrowsArgumentNullException()
     {
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, null!, args.ContextAssembler, args.ToolInvoker,
-            args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
+            args.SessionCoordinator, args.SecurityProfileSelector, null!, args.OperationIds, args.TimeProvider, args.Options));
 
-        exception.ParamName.ShouldBe("loopScopeFactory");
-    }
-
-    [Fact]
-    public void Constructor_WhenContextAssemblerIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, null!, args.ToolInvoker,
-            args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("contextAssembler");
-    }
-
-    [Fact]
-    public void Constructor_WhenToolInvokerIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler, null!,
-            args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("toolInvoker");
-    }
-
-    [Fact]
-    public void Constructor_WhenModelCatalogIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, null!, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("modelCatalog");
-    }
-
-    [Fact]
-    public void Constructor_WhenModelSelectorIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, null!, args.LlmModelResolver, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("modelSelector");
-    }
-
-    [Fact]
-    public void Constructor_WhenLlmModelResolverIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, null!, args.ContinuationPolicy, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("llmModelResolver");
-    }
-
-    [Fact]
-    public void Constructor_WhenContinuationPolicyIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, null!, args.RunIds,
-            args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("continuationPolicy");
-    }
-
-    [Fact]
-    public void Constructor_WhenRunIdsIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            null!, args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("runIds");
+        exception.ParamName.ShouldBe("turnExecutor");
     }
 
     [Fact]
@@ -270,37 +173,9 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, null!, args.MessageIds, args.SessionEntryIds, args.TimeProvider, args.Options));
+            args.SessionCoordinator, args.SecurityProfileSelector, args.TurnExecutor, null!, args.TimeProvider, args.Options));
 
         exception.ParamName.ShouldBe("operationIds");
-    }
-
-    [Fact]
-    public void Constructor_WhenMessageIdsIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, args.OperationIds, null!, args.SessionEntryIds, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("messageIds");
-    }
-
-    [Fact]
-    public void Constructor_WhenSessionEntryIdsIsNull_ThrowsArgumentNullException()
-    {
-        var args = ValidArgs();
-
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, args.OperationIds, args.MessageIds, null!, args.TimeProvider, args.Options));
-
-        exception.ParamName.ShouldBe("sessionEntryIds");
     }
 
     [Fact]
@@ -309,9 +184,7 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, args.OperationIds, args.MessageIds, args.SessionEntryIds, null!, args.Options));
+            args.SessionCoordinator, args.SecurityProfileSelector, args.TurnExecutor, args.OperationIds, null!, args.Options));
 
         exception.ParamName.ShouldBe("timeProvider");
     }
@@ -322,9 +195,7 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider, null!));
+            args.SessionCoordinator, args.SecurityProfileSelector, args.TurnExecutor, args.OperationIds, args.TimeProvider, null!));
 
         exception.ParamName.ShouldBe("options");
     }
@@ -335,9 +206,7 @@ public sealed class DefaultConversationSessionTests
         var args = ValidArgs();
 
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultConversationSession(
-            args.SessionCoordinator, args.SecurityProfileSelector, args.LoopScopeFactory, args.ContextAssembler,
-            args.ToolInvoker, args.ModelCatalog, args.ModelSelector, args.LlmModelResolver, args.ContinuationPolicy,
-            args.RunIds, args.OperationIds, args.MessageIds, args.SessionEntryIds, args.TimeProvider,
+            args.SessionCoordinator, args.SecurityProfileSelector, args.TurnExecutor, args.OperationIds, args.TimeProvider,
             new NullValueOptions()));
 
         exception.ParamName.ShouldBe("optionValues");
@@ -480,17 +349,22 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenExactAgentAndConfigurationEvidenceIsSupplied_UsesThemToBuildTheRunRequest()
+    public async Task SendAsync_WhenExactAgentAndConfigurationEvidenceIsSupplied_DelegatesThroughTheTurnExecutor()
     {
         var loop = new FakeAgentLoop();
-        using var session = CreateSession(loop: loop, options: ConversationSessionOptionsFactory.ValidWithExactEvidence());
+        var coordinator = new FakeSessionCoordinator();
+        var executor = new FakeConversationTurnExecutor(loop, coordinator);
+        using var session = CreateSession(
+            coordinator: coordinator,
+            loop: loop,
+            turnExecutor: executor,
+            options: ConversationSessionOptionsFactory.ValidWithExactEvidence());
 
         var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
 
         result.Succeeded.ShouldBeTrue();
-        var request = loop.LastRequest.ShouldNotBeNull();
-        _ = request.Agent.ShouldNotBeNull();
-        _ = request.Configuration.ShouldNotBeNull();
+        executor.RunCallCount.ShouldBe(1);
+        executor.LastRequest.ShouldNotBeNull().AgentId.ShouldBe(ConversationSessionOptionsFactory.AgentId);
     }
 
     [Theory]
@@ -637,12 +511,8 @@ public sealed class DefaultConversationSessionTests
 
         result.Succeeded.ShouldBeTrue();
         coordinator.CreateCallCount.ShouldBe(1);
-        coordinator.AppendCallCount.ShouldBe(1);
+        coordinator.AppendCallCount.ShouldBe(0);
         loop.CallCount.ShouldBe(1);
-
-        var committedEntry = coordinator.LastAppendRequest.ShouldNotBeNull().Entries[0].ShouldBeOfType<MessageSessionEntry>();
-        var committedMessage = committedEntry.Message.ShouldBeOfType<UserMessage>();
-        committedMessage.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("hi");
 
         result.Events.Length.ShouldBe(4);
         result.Events[0].ShouldBeOfType<ConversationAssistantTextEvent>().Text.ShouldBe("Hello there");
@@ -1910,29 +1780,26 @@ public sealed class DefaultConversationSessionTests
         ISecurityProfileSelector? selector = null,
         IAgentLoop? loop = null,
         IServiceScopeFactory? loopScopeFactory = null,
+        IConversationTurnExecutor? turnExecutor = null,
         Action<ConversationSessionOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
         ConversationSessionOptions? options = null,
         IToolPresenter? toolPresenter = null,
-        ILogger<DefaultConversationSession>? logger = null) =>
-        new(
-            coordinator ?? new FakeSessionCoordinator(),
+        ILogger<DefaultConversationSession>? logger = null)
+    {
+        var sessionCoordinator = coordinator ?? new FakeSessionCoordinator();
+        var agentLoop = loop ?? new FakeAgentLoop();
+        _ = loopScopeFactory;
+        return new DefaultConversationSession(
+            sessionCoordinator,
             selector ?? new FakeSecurityProfileSelector(),
-            loopScopeFactory ?? LoopScopeFactory(loop ?? new FakeAgentLoop()),
-            new UnsupportedContextAssembler(),
-            new CaptureTestToolInvoker(),
-            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])),
-            ScriptedModelSelector.Selecting(FakeModelDescriptor()),
-            new AliasLlmModelResolver(),
-            new UnsupportedRunContinuationPolicy(),
-            new GuidIdentifierGenerator<RunId>(static guid => new RunId(guid)),
+            turnExecutor ?? new FakeConversationTurnExecutor(agentLoop, sessionCoordinator),
             new GuidIdentifierGenerator<OperationId>(static guid => new OperationId(guid)),
-            new GuidIdentifierGenerator<MessageId>(static guid => new MessageId(guid)),
-            new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)),
             timeProvider ?? new FakeTimeProvider(),
             Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)),
             logger: logger,
             toolPresenter: toolPresenter);
+    }
 
     /// <summary>
     /// Builds a real <see cref="IServiceScopeFactory"/> whose scopes resolve <paramref name="loop"/> as the keyed
@@ -1949,34 +1816,20 @@ public sealed class DefaultConversationSessionTests
     private static (
         ISessionCoordinator SessionCoordinator,
         ISecurityProfileSelector SecurityProfileSelector,
-        IServiceScopeFactory LoopScopeFactory,
-        IContextAssembler ContextAssembler,
-        IToolInvoker ToolInvoker,
-        IModelCatalog ModelCatalog,
-        IModelSelector ModelSelector,
-        ILlmModelResolver LlmModelResolver,
-        IRunContinuationPolicy ContinuationPolicy,
-        IIdentifierGenerator<RunId> RunIds,
+        IConversationTurnExecutor TurnExecutor,
         IIdentifierGenerator<OperationId> OperationIds,
-        IIdentifierGenerator<MessageId> MessageIds,
-        IIdentifierGenerator<SessionEntryId> SessionEntryIds,
         TimeProvider TimeProvider,
-        IOptions<ConversationSessionOptions> Options) ValidArgs() => (
-            new FakeSessionCoordinator(),
+        IOptions<ConversationSessionOptions> Options) ValidArgs()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        return (
+            coordinator,
             new FakeSecurityProfileSelector(),
-            LoopScopeFactory(new FakeAgentLoop()),
-            new UnsupportedContextAssembler(),
-            new CaptureTestToolInvoker(),
-            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])),
-            ScriptedModelSelector.Selecting(FakeModelDescriptor()),
-            new AliasLlmModelResolver(),
-            new UnsupportedRunContinuationPolicy(),
-            new GuidIdentifierGenerator<RunId>(static guid => new RunId(guid)),
+            new FakeConversationTurnExecutor(new FakeAgentLoop(), coordinator),
             new GuidIdentifierGenerator<OperationId>(static guid => new OperationId(guid)),
-            new GuidIdentifierGenerator<MessageId>(static guid => new MessageId(guid)),
-            new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)),
             new FakeTimeProvider(),
             Options.Create(ConversationSessionOptionsFactory.Valid()));
+    }
 
     private static ModelDescriptor FakeModelDescriptor()
     {

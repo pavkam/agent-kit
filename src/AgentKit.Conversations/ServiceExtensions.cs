@@ -16,19 +16,12 @@ public static class ServiceExtensions
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
         /// <remarks>
-        /// This does not register <c>ISessionCoordinator</c>, <c>ISecurityProfileSelector</c>, <c>IAgentLoop</c>,
-        /// <c>IContextAssembler</c>, <c>IToolInvoker</c>, <c>IModelCatalog</c>, <c>IModelSelector</c>,
-        /// <c>ILlmModelResolver</c>, or the keyed <c>IRunContinuationPolicy</c>: the host still selects a session
-        /// store, security policies and authority, and the tool/provider registrations its one agent needs, exactly
-        /// as any other AgentKit composition does. This type drives exactly one agent and never selects among
-        /// several keyed loops, so every one of those collaborators is resolved unkeyed except the loop and the
-        /// continuation policy. <c>IAgentLoop</c> is registered scoped by its own package (for example
-        /// <c>AgentKit.Loop</c>'s <c>AddAgentLoop</c>), so <see cref="DefaultConversationSession"/> resolves it
-        /// from a short-lived scope created per turn under the fixed key named by
-        /// <see cref="AgentLoopComponentDefaults.LoopKey"/> rather than capturing it at construction, which would
-        /// otherwise make this singleton-lifetime session a captive dependency on a shorter-lived service. The
-        /// continuation policy is resolved from the fixed key named by
-        /// <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>. Every registration here is idempotent
+        /// This does not register <c>ISessionCoordinator</c>, <c>ISecurityProfileSelector</c>, or
+        /// <c>AgentEngine</c>: the host still selects a session store, security policies and authority, the
+        /// loop/provider/tool registrations its one agent needs, and <c>AddAgentKit</c>, exactly as any other
+        /// AgentKit composition does. Turns delegate through <see cref="EngineConversationTurnExecutor"/> to
+        /// <see cref="Agent.RunAsync{TOutput}"/> rather than compiling a private <c>AgentRunServices</c> bundle.
+        /// Every registration here is idempotent
         /// (<c>TryAdd</c>) except the bound options, so calling this more than once with different
         /// <paramref name="configure"/> delegates applies every delegate to the same options instance in call order.
         /// </remarks>
@@ -50,14 +43,10 @@ public static class ServiceExtensions
                 .ValidateOnStart();
 
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IIdentifierGenerator<RunId>>(
-                static _ => new GuidIdentifierGenerator<RunId>(static guid => new RunId(guid)));
             services.TryAddSingleton<IIdentifierGenerator<OperationId>>(
                 static _ => new GuidIdentifierGenerator<OperationId>(static guid => new OperationId(guid)));
-            services.TryAddSingleton<IIdentifierGenerator<MessageId>>(
-                static _ => new GuidIdentifierGenerator<MessageId>(static guid => new MessageId(guid)));
-            services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
-                static _ => new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)));
+            services.TryAddSingleton<IConversationTurnExecutor, EngineConversationTurnExecutor>();
+            services.TryAddSingleton<IConversationEngineHost, ConversationEngineHost>();
             services.TryAddSingleton<IConversationSession, DefaultConversationSession>();
             return services;
         }

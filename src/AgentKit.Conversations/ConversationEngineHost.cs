@@ -35,14 +35,11 @@ internal sealed class ConversationEngineHost(
 
         if (request.SessionId is not { } sessionId)
         {
-            if (_session.SessionId is not { } current || _session.BranchId is not { } branch)
-            {
-                return new AgentConversationOpenRejected(
+            return _session.SessionId is not { } current || _session.BranchId is not { } branch
+                ? new AgentConversationOpenRejected(
                     request.AgentId,
-                    "No session is bound yet. Send a message or call OpenAsync on the conversation session first.");
-            }
-
-            return new AgentConversationOpened(request.AgentId, current, branch);
+                    "No session is bound yet. Send a message or call OpenAsync on the conversation session first.")
+                : new AgentConversationOpened(request.AgentId, current, branch);
         }
 
         var open = await _session.OpenAsync(sessionId, cancellationToken).ConfigureAwait(false);

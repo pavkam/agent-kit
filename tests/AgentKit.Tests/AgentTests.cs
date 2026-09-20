@@ -577,6 +577,63 @@ public sealed class AgentTests
         exception.ParamName.ShouldBe("input");
     }
 
+    [Fact]
+    public async Task CancelAsync_WhenRunIsNotActive_ThrowsAdmissionRejected()
+    {
+        var loop = new GatedAgentLoop();
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var identity = CompositionTestData.Identity();
+        var runId = new RunId(Guid.Parse("f0000000-0000-0000-0000-000000000001"));
+
+        var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(() =>
+            agent.CancelAsync(runId, identity, TestContext.Current.CancellationToken));
+
+        exception.Rejection.Reason.ShouldContain("not active");
+    }
+
+    [Fact]
+    public async Task CancelAsync_WhenRunIsHeld_RecordsDurableAbort()
+    {
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource(), HonorDurableAbort = true };
+        var sessions = new InMemoryTestSessionCoordinator();
+        await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var identity = CompositionTestData.Identity();
+        var opener = await SeedSessionAsync(agent, identity, loop);
+        loop.Gate = new TaskCompletionSource();
+        var running = agent.SendAsync(new AgentSendRequest(identity, "hold", opener), TestContext.Current.CancellationToken);
+        while (loop.Requests.Count < 2)
+        {
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+        }
+
+        var runId = loop.Requests[^1].RunId;
+
+        var abort = await agent.CancelAsync(runId, identity, TestContext.Current.CancellationToken);
+
+        _ = abort.ShouldBeOfType<SessionRunAbortRecorded>();
+        loop.Gate!.SetResult();
+        var result = await running;
+        result.Outcome.ShouldBeOfType<RunCancelled>();
+    }
+
+    [Fact]
+    public async Task AttachAsync_WhenRunIsNotActive_RejectsWithoutStartingAStream()
+    {
+        var loop = new GatedAgentLoop();
+        await using var engine = CompositionTestData.SendableBuilder(loop, new InMemoryTestSessionCoordinator()).Build();
+        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
+        var runId = new RunId(Guid.Parse("f0000000-0000-0000-0000-000000000002"));
+
+        var rejected = (await agent.AttachAsync<string>(
+            runId,
+            CompositionTestData.Identity(),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<AgentRunStreamRejected<string>>();
+
+        rejected.Rejection.ErrorCode.ShouldBe(AgentErrorCodes.InvalidState);
+    }
+
     private static AgentInput QueueInput(InputDelivery delivery, string text) =>
         new(
             new InputId(Guid.NewGuid()),

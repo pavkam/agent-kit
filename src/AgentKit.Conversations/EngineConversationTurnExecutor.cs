@@ -10,6 +10,17 @@ internal sealed class EngineConversationTurnExecutor(AgentEngine engine, IIdenti
     private readonly IIdentifierGenerator<InputId> _inputIds = inputIds ?? throw new ArgumentNullException(nameof(inputIds));
 
     /// <inheritdoc/>
+    public Task<SessionId> EnsureSessionAsync(
+        AgentId agentId,
+        ExecutionIdentity identity,
+        SessionId? existingSessionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        return EnsureSessionForAgentAsync(agentId, identity, existingSessionId, cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public async Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
         ConversationTurnRunRequest request,
         CancellationToken cancellationToken = default)
@@ -52,6 +63,21 @@ internal sealed class EngineConversationTurnExecutor(AgentEngine engine, IIdenti
                 request.AttemptTimeout,
                 request.Observer),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<SessionId> EnsureSessionForAgentAsync(
+        AgentId agentId,
+        ExecutionIdentity identity,
+        SessionId? sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId is { } existing)
+        {
+            return existing;
+        }
+
+        var agent = (await _engine.GetAgentAsync(agentId, cancellationToken).ConfigureAwait(false)).RequireResolved();
+        return await EnsureSessionAsync(agent, sessionId, identity, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<SessionId> EnsureSessionAsync(

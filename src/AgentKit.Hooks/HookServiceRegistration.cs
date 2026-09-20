@@ -34,11 +34,22 @@ internal static class HookServiceRegistration
         services.TryAddSingleton<IHookCatalog, HookRegistrationCatalog>();
         services.TryAddSingleton<HookRegistrationBindingRegistry>();
         services.TryAddSingleton<HookRegistrationBindingRegistryInitializer>();
-        services.TryAddSingleton<IHookInstanceFactory>(static provider => new ServiceProviderHookInstanceFactory(
-            provider,
-            provider.GetRequiredService<HookRegistrationBindingRegistry>().Bindings,
-            provider.GetRequiredService<IOptions<AgentHookOptions>>()));
-        services.TryAddSingleton<IHookRegistrationSource, HookRegistrationBindingSource>();
+        services.TryAddSingleton<IHookInstanceFactory>(static provider =>
+        {
+            _ = provider.GetRequiredService<HookRegistrationBindingRegistryInitializer>();
+            return new ServiceProviderHookInstanceFactory(
+                provider,
+                provider.GetRequiredService<HookRegistrationBindingRegistry>().Bindings,
+                provider.GetRequiredService<IOptions<AgentHookOptions>>());
+        });
+        services.TryAddSingleton<IHookRegistrationSource>(static provider =>
+        {
+            _ = provider.GetRequiredService<HookRegistrationBindingRegistryInitializer>();
+            return new HookRegistrationBindingSource(
+                provider,
+                provider.GetRequiredService<HookRegistrationBindingRegistry>(),
+                provider.GetRequiredService<IReadOnlyList<HookPointDefinitionRegistration>>());
+        });
         services.TryAddSingleton<IIdentifierGenerator<HookDispatchId>>(
             static _ => new GuidIdentifierGenerator<HookDispatchId>(static value => new HookDispatchId(value)));
         services.TryAddSingleton<IIdentifierGenerator<HookInvocationId>>(
@@ -55,7 +66,7 @@ internal static class HookServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IRunStartedHook, THook>());
-        AddBinding(services, typeof(THook), typeof(IRunStartedHook), AgentHookPoints.RunStarted);
+        AddBinding<THook>(services, typeof(IRunStartedHook), AgentHookPoints.RunStarted);
         return services;
     }
 
@@ -65,7 +76,7 @@ internal static class HookServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeModelRequestHook, THook>());
-        AddBinding(services, typeof(THook), typeof(IBeforeModelRequestHook), AgentHookPoints.BeforeModelRequest);
+        AddBinding<THook>(services, typeof(IBeforeModelRequestHook), AgentHookPoints.BeforeModelRequest);
         return services;
     }
 
@@ -75,7 +86,7 @@ internal static class HookServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeToolInvocationHook, THook>());
-        AddBinding(services, typeof(THook), typeof(IBeforeToolInvocationHook), AgentHookPoints.BeforeToolInvocation);
+        AddBinding<THook>(services, typeof(IBeforeToolInvocationHook), AgentHookPoints.BeforeToolInvocation);
         return services;
     }
 
@@ -95,18 +106,19 @@ internal static class HookServiceRegistration
         services.TryAddSingleton<IHookMutationValidator<BeforeToolInvocationEventArgs>, DefaultAgentHookMutationValidator<BeforeToolInvocationEventArgs>>();
     }
 
-    private static void AddBinding(
+    private static void AddBinding<THook>(
         IServiceCollection services,
-        Type implementationType,
         Type hookServiceType,
         HookPointId point)
+        where THook : class
     {
         var binding = new HookRegistrationBinding(
             point,
             HookProfileOptions.DefaultProfileKey,
-            implementationType,
+            typeof(THook),
             hookServiceType,
             HookLifetime.Singleton);
-        services.TryAddEnumerable(ServiceDescriptor.Singleton(binding));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHookRegistrationBindingContributor, HookRegistrationBindingContributor<THook>>(
+            _ => new HookRegistrationBindingContributor<THook>(binding)));
     }
 }

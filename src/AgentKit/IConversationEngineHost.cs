@@ -7,7 +7,7 @@ namespace AgentKit;
 /// Optional composition hook that binds the registered conversation session to an engine open request.
 /// </summary>
 /// <remarks>
-/// <see cref="AgentKit.Conversations"/> registers the default implementation when
+/// The conversations package registers the default implementation when
 /// <c>AddConversationSession</c> is composed together with <c>AddAgentKit</c>. The facade references only this
 /// contract so it never depends on the conversations package.
 /// </remarks>
@@ -17,7 +17,7 @@ public interface IConversationEngineHost
     /// <param name="request">The agent, identity, and optional existing session.</param>
     /// <param name="cancellationToken">Cancels the open before any durable binding commits.</param>
     /// <returns>An opened binding or a safe rejection.</returns>
-    ValueTask<AgentConversationOpenResult> OpenAsync(
+    public ValueTask<AgentConversationOpenResult> OpenAsync(
         AgentConversationOpenRequest request,
         CancellationToken cancellationToken = default);
 }

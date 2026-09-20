@@ -21,7 +21,7 @@ internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
     /// </exception>
     public HookRegistrationBindingSource(
         IServiceProvider provider,
-        IEnumerable<HookRegistrationBinding> bindings,
+        HookRegistrationBindingRegistry bindings,
         IReadOnlyList<HookPointDefinitionRegistration> points)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -29,7 +29,7 @@ internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
         ArgumentNullException.ThrowIfNull(points);
 
         _provider = provider;
-        _bindings = [.. bindings];
+        _bindings = bindings;
         _points = points.ToDictionary(static point => point.Point);
     }
 
@@ -41,14 +41,14 @@ internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_bindings.Count == 0)
+        if (_bindings.Bindings.Count == 0)
         {
             return new ValueTask<HookRegistrationSnapshot>(new HookRegistrationSnapshot([]));
         }
 
         var registrations = ImmutableArray.CreateBuilder<HookRegistrationDescriptor>();
         var seenImplementationTypes = new HashSet<Type>();
-        foreach (var binding in _bindings)
+        foreach (var binding in _bindings.Bindings)
         {
             if (!binding.ProfileKey.Equals(request.ProfileKey) || !seenImplementationTypes.Add(binding.ImplementationType))
             {

@@ -261,7 +261,8 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
             }
 
             var sequence = new SessionSequence(stored.Entries.Count + 1);
-            stored.Admissions[request.AdmissionId] = request.EffectivePayload;
+            stored.Admissions[request.AdmissionId] = new StoredAdmission(
+                request.EffectivePayload, sequence, laneId);
             lane.BranchCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, request.EntryId);
             lane.Revision = new SessionLaneRevision(lane.Revision.Value + 1);
             stored.Version = new SessionVersion(stored.Version.Value + 1);
@@ -318,7 +319,8 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
             SessionEntryId? parent = stored.Entries.Count == 0 ? null : stored.Entries[^1].Id;
             for (var index = 0; index < request.SelectedAdmissionIds.Length; index++)
             {
-                var payload = stored.Admissions[request.SelectedAdmissionIds[index]];
+                var payload = stored.Admissions[request.SelectedAdmissionIds[index]].Payload;
+                _ = lane.PromotedAdmissions.Add(request.SelectedAdmissionIds[index]);
                 var message = new UserMessage(
                     request.MessageIds[index], request.Context.AgentId, request.Context.SessionId, stored.Descriptor.ConversationId,
                     lane.BranchCursor.BranchId, request.RunId, request.InitialTurnId, request.AcceptedAt, MessageState.Complete,
@@ -361,8 +363,117 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
                 || !stored.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane)
                 || lane.AcceptedState is not { } state
                 || state.Correlation != request.Context.Correlation
+                || state.Identity != request.Context.Identity
                 ? ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable("The requested operation state is unavailable."))
-                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state));
+                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state, lane.AbortRequested));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunAbortResult> AbortRunAsync(
+        SessionRunAbortRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored)
+                || !stored.Lanes.TryGetValue(request.ExecutionLaneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.LaneNotFound, "The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is not { } active)
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.NoAcceptedRun, "The selected lane holds no accepted run."));
+            }
+
+            if (active.Correlation.OperationId != request.OperationId
+                || active.Correlation.RunId != request.RunId
+                || active.OperationStateRevision != request.ExpectedStateRevision
+                || lane.Revision != request.ExpectedLaneRevision
+                || stored.Version != request.ExpectedVersion)
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.Fenced,
+                    "The lane's installed accepted run does not match the requested operation, run, and revision."));
+            }
+
+            lane.AbortRequested = true;
+            lane.Revision = new SessionLaneRevision(lane.Revision.Value + 1);
+            var stateRevision = new OperationStateRevision(active.OperationStateRevision.Value + 1);
+            lane.AcceptedState = new SessionAcceptedRunState(
+                active.Address,
+                active.ExecutionLaneId,
+                lane.Revision,
+                active.Correlation,
+                stateRevision,
+                active.Identity,
+                active.Authorization,
+                active.SessionProfile,
+                active.Configuration,
+                active.PreviousCursor,
+                active.CommittedCursor,
+                active.PromotionCutoff,
+                active.InitiatingAdmissionId,
+                active.PromotedAdmissionIds,
+                active.MaterializedEntryIds,
+                active.MaterializedMessageIds,
+                active.InitialTurnId,
+                active.AcceptedAt);
+            stored.Version = new SessionVersion(stored.Version.Value + 1);
+            PrunePendingAdmissions(stored, request.ExecutionLaneId);
+            return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRecorded(
+                stored.Version, lane.Revision, stateRevision, existing: false));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
+        SessionPendingInputsRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored)
+                || !stored.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane))
+            {
+                return ValueTask.FromResult<SessionPendingInputsResult>(
+                    new SessionPendingInputsUnavailable("The execution lane has not been provisioned."));
+            }
+
+            return ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsLoaded(
+                request.Context.AgentId,
+                request.Context.SessionId,
+                request.Context.ExecutionLaneId!.Value,
+                [],
+                lane.Revision,
+                lane.BranchCursor));
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionInputPromotionResult> PromoteInputAsync(
+        SessionInputPromotionRequest request, SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionInputPromotionResult>(
+            new SessionInputPromotionRejected("Mid-run promotion is not implemented by this test double."));
+    }
+
+    private static void PrunePendingAdmissions(StoredSession stored, ExecutionLaneId laneId)
+    {
+        var doomed = stored.Admissions
+            .Where(pair => pair.Value.ExecutionLaneId == laneId)
+            .Select(static pair => pair.Key)
+            .ToArray();
+        foreach (var admissionId in doomed)
+        {
+            _ = stored.Admissions.Remove(admissionId);
         }
     }
 
@@ -417,7 +528,12 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
 
         public Dictionary<ExecutionLaneId, LaneRecord> Lanes { get; } = [];
 
-        public Dictionary<AdmissionId, AgentInput> Admissions { get; } = [];
+        public Dictionary<AdmissionId, StoredAdmission> Admissions { get; } = [];
+    }
+
+    private sealed record StoredAdmission(AgentInput Payload, SessionSequence AdmittedSequence, ExecutionLaneId ExecutionLaneId)
+    {
+        public bool Promoted { get; set; }
     }
 
     private sealed class LaneRecord(SessionBranchCursor branchCursor, SessionLaneRevision revision)
@@ -427,5 +543,9 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
         public SessionLaneRevision Revision { get; set; } = revision;
 
         public SessionAcceptedRunState? AcceptedState { get; set; }
+
+        public bool AbortRequested { get; set; }
+
+        public HashSet<AdmissionId> PromotedAdmissions { get; } = [];
     }
 }

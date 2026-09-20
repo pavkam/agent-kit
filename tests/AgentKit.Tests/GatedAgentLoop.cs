@@ -29,6 +29,12 @@ internal sealed class GatedAgentLoop: IAgentLoop
     /// <summary>Gets or sets a factory that replaces the completed outcome, for settlement tests.</summary>
     public Func<AgentLoopRunRequest, AgentRunOutcome>? OutcomeOverride { get; init; }
 
+    /// <summary>
+    /// When <see langword="true"/>, polls durable abort through the session coordinator after the gate releases,
+    /// mirroring <c>DefaultAgentLoop</c> cancel boundaries for facade tests.
+    /// </summary>
+    public bool HonorDurableAbort { get; init; }
+
     private int _active;
 
     /// <inheritdoc/>
@@ -54,12 +60,34 @@ internal sealed class GatedAgentLoop: IAgentLoop
                     cancellationToken);
             }
 
+            if (request.LaneAdmission is { } admission
+                && services.RunCoordinator is { } runCoordinator
+                && await IsAbortRequestedAsync(request, services, admission, runCoordinator, cancellationToken).ConfigureAwait(false))
+            {
+                var finalVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
+                return new AgentLoopResult(
+                    request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                    RunOutcomes.Cancelled("The run was durably aborted."), [], finalVersion, null,
+                    new RunUsage(request.RunId, []), new RunSettlementCompleted());
+            }
+
             if (Gate is { } gate)
             {
                 await gate.Task.WaitAsync(cancellationToken);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+            if (HonorDurableAbort
+                && request.LaneAdmission is { } admission
+                && await IsDurableAbortRequestedAsync(request, services, admission, cancellationToken).ConfigureAwait(false))
+            {
+                var abortedVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
+                return new AgentLoopResult(
+                    request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                    RunOutcomes.Cancelled("The run was durably aborted at a safe boundary."),
+                    [], abortedVersion, null, new RunUsage(request.RunId, []), new RunSettlementCompleted());
+            }
+
             var assistant = new AssistantMessage(
                 new MessageId(Guid.NewGuid()), request.AgentId, request.SessionId, null, request.BranchId, request.RunId, null,
                 DateTimeOffset.UnixEpoch, MessageState.Complete,
@@ -93,6 +121,44 @@ internal sealed class GatedAgentLoop: IAgentLoop
     /// path may have already advanced the version through provisioning, admission, and acceptance before this
     /// loop was ever entered, so a fixed version would be stale and fail a caller's later lane release.
     /// </summary>
+    private static async ValueTask<bool> IsDurableAbortRequestedAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        LoopLaneAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        var context = new SessionOperationContext(
+            request.AgentId,
+            request.SessionId,
+            admission.ExecutionLaneId,
+            admission.AcceptedCorrelation,
+            request.Identity,
+            request.Authorization);
+        var capability = new SessionExecutionCapability(
+            request.SessionProfile,
+            services.Session,
+            services.RunCoordinator!);
+        var loaded = await services.Session.LoadRunStateAsync(new SessionRunStateRequest(context), capability, cancellationToken)
+            .ConfigureAwait(false);
+        return loaded is SessionRunStateLoaded { AbortRequested: true };
+    }
+
+    private static async Task<bool> IsAbortRequestedAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        LoopLaneAdmission admission,
+        ISessionRunCoordinator runCoordinator,
+        CancellationToken cancellationToken)
+    {
+        var context = new SessionOperationContext(
+            request.AgentId, request.SessionId, admission.ExecutionLaneId, admission.AcceptedCorrelation,
+            request.Identity, request.Authorization);
+        var capability = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
+        var loaded = await services.Session.LoadRunStateAsync(new SessionRunStateRequest(context), capability, cancellationToken)
+            .ConfigureAwait(false);
+        return loaded is SessionRunStateLoaded { AbortRequested: true };
+    }
+
     private static async Task<SessionVersion?> CurrentVersionAsync(
         AgentLoopRunRequest request, AgentRunServices services, CancellationToken cancellationToken)
     {

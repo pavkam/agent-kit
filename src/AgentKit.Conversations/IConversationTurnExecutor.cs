@@ -4,14 +4,26 @@
 namespace AgentKit.Conversations;
 
 /// <summary>Admits and runs one conversational turn through the engine facade.</summary>
-internal interface IConversationTurnExecutor
+public interface IConversationTurnExecutor
 {
+    /// <summary>Creates a session when none is bound yet.</summary>
+    /// <param name="agentId">The composed agent identity.</param>
+    /// <param name="identity">The authenticated caller.</param>
+    /// <param name="existingSessionId">The already-bound session, or null to create one.</param>
+    /// <param name="cancellationToken">Cancels creation.</param>
+    /// <returns>The session to use for subsequent turns.</returns>
+    public Task<SessionId> EnsureSessionAsync(
+        AgentId agentId,
+        ExecutionIdentity identity,
+        SessionId? existingSessionId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Runs one turn and returns either a finished envelope or a typed rejection.</summary>
     /// <typeparam name="TOutput">The requested output projection.</typeparam>
     /// <param name="request">The turn to run.</param>
     /// <param name="cancellationToken">Cancels the caller's wait.</param>
     /// <returns>The engine's terminal typed result.</returns>
-    Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
+    public Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
         ConversationTurnRunRequest request,
         CancellationToken cancellationToken = default);
 
@@ -19,7 +31,7 @@ internal interface IConversationTurnExecutor
     /// <param name="request">The turn to run.</param>
     /// <param name="cancellationToken">Cancels the caller's wait.</param>
     /// <returns>The loop's terminal result after settlement.</returns>
-    Task<AgentLoopResult> SendObservedAsync(
+    public Task<AgentLoopResult> SendObservedAsync(
         ConversationTurnRunRequest request,
         CancellationToken cancellationToken = default);
 }
@@ -32,7 +44,7 @@ internal interface IConversationTurnExecutor
 /// <param name="MaxTurns">The narrowed turn limit for this run.</param>
 /// <param name="AttemptTimeout">The narrowed attempt timeout for this run.</param>
 /// <param name="Observer">The optional live observer wired into engine admission.</param>
-internal sealed record ConversationTurnRunRequest(
+public sealed record ConversationTurnRunRequest(
     AgentId AgentId,
     ExecutionIdentity Identity,
     SessionId? SessionId,

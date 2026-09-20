@@ -386,6 +386,8 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         IConversationEventObserver? observer,
         CancellationToken cancellationToken)
     {
+        await EnsureBoundSessionAsync(cancellationToken).ConfigureAwait(false);
+
         if (observer is not null && _binding is { } binding && !_bindingAnnounced)
         {
             _bindingAnnounced = true;
@@ -431,11 +433,11 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             if (_output is null)
             {
                 var result = await _turnExecutor.RunAsync<string>(turnRequest, cancellationToken).ConfigureAwait(false);
-                return MapTypedResult(result, observer, cancellationToken);
+                return await MapTypedResult(result, observer, cancellationToken).ConfigureAwait(false);
             }
 
             var structured = await _turnExecutor.RunAsync<ValidatedOutput>(turnRequest, cancellationToken).ConfigureAwait(false);
-            return MapTypedResult(structured, observer, cancellationToken);
+            return await MapTypedResult(structured, observer, cancellationToken).ConfigureAwait(false);
         }
         catch (AgentAdmissionRejectedException exception)
         {
@@ -482,7 +484,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     "admission_failed");
             }
 
-            var finished = (AgentRunFinished<TOutput>)result;
+            var finished = (AgentRunFinished<TOutput>) result;
             PublishBinding(finished.SessionId, finished.PreviousCursor.BranchId);
             var loopShaped = new AgentLoopResult(
                 finished.AgentId,
@@ -516,6 +518,33 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _binding = new ConversationSessionBoundEvent(sessionId, branchId);
     }
 
+    private async Task EnsureBoundSessionAsync(CancellationToken cancellationToken)
+    {
+        if (_sessionId is not null)
+        {
+            return;
+        }
+
+        ConversationLog.SessionCreating(_logger, _agentId);
+        var sessionId = await _turnExecutor.EnsureSessionAsync(
+            _agentId,
+            _identity,
+            _sessionId,
+            cancellationToken).ConfigureAwait(false);
+        var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
+        var authorization = await CaptureAuthorizationAsync(sessionId, correlation, cancellationToken).ConfigureAwait(false);
+        var loaded = await _sessionCoordinator.LoadAsync(
+            new SessionOperationContext(_agentId, sessionId, null, correlation, _identity, authorization),
+            _sessionProfile,
+            cancellationToken).ConfigureAwait(false);
+        if (loaded is not SessionLoaded session)
+        {
+            throw new InvalidOperationException($"Could not load the underlying session: {loaded}");
+        }
+
+        PublishBinding(sessionId, session.Descriptor.ActiveBranchId);
+    }
+
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>
     /// <param name="outcome">The run's terminal outcome, which is not <see cref="RunSucceeded"/>.</param>
     /// <returns>A stable, low-cardinality token distinguishing why the run did not complete.</returns>
@@ -530,37 +559,6 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         RunFailed => "failed",
         _ => "run_not_completed",
     };
-
-    private async Task EnsureSessionAsync(CancellationToken cancellationToken)
-    {
-        if (_sessionId is not null)
-        {
-            return;
-        }
-
-        ConversationLog.SessionCreating(_logger, _agentId);
-        var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
-        var authorization = await CaptureAuthorizationAsync(null, correlation, cancellationToken).ConfigureAwait(false);
-        var result = await _sessionCoordinator.CreateAsync(
-            new SessionCreateRequest(
-                _agentId,
-                _identity,
-                authorization,
-                null,
-                new IdempotencyKey($"agentkit.conversation:{_agentId}:create:{correlation.OperationId}"),
-                ExtensionData.Empty),
-            _sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-
-        if (result is not SessionCreated created)
-        {
-            throw new InvalidOperationException($"Could not create the underlying session: {result}");
-        }
-
-        _sessionId = created.Descriptor.Address.SessionId;
-        _branchId = created.Descriptor.ActiveBranchId;
-        _binding = new ConversationSessionBoundEvent(_sessionId.Value, _branchId);
-    }
 
     /// <summary>Projects one coordinator page without exposing non-message records or malformed stored content.</summary>
     /// <param name="result">The terminal coordinator read outcome.</param>
@@ -811,17 +809,6 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             _ => $"The run ended without a final assistant message (outcome: {outcome.GetType().Name}).",
         };
     }
-
-    /// <summary>Describes a non-success append result using only its bounded safe fields.</summary>
-    /// <param name="result">The append result that was not <see cref="SessionAppended"/>.</param>
-    /// <returns>A short, content-free description.</returns>
-    private static string DescribeAppendResult(SessionAppendResult result) => result switch
-    {
-        SessionAppendConflict conflict => $"the session changed concurrently (expected version {conflict.ExpectedVersion.Value}, actual {conflict.ActualVersion.Value}).",
-        SessionAppendFailed failed => failed.SafeMessage,
-        SessionAppendNotFound => "the session or branch was not found.",
-        _ => result.GetType().Name,
-    };
 
     /// <inheritdoc/>
     public ValueTask<ToolPresentation?> PresentToolAsync(

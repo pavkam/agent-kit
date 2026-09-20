@@ -130,5 +130,78 @@ public static class AgentEngineExtensions
             ArgumentNullException.ThrowIfNull(observer);
             return engine.Conversation.SendAsync(text, observer, cancellationToken);
         }
+
+        /// <summary>Subscribes to one turn through the engine's typed streaming surface.</summary>
+        /// <typeparam name="TOutput">The validated output type configured on the engine.</typeparam>
+        /// <param name="text">The user message.</param>
+        /// <param name="cancellationToken">Cancels admission and the drive. Disposing the returned stream does not.</param>
+        /// <returns>The started stream, or a typed rejection when admission fails before acceptance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="engine"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="text"/> is blank.</exception>
+        /// <exception cref="InvalidOperationException">The conversation is not bound to a session yet.</exception>
+        public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(string text, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentException.ThrowIfNullOrWhiteSpace(text);
+            var plan = engine.Services.GetRequiredService<SimpleAgentPlan>();
+            var sessionId = engine.Conversation.SessionId
+                ?? throw new InvalidOperationException("Stream a turn only after the conversation is bound to a session.");
+            var inputId = engine.Services.GetRequiredService<IIdentifierGenerator<InputId>>().Create();
+            return engine.StreamAsync<TOutput>(
+                new AgentRunRequest(
+                    plan.EffectiveAgentId,
+                    sessionId,
+                    conversationId: null,
+                    engine.Identity,
+                    new AgentInput(
+                        inputId,
+                        InputDelivery.Steer,
+                        [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+                        ExtensionData.Empty)),
+                cancellationToken);
+        }
+
+        /// <summary>Requests durable abort for one active run of this engine's default agent.</summary>
+        /// <param name="runId">The accepted run to abort.</param>
+        /// <param name="cancellationToken">Cancels the wait before the abort commits.</param>
+        /// <returns>The session store's typed abort outcome.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="engine"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+        /// <exception cref="InvalidOperationException">The engine was not built through the <c>AgentKit.Simple</c> sugar.</exception>
+        /// <exception cref="AgentAdmissionRejectedException">The run is not active in this process.</exception>
+        public async Task<SessionRunAbortResult> CancelAsync(RunId runId, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+            var agent = await ResolveDefaultAgentAsync(engine, cancellationToken).ConfigureAwait(false);
+            return await agent.CancelAsync(runId, engine.Identity, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Attaches to one active run's durable replay and live event tail for this engine's default agent.</summary>
+        /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
+        /// <param name="runId">The accepted run to attach to.</param>
+        /// <param name="cancellationToken">Cancels attachment setup. It does not abort the run.</param>
+        /// <returns>A started stream, or a rejection when the run settled or cannot be tailed.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="engine"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+        /// <exception cref="InvalidOperationException">The engine was not built through the <c>AgentKit.Simple</c> sugar.</exception>
+        public async Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
+            RunId runId,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+            var agent = await ResolveDefaultAgentAsync(engine, cancellationToken).ConfigureAwait(false);
+            return await agent.AttachAsync<TOutput>(runId, engine.Identity, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<Agent> ResolveDefaultAgentAsync(AgentEngine engine, CancellationToken cancellationToken)
+    {
+        var plan = engine.Services.GetRequiredService<SimpleAgentPlan>();
+        var resolution = await engine.GetAgentAsync(plan.EffectiveAgentId, cancellationToken).ConfigureAwait(false);
+        return resolution is ResolvedAgent resolved
+            ? resolved.Agent
+            : throw new InvalidOperationException("The simple agent is not available in the engine catalog.");
     }
 }

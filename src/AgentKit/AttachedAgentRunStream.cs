@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Runtime.CompilerServices;
+
 /// <summary>Replays durable run history from the session store, then tails a live publisher subscription.</summary>
 /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
 /// <remarks>
@@ -61,7 +63,16 @@ internal sealed class AttachedAgentRunStream<TOutput>: IAgentRunStream<TOutput>
         await foreach (var replay in ReplayCommittedMessagesAsync(cancellationToken).ConfigureAwait(false))
         {
             sequence++;
-            yield return replay with { Sequence = sequence };
+            yield return new MessageCommittedEvent(
+                replay.AgentId,
+                replay.SessionId,
+                replay.ConversationId,
+                replay.RunId,
+                replay.TurnId,
+                sequence,
+                replay.OccurredAt,
+                replay.MessageId,
+                replay.SessionVersion);
         }
 
         await foreach (var live in _live.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -102,16 +113,21 @@ internal sealed class AttachedAgentRunStream<TOutput>: IAgentRunStream<TOutput>
                     continue;
                 }
 
+                if (messageEntry.Correlation is not InRunOperationCorrelation { TurnId: { } turnId })
+                {
+                    continue;
+                }
+
                 yield return new MessageCommittedEvent(
                     _registration.AgentId,
                     _registration.SessionId,
                     _registration.ConversationId,
                     _registration.RunId,
-                    messageEntry.Correlation.TurnId,
-                    sequence: 0,
+                    turnId,
+                    sequence: 1,
                     _timeProvider.GetUtcNow(),
                     messageEntry.Message.Id,
-                    loaded.Snapshot.Version);
+                    loaded.Snapshot!.Version);
             }
 
             fromSequence = loaded.ThroughSequence;

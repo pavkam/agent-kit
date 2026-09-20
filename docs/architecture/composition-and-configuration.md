@@ -417,7 +417,35 @@ public sealed class AgentEngine : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         runtime.StreamAsync<TOutput>(request, cancellationToken);
 
+    public Task<AgentConversationOpenResult> OpenSessionAsync(
+        AgentConversationOpenRequest request,
+        CancellationToken cancellationToken = default) =>
+        runtime.OpenSessionAsync(request, cancellationToken);
+
     public ValueTask DisposeAsync() => runtime.DisposeAsync();
+}
+
+public sealed record AgentConversationOpenRequest(
+    AgentId AgentId,
+    ExecutionIdentity Identity,
+    SessionId? SessionId = null);
+
+public abstract record AgentConversationOpenResult;
+
+public sealed record AgentConversationOpened(
+    AgentId AgentId,
+    SessionId SessionId,
+    BranchId BranchId) : AgentConversationOpenResult;
+
+public sealed record AgentConversationOpenRejected(
+    AgentId AgentId,
+    string SafeMessage) : AgentConversationOpenResult;
+
+public interface IConversationEngineHost
+{
+    ValueTask<AgentConversationOpenResult> OpenAsync(
+        AgentConversationOpenRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AgentEngineBuilder
@@ -463,6 +491,29 @@ public Task<InputAdmissionResult> FollowUpAsync(
     ExecutionIdentity identity,
     AgentInput input,
     ExecutionLaneId? executionLaneId = null,
+    CancellationToken cancellationToken = default);
+```
+
+`Agent.CancelAsync` and `Agent.AttachAsync<T>` address one already accepted run by
+`RunId`. Cancel records a durable abort through the session coordinator for a
+run that is still active in the process-local registry; the loop observes
+`SessionRunStateLoaded.AbortRequested` at its safe input boundaries and settles
+with `RunCancelled`. Attach validates the same registry entry, replays committed
+session messages for that run through `ISessionCoordinator.ReadAsync`, and tails
+the run's existing `ISubscribableOutputPublisher` subscription. Neither method
+restarts or replaces the run driver. Attach after settlement or cancel when the
+registry entry is gone returns `AgentRunStreamRejected<T>`; cancel when the run
+is unknown throws `AgentAdmissionRejectedException`.
+
+```csharp
+public Task<SessionRunAbortResult> CancelAsync(
+    RunId runId,
+    ExecutionIdentity identity,
+    CancellationToken cancellationToken = default);
+
+public Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
+    RunId runId,
+    ExecutionIdentity identity,
     CancellationToken cancellationToken = default);
 ```
 

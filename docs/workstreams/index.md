@@ -22,7 +22,7 @@ hours, L three to six hours.
 
 | #   | Workstream                                                            | Depends on | Chunks | Done                           |
 | --- | --------------------------------------------------------------------- | ---------- | ------ | ------------------------------ |
-| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | C1–C11, C14; C12–C13 in flight |
+| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | C1–C14                         |
 | 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | –                              |
 | 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1                             |
 | 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | C1, C3                         |
