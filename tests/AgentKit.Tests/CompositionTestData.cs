@@ -201,9 +201,9 @@ internal static class CompositionTestData
                 ? [Definition()]
                 : definitions;
         AddRunProfiles(builder.Services, busyBehavior, selected);
-        foreach (var definition in selected)
+        foreach (var agentDefinition in selected)
         {
-            _ = builder.Services.AddAgent(definition);
+            _ = builder.Services.AddAgent(agentDefinition);
         }
 
         return builder;

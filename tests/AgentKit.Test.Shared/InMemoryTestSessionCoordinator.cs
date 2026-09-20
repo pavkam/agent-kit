@@ -438,20 +438,17 @@ public sealed class InMemoryTestSessionCoordinator: ISessionCoordinator
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (!_sessions.TryGetValue(request.Context.SessionId, out var stored)
-                || !stored.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane))
-            {
-                return ValueTask.FromResult<SessionPendingInputsResult>(
-                    new SessionPendingInputsUnavailable("The execution lane has not been provisioned."));
-            }
-
-            return ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsLoaded(
-                request.Context.AgentId,
-                request.Context.SessionId,
-                request.Context.ExecutionLaneId!.Value,
-                [],
-                lane.Revision,
-                lane.BranchCursor));
+            return !_sessions.TryGetValue(request.Context.SessionId, out var stored)
+                || !stored.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane)
+                ? ValueTask.FromResult<SessionPendingInputsResult>(
+                    new SessionPendingInputsUnavailable("The execution lane has not been provisioned."))
+                : ValueTask.FromResult<SessionPendingInputsResult>(new SessionPendingInputsLoaded(
+                    request.Context.AgentId,
+                    request.Context.SessionId,
+                    request.Context.ExecutionLaneId!.Value,
+                    [],
+                    lane.Revision,
+                    lane.BranchCursor));
         }
     }
 

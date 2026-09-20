@@ -80,7 +80,7 @@ inline in Conversations, Output, AgentKit tests); `IOutputSchemaEngine`
   passes `request.Output` (`DefaultAgentLoop.cs:730-758`);
   `RequiresStructuredOutput = definition.Output?.Mode is NativeSchema` in model
   selection. Snapshot: Abstractions.
-- Done when: a `NativeSchema` definition with an unsupporting model yields
+- Done when: a `NativeSchema` definition with an un-supporting model yields
   `NoCompatibleModel`.
 
 ### WS8-C2: OpenAI-family `response_format`

@@ -79,6 +79,7 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
         var runId = new RunId(Guid.NewGuid());
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null);
         var authorization = TestSecurityEvidence.Authorization(request.AgentId, sessionId, correlation, request.Identity);
+        var options = ConversationSessionOptionsFactory.Valid();
         return new AgentLoopRunRequest(
             request.AgentId,
             sessionId,
@@ -87,6 +88,12 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
             request.Identity,
             authorization,
             TestSecurityEvidence.SessionProfile(),
+            options.ModelSelectionPolicy!,
+            options.ModelRequirements,
+            [.. options.Instructions],
+            [.. options.Tools],
+            options.ToolChoice,
+            options.RequestSettings,
             request.MaxTurns,
             request.AttemptTimeout,
             ExtensionData.Empty);
@@ -121,10 +128,10 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
             loopResult.BranchId,
             loopResult.FinalVersion ?? new SessionVersion(1),
             new SessionSequence(0));
-        TOutput? output = loopResult.Output is TOutput typed
+        var output = loopResult.Output is TOutput typed
             ? typed
             : typeof(TOutput) == typeof(string)
-                ? (TOutput)(object)string.Concat(
+                ? (TOutput) (object) string.Concat(
                     loopResult.NewMessages.OfType<AssistantMessage>()
                         .SelectMany(static message => message.Parts.OfType<TextPart>().Select(static part => part.Text)))
                 : default;

@@ -3,6 +3,9 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.IO;
+using AgentKit.TestSupport;
+
 public sealed class AgentCancelAttachTests
 {
     private static readonly ComponentKey<IInputCoordinator> InputKey = new("attach-input");
@@ -11,7 +14,7 @@ public sealed class AgentCancelAttachTests
     [Fact]
     public async Task CancelAsync_WhenRunIsBlockedOnGate_SettlesCancelledAndReleasesLane()
     {
-        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource(), HonorDurableAbort = true };
         var sessions = new InMemoryTestSessionCoordinator();
         CompositionTestData.SeedSession(sessions, CompositionTestData.AgentId, CompositionTestData.SessionId);
         await using var engine = CompositionTestData.SendableBuilder(loop, sessions).Build();
@@ -69,7 +72,7 @@ public sealed class AgentCancelAttachTests
     [Fact]
     public async Task AttachAsync_WhenRunIsActive_ReceivesReplayAndLiveTail()
     {
-        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
+        var loop = new GatedAgentLoop { Gate = new TaskCompletionSource(), HonorDurableAbort = true };
         var sessions = new InMemoryTestSessionCoordinator();
         CompositionTestData.SeedSession(sessions, CompositionTestData.AgentId, CompositionTestData.SessionId);
         await using var engine = BuildStreamableEngine(loop, sessions);

@@ -111,7 +111,7 @@ Owning documents: [Budgets](../architecture/budgets.md),
 
 - Depends on: C2, C3. Size: S.
 - Deliverables: when any definition has a budget profile or limits, require an
-  unkeyed `IBudgetAuthority` and a resolvable profile at build time (replaces
+  un-keyed `IBudgetAuthority` and a resolvable profile at build time (replaces
   the runtime `RunFailed` from `RunOutcomes.InvalidState` at
   `DefaultAgentLoop.cs:481`); extend `BudgetLedgerConformanceTests` with
   concurrent-children exactness (runs in all three fixtures automatically).

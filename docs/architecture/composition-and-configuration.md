@@ -494,8 +494,8 @@ public Task<InputAdmissionResult> FollowUpAsync(
     CancellationToken cancellationToken = default);
 ```
 
-`Agent.CancelAsync` and `Agent.AttachAsync<T>` address one already accepted run by
-`RunId`. Cancel records a durable abort through the session coordinator for a
+`Agent.CancelAsync` and `Agent.AttachAsync<T>` address one already accepted run
+by `RunId`. Cancel records a durable abort through the session coordinator for a
 run that is still active in the process-local registry; the loop observes
 `SessionRunStateLoaded.AbortRequested` at its safe input boundaries and settles
 with `RunCancelled`. Attach validates the same registry entry, replays committed
@@ -648,15 +648,15 @@ internal sealed class AgentRunScopeLease : IAsyncDisposable
 }
 ```
 
-`HookDispatchContext` is omitted from the landed `AgentRunPlan`. The type exists,
-but run-scoped hook activation has not landed, and the runtime does not construct
-a stand-in. `OptionalCapabilities` is `AgentOptionalCapabilitySelection.None`
-until a definition carries a selection.
+`HookDispatchContext` is omitted from the landed `AgentRunPlan`. The type
+exists, but run-scoped hook activation has not landed, and the runtime does not
+construct a stand-in. `OptionalCapabilities` is
+`AgentOptionalCapabilitySelection.None` until a definition carries a selection.
 
 `AgentRunScopeFactory` is the sole owner of `IServiceScopeFactory` and arbitrary
 keyed contract resolution. It creates the scope, resolves the scoped
 `IAgentRunPlanCompiler`, and returns only the plan and an opaque lifetime lease.
-Feature packages may use narrow package-internal activators for prevalidated
+Feature packages may use narrow package-internal activators for pre-validated
 hook, tool, or contributor registrations within that scope; those activators
 execute compiled factories and cannot query an arbitrary contract or key. The
 compiler validates each contract/key pair, profile, optional capability, and
@@ -1006,7 +1006,7 @@ public sealed record EffectiveConfigurationSnapshot(
     ImmutableArray<ConfigurationSourceReference> Sources);
 ```
 
-`ConfigurationSourceId` and `ConfigurationPath` are nonblank ordinal identity
+`ConfigurationSourceId` and `ConfigurationPath` are non-blank ordinal identity
 values. A source ID identifies one publisher; a path identifies one
 namespace-qualified semantic setting or selection. The compiler validates the
 path's declared namespace and setting grammar, rather than treating a slash or
@@ -1021,7 +1021,7 @@ accepted; a file, remote response, or its extension data cannot self-promote.
 Trust classifies source handling only: it neither grants authority nor overrides
 a managed constraint.
 
-`ConfigurationPath` is a nonblank, namespace-qualified semantic setting or
+`ConfigurationPath` is a non-blank, namespace-qualified semantic setting or
 selection identity. `ConfigurationSemanticValue` is an owned closed family, not
 arbitrary `ExtensionData`. `ConfigurationJsonValue` owns a clone of one bounded
 JSON scalar, array, or object used only for a setting whose declared schema

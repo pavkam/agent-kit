@@ -74,7 +74,7 @@ interim `AgentLoopResult`.
 - Deliverables: `EvaluationOptions` and snapshot, `EvaluationRunner`,
   `EvaluationExecution`, `AddAgentEvaluation`, `ReplaceEvaluationRunner`,
   `AddEvaluator`, `ReplaceEvaluator`, `AddEvaluationResultStore`,
-  `AddEvaluationReportExporter`; session-profile precheck; tests for
+  `AddEvaluationReportExporter`; session-profile pre-check; tests for
   concurrency, repetition, cancellation, exporter-failure isolation, profile
   mismatch failing before effects.
 

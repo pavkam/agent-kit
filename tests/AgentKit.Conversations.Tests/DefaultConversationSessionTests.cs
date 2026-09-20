@@ -1787,8 +1787,8 @@ public sealed class DefaultConversationSessionTests
         IToolPresenter? toolPresenter = null,
         ILogger<DefaultConversationSession>? logger = null)
     {
-        var sessionCoordinator = coordinator ?? new FakeSessionCoordinator();
-        var agentLoop = loop ?? new FakeAgentLoop();
+        var sessionCoordinator = coordinator as FakeSessionCoordinator ?? new FakeSessionCoordinator();
+        var agentLoop = loop as FakeAgentLoop ?? new FakeAgentLoop();
         _ = loopScopeFactory;
         return new DefaultConversationSession(
             sessionCoordinator,
@@ -1799,18 +1799,6 @@ public sealed class DefaultConversationSessionTests
             Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)),
             logger: logger,
             toolPresenter: toolPresenter);
-    }
-
-    /// <summary>
-    /// Builds a real <see cref="IServiceScopeFactory"/> whose scopes resolve <paramref name="loop"/> as the keyed
-    /// <see cref="IAgentLoop"/> <see cref="DefaultConversationSession"/> looks up per turn, so scripted fakes that
-    /// record calls (for example <see cref="FakeAgentLoop"/>) keep observing every invocation on the same instance.
-    /// </summary>
-    private static IServiceScopeFactory LoopScopeFactory(IAgentLoop loop)
-    {
-        var services = new ServiceCollection();
-        _ = services.AddKeyedSingleton(AgentLoopComponentDefaults.LoopKeyValue, loop);
-        return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
 
     private static (
@@ -1829,30 +1817,6 @@ public sealed class DefaultConversationSessionTests
             new GuidIdentifierGenerator<OperationId>(static guid => new OperationId(guid)),
             new FakeTimeProvider(),
             Options.Create(ConversationSessionOptionsFactory.Valid()));
-    }
-
-    private static ModelDescriptor FakeModelDescriptor()
-    {
-        var capabilities = new ModelCapabilities(
-            supportsSystemInstructions: true,
-            supportsStreaming: true,
-            supportsToolCalls: true,
-            supportsParallelToolCalls: true,
-            supportsStructuredOutput: true,
-            supportsReasoning: true,
-            supportsVisionInput: true,
-            ExtensionData.Empty);
-
-        return new ModelDescriptor(
-            new ModelAlias("chat"),
-            new ProviderId("test-provider"),
-            new ApiFamilyId("test-api"),
-            new ModelId("test-model"),
-            deploymentId: null,
-            capabilities,
-            new ModelLimits(maxContextTokens: 4096, maxOutputTokens: 1024),
-            pricing: null,
-            ExtensionData.Empty);
     }
 
     private static ToolDescriptor Descriptor(ToolId id)

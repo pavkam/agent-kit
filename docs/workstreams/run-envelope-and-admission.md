@@ -152,7 +152,7 @@ does not yet resolve `IOutputPublisher` into `AgentRunServices`~~ fixed in
 WS1-C6: `Compile` now resolves `provider.GetService<IOutputPublisher>()` into
 the new `Publisher` slot. Still MISSING: this resolution, and
 `IInputCoordinator`'s (`provider.GetService<IInputCoordinator>()`, from WS1-C2),
-both remain unkeyed rather than routed through
+both remain un-keyed rather than routed through
 `AgentDefinition.InputCoordinatorKey`/`OutputPublisherKey` — a known interim gap
 for a later chunk, now explicitly the same follow-up for both collaborators.
 
@@ -407,9 +407,9 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   recording publisher. Snapshots: Abstractions, Loop.
 - Open: who stamps `Sequence` on immutable `RunEvent` records.
 - Landed: `AgentRunServices.Output` renamed to `OutputProcessor`; new
-  `Publisher` (`IOutputPublisher?`) property added, resolved unkeyed by
+  `Publisher` (`IOutputPublisher?`) property added, resolved un-keyed by
   `AgentRunServicesFactory.Compile` (`provider.GetService<IOutputPublisher>()`,
-  the same unkeyed pattern already used for `IInputCoordinator` — routing both
+  the same un-keyed pattern already used for `IInputCoordinator` — routing both
   through `AgentDefinition`'s keys remains the one open interim gap, now
   explicitly the same follow-up for both). `Sequence` is stamped by a new
   `LoopLaneState.AllocateSequence()` (an `Interlocked.Increment` counter):
@@ -774,7 +774,7 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   runtime.
 - **Landed (prerequisite: usage accounting)**: `AgentRunFinished<T>` requires a
   real, non-null `RunUsage`, and nothing in the loop produced one before this
-  chunk — `RunUsage`/`UsageAccountingEntry` existed only as unwired Abstractions
+  chunk — `RunUsage`/`UsageAccountingEntry` existed only as un-wired Abstractions
   types. Added `src/AgentKit.Loop/UsageAccounting.cs` (internal, pure): maps one
   model response's `ModelUsage` into a `UsageAccountingEntry`, reusing
   `RunBudget.AccountUsageAsync`'s dimension mapping for input/output/ reasoning

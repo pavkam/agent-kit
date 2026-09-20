@@ -192,7 +192,7 @@ files, untouched.
 
 - Depends on: C2, C4. Risk: DENSE-MODIFY `AgentCompositionValidator.cs:225-300`.
   Size: S.
-- Deliverables: singular `IProviderProfileRuntimeSelector`, keyed-or-unkeyed
+- Deliverables: singular `IProviderProfileRuntimeSelector`, keyed-or-un-keyed
   `IModelRequestExecutor`, per-definition compatibility pass producing a typed
   diagnostic when no candidate model satisfies `ModelRequirements`.
 

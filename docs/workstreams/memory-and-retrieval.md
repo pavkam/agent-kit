@@ -7,7 +7,7 @@ contribution, chunking with source integrity, and deletion with tombstones and
 purge receipts — across InMemory, Sqlite, and Json adapters.
 
 Nothing in this workstream exists today except `MemoryProfileKey`
-(`Abstractions/Identity/MemoryProfileKey.cs:8`, unwired) and
+(`Abstractions/Identity/MemoryProfileKey.cs:8`, un-wired) and
 `EmbeddingSpaceIdentity` (used on the embedding result path). No
 `AgentKit.Memory*` project exists; the architecture tests already whitelist
 `AgentKit.Memory` and forbid `Memory → Session`.

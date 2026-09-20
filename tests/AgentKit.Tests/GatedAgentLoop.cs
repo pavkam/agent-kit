@@ -60,17 +60,6 @@ internal sealed class GatedAgentLoop: IAgentLoop
                     cancellationToken);
             }
 
-            if (request.LaneAdmission is { } admission
-                && services.RunCoordinator is { } runCoordinator
-                && await IsAbortRequestedAsync(request, services, admission, runCoordinator, cancellationToken).ConfigureAwait(false))
-            {
-                var finalVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
-                return new AgentLoopResult(
-                    request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                    RunOutcomes.Cancelled("The run was durably aborted."), [], finalVersion, null,
-                    new RunUsage(request.RunId, []), new RunSettlementCompleted());
-            }
-
             if (Gate is { } gate)
             {
                 await gate.Task.WaitAsync(cancellationToken);
@@ -84,7 +73,7 @@ internal sealed class GatedAgentLoop: IAgentLoop
                 var abortedVersion = await CurrentVersionAsync(request, services, cancellationToken).ConfigureAwait(false);
                 return new AgentLoopResult(
                     request.AgentId, request.SessionId, request.BranchId, request.RunId,
-                    RunOutcomes.Cancelled("The run was durably aborted at a safe boundary."),
+                    new RunCancelled(new CancellationReason(RunResultTestData.Error(AgentErrorCodes.Cancelled))),
                     [], abortedVersion, null, new RunUsage(request.RunId, []), new RunSettlementCompleted());
             }
 
@@ -138,22 +127,6 @@ internal sealed class GatedAgentLoop: IAgentLoop
             request.SessionProfile,
             services.Session,
             services.RunCoordinator!);
-        var loaded = await services.Session.LoadRunStateAsync(new SessionRunStateRequest(context), capability, cancellationToken)
-            .ConfigureAwait(false);
-        return loaded is SessionRunStateLoaded { AbortRequested: true };
-    }
-
-    private static async Task<bool> IsAbortRequestedAsync(
-        AgentLoopRunRequest request,
-        AgentRunServices services,
-        LoopLaneAdmission admission,
-        ISessionRunCoordinator runCoordinator,
-        CancellationToken cancellationToken)
-    {
-        var context = new SessionOperationContext(
-            request.AgentId, request.SessionId, admission.ExecutionLaneId, admission.AcceptedCorrelation,
-            request.Identity, request.Authorization);
-        var capability = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
         var loaded = await services.Session.LoadRunStateAsync(new SessionRunStateRequest(context), capability, cancellationToken)
             .ConfigureAwait(false);
         return loaded is SessionRunStateLoaded { AbortRequested: true };

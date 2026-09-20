@@ -31,16 +31,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     private readonly AgentDefinitionRevision _agentDefinitionRevision;
     private readonly ConfigurationVersion _configurationVersion;
     private readonly SessionProfileSnapshot _sessionProfile;
-    private readonly ModelSelectionPolicy _modelSelectionPolicy;
-    private readonly ModelRequirements _modelRequirements;
-    private readonly ImmutableArray<AgentMessage> _instructions;
-    private readonly ImmutableArray<LlmToolDefinition> _tools;
     private readonly ImmutableDictionary<ToolId, ConversationToolPresentationBinding> _toolPresentationBindings;
     private readonly IToolPresenter? _toolPresenter;
-    private readonly LlmToolChoice _toolChoice;
-    private readonly LlmRequestSettings _requestSettings;
     private readonly OutputDefinition? _output;
-    private readonly ImmutableArray<BudgetLimit> _budgetLimits;
     private readonly int _maxTurns;
     private readonly TimeSpan _attemptTimeout;
 
@@ -288,16 +281,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _agentDefinitionRevision = optionValues.AgentDefinitionRevision;
         _configurationVersion = optionValues.ConfigurationVersion;
         _sessionProfile = optionValues.SessionProfile;
-        _modelSelectionPolicy = optionValues.ModelSelectionPolicy;
-        _modelRequirements = optionValues.ModelRequirements;
-        _instructions = [.. optionValues.Instructions];
-        _tools = [.. optionValues.Tools];
         _toolPresentationBindings = toolPresentationBindings;
-        _toolChoice = optionValues.ToolChoice;
-        _requestSettings = optionValues.RequestSettings;
         _output = optionValues.Output;
-        _budgetLimits = [.. optionValues.BudgetLimits];
-        ArgumentException.ThrowIfContainsNull(_budgetLimits, nameof(options));
+        ArgumentException.ThrowIfContainsNull([.. optionValues.BudgetLimits], nameof(options));
         _maxTurns = optionValues.MaxTurns;
         _attemptTimeout = optionValues.AttemptTimeout;
     }
@@ -493,7 +479,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 finished.RunId,
                 finished.Outcome,
                 finished.NewMessages,
-                finished.PreviousCursor.SessionVersion,
+                finished.PreviousCursor.Version,
                 finished.Output is ValidatedOutput validated ? validated : null,
                 finished.Usage,
                 finished.Settlement);
@@ -643,7 +629,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     }
 
     /// <summary>Validates and freezes the optional descriptor evidence against the exact advertised definitions.</summary>
-    /// <param name="options">The already nonnull conversation options.</param>
+    /// <param name="options">The already non-null conversation options.</param>
     /// <returns>An immutable map keyed by canonical tool identity.</returns>
     /// <exception cref="ArgumentException">
     /// A binding is absent from the advertised tools, duplicates an identity or alias, or otherwise disagrees with

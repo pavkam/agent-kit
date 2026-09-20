@@ -80,7 +80,7 @@ internal sealed class EngineConversationTurnExecutor(AgentEngine engine, IIdenti
         return await EnsureSessionAsync(agent, sessionId, identity, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<SessionId> EnsureSessionAsync(
+    private static async Task<SessionId> EnsureSessionAsync(
         Agent agent,
         SessionId? sessionId,
         ExecutionIdentity identity,

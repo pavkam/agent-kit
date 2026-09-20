@@ -98,7 +98,7 @@ none.
 - Deliverables: assembler becomes internal with ctor
   `(ContextAssemblerServices, TimeProvider, ILogger)`; internal
   `ContextAssemblerServices` (contributors, allocator; later collaborators added
-  in C5); keyed `AddAgentContext(key, configure)` with the unkeyed overload
+  in C5); keyed `AddAgentContext(key, configure)` with the un-keyed overload
   forwarding to a default key;
   `AddContextContributor<T>(key, ContextContributorRegistration)`,
   `ReplaceContextBudgetAllocator<T>(key)`; contributors run in registration

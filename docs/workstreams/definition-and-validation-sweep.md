@@ -35,18 +35,18 @@ Owning document:
 
 ### `AgentDefinition` vs spec
 
-| Spec field                                                                                                         | Exists                                                                   |
-| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `Id`, `Revision`, `DisplayName`, `SessionProfile`, `SecurityProfile`, `Models`, `RunDefaults`, `Extensions`        | yes                                                                      |
-| `Components : AgentComponentSelection`                                                                             | no; only `ComponentKey<IAgentLoop>? LoopKey` (`AgentDefinition.cs:199`)  |
-| `Components.ContinuationPolicy`, `Input`, `Output`, `OutputProcessor`, `Context`, `ModelSelector`, `ModelExecutor` | no; resolved by loop key or unkeyed (`AgentRunServicesFactory.cs:53-65`) |
-| `Components.BudgetProfile`                                                                                         | no; raw `ImmutableArray<BudgetLimit> BudgetLimits` (`:222`)              |
-| `HookProfile`                                                                                                      | no (type exists, unused)                                                 |
-| `OptionalCapabilities`                                                                                             | no (type absent)                                                         |
-| `Instructions : ImmutableArray<InstructionSource>`                                                                 | partial: `ImmutableArray<AgentMessage>` (`:280`)                         |
-| `Toolsets`                                                                                                         | no; `Tools` + `ToolChoice` (`:295,309`)                                  |
-| `Output : OutputDefinition` non-null                                                                               | partial: nullable (`:212`)                                               |
-| not in spec: `ModelRequirements`, `Settings`                                                                       | extra interim (`:265,323`)                                               |
+| Spec field                                                                                                         | Exists                                                                    |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `Id`, `Revision`, `DisplayName`, `SessionProfile`, `SecurityProfile`, `Models`, `RunDefaults`, `Extensions`        | yes                                                                       |
+| `Components : AgentComponentSelection`                                                                             | no; only `ComponentKey<IAgentLoop>? LoopKey` (`AgentDefinition.cs:199`)   |
+| `Components.ContinuationPolicy`, `Input`, `Output`, `OutputProcessor`, `Context`, `ModelSelector`, `ModelExecutor` | no; resolved by loop key or un-keyed (`AgentRunServicesFactory.cs:53-65`) |
+| `Components.BudgetProfile`                                                                                         | no; raw `ImmutableArray<BudgetLimit> BudgetLimits` (`:222`)               |
+| `HookProfile`                                                                                                      | no (type exists, unused)                                                  |
+| `OptionalCapabilities`                                                                                             | no (type absent)                                                          |
+| `Instructions : ImmutableArray<InstructionSource>`                                                                 | partial: `ImmutableArray<AgentMessage>` (`:280`)                          |
+| `Toolsets`                                                                                                         | no; `Tools` + `ToolChoice` (`:295,309`)                                   |
+| `Output : OutputDefinition` non-null                                                                               | partial: nullable (`:212`)                                                |
+| not in spec: `ModelRequirements`, `Settings`                                                                       | extra interim (`:265,323`)                                                |
 
 ### Validator today vs requirements
 
