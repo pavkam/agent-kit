@@ -20,28 +20,28 @@ Dependencies are on other workstreams as a whole unless a chunk names a specific
 chunk. Sizes count chunks after splitting: S under one hour, M one to three
 hours, L three to six hours.
 
-| #   | Workstream                                                            | Depends on | Chunks | Done                 |
-| --- | --------------------------------------------------------------------- | ---------- | ------ | -------------------- |
-| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | prerequisites; C1–C8 |
-| 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | –                    |
-| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1                   |
-| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | C1, C3               |
-| 5   | [Host access](host-access.md)                                         | 3          | 18     | C1                   |
-| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a                  |
-| 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1                   |
-| 8   | [Structured output](structured-output.md)                             | 2, 7       | 12     | –                    |
-| 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | –                    |
-| 10  | [Context compaction](context-compaction.md)                           | 7, 9       | 8      | –                    |
-| 11  | [Budgets](budgets.md)                                                 | 8, 10      | 6      | –                    |
-| 12  | [Durable execution](durable-execution.md)                             | 1, 3       | 14     | –                    |
-| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12      | 12     | –                    |
-| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9       | 15     | –                    |
-| 15  | [Artifacts](artifacts.md)                                             | 4, 12      | 9      | –                    |
-| 16  | [Identity ingress](identity-ingress.md)                               | 1          | 5      | C1                   |
-| 17  | [Observability](observability.md)                                     | 1          | 9      | –                    |
-| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17       | 11     | –                    |
-| 19  | [Evaluation](evaluation.md)                                           | 1, 18      | 8      | –                    |
-| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19       | 8      | –                    |
+| #   | Workstream                                                            | Depends on | Chunks | Done                           |
+| --- | --------------------------------------------------------------------- | ---------- | ------ | ------------------------------ |
+| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | C1–C11, C14; C12–C13 in flight |
+| 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | –                              |
+| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1                             |
+| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | C1, C3                         |
+| 5   | [Host access](host-access.md)                                         | 3          | 18     | C1                             |
+| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a                            |
+| 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1                             |
+| 8   | [Structured output](structured-output.md)                             | 2, 7       | 12     | –                              |
+| 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | –                              |
+| 10  | [Context compaction](context-compaction.md)                           | 7, 9       | 8      | –                              |
+| 11  | [Budgets](budgets.md)                                                 | 8, 10      | 6      | –                              |
+| 12  | [Durable execution](durable-execution.md)                             | 1, 3       | 14     | –                              |
+| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12      | 12     | –                              |
+| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9       | 15     | –                              |
+| 15  | [Artifacts](artifacts.md)                                             | 4, 12      | 9      | –                              |
+| 16  | [Identity ingress](identity-ingress.md)                               | 1          | 5      | C1                             |
+| 17  | [Observability](observability.md)                                     | 1          | 9      | –                              |
+| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17       | 11     | –                              |
+| 19  | [Evaluation](evaluation.md)                                           | 1, 18      | 8      | –                              |
+| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19       | 8      | –                              |
 
 Approximately 230 chunks in total. WS18-C1 to C3 (`AgentComponentSelection` and
 `AgentOptionalCapabilitySelection` as additive records) should be pulled forward

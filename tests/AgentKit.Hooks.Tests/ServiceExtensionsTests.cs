@@ -70,6 +70,12 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         _ = provider.GetRequiredService<IHookDispatcher>().ShouldBeOfType<DefaultHookDispatcher>();
+        _ = provider.GetRequiredService<IHookCatalog>().ShouldBeOfType<HookRegistrationCatalog>();
+        _ = provider.GetRequiredService<IHookInstanceFactory>().ShouldBeOfType<ServiceProviderHookInstanceFactory>();
+        _ = provider.GetRequiredService<IHookProfileSelector>().ShouldBeOfType<DefaultHookProfileSelector>();
+        _ = provider.GetRequiredService<IHookOrderResolver>().ShouldBeOfType<HookOrderResolver>();
+        _ = provider.GetRequiredService<IIdentifierGenerator<HookDispatchId>>().ShouldNotBeNull();
+        _ = provider.GetRequiredService<IIdentifierGenerator<HookInvocationId>>().ShouldNotBeNull();
     }
 
     [Fact]

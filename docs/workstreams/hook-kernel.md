@@ -18,7 +18,7 @@ Owning documents: [Extensions](../architecture/extensions.md),
 - [x] WS2-C2 kernel contract records and interfaces
 - [x] WS2-C3 event-args reshape to `HookDispatchMetadata`
 - [x] WS2-C4a order resolver and invocation tracker
-- [ ] WS2-C4b registration catalog, instance factory, profile selector
+- [x] WS2-C4b registration catalog, instance factory, profile selector
 - [ ] WS2-C5 new `DispatchAsync` overload and conformance suite
 - [ ] WS2-C6 migrate `DefaultAgentLoop` and `AgentHookPoints`
 - [ ] WS2-C7 remove legacy kernel surface

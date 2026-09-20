@@ -54,4 +54,23 @@ public sealed class AgentHookOptions
     /// validation and dispatcher construction.
     /// </remarks>
     public HookFailureMode MinimumFailureMode { get; set; } = HookFailureMode.IsolateAndDiagnose;
+
+    /// <summary>
+    /// Gets or sets the host's default maximum duration for one hook dispatch when the caller does not supply an
+    /// earlier deadline.
+    /// </summary>
+    /// <value>A positive duration. The default is ten seconds.</value>
+    /// <remarks>WS2-C12 enforces this ceiling during dispatch; options validation rejects non-positive values today.</remarks>
+    public TimeSpan DefaultHookTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Gets or sets the mutation dispatch mode the host permits.</summary>
+    /// <value>
+    /// A defined <see cref="HookMutationDispatchMode"/>. The default is <see cref="HookMutationDispatchMode.Sequential"/>.
+    /// </value>
+    /// <remarks>Only sequential dispatch is implemented; selecting <see cref="HookMutationDispatchMode.Concurrent"/> fails validation.</remarks>
+    public HookMutationDispatchMode MutationDispatchMode { get; set; } = HookMutationDispatchMode.Sequential;
+
+    /// <summary>Gets or sets when profile reload may produce a newly captured catalog.</summary>
+    /// <value>A defined <see cref="HookReloadBoundary"/>. The default is <see cref="HookReloadBoundary.NextRun"/>.</value>
+    public HookReloadBoundary ReloadBoundary { get; set; } = HookReloadBoundary.NextRun;
 }

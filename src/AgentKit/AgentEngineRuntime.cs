@@ -40,6 +40,7 @@ internal sealed class AgentEngineRuntime
     private readonly IIdentifierGenerator<InputId> _inputIds;
     private readonly AgentRunScopeFactory _scopes;
     private readonly InProcessSessionGate _gate = new();
+    private readonly ActiveRunRegistry _activeRuns = new();
     private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
     private bool _disposed;
@@ -201,6 +202,69 @@ internal sealed class AgentEngineRuntime
             definition.Id, created.Descriptor.Address.SessionId, created.Descriptor.ConversationId, created.Existing);
     }
 
+    /// <summary>Opens or validates a conversation binding without admitting a turn.</summary>
+    /// <param name="request">The agent, identity, and optional session to bind.</param>
+    /// <param name="cancellationToken">Cancels the open.</param>
+    /// <returns>An opened binding or a safe rejection.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or its identity is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="request.AgentId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
+    internal async Task<AgentConversationOpenResult> OpenSessionAsync(
+        AgentConversationOpenRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(request.AgentId, default);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var resolution = await GetAgentAsync(request.AgentId, cancellationToken).ConfigureAwait(false);
+        if (resolution is not ResolvedAgent resolved)
+        {
+            return new AgentConversationOpenRejected(
+                request.AgentId,
+                resolution is InvalidAgent invalid
+                    ? $"The requested agent's definition is unusable: {string.Join("; ", invalid.Diagnostics.Select(static diagnostic => diagnostic.SafeMessage))}"
+                    : "The requested agent is not hosted by this engine.");
+        }
+
+        if (Services.GetService<IConversationEngineHost>() is { } host)
+        {
+            return await host.OpenAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (request.SessionId is not { } sessionId)
+        {
+            return new AgentConversationOpenRejected(
+                request.AgentId,
+                "No conversation host is composed for this engine and no session was named to open.");
+        }
+
+        try
+        {
+            var definition = resolved.Agent.Definition;
+            var (catalogVersion, publication) = await ValidatePinnedDefinitionAsync(definition, activity: null, cancellationToken)
+                .ConfigureAwait(false);
+            await using var scope = Services.CreateAsyncScope();
+            var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
+            var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
+            var descriptor = await OpenSessionAsync(
+                definition,
+                catalogVersion,
+                publication.SecurityProfile,
+                publication.SessionProfile,
+                sessions,
+                sessionId,
+                request.Identity,
+                cancellationToken).ConfigureAwait(false);
+            return new AgentConversationOpened(definition.Id, descriptor.Address.SessionId, descriptor.ActiveBranchId);
+        }
+        catch (AgentAdmissionRejectedException exception)
+        {
+            return new AgentConversationOpenRejected(request.AgentId, exception.Rejection.Reason);
+        }
+    }
+
     /// <summary>Releases the standalone provider owned by this runtime. Disposal is idempotent.</summary>
     /// <returns>The shared disposal operation.</returns>
     internal ValueTask DisposeAsync()
@@ -337,6 +401,107 @@ internal sealed class AgentEngineRuntime
                 await lease.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>Records a durable abort for one in-process active run.</summary>
+    /// <param name="agent">The pinned handle whose definition is revalidated.</param>
+    /// <param name="runId">The accepted run to abort.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels the wait before the abort commits.</param>
+    /// <returns>The session coordinator's typed abort outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="agent"/> or <paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The run is unknown to this process or the session is not visible.</exception>
+    internal async Task<SessionRunAbortResult> CancelAsync(
+        Agent agent,
+        RunId runId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+        ArgumentNullException.ThrowIfNull(identity);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_activeRuns.TryGet(runId, out var registration) || registration.AgentId != agent.Id)
+        {
+            throw AdmissionRejected(agent.Definition, agent.CatalogVersion, "The requested run is not active in this process.");
+        }
+
+        var (_, publication) = await ValidatePinnedDefinitionAsync(agent.Definition, activity: null, cancellationToken)
+            .ConfigureAwait(false);
+        _ = await OpenSessionAsync(
+            agent.Definition, agent.CatalogVersion, publication.SecurityProfile, registration.SessionProfile,
+            registration.Sessions, registration.SessionId, identity, cancellationToken).ConfigureAwait(false);
+
+        var loaded = await registration.Sessions.LoadRunStateAsync(
+            new SessionRunStateRequest(registration.OperationContext), registration.Capability, cancellationToken).ConfigureAwait(false);
+        if (loaded is not SessionRunStateLoaded runState)
+        {
+            throw AdmissionRejected(agent.Definition, agent.CatalogVersion, "The requested run state is unavailable.");
+        }
+
+        var sessionVersion = await CurrentSessionVersionAsync(
+            registration.Sessions, registration.OperationContext, registration.BranchId, registration.SessionProfile, cancellationToken).ConfigureAwait(false)
+            ?? throw AdmissionRejected(agent.Definition, agent.CatalogVersion, "The session version could not be read.");
+        var abort = new SessionRunAbortRequest(
+            registration.OperationContext,
+            runState.State.OperationStateRevision,
+            runState.State.LaneRevision,
+            sessionVersion,
+            new IdempotencyKey($"agentkit.engine:{runId}:abort"));
+        return await registration.Sessions.AbortRunAsync(abort, registration.Capability, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Attaches to one in-process active run's replay and live event tail.</summary>
+    /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
+    /// <param name="agent">The pinned handle whose definition is revalidated.</param>
+    /// <param name="runId">The accepted run to attach to.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels attachment setup. It does not abort the run.</param>
+    /// <returns>A started attach stream, or a rejection when the run settled or cannot be tailed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="agent"/> or <paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
+    internal async Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
+        Agent agent,
+        RunId runId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+        ArgumentNullException.ThrowIfNull(identity);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_activeRuns.TryGet(runId, out var registration) || registration.AgentId != agent.Id)
+        {
+            return new AgentRunStreamRejected<TOutput>(Reject<TOutput>(
+                agent.Id,
+                default,
+                AgentErrorCodes.InvalidState,
+                "The requested run is not active in this process."));
+        }
+
+        if (registration.Publisher is not { } publisher)
+        {
+            return new AgentRunStreamRejected<TOutput>(Reject<TOutput>(
+                agent.Id,
+                registration.SessionId,
+                AgentErrorCodes.UnsupportedCapability,
+                "The composed output publisher does not expose a live subscription."));
+        }
+
+        var (_, publication) = await ValidatePinnedDefinitionAsync(agent.Definition, activity: null, cancellationToken)
+            .ConfigureAwait(false);
+        _ = await OpenSessionAsync(
+            agent.Definition, agent.CatalogVersion, publication.SecurityProfile, registration.SessionProfile,
+            registration.Sessions, registration.SessionId, identity, cancellationToken).ConfigureAwait(false);
+
+        var live = publisher.Subscribe<TOutput>();
+        return new AgentRunStreamStarted<TOutput>(
+            new AttachedAgentRunStream<TOutput>(live, registration, TimeProvider));
     }
 
     /// <summary>Runs one existing session and returns a typed finished or rejected envelope.</summary>
@@ -682,6 +847,23 @@ internal sealed class AgentEngineRuntime
                 throw AdmissionRejected(definition, catalogVersion, $"The run could not be accepted: {startResult.GetType().Name}.");
             }
 
+            var previousCursor = new MessageCursor(
+                definition.Id, sessionId, descriptor.ConversationId, branchId, tip.Version, tip.Sequence);
+            var inRunContext = new SessionOperationContext(
+                definition.Id, sessionId, laneId, acceptedCorrelation, identity, acceptedAuthorization);
+            _activeRuns.Register(new ActiveRunRegistration(
+                definition.Id,
+                sessionId,
+                descriptor.ConversationId,
+                branchId,
+                runId,
+                capability,
+                inRunContext,
+                previousCursor,
+                capability.Profile,
+                sessionsForRun,
+                plan.Services.Publisher as ISubscribableOutputPublisher));
+
             var laneAdmission = new LoopLaneAdmission(laneId, acceptedCorrelation, new OperationStateRevision(1));
             var runRequest = BuildRunRequest(
                 definition, pinnedPublication, sessionId, branchId, runId, identity, acceptedAuthorization, maxTurns, attemptTimeout) with
@@ -689,8 +871,6 @@ internal sealed class AgentEngineRuntime
                 Observer = observer,
                 LaneAdmission = laneAdmission,
             };
-            var previousCursor = new MessageCursor(
-                definition.Id, sessionId, descriptor.ConversationId, branchId, tip.Version, tip.Sequence);
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;
             admissionCompleted = true;
@@ -711,17 +891,24 @@ internal sealed class AgentEngineRuntime
                 return new ExecutionOutcome<TOutput>(stream);
             }
 
-            var loopResult = await plan.Loop.RunAsync(runRequest, plan.Services, cancellationToken).ConfigureAwait(false);
-            if (loopResult.FinalVersion is { } finalVersion)
+            try
             {
-                await ReleaseLaneAsync(
-                    sessionsForRun, capability, definition.Id, sessionId, laneId, acceptedCorrelation,
-                    identity, acceptedAuthorization, finalVersion, runId).ConfigureAwait(false);
-            }
+                var loopResult = await plan.Loop.RunAsync(runRequest, plan.Services, cancellationToken).ConfigureAwait(false);
+                if (loopResult.FinalVersion is { } finalVersion)
+                {
+                    await ReleaseLaneAsync(
+                        sessionsForRun, capability, definition.Id, sessionId, laneId, acceptedCorrelation,
+                        identity, acceptedAuthorization, finalVersion, runId).ConfigureAwait(false);
+                }
 
-            return !typedRejection
-                ? new ExecutionOutcome<TOutput>(loopResult)
-                : new ExecutionOutcome<TOutput>(Finish<TOutput>(loopResult, descriptor.ConversationId, previousCursor));
+                return !typedRejection
+                    ? new ExecutionOutcome<TOutput>(loopResult)
+                    : new ExecutionOutcome<TOutput>(Finish<TOutput>(loopResult, descriptor.ConversationId, previousCursor));
+            }
+            finally
+            {
+                _activeRuns.Unregister(runId);
+            }
         }
         catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
         {
@@ -822,6 +1009,7 @@ internal sealed class AgentEngineRuntime
         }
         finally
         {
+            _activeRuns.Unregister(runId);
             gate.Dispose();
             await lease.DisposeAsync().ConfigureAwait(false);
         }
@@ -854,6 +1042,20 @@ internal sealed class AgentEngineRuntime
         return publicationResult is AgentRunProfilePublicationFound found && found.Publication == pinnedPublication
             ? (snapshot.Version, pinnedPublication)
             : throw AdmissionRejected(definition, snapshot.Version, "The exact run-profile publication changed after composition validation.");
+    }
+
+    private static async Task<SessionVersion?> CurrentSessionVersionAsync(
+        ISessionCoordinator sessions,
+        SessionOperationContext context,
+        BranchId branchId,
+        SessionProfileSnapshot profile,
+        CancellationToken cancellationToken)
+    {
+        var page = await sessions.ReadAsync(
+            new SessionReadRequest(context, branchId, new SessionSequence(0), pageSize: 1),
+            profile,
+            cancellationToken).ConfigureAwait(false);
+        return page is SessionPage { Snapshot: { } snapshot } ? snapshot.Version : null;
     }
 
     private static async Task<(SessionVersion Version, SessionBranchCursor Cursor, SessionSequence Sequence)> LoadBranchTipAsync(

@@ -5,7 +5,7 @@ namespace AgentKit.Conversations;
 
 /// <summary>
 /// The default <see cref="IConversationSession"/>: composes <c>ISessionCoordinator</c>,
-/// <c>ISecurityProfileSelector</c>, and <c>IAgentLoop</c> into one durable, authorized conversational turn.
+/// <c>ISecurityProfileSelector</c>, and the <see cref="AgentEngine"/> facade into one durable, authorized conversational turn.
 /// </summary>
 /// <remarks>
 /// This class lazily creates its underlying session on the first <see cref="SendAsync(string, CancellationToken)"/> call and reuses that
@@ -19,18 +19,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 {
     private readonly ISessionCoordinator _sessionCoordinator;
     private readonly ISecurityProfileSelector _securityProfileSelector;
-    private readonly IServiceScopeFactory _loopScopeFactory;
-    private readonly AgentRunServices _runServices;
-    private readonly IIdentifierGenerator<RunId> _runIds;
+    private readonly IConversationTurnExecutor _turnExecutor;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
-    private readonly IIdentifierGenerator<MessageId> _messageIds;
-    private readonly IIdentifierGenerator<SessionEntryId> _sessionEntryIds;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<DefaultConversationSession> _logger;
     private readonly SemaphoreSlim _turnLock = new(1, 1);
 
-    private readonly AgentDefinition? _agent;
-    private readonly EffectiveConfigurationSnapshot? _configuration;
     private readonly AgentId _agentId;
     private readonly ExecutionIdentity _identity;
     private readonly SecurityProfileKey _securityProfileKey;
@@ -198,30 +192,11 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <summary>Initializes a conversation session from its validated collaborators and options.</summary>
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
-    /// <param name="loopScopeFactory">
-    /// Creates the short-lived scope each turn resolves its keyed, scoped <see cref="IAgentLoop"/> from. The loop
-    /// is never captured across turns because <see cref="AgentLoopComponentDefaults.LoopKey"/> registers it scoped;
-    /// capturing it at construction would make this singleton-lifetime session a captive dependency on a
-    /// shorter-lived service.
-    /// </param>
-    /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
-    /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
-    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
-    /// <param name="modelSelector">Chooses one configured model for the loop's run.</param>
-    /// <param name="llmModelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
-    /// <param name="continuationPolicy">
-    /// Decides, at every committed-turn boundary, whether the loop's run continues, completes, or halts. Resolved
-    /// from the keyed registration named by <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>.
-    /// </param>
-    /// <param name="runIds">Generates each turn's run identity.</param>
-    /// <param name="operationIds">Generates each turn's operation identity.</param>
-    /// <param name="messageIds">Generates each committed message's identity.</param>
-    /// <param name="sessionEntryIds">Generates each committed session-entry identity.</param>
-    /// <param name="timeProvider">The clock used to timestamp committed messages and entries.</param>
+    /// <param name="turnExecutor">Runs each turn through the composed <see cref="AgentEngine"/> facade.</param>
+    /// <param name="operationIds">Generates each session operation identity used for reads and opens.</param>
+    /// <param name="timeProvider">The clock used for turn diagnostics.</param>
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional logger that receives safe turn diagnostics; a null logger is used when omitted.</param>
-    /// <param name="compactor">The optional compactor the loop asks to checkpoint older history under context pressure.</param>
-    /// <param name="budgets">The optional budget authority a budgeted turn reserves through.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <see cref="ConversationSessionOptions.AgentId"/> or <see cref="ConversationSessionOptions.SecurityProfileKey"/>
@@ -232,111 +207,48 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
-        IServiceScopeFactory loopScopeFactory,
-        IContextAssembler contextAssembler,
-        IToolInvoker toolInvoker,
-        IModelCatalog modelCatalog,
-        IModelSelector modelSelector,
-        ILlmModelResolver llmModelResolver,
-        [FromKeyedServices(AgentLoopComponentDefaults.ContinuationPolicyKeyValue)] IRunContinuationPolicy continuationPolicy,
-        IIdentifierGenerator<RunId> runIds,
+        IConversationTurnExecutor turnExecutor,
         IIdentifierGenerator<OperationId> operationIds,
-        IIdentifierGenerator<MessageId> messageIds,
-        IIdentifierGenerator<SessionEntryId> sessionEntryIds,
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
-        ILogger<DefaultConversationSession>? logger = null,
-        ICompactor? compactor = null,
-        IBudgetAuthority? budgets = null)
+        ILogger<DefaultConversationSession>? logger = null)
         : this(
             sessionCoordinator,
             securityProfileSelector,
-            loopScopeFactory,
-            contextAssembler,
-            toolInvoker,
-            modelCatalog,
-            modelSelector,
-            llmModelResolver,
-            continuationPolicy,
-            runIds,
+            turnExecutor,
             operationIds,
-            messageIds,
-            sessionEntryIds,
             timeProvider,
             options,
             logger,
-            toolPresenter: null,
-            compactor,
-            budgets)
+            toolPresenter: null)
     {
     }
 
     /// <summary>Initializes a conversation session with optional bounded tool presentation.</summary>
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
-    /// <param name="loopScopeFactory">
-    /// Creates the short-lived scope each turn resolves its keyed, scoped <see cref="IAgentLoop"/> from.
-    /// </param>
-    /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
-    /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
-    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
-    /// <param name="modelSelector">Chooses one configured model for the loop's run.</param>
-    /// <param name="llmModelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
-    /// <param name="continuationPolicy">
-    /// Decides, at every committed-turn boundary, whether the loop's run continues, completes, or halts.
-    /// </param>
-    /// <param name="runIds">Generates each turn's run identity.</param>
-    /// <param name="operationIds">Generates each turn's operation identity.</param>
-    /// <param name="messageIds">Generates each committed message's identity.</param>
-    /// <param name="sessionEntryIds">Generates each committed session-entry identity.</param>
-    /// <param name="timeProvider">The clock used to timestamp committed messages and entries.</param>
+    /// <param name="turnExecutor">Runs each turn through the composed <see cref="AgentEngine"/> facade.</param>
+    /// <param name="operationIds">Generates each session operation identity used for reads and opens.</param>
+    /// <param name="timeProvider">The clock used for turn diagnostics.</param>
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional content-safe diagnostics logger.</param>
     /// <param name="toolPresenter">The optional observational presenter used for bounded live tool rendering.</param>
-    /// <param name="compactor">
-    /// The optional compactor the loop asks to checkpoint older history under context pressure; <see langword="null"/>
-    /// when the composition selects none, in which case turns never compact.
-    /// </param>
-    /// <param name="budgets">
-    /// The optional budget authority a budgeted turn reserves through; <see langword="null"/> when the composition
-    /// selects none, in which case a turn with budget limits fails closed.
-    /// </param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An identity, limit, or timeout option is invalid.</exception>
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
-        IServiceScopeFactory loopScopeFactory,
-        IContextAssembler contextAssembler,
-        IToolInvoker toolInvoker,
-        IModelCatalog modelCatalog,
-        IModelSelector modelSelector,
-        ILlmModelResolver llmModelResolver,
-        IRunContinuationPolicy continuationPolicy,
-        IIdentifierGenerator<RunId> runIds,
+        IConversationTurnExecutor turnExecutor,
         IIdentifierGenerator<OperationId> operationIds,
-        IIdentifierGenerator<MessageId> messageIds,
-        IIdentifierGenerator<SessionEntryId> sessionEntryIds,
         TimeProvider timeProvider,
         IOptions<ConversationSessionOptions> options,
         ILogger<DefaultConversationSession>? logger,
-        IToolPresenter? toolPresenter,
-        ICompactor? compactor = null,
-        IBudgetAuthority? budgets = null)
+        IToolPresenter? toolPresenter)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
-        ArgumentNullException.ThrowIfNull(loopScopeFactory);
-        ArgumentNullException.ThrowIfNull(contextAssembler);
-        ArgumentNullException.ThrowIfNull(toolInvoker);
-        ArgumentNullException.ThrowIfNull(modelCatalog);
-        ArgumentNullException.ThrowIfNull(modelSelector);
-        ArgumentNullException.ThrowIfNull(llmModelResolver);
-        ArgumentNullException.ThrowIfNull(continuationPolicy);
-        ArgumentNullException.ThrowIfNull(runIds);
+        ArgumentNullException.ThrowIfNull(turnExecutor);
         ArgumentNullException.ThrowIfNull(operationIds);
-        ArgumentNullException.ThrowIfNull(messageIds);
-        ArgumentNullException.ThrowIfNull(sessionEntryIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         var optionValues = options.Value;
@@ -364,20 +276,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
         _sessionCoordinator = sessionCoordinator;
         _securityProfileSelector = securityProfileSelector;
-        _loopScopeFactory = loopScopeFactory;
-        _runServices = new AgentRunServices(
-            sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
-            modelCatalog, modelSelector, llmModelResolver, continuationPolicy, outputProcessor: null, compactor, budgets);
-        _runIds = runIds;
+        _turnExecutor = turnExecutor;
         _operationIds = operationIds;
-        _messageIds = messageIds;
-        _sessionEntryIds = sessionEntryIds;
         _timeProvider = timeProvider;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultConversationSession>.Instance;
         _toolPresenter = toolPresenter;
 
-        _agent = optionValues.Agent;
-        _configuration = optionValues.Configuration;
         _agentId = optionValues.AgentId;
         _identity = optionValues.Identity;
         _securityProfileKey = optionValues.SecurityProfileKey;
@@ -482,192 +386,134 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         IConversationEventObserver? observer,
         CancellationToken cancellationToken)
     {
-        await EnsureSessionAsync(cancellationToken).ConfigureAwait(false);
-
-        // The first observed turn of a conversation leads with the binding so a live host learns the session
-        // identity before any content arrives. The durable result carries the same identities as properties rather
-        // than as an event, because Events is the rendered activity of the turn and the binding is not content.
-        var binding = _binding!;
-        if (observer is not null && !_bindingAnnounced)
+        if (observer is not null && _binding is { } binding && !_bindingAnnounced)
         {
             _bindingAnnounced = true;
             await ObserveAsync(observer, binding, cancellationToken).ConfigureAwait(false);
         }
 
-        var runId = _runIds.Create();
-        var correlation = new InRunOperationCorrelation(_operationIds.Create(), runId, null);
-        var appendAuthorization = await CaptureAuthorizationAsync(_sessionId, correlation, cancellationToken).ConfigureAwait(false);
-
-        var address = new SessionAddress(_agentId, _sessionId!.Value);
-        var sessionContext = new SessionOperationContext(
-            _agentId, _sessionId.Value, null, correlation, _identity, appendAuthorization);
-        var loadResult = await _sessionCoordinator.LoadAsync(
-            sessionContext,
-            _sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (loadResult is not SessionLoaded loaded)
-        {
-            return (
-                Finish(false, [new ConversationAssistantTextEvent("The session could not be loaded.")]),
-                "admission_failed");
-        }
-
-        var readResult = await _sessionCoordinator.ReadAsync(
-            new SessionReadRequest(sessionContext, _branchId, new SessionSequence(0), pageSize: 1),
-            _sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (readResult is not SessionPage { Snapshot: { } snapshot })
-        {
-            return (
-                Finish(false, [new ConversationAssistantTextEvent("The session history snapshot could not be captured.")]),
-                "admission_failed");
-        }
-
-        var currentVersion = snapshot.Version;
-        var nextSequence = new SessionSequence(snapshot.UpperSequence.Value + 1);
-        var now = _timeProvider.GetUtcNow();
-
-        var userMessage = new MessageSessionEntry(
-            _sessionEntryIds.Create(),
-            address,
-            correlation,
-            _branchId,
-            nextSequence,
-            null,
-            now,
-            new SchemaVersion("1"),
-            new UserMessage(
-                _messageIds.Create(),
-                _agentId,
-                _sessionId.Value,
-                loaded.Descriptor.ConversationId,
-                _branchId,
-                runId,
-                null,
-                now,
-                MessageState.Complete,
-                [new TextPart(userText, TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty));
-
-        var appendResult = await _sessionCoordinator.AppendAsync(
-            new SessionAppendRequest(
-                new SessionOperationContext(_agentId, _sessionId.Value, null, correlation, _identity, appendAuthorization),
-                _branchId,
-                currentVersion,
-                new IdempotencyKey($"agentkit.conversation:{runId}:user"),
-                [userMessage]),
-            _sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (appendResult is not SessionAppended)
-        {
-            ConversationLog.TurnAdmissionFailed(_logger, _agentId);
-            return (
-                Finish(false, [new ConversationAssistantTextEvent($"Could not record the message: {DescribeAppendResult(appendResult)}")]),
-                "admission_failed");
-        }
-
-        var runAuthorization = await CaptureAuthorizationAsync(_sessionId, correlation, cancellationToken).ConfigureAwait(false);
-        var request = (_agent, _configuration) is ({ } agent, { } configuration)
-            ? new AgentLoopRunRequest(
-                agent,
-                _sessionId.Value,
-                _branchId,
-                runId,
-                _identity,
-                runAuthorization,
-                _sessionProfile,
-                configuration,
-                _maxTurns,
-                _attemptTimeout,
-                ExtensionData.Empty)
-            : new AgentLoopRunRequest(
-                _agentId,
-                _sessionId.Value,
-                _branchId,
-                runId,
-                _identity,
-                runAuthorization,
-                _sessionProfile,
-                _modelSelectionPolicy,
-                _modelRequirements,
-                _instructions,
-                _tools,
-                _toolChoice,
-                _requestSettings,
-                _maxTurns,
-                _attemptTimeout,
-                ExtensionData.Empty);
-        request = request with
-        {
-            Observer = observer is null
+        var turnRequest = new ConversationTurnRunRequest(
+            _agentId,
+            _identity,
+            _sessionId,
+            userText,
+            _maxTurns,
+            _attemptTimeout,
+            observer is null
                 ? null
                 : new ConversationRunObserver(
                     observer,
                     DescribeToolResult,
                     _toolPresenter,
-                    _toolPresentationBindings),
-            Output = _agent is null ? _output : request.Output,
-            BudgetLimits = _agent is null ? _budgetLimits : request.BudgetLimits,
-        };
+                    _toolPresentationBindings));
 
-        await using var loopScope = _loopScopeFactory.CreateAsyncScope();
-        var agentLoop = loopScope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
-        // The output processor is scoped, so a run that needs one borrows it from the same short-lived scope as the
-        // loop; a free-text run keeps the bundle built at construction.
-        var runServices = request.Output is null
-            ? _runServices
-            : WithOutputProcessor(_runServices, loopScope.ServiceProvider.GetService<IOutputProcessor>());
-        var loopResult = await agentLoop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
-        var events = ProjectEvents(loopResult);
-        if (loopResult.Outcome is RunSucceeded)
+        if (observer is not null)
         {
-            if (loopResult.Output is { } output)
+            AgentLoopResult loopResult;
+            try
             {
-                var outputEvent = new ConversationOutputEvent(output);
-                await ObserveAsync(observer, outputEvent, cancellationToken).ConfigureAwait(false);
-                return (Finish(true, events.Add(outputEvent)) with { Output = output }, "settled");
+                loopResult = await _turnExecutor.SendObservedAsync(turnRequest, cancellationToken).ConfigureAwait(false);
+            }
+            catch (AgentAdmissionRejectedException exception)
+            {
+                ConversationLog.TurnAdmissionFailed(_logger, _agentId);
+                return (
+                    Finish(false, [new ConversationAssistantTextEvent(exception.Rejection.Reason)], loopResult: null),
+                    "admission_failed");
             }
 
-            return (Finish(true, events), "settled");
+            PublishBinding(loopResult.SessionId, loopResult.BranchId);
+            return MapLoopResult(loopResult, observer, cancellationToken);
         }
 
-        // The message was admitted; the run itself settled without completing. This is distinct from admission
-        // failing outright (session load/read/append rejection above), which is the only case that legitimately
-        // warrants TurnAdmissionFailed/"admission_failed".
-        ConversationLog.TurnRunNotCompleted(_logger, _agentId, loopResult.Outcome.GetType().Name);
-        var description = DescribeIncompleteOutcome(loopResult.Outcome);
-        return (
-            Finish(false, [.. events, new ConversationAssistantTextEvent(description)]),
-            RunOutcomeKind(loopResult.Outcome));
+        try
+        {
+            if (_output is null)
+            {
+                var result = await _turnExecutor.RunAsync<string>(turnRequest, cancellationToken).ConfigureAwait(false);
+                return MapTypedResult(result, observer, cancellationToken);
+            }
 
-        // Every result of this turn carries the bound session and the allocated run.
-        ConversationTurnResult Finish(bool succeeded, ImmutableArray<ConversationEvent> turnEvents) =>
+            var structured = await _turnExecutor.RunAsync<ValidatedOutput>(turnRequest, cancellationToken).ConfigureAwait(false);
+            return MapTypedResult(structured, observer, cancellationToken);
+        }
+        catch (AgentAdmissionRejectedException exception)
+        {
+            ConversationLog.TurnAdmissionFailed(_logger, _agentId);
+            return (
+                Finish(false, [new ConversationAssistantTextEvent(exception.Rejection.Reason)], loopResult: null),
+                "admission_failed");
+        }
+
+        (ConversationTurnResult Result, string Outcome) MapLoopResult(
+            AgentLoopResult loopResult,
+            IConversationEventObserver? liveObserver,
+            CancellationToken token)
+        {
+            var events = ProjectEvents(loopResult);
+            if (loopResult.Outcome is RunSucceeded)
+            {
+                if (loopResult.Output is { } output)
+                {
+                    var outputEvent = new ConversationOutputEvent(output);
+                    return (Finish(true, events.Add(outputEvent), loopResult) with { Output = output }, "settled");
+                }
+
+                return (Finish(true, events, loopResult), "settled");
+            }
+
+            ConversationLog.TurnRunNotCompleted(_logger, _agentId, loopResult.Outcome.GetType().Name);
+            var description = DescribeIncompleteOutcome(loopResult.Outcome);
+            return (
+                Finish(false, [.. events, new ConversationAssistantTextEvent(description)], loopResult),
+                RunOutcomeKind(loopResult.Outcome));
+        }
+
+        async Task<(ConversationTurnResult Result, string Outcome)> MapTypedResult<TOutput>(
+            AgentRunResult<TOutput> result,
+            IConversationEventObserver? liveObserver,
+            CancellationToken token)
+        {
+            if (result is AgentRunRejected<TOutput> rejected)
+            {
+                ConversationLog.TurnAdmissionFailed(_logger, _agentId);
+                return (
+                    Finish(false, [new ConversationAssistantTextEvent(rejected.Failure.SafeMessage)], loopResult: null),
+                    "admission_failed");
+            }
+
+            var finished = (AgentRunFinished<TOutput>)result;
+            PublishBinding(finished.SessionId, finished.PreviousCursor.BranchId);
+            var loopShaped = new AgentLoopResult(
+                finished.AgentId,
+                finished.SessionId,
+                finished.PreviousCursor.BranchId,
+                finished.RunId,
+                finished.Outcome,
+                finished.NewMessages,
+                finished.PreviousCursor.SessionVersion,
+                finished.Output is ValidatedOutput validated ? validated : null,
+                finished.Usage,
+                finished.Settlement);
+            return MapLoopResult(loopShaped, liveObserver, token);
+        }
+
+        ConversationTurnResult Finish(
+            bool succeeded,
+            ImmutableArray<ConversationEvent> turnEvents,
+            AgentLoopResult? loopResult) =>
             new(succeeded, turnEvents)
             {
-                SessionId = binding.SessionId,
-                RunId = runId,
+                SessionId = _sessionId ?? loopResult?.SessionId,
+                RunId = loopResult?.RunId,
             };
     }
 
-    /// <summary>Copies the run collaborator bundle with the turn-scoped output processor attached.</summary>
-    /// <param name="services">The bundle built at construction.</param>
-    /// <param name="processor">The processor resolved from the turn's scope, or <see langword="null"/> when none is composed.</param>
-    /// <returns>An equivalent bundle whose <see cref="AgentRunServices.OutputProcessor"/> is <paramref name="processor"/>.</returns>
-    private static AgentRunServices WithOutputProcessor(AgentRunServices services, IOutputProcessor? processor)
+    private void PublishBinding(SessionId sessionId, BranchId branchId)
     {
-        Debug.Assert(services is not null, "The construction-time bundle always exists.");
-        return new AgentRunServices(
-            services.Session,
-            services.SecurityProfileSelector,
-            services.Context,
-            services.Tools,
-            services.Models,
-            services.ModelSelector,
-            services.ModelResolver,
-            services.ContinuationPolicy,
-            processor,
-            services.Compactor,
-            services.Budgets);
+        _sessionId = sessionId;
+        _branchId = branchId;
+        _binding = new ConversationSessionBoundEvent(sessionId, branchId);
     }
 
     /// <summary>Maps a non-completed run outcome onto a short, bounded metric/log outcome token.</summary>

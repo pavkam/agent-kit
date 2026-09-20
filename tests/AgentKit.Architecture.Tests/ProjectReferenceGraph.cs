@@ -160,7 +160,8 @@ internal sealed class ProjectReferenceGraph
                 throw new InvalidOperationException("Shared observability may reference only abstractions.");
             }
 
-            if (BehavioralRuntimes.Contains(source) && targets.Any(target => target is not "AgentKit.Abstractions" and not "AgentKit.Observability"))
+            if (BehavioralRuntimes.Contains(source) && targets.Any(target => target is not "AgentKit.Abstractions" and not "AgentKit.Observability"
+                    and not (source == "AgentKit.Conversations" && target == "AgentKit")))
             {
                 throw new InvalidOperationException($"Behavioral runtime '{source}' references another implementation package.");
             }

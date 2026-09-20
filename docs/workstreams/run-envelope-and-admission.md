@@ -33,13 +33,13 @@ Owning documents: [Agent runtime](../architecture/agent-runtime.md),
 - [x] WS1-C6 loop publishes `RunEvent`s
 - [x] WS1-C7 unified outcome family
 - [x] WS1-C8 facade result types and `AgentRunOptions` reshape
-- [ ] WS1-C9 `AgentEngineRuntime`, run plan, `RunAsync<T>`, delete
+- [x] WS1-C9 `AgentEngineRuntime`, run plan, `RunAsync<T>`, delete
       `SessionLaneRegistry`
-- [ ] WS1-C10 `SteerAsync` and `FollowUpAsync`
-- [ ] WS1-C11 durable abort store primitive
+- [x] WS1-C10 `SteerAsync` and `FollowUpAsync`
+- [x] WS1-C11 durable abort store primitive
 - [ ] WS1-C12 `CancelAsync` and `AttachAsync` by `RunId`
 - [ ] WS1-C13 Conversations over the engine, Simple sugar
-- [ ] WS1-C14 input-queue conformance across three stores
+- [x] WS1-C14 input-queue conformance across three stores
 
 ## Verified current state
 

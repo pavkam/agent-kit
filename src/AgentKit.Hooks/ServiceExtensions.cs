@@ -4,7 +4,6 @@
 namespace AgentKit.Hooks;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>Dependency-injection registration for the first-party hook dispatcher.</summary>
 public static class ServiceExtensions
@@ -44,18 +43,7 @@ public static class ServiceExtensions
         public IServiceCollection AddAgentHooks(Action<AgentHookOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddAgentKitObservability();
-            var options = services.AddOptions<AgentHookOptions>()
-                .Validate(static value => value.MaximumInvocationDepth >= 1, "MaximumInvocationDepth must be at least 1.")
-                .Validate(static value => Enum.IsDefined(value.MinimumFailureMode), "MinimumFailureMode must be a defined value.")
-                .ValidateOnStart();
-            if (configure is not null)
-            {
-                _ = options.Configure(configure);
-            }
-
-            services.TryAddSingleton<IHookDispatcher, DefaultHookDispatcher>();
-            return services;
+            return HookServiceRegistration.AddAgentHooks(services, configure);
         }
 
         /// <summary>Registers one <see cref="IRunStartedHook"/> additively for the <see cref="AgentHookPoints.RunStarted"/> point.</summary>
@@ -70,9 +58,7 @@ public static class ServiceExtensions
             where THook : class, IRunStartedHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddAgentHooks();
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<IRunStartedHook, THook>());
-            return services;
+            return HookServiceRegistration.AddRunStartedHook<THook>(services);
         }
 
         /// <summary>Registers one <see cref="IBeforeModelRequestHook"/> additively for the <see cref="AgentHookPoints.BeforeModelRequest"/> point.</summary>
@@ -84,9 +70,7 @@ public static class ServiceExtensions
             where THook : class, IBeforeModelRequestHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddAgentHooks();
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeModelRequestHook, THook>());
-            return services;
+            return HookServiceRegistration.AddBeforeModelRequestHook<THook>(services);
         }
 
         /// <summary>Registers one <see cref="IBeforeToolInvocationHook"/> additively for the <see cref="AgentHookPoints.BeforeToolInvocation"/> point.</summary>
@@ -98,9 +82,7 @@ public static class ServiceExtensions
             where THook : class, IBeforeToolInvocationHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddAgentHooks();
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeToolInvocationHook, THook>());
-            return services;
+            return HookServiceRegistration.AddBeforeToolInvocationHook<THook>(services);
         }
     }
 }

@@ -35,6 +35,8 @@ server-realm identity and projection-incarnation fencing.
 3. Preserve steering versus follow-up delivery. Promotion uses a captured cutoff
    and deterministic order only at safe boundaries. `Agent.SteerAsync` and
    `Agent.FollowUpAsync` admit that input through a fresh before-run correlation
+   without starting a run; the loop still promotes it. `Agent.SteerAsync` and
+   `Agent.FollowUpAsync` admit that input through a fresh before-run correlation
    without starting a run; the loop still promotes it.
 4. Define queue capacity, ordering, leases or redelivery where relevant,
    retention, poison handling, and backpressure. Session contracts remain the

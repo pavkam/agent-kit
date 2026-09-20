@@ -112,6 +112,23 @@ public sealed class AgentEngine: IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _runtime.StreamAsync<TOutput>(request, cancellationToken);
 
+    /// <summary>
+    /// Opens or validates one conversation session for an agent without admitting a turn.
+    /// </summary>
+    /// <param name="request">The agent, identity, and optional existing session to bind.</param>
+    /// <param name="cancellationToken">Cancels the open before binding commits.</param>
+    /// <returns>
+    /// <see cref="AgentConversationOpened"/> when the session is visible and bound, or
+    /// <see cref="AgentConversationOpenRejected"/> with safe evidence when the agent, host, or session is unavailable.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="request.Identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="request.AgentId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">This engine has been disposed.</exception>
+    public Task<AgentConversationOpenResult> OpenSessionAsync(
+        AgentConversationOpenRequest request,
+        CancellationToken cancellationToken = default) =>
+        _runtime.OpenSessionAsync(request, cancellationToken);
+
     /// <summary>Releases the standalone service provider owned by this engine.</summary>
     /// <returns>
     /// An operation that completes when owned services have finished asynchronous disposal. Hosted engines complete

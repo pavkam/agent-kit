@@ -22,4 +22,38 @@ public sealed class AgentHookOptionsTests
 
         options.MinimumFailureMode.ShouldBe(HookFailureMode.IsolateAndDiagnose);
     }
+
+    [Fact]
+    public void DefaultHookTimeout_WhenDefault_IsTenSeconds() =>
+        new AgentHookOptions().DefaultHookTimeout.ShouldBe(TimeSpan.FromSeconds(10));
+
+    [Fact]
+    public void MutationDispatchMode_WhenDefault_IsSequential() =>
+        new AgentHookOptions().MutationDispatchMode.ShouldBe(HookMutationDispatchMode.Sequential);
+
+    [Fact]
+    public void ReloadBoundary_WhenDefault_IsNextRun() =>
+        new AgentHookOptions().ReloadBoundary.ShouldBe(HookReloadBoundary.NextRun);
+
+    [Fact]
+    public void AddAgentHooks_WhenMutationDispatchModeConcurrent_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks(static options => options.MutationDispatchMode = HookMutationDispatchMode.Concurrent);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentHookOptions>>().Value);
+    }
+
+    [Fact]
+    public void AddAgentHooks_WhenDefaultHookTimeoutZero_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks(static options => options.DefaultHookTimeout = TimeSpan.Zero);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentHookOptions>>().Value);
+    }
 }
