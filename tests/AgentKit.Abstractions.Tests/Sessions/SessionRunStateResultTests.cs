@@ -27,5 +27,15 @@ public sealed class SessionRunStateResultTests
         var copy = original with { };
         copy.ShouldBe(original);
         original.State.ShouldBe(state);
+        original.AbortRequested.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void SessionRunStateLoaded_WhenAbortRequested_PreservesTheMarker()
+    {
+        var state = SessionsTestData.AcceptedRunState();
+        var loaded = new SessionRunStateLoaded(state, abortRequested: true);
+        loaded.AbortRequested.ShouldBeTrue();
+        loaded.State.ShouldBe(state);
     }
 }

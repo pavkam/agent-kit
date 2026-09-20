@@ -13,7 +13,7 @@ internal sealed partial class SqliteSessionUnitOfWork
     internal async ValueTask<LaneRecord?> GetLaneAsync(SessionAddress address, ExecutionLaneId laneId, CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"""
-            SELECT branch_id, branch_cursor_entry_id, revision, accepted_state FROM {SqliteSessionSchema.LanesTable}
+            SELECT branch_id, branch_cursor_entry_id, revision, accepted_state, abort_requested FROM {SqliteSessionSchema.LanesTable}
             WHERE agent_id = $agent AND session_id = $session AND lane_id = $lane;
             """);
         AddAddress(command, address);
@@ -33,6 +33,7 @@ internal sealed partial class SqliteSessionUnitOfWork
             record.AcceptedState = Deserialize<SessionAcceptedRunState>((byte[]) reader[3]);
         }
 
+        record.AbortRequested = reader.GetInt64(4) != 0;
         return record;
     }
 
@@ -104,13 +105,15 @@ internal sealed partial class SqliteSessionUnitOfWork
     /// <param name="revision">The new revision.</param>
     /// <param name="acceptedState">The new accepted state, or <see langword="null"/> to clear it (a release).</param>
     /// <param name="cancellationToken">Cancels the write.</param>
+    /// <param name="abortRequested">Whether the installed run has a committed cancel marker. Release and acceptance pass <see langword="false"/>.</param>
     internal async ValueTask UpdateLaneAcceptedStateAsync(
         SessionAddress address, ExecutionLaneId laneId, SessionBranchCursor cursor, SessionLaneRevision revision,
-        SessionAcceptedRunState? acceptedState, CancellationToken cancellationToken)
+        SessionAcceptedRunState? acceptedState, CancellationToken cancellationToken, bool abortRequested = false)
     {
         await using var command = CreateCommand($"""
             UPDATE {SqliteSessionSchema.LanesTable}
-            SET branch_id = $branch, branch_cursor_entry_id = $entry, revision = $revision, accepted_state = $state
+            SET branch_id = $branch, branch_cursor_entry_id = $entry, revision = $revision, accepted_state = $state,
+                abort_requested = $abort
             WHERE agent_id = $agent AND session_id = $session AND lane_id = $lane;
             """);
         AddAddress(command, address);
@@ -119,6 +122,7 @@ internal sealed partial class SqliteSessionUnitOfWork
         _ = command.Parameters.AddWithValue("$entry", cursor.LastEntryId is { } entry ? ToText(entry.Value) : DBNull.Value);
         _ = command.Parameters.AddWithValue("$revision", revision.Value);
         _ = command.Parameters.AddWithValue("$state", acceptedState is null ? DBNull.Value : Serialize(acceptedState));
+        _ = command.Parameters.AddWithValue("$abort", abortRequested ? 1 : 0);
         _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

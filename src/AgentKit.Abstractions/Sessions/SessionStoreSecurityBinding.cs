@@ -76,6 +76,9 @@ public static class SessionStoreSecurityBinding
     /// <summary>Fingerprints one exact lane-release request, including the expected state revision and session version.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public static InputFingerprint Fingerprint(SessionRunReleaseRequest request) => SecurityCanonicalFingerprint.Create(request);
 
+    /// <summary>Fingerprints one exact durable-abort request, including the expected lane and operation revisions.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public static InputFingerprint Fingerprint(SessionRunAbortRequest request) => SecurityCanonicalFingerprint.Create(request);
+
     /// <summary>Fingerprints one exact pending-input discovery request.</summary><param name="request">The complete immutable request.</param><returns>An algorithm-qualified digest over all request evidence.</returns><exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public static InputFingerprint Fingerprint(SessionPendingInputsRequest request) => SecurityCanonicalFingerprint.Create(request);
 

@@ -982,6 +982,204 @@ public abstract class SessionStoreConformanceTests<TFixture>
         loaded.State.ShouldBeEquivalentTo(accepted.State);
     }
 
+    /// <summary>Verifies aborting the accepted run records the cancel marker, advances revision, and drops that run's pending admissions.</summary>
+    [Fact]
+    public async Task AbortRunAsync_WhenAcceptedRunHasPendingAdmissions_RecordsMarkerAndPrunesThem()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 1100, "abort-record");
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, StartRequest(prepared, 1110), SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var pending = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(1120), Identifier<InputId>(1121), Identifier<SessionEntryId>(1122),
+            accepted.SessionVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "abort-pending");
+        _ = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, pending, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var observed = await ObserveLaneAsync(fixture, store, prepared.Context);
+        var inRun = InRunContext(prepared, accepted);
+        var abort = new SessionRunAbortRequest(
+            inRun, accepted.State.OperationStateRevision, observed.LaneRevision, observed.Version,
+            new IdempotencyKey("abort-record"));
+
+        var result = await store.AbortRunAsync(
+            await AuthorizeAsync(fixture, abort, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionRunStateLoaded) await store.LoadRunStateAsync(
+            await AuthorizeAsync(fixture, new SessionRunStateRequest(inRun), SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var remaining = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, new SessionPendingInputsRequest(prepared.Context),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        var recorded = result.ShouldBeOfType<SessionRunAbortRecorded>();
+        recorded.Existing.ShouldBeFalse();
+        recorded.NewVersion.ShouldBe(new SessionVersion(observed.Version.Value + 1));
+        recorded.LaneRevision.ShouldBe(new SessionLaneRevision(observed.LaneRevision.Value + 1));
+        recorded.StateRevision.ShouldBe(new OperationStateRevision(accepted.State.OperationStateRevision.Value + 1));
+        loaded.AbortRequested.ShouldBeTrue();
+        loaded.State.OperationStateRevision.ShouldBe(recorded.StateRevision);
+        remaining.Pending.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies abort prunes only the aborted run's lane and leaves another lane's pending admissions in place.</summary>
+    [Fact]
+    public async Task AbortRunAsync_WhenAnotherLaneHasPendingAdmissions_LeavesThemInPlace()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 1200, "abort-other");
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, StartRequest(prepared, 1210), SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var ownPending = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(1220), Identifier<InputId>(1221), Identifier<SessionEntryId>(1222),
+            accepted.SessionVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "abort-own");
+        _ = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, ownPending, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var branchContext = SessionContext(
+            prepared.Descriptor.Address, prepared.Context.Identity,
+            new BeforeRunOperationCorrelation(Identifier<OperationId>(1230), null));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, new SessionBranchRequest(
+                branchContext, prepared.Descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("abort-fork")),
+                SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var afterFork = await ObserveLaneAsync(fixture, store, prepared.Context);
+        var otherLane = Identifier<ExecutionLaneId>(1240);
+        var otherContext = LaneContext(
+            prepared.Descriptor.Address, otherLane, prepared.Context.Identity,
+            new BeforeRunOperationCorrelation(Identifier<OperationId>(1241), null));
+        var provisioned = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(
+            await AuthorizeAsync(fixture, new SessionExecutionLaneProvisionRequest(
+                otherContext, new SessionBranchCursor(forked.NewBranchId, null), afterFork.Version,
+                Identifier<SessionEntryId>(1242), Profile(), Configuration(), Timestamp(1242),
+                new IdempotencyKey("abort-other-provision")),
+                SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var otherAdmission = Identifier<AdmissionId>(1250);
+        var otherPending = AdmissionRequest(
+            otherContext, otherAdmission, Identifier<InputId>(1251), Identifier<SessionEntryId>(1252),
+            provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "abort-other-pending");
+        _ = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, otherPending, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var observed = await ObserveLaneAsync(fixture, store, prepared.Context);
+        var abort = new SessionRunAbortRequest(
+            InRunContext(prepared, accepted), accepted.State.OperationStateRevision, observed.LaneRevision,
+            observed.Version, new IdempotencyKey("abort-other"));
+
+        var result = await store.AbortRunAsync(
+            await AuthorizeAsync(fixture, abort, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var ownRemaining = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, new SessionPendingInputsRequest(prepared.Context),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var otherRemaining = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, new SessionPendingInputsRequest(otherContext),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunAbortRecorded>();
+        ownRemaining.Pending.ShouldBeEmpty();
+        otherRemaining.Pending.Length.ShouldBe(1);
+        otherRemaining.Pending[0].AdmissionId.ShouldBe(otherAdmission);
+    }
+
+    /// <summary>Verifies an equivalent abort retry returns the recorded result and does not advance the revision again.</summary>
+    [Fact]
+    public async Task AbortRunAsync_WhenRetriedWithSameIdempotencyKey_DoesNotAdvanceRevisionAgain()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 1300, "abort-retry");
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, StartRequest(prepared, 1310), SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var unrelated = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(1320), Identifier<InputId>(1321), Identifier<SessionEntryId>(1322),
+            accepted.SessionVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "abort-retry-keep");
+        _ = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, unrelated, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var observed = await ObserveLaneAsync(fixture, store, prepared.Context);
+        var abort = new SessionRunAbortRequest(
+            InRunContext(prepared, accepted), accepted.State.OperationStateRevision, observed.LaneRevision,
+            observed.Version, new IdempotencyKey("abort-retry"));
+        var authorized = await AuthorizeAsync(fixture, abort, SecurityOperationKind.StateMutation, SecurityEffect.Mutate);
+
+        var first = (SessionRunAbortRecorded) await store.AbortRunAsync(authorized, TestContext.Current.CancellationToken);
+        var secondAuthorized = await AuthorizeAsync(fixture, abort, SecurityOperationKind.StateMutation, SecurityEffect.Mutate);
+        var second = (SessionRunAbortRecorded) await store.AbortRunAsync(secondAuthorized, TestContext.Current.CancellationToken);
+        var after = await ObserveLaneAsync(fixture, store, prepared.Context);
+
+        first.Existing.ShouldBeFalse();
+        second.Existing.ShouldBeTrue();
+        second.NewVersion.ShouldBe(first.NewVersion);
+        second.LaneRevision.ShouldBe(first.LaneRevision);
+        second.StateRevision.ShouldBe(first.StateRevision);
+        after.LaneRevision.ShouldBe(first.LaneRevision);
+        after.Version.ShouldBe(first.NewVersion);
+    }
+
+    /// <summary>Verifies a stale expected revision or a different run id rejects without appending or pruning.</summary>
+    [Fact]
+    public async Task AbortRunAsync_WhenExpectedRevisionIsStaleOrRunDiffers_RejectsWithoutMutation()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 1400, "abort-reject");
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, StartRequest(prepared, 1410), SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var pending = AdmissionRequest(
+            prepared.Context, Identifier<AdmissionId>(1420), Identifier<InputId>(1421), Identifier<SessionEntryId>(1422),
+            accepted.SessionVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "abort-reject-pending");
+        _ = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, pending, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var observed = await ObserveLaneAsync(fixture, store, prepared.Context);
+        var inRun = InRunContext(prepared, accepted);
+        var stale = new SessionRunAbortRequest(
+            inRun, new OperationStateRevision(accepted.State.OperationStateRevision.Value + 9), observed.LaneRevision,
+            observed.Version, new IdempotencyKey("abort-stale-revision"));
+        var otherRun = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            new InRunOperationCorrelation(accepted.State.Correlation.OperationId, Identifier<RunId>(1499), accepted.State.Correlation.TurnId));
+        var differentRun = new SessionRunAbortRequest(
+            otherRun, accepted.State.OperationStateRevision, observed.LaneRevision, observed.Version,
+            new IdempotencyKey("abort-different-run"));
+
+        var staleResult = await store.AbortRunAsync(
+            await AuthorizeAsync(fixture, stale, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var differentResult = await store.AbortRunAsync(
+            await AuthorizeAsync(fixture, differentRun, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionRunStateLoaded) await store.LoadRunStateAsync(
+            await AuthorizeAsync(fixture, new SessionRunStateRequest(inRun), SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var remaining = (SessionPendingInputsLoaded) await store.LoadPendingInputsAsync(
+            await AuthorizeAsync(fixture, new SessionPendingInputsRequest(prepared.Context),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var after = await ObserveLaneAsync(fixture, store, prepared.Context);
+
+        staleResult.ShouldBeOfType<SessionRunAbortRejected>().Kind.ShouldBe(SessionRunAbortRejectionKind.Fenced);
+        differentResult.ShouldBeOfType<SessionRunAbortRejected>().Kind.ShouldBe(SessionRunAbortRejectionKind.Fenced);
+        loaded.AbortRequested.ShouldBeFalse();
+        loaded.State.OperationStateRevision.ShouldBe(accepted.State.OperationStateRevision);
+        remaining.Pending.Length.ShouldBe(1);
+        remaining.Pending[0].AdmissionId.ShouldBe(pending.AdmissionId);
+        after.Version.ShouldBe(observed.Version);
+        after.LaneRevision.ShouldBe(observed.LaneRevision);
+    }
+
     /// <summary>Verifies an admission identity collision leaves version, lane cursor, and sequence available to the next valid commit.</summary>
     [Fact]
     public async Task AdmitInputAsync_WhenAdmissionIdentityCollides_DoesNotAdvanceState()
@@ -1605,6 +1803,27 @@ public abstract class SessionStoreConformanceTests<TFixture>
         SessionAddress address, ExecutionIdentity identity, OperationCorrelation correlation) =>
         new(address.AgentId, address.SessionId, null, correlation, identity,
             Authorization(address.AgentId, address.SessionId, correlation, identity));
+
+    private static SessionOperationContext InRunContext(
+        (SessionDescriptor Descriptor, SessionOperationContext Context, SessionExecutionLaneProvisioned Provisioned,
+            SessionInputAdmissionRequest Admission, AcceptedInput Accepted) prepared,
+        SessionRunAccepted accepted) =>
+        LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+
+    private static async ValueTask<(SessionVersion Version, SessionLaneRevision LaneRevision)> ObserveLaneAsync(
+        TFixture fixture, ISessionStore store, SessionOperationContext beforeRunContext)
+    {
+        var loaded = (SessionLoaded) await store.LoadAsync(
+            await AuthorizeAsync(fixture, beforeRunContext, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var lane = (SessionLaneStateLoaded) await store.LoadLaneStateAsync(
+            await AuthorizeAsync(fixture, new SessionLaneStateRequest(beforeRunContext),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        return (loaded.Descriptor.Version, lane.State.Revision);
+    }
 
     private static SessionOperationContext LaneContext(
         SessionAddress address, ExecutionLaneId laneId, ExecutionIdentity identity,

@@ -796,7 +796,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             || state.Correlation != request.Context.Correlation
             || state.Identity != request.Context.Identity
             ? new SessionRunStateUnavailable("The requested operation state is unavailable.")
-            : new SessionRunStateLoaded(state);
+            : new SessionRunStateLoaded(state, lane.AbortRequested);
     }
 
     private static async ValueTask<SessionLaneStateResult> LoadLaneStateCoreAsync(
@@ -887,6 +887,97 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             SqliteSessionIdempotencyScope.RunRelease, address, branchId: null, request.IdempotencyKey, request, released, cancellationToken)
             .ConfigureAwait(false);
         return released;
+    }
+
+    /// <summary>Atomically records a cancel marker for one accepted run, or reconciles a repeated identical abort.</summary>
+    /// <param name="uow">The transaction-scoped repository. Every write in this method shares its commit.</param>
+    /// <param name="request">The exact protected abort request naming the lane, run, and expected revisions.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The recorded receipt or a typed rejection.</returns>
+    /// <remarks>
+    /// Marker, pending-admission deletion, revision advance, session version, and idempotency receipt are written
+    /// inside the caller's write transaction, so a rejection or a failed commit leaves the previous rows unchanged.
+    /// </remarks>
+    private async ValueTask<SessionRunAbortResult> AbortRunCoreAsync(
+        SqliteSessionUnitOfWork uow, SessionRunAbortRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var address = request.Context.ToAddress();
+        var record = await uow.GetSessionAsync(address, cancellationToken).ConfigureAwait(false);
+        if (record is null || record.TenantId != request.Context.Identity.TenantId)
+        {
+            return new SessionRunAbortRejected(SessionRunAbortRejectionKind.LaneNotFound, "The session is unavailable.");
+        }
+
+        var replay = await uow.GetSessionScopeReceiptAsync<SessionRunAbortRequest, SessionRunAbortRecorded>(
+            SqliteSessionIdempotencyScope.RunAbort, address, branchId: null, request.IdempotencyKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (replay is not null)
+        {
+            return replay.Request.Equals(request)
+                ? new SessionRunAbortRecorded(
+                    replay.Result.NewVersion, replay.Result.LaneRevision, replay.Result.StateRevision, existing: true)
+                : new SessionRunAbortRejected(SessionRunAbortRejectionKind.Idempotency, "The abort idempotency key was reused with different evidence.");
+        }
+
+        var lane = await uow.GetLaneAsync(address, request.ExecutionLaneId, cancellationToken).ConfigureAwait(false);
+        if (lane is null)
+        {
+            return new SessionRunAbortRejected(SessionRunAbortRejectionKind.LaneNotFound, "The selected lane does not exist.");
+        }
+
+        if (lane.AcceptedState is not { } active)
+        {
+            return new SessionRunAbortRejected(SessionRunAbortRejectionKind.NoAcceptedRun, "The selected lane holds no accepted run.");
+        }
+
+        if (active.Correlation.OperationId != request.OperationId
+            || active.Correlation.RunId != request.RunId
+            || active.OperationStateRevision != request.ExpectedStateRevision
+            || lane.Revision != request.ExpectedLaneRevision)
+        {
+            return new SessionRunAbortRejected(
+                SessionRunAbortRejectionKind.Fenced,
+                "The lane's installed accepted run does not match the requested operation, run, and revision.");
+        }
+
+        if (record.Version != request.ExpectedVersion.Value)
+        {
+            return new SessionRunAbortRejected(SessionRunAbortRejectionKind.SessionVersion, "The expected session version is stale.");
+        }
+
+        var laneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+        var stateRevision = new OperationStateRevision(active.OperationStateRevision.Value + 1);
+        var advanced = WithRevision(active, laneRevision, stateRevision);
+        await uow.DeletePendingAdmissionsByLaneAsync(address, request.ExecutionLaneId, cancellationToken).ConfigureAwait(false);
+        await uow.UpdateLaneAcceptedStateAsync(
+            address, request.ExecutionLaneId, lane.BranchCursor, laneRevision, advanced, cancellationToken, abortRequested: true)
+            .ConfigureAwait(false);
+        await uow.UpdateSessionVersionAsync(address, record.Version, record.Version + 1, _timeProvider.GetUtcNow(), cancellationToken)
+            .ConfigureAwait(false);
+        var recorded = new SessionRunAbortRecorded(new SessionVersion(record.Version + 1), laneRevision, stateRevision, existing: false);
+        await uow.PutSessionScopeReceiptAsync(
+            SqliteSessionIdempotencyScope.RunAbort, address, branchId: null, request.IdempotencyKey, request, recorded, cancellationToken)
+            .ConfigureAwait(false);
+        return recorded;
+    }
+
+    /// <summary>Copies accepted state onto the revisions installed by one abort commit.</summary>
+    /// <param name="active">The installed accepted state.</param>
+    /// <param name="laneRevision">The lane revision after abort.</param>
+    /// <param name="stateRevision">The operation-state revision after abort.</param>
+    /// <returns>Accepted state that preserves recovery evidence and carries the advanced revisions.</returns>
+    private static SessionAcceptedRunState WithRevision(
+        SessionAcceptedRunState active, SessionLaneRevision laneRevision, OperationStateRevision stateRevision)
+    {
+        Debug.Assert(active is not null, "An installed accepted run is required.");
+        return new SessionAcceptedRunState(
+            active.Address, active.ExecutionLaneId, laneRevision, active.Correlation, stateRevision,
+            active.Identity, active.Authorization, active.SessionProfile, active.Configuration,
+            active.PreviousCursor, active.CommittedCursor, active.PromotionCutoff, active.InitiatingAdmissionId,
+            active.PromotedAdmissionIds, active.MaterializedEntryIds, active.MaterializedMessageIds,
+            active.InitialTurnId, active.AcceptedAt);
     }
 
     private static async ValueTask<SessionPendingInputsResult> LoadPendingInputsCoreAsync(
@@ -1059,7 +1150,8 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             active.Identity, active.Authorization, active.SessionProfile, active.Configuration, active.PreviousCursor,
             committedCursor, active.PromotionCutoff, active.InitiatingAdmissionId, active.PromotedAdmissionIds,
             active.MaterializedEntryIds, active.MaterializedMessageIds, active.InitialTurnId, active.AcceptedAt);
-        await uow.UpdateLaneAcceptedStateAsync(address, laneId, committedCursor, installedLaneRevision, newState, cancellationToken)
+        await uow.UpdateLaneAcceptedStateAsync(
+            address, laneId, committedCursor, installedLaneRevision, newState, cancellationToken, lane.AbortRequested)
             .ConfigureAwait(false);
         await uow.UpdateSessionVersionAsync(address, record.Version, record.Version + 1, request.PromotedAt, cancellationToken)
             .ConfigureAwait(false);

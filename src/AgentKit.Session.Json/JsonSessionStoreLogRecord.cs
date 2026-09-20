@@ -35,6 +35,7 @@ namespace AgentKit.Session.Json;
 /// <param name="Promote">The accepted mid-run promotion request, present only for <see cref="JsonSessionStoreLogRecordKind.InputPromoted"/>.</param>
 /// <param name="NewBranchId">The branch identity the store generated for this commit, present only for session creation and branch creation.</param>
 /// <param name="CommittedAt">The clock-derived instant the store stamped on this commit, present only for transitions that read the clock rather than a caller-supplied timestamp.</param>
+/// <param name="Abort">The accepted durable-abort request, present only for <see cref="JsonSessionStoreLogRecordKind.RunAborted"/>.</param>
 public sealed record JsonSessionStoreLogRecord(
     JsonSessionStoreLogRecordKind Kind,
     SessionStoreCreateRequest? Create,
@@ -47,7 +48,8 @@ public sealed record JsonSessionStoreLogRecord(
     SessionRunReleaseRequest? Release,
     SessionInputPromotionRequest? Promote,
     Guid? NewBranchId,
-    DateTimeOffset? CommittedAt)
+    DateTimeOffset? CommittedAt,
+    SessionRunAbortRequest? Abort = null)
 {
     /// <summary>Creates the record describing one session entering the store.</summary>
     /// <param name="request">The accepted creation request carrying the already allocated address.</param>
@@ -169,5 +171,19 @@ public sealed record JsonSessionStoreLogRecord(
         return new JsonSessionStoreLogRecord(
             JsonSessionStoreLogRecordKind.InputPromoted, null, null, null, null, null, null, null, null, request,
             null, null);
+    }
+
+    /// <summary>Creates the record describing one durable abort of an accepted run.</summary>
+    /// <param name="request">The accepted abort request.</param>
+    /// <param name="committedAt">The clock-derived instant stamped on the session's last-updated time.</param>
+    /// <returns>An abort record covering the cancel marker, pending-admission prune, and revision advance.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public static JsonSessionStoreLogRecord ForRunAborted(
+        SessionRunAbortRequest request, DateTimeOffset committedAt)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new JsonSessionStoreLogRecord(
+            JsonSessionStoreLogRecordKind.RunAborted, null, null, null, null, null, null, null, null, null,
+            null, committedAt, request);
     }
 }

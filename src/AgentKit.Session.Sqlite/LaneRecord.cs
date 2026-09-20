@@ -22,4 +22,8 @@ internal sealed class LaneRecord
     public SessionLaneRevision Revision { get; set; }
     /// <summary>Gets or sets complete accepted state, or null while idle.</summary>
     public SessionAcceptedRunState? AcceptedState { get; set; }
+
+    /// <summary>Gets or sets whether a durable cancel marker is committed for <see cref="AcceptedState"/>.</summary>
+    /// <value><see langword="true"/> only while the installed accepted run has been durably aborted.</value>
+    public bool AbortRequested { get; set; }
 }

@@ -25,7 +25,7 @@ hours, L three to six hours.
 | 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | prerequisites; C1–C8 |
 | 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | –                    |
 | 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1                   |
-| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | –                    |
+| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | C1, C3               |
 | 5   | [Host access](host-access.md)                                         | 3          | 18     | C1                   |
 | 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a                  |
 | 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1                   |

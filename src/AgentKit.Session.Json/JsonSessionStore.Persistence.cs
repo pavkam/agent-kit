@@ -178,6 +178,14 @@ public sealed partial class JsonSessionStore
                         cancellationToken),
                     "run release");
                 return;
+            case JsonSessionStoreLogRecordKind.RunAborted:
+                Verify<SessionRunAbortRecorded>(
+                    AbortRunCore(
+                        Require(record.Abort, "run abort"),
+                        RequireInstant(record.CommittedAt, "run abort"),
+                        cancellationToken),
+                    "run abort");
+                return;
             case JsonSessionStoreLogRecordKind.InputPromoted:
                 Verify<SessionInputPromoted>(
                     PromoteInputCore(Require(record.Promote, "input promotion"), cancellationToken), "input promotion");
@@ -239,6 +247,8 @@ public sealed partial class JsonSessionStore
                 _sessions.ContainsKey(Require(record.Start, "run acceptance").Context.ToAddress()),
             JsonSessionStoreLogRecordKind.RunReleased =>
                 _sessions.ContainsKey(Require(record.Release, "run release").Context.ToAddress()),
+            JsonSessionStoreLogRecordKind.RunAborted =>
+                _sessions.ContainsKey(Require(record.Abort, "run abort").Context.ToAddress()),
             JsonSessionStoreLogRecordKind.InputPromoted =>
                 _sessions.ContainsKey(Require(record.Promote, "input promotion").Context.ToAddress()),
             _ => throw Unavailable("A persisted session-store record has an unsupported kind."),

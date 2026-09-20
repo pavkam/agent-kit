@@ -144,4 +144,20 @@ public interface ISessionStore
     public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
         AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically records a cancel marker for one exact accepted run, prunes that run's pending admissions, and
+    /// advances the lane and operation revisions.
+    /// </summary>
+    /// <param name="request">The exact protected abort request naming the lane, run, and expected revisions.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The recorded receipt or a typed no-mutation outcome.</returns>
+    /// <remarks>
+    /// A later <see cref="LoadRunStateAsync"/> for that accepted run returns <see cref="SessionRunStateLoaded"/>
+    /// with <see cref="SessionRunStateLoaded.AbortRequested"/> set. An equivalent retry returns the original
+    /// receipt without a second revision advance. Rejection appends nothing and prunes nothing.
+    /// </remarks>
+    public ValueTask<SessionRunAbortResult> AbortRunAsync(
+        AuthorizedSessionStoreRequest<SessionRunAbortRequest> request,
+        CancellationToken cancellationToken = default);
 }

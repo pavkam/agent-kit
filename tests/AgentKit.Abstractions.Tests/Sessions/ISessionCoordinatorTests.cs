@@ -79,6 +79,9 @@ public sealed class ISessionCoordinatorTests
         var release = await coordinator.ReleaseRunAsync(requests.Release, requests.Capability, token);
         _ = release.ShouldBeOfType<SessionRunReleaseRejected>();
         ((SessionRunReleaseRejected) release).Kind.ShouldBe(SessionRunReleaseRejectionKind.Unsupported);
+        var abort = await coordinator.AbortRunAsync(requests.Abort, requests.Capability, token);
+        _ = abort.ShouldBeOfType<SessionRunAbortRejected>();
+        ((SessionRunAbortRejected) abort).Kind.ShouldBe(SessionRunAbortRejectionKind.Unsupported);
     }
 
     private static SessionDirectoryListRequest ListRequest()
@@ -117,11 +120,12 @@ public sealed class ISessionCoordinatorTests
         var inRun = new SessionOperationContext(before.AgentId, before.SessionId, before.ExecutionLaneId, inRunCorrelation, before.Identity, inRunAuthorization);
         var load = new SessionRunStateRequest(inRun);
         var release = new SessionRunReleaseRequest(inRun, new OperationStateRevision(1), new SessionVersion(2), new IdempotencyKey("release"));
+        var abort = new SessionRunAbortRequest(inRun, new OperationStateRevision(1), new SessionLaneRevision(2), new SessionVersion(2), new IdempotencyKey("abort"));
         var runCoordinator = new UnsupportedRunCoordinator();
-        return new RequestSet(lookup, provision, laneState, admission, start, load, release, new SessionExecutionCapability(profile, coordinator, runCoordinator));
+        return new RequestSet(lookup, provision, laneState, admission, start, load, release, abort, new SessionExecutionCapability(profile, coordinator, runCoordinator));
     }
 
-    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionLaneStateRequest LaneState, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionRunReleaseRequest Release, SessionExecutionCapability Capability);
+    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionLaneStateRequest LaneState, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionRunReleaseRequest Release, SessionRunAbortRequest Abort, SessionExecutionCapability Capability);
     private sealed class UnsupportedCoordinator: ISessionCoordinator
     {
         public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -170,6 +170,19 @@ public sealed partial class JsonSessionStore
     /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The store was disposed.</exception>
     /// <exception cref="InvalidOperationException">The store was used before <see cref="InitializeAsync"/> completed.</exception>
+    /// <exception cref="IOException">The abort record could not be appended and flushed, in which case no marker is recorded.</exception>
+    public ValueTask<SessionRunAbortResult> AbortRunAsync(
+        AuthorizedSessionStoreRequest<SessionRunAbortRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            token => AbortRunCore(request.Request, _timeProvider.GetUtcNow(), token),
+            static result => result is SessionRunAbortRecorded,
+            static reason => new SessionRunAbortRejected(SessionRunAbortRejectionKind.Unsupported, reason),
+            cancellationToken);
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The store was disposed.</exception>
+    /// <exception cref="InvalidOperationException">The store was used before <see cref="InitializeAsync"/> completed.</exception>
     public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
         AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
         CancellationToken cancellationToken = default) =>
@@ -432,6 +445,7 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest => "run_accept",
             SessionRunStateRequest => "run_state_load",
             SessionRunReleaseRequest => "run_release",
+            SessionRunAbortRequest => "run_abort",
             SessionPendingInputsRequest => "pending_inputs_load",
             SessionInputPromotionRequest => "input_promote",
             _ => "unknown",
@@ -460,6 +474,7 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest value => value.Context,
             SessionRunStateRequest value => value.Context,
             SessionRunReleaseRequest value => value.Context,
+            SessionRunAbortRequest value => value.Context,
             SessionPendingInputsRequest value => value.Context,
             SessionInputPromotionRequest value => value.Context,
             _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
@@ -480,6 +495,7 @@ public sealed partial class JsonSessionStore
             SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+            SessionRunAbortRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionPendingInputsRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionInputPromotionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),

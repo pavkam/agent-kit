@@ -27,6 +27,8 @@ internal static class SqliteSessionIdempotencyScope
     internal const string RunStart = "run-start";
     /// <summary>A run-release receipt, keyed by session and idempotency key.</summary>
     internal const string RunRelease = "run-release";
+    /// <summary>A durable-abort receipt, keyed by session and idempotency key.</summary>
+    internal const string RunAbort = "run-abort";
     /// <summary>A mid-run input-promotion receipt, keyed by session and idempotency key.</summary>
     internal const string InputPromotion = "input-promotion";
     /// <summary>An append receipt, keyed by session, target branch, and idempotency key.</summary>

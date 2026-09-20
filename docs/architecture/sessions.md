@@ -892,6 +892,54 @@ marker and advances the canonical whole-session version by one. It carries an
 idempotency key so a retried release after a lost response returns the original
 `SessionRunReleased` receipt rather than a second commit.
 
+`AbortRunAsync` is the durable cancel marker for one exact accepted run. It does
+not widen `SessionAcceptedRunState`. A later `LoadRunStateAsync` returns
+`SessionRunStateLoaded` with `AbortRequested` true only when that marker is
+committed. The same commit prunes pending admissions for that run and advances
+the lane revision and the operation-state revision. Rejection — a different
+run, a stale expected revision, a missing session or lane, or an authorization
+failure — appends nothing and prunes nothing. An equivalent idempotent retry
+returns `SessionRunAbortRecorded` without a second revision advance.
+
+```csharp
+public abstract record SessionRunAbortResult;
+public sealed record SessionRunAbortRecorded(
+    SessionVersion NewVersion,
+    SessionLaneRevision LaneRevision,
+    OperationStateRevision StateRevision,
+    bool Existing) : SessionRunAbortResult;
+public sealed record SessionRunAbortRejected(
+    SessionRunAbortRejectionKind Kind,
+    string SafeReason) : SessionRunAbortResult;
+
+public enum SessionRunAbortRejectionKind
+{
+    Unsupported,
+    LaneNotFound,
+    NoAcceptedRun,
+    Fenced,
+    SessionVersion,
+    Idempotency,
+}
+
+public sealed record SessionRunAbortRequest(
+    SessionOperationContext Context,
+    OperationStateRevision ExpectedStateRevision,
+    SessionLaneRevision ExpectedLaneRevision,
+    SessionVersion ExpectedVersion,
+    IdempotencyKey IdempotencyKey);
+
+public sealed record SessionRunStateLoaded(
+    SessionAcceptedRunState State,
+    bool AbortRequested = false) : SessionRunStateResult;
+```
+
+`AbortRequested` defaults to false. True means a durable cancel marker is
+committed for that accepted run and pending admissions for that run were pruned
+in the same commit. Messages on `SessionRunAbortRejected` are content-free.
+The hierarchy is closed: callers match `SessionRunAbortRecorded` or
+`SessionRunAbortRejected` and do not invent a third outcome.
+
 `ISessionRunLease` exposes this as an explicit `ReleaseAsync` member distinct
 from ordinary `DisposeAsync`. Plain disposal intentionally releases only the
 process-local lease so that a crash or handoff can still recover and reacquire
@@ -924,5 +972,6 @@ provider store; profiles requiring those guarantees select a capable backend.
 ## Related concept specifications
 
 - [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)
+- [Session execution lanes](../concepts/session-execution-lanes.md)
 - [Context compaction](../concepts/context-compaction.md)
 - [Input admission and message queues](../concepts/input-admission-and-message-queues.md)

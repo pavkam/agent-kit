@@ -123,6 +123,22 @@ internal sealed partial class SqliteSessionUnitOfWork
         _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Deletes pending admissions bound to one lane, leaving promoted admissions and other lanes in place.</summary>
+    /// <param name="address">The addressed session.</param>
+    /// <param name="laneId">The lane whose unpromoted admissions are pruned.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    internal async ValueTask DeletePendingAdmissionsByLaneAsync(
+        SessionAddress address, ExecutionLaneId laneId, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"""
+            DELETE FROM {SqliteSessionSchema.AdmissionsTable}
+            WHERE agent_id = $agent AND session_id = $session AND execution_lane_id = $lane AND promoted_sequence IS NULL;
+            """);
+        AddAddress(command, address);
+        _ = command.Parameters.AddWithValue("$lane", ToText(laneId.Value));
+        _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private StoredAdmission ReadAdmission(SqliteDataReader reader)
     {
         var admissionId = new AdmissionId(Guid.Parse(reader.GetString(0)));

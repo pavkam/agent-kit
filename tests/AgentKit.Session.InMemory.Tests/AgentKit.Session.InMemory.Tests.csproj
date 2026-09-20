@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit.IO/AgentKit.IO.csproj" />
     <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj" />
     <ProjectReference Include="../../src/AgentKit.Session/AgentKit.Session.csproj" />
     <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>

@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using AgentKit.Internal;
+
 /// <summary>
 /// Provides dependency-injection registration for the AgentKit facade, its
 /// agent-definition catalog, and its replaceable foundation defaults.
@@ -81,6 +83,7 @@ public static class ServiceExtensions
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddScoped<RunScopeState>();
+            services.TryAddScoped<IAgentRunPlanCompiler, DefaultAgentRunPlanCompiler>();
             services.TryAddScoped(static provider => provider.GetRequiredService<RunScopeState>().Session
                 ?? throw new InvalidOperationException(
                     "No SessionExecutionCapability has been compiled for this run scope yet. This is resolved "
@@ -95,7 +98,7 @@ public static class ServiceExtensions
                 static provider =>
                 {
                     var composition = AgentCompositionValidator.Validate(provider);
-                    return new AgentEngine(provider, ownedProvider: null, composition);
+                    return new AgentEngine(new AgentEngineRuntime(provider, ownedProvider: null, composition));
                 });
 
             return services;

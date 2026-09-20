@@ -168,6 +168,9 @@ public static class AgentKitActivityNames
     /// <summary>Names atomic release of a lane's installed accepted-run state.</summary>
     public const string SessionRunRelease = "session.run.release";
 
+    /// <summary>Names atomic durable abort of one accepted run, including its cancel marker and pending-admission prune.</summary>
+    public const string SessionRunAbort = "session.run.abort";
+
     /// <summary>Names protected accepted-run-state loading.</summary>
     public const string SessionRunStateLoad = "session.run.state.load";
 

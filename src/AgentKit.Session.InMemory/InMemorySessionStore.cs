@@ -839,6 +839,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             record.UpdatedAt = request.AcceptedAt;
             lane.Revision = installedLaneRevision;
             lane.BranchCursor = committedCursor;
+            lane.AbortRequested = false;
             lane.AcceptedState = state;
             var result = new SessionRunAccepted(state, new SessionVersion(record.Version), existing: false);
             record.RunStartIdempotency.Add(request.IdempotencyKey, new RunStartReceipt(request, result));
@@ -887,7 +888,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 || state.Identity != request.Context.Identity
                 ? ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable(
                     "The requested operation state is unavailable."))
-                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state));
+                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state, lane.AbortRequested));
         }
     }
 
@@ -952,6 +953,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             }
 
             lane.AcceptedState = null;
+            lane.AbortRequested = false;
             record.Version++;
             record.UpdatedAt = _timeProvider.GetUtcNow();
             var released = new SessionRunReleased(new SessionVersion(record.Version), existing: false);
@@ -959,6 +961,119 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 new IdempotencyReceipt<SessionRunReleaseRequest, SessionRunReleased>(request, released);
             return ValueTask.FromResult<SessionRunReleaseResult>(released);
         }
+    }
+
+    /// <summary>Atomically records a cancel marker for one accepted run, or reconciles a repeated identical abort.</summary>
+    /// <param name="request">The exact protected abort request naming the lane, run, and expected revisions.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The recorded receipt or a typed rejection.</returns>
+    /// <remarks>
+    /// The commit, when it happens, records the marker, prunes pending admissions on that lane, and advances the lane
+    /// and operation revisions before the gate is released. A missing session or lane is
+    /// <see cref="SessionRunAbortRejectionKind.LaneNotFound"/>. A different run or a stale expected revision is
+    /// <see cref="SessionRunAbortRejectionKind.Fenced"/> and leaves every admission in place.
+    /// </remarks>
+    private ValueTask<SessionRunAbortResult> AbortRunCoreAsync(
+        SessionRunAbortRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.LaneNotFound, "The session is unavailable."));
+            }
+
+            if (record.RunAbortIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(replay.Request.Equals(request)
+                    ? new SessionRunAbortRecorded(
+                        replay.Result.NewVersion, replay.Result.LaneRevision, replay.Result.StateRevision, existing: true)
+                    : new SessionRunAbortRejected(SessionRunAbortRejectionKind.Idempotency,
+                        "The abort idempotency key was reused with different evidence."));
+            }
+
+            if (!record.Lanes.TryGetValue(request.ExecutionLaneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.LaneNotFound, "The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is not { } active)
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.NoAcceptedRun, "The selected lane holds no accepted run."));
+            }
+
+            if (active.Correlation.OperationId != request.OperationId
+                || active.Correlation.RunId != request.RunId
+                || active.OperationStateRevision != request.ExpectedStateRevision
+                || lane.Revision != request.ExpectedLaneRevision)
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.Fenced,
+                    "The lane's installed accepted run does not match the requested operation, run, and revision."));
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<SessionRunAbortResult>(new SessionRunAbortRejected(
+                    SessionRunAbortRejectionKind.SessionVersion, "The expected session version is stale."));
+            }
+
+            var laneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+            var stateRevision = new OperationStateRevision(active.OperationStateRevision.Value + 1);
+            PrunePendingAdmissions(record, request.ExecutionLaneId);
+            lane.Revision = laneRevision;
+            lane.AbortRequested = true;
+            lane.AcceptedState = WithRevision(active, laneRevision, stateRevision);
+            record.Version++;
+            record.UpdatedAt = _timeProvider.GetUtcNow();
+            var recorded = new SessionRunAbortRecorded(
+                new SessionVersion(record.Version), laneRevision, stateRevision, existing: false);
+            record.RunAbortIdempotency[request.IdempotencyKey] =
+                new IdempotencyReceipt<SessionRunAbortRequest, SessionRunAbortRecorded>(request, recorded);
+            return ValueTask.FromResult<SessionRunAbortResult>(recorded);
+        }
+    }
+
+    /// <summary>Removes pending admissions bound to one lane without touching promoted admissions or other lanes.</summary>
+    /// <param name="record">The session whose admission indexes are updated.</param>
+    /// <param name="laneId">The lane whose unpromoted admissions are pruned.</param>
+    private static void PrunePendingAdmissions(SessionRecord record, ExecutionLaneId laneId)
+    {
+        Debug.Assert(record is not null, "A loaded session is required.");
+        var doomed = record.AdmissionsById
+            .Where(pair => pair.Value.Input.ExecutionLaneId == laneId && pair.Value.Input.PromotedSequence is null)
+            .Select(static pair => pair.Key)
+            .ToArray();
+        foreach (var admissionId in doomed)
+        {
+            if (record.AdmissionsById.Remove(admissionId, out var stored))
+            {
+                _ = record.AdmissionsByInput.Remove(stored.Input.OriginalPayload.Id);
+            }
+        }
+    }
+
+    /// <summary>Copies accepted state onto the revisions installed by one abort commit.</summary>
+    /// <param name="active">The installed accepted state.</param>
+    /// <param name="laneRevision">The lane revision after abort.</param>
+    /// <param name="stateRevision">The operation-state revision after abort.</param>
+    /// <returns>Accepted state that preserves recovery evidence and carries the advanced revisions.</returns>
+    private static SessionAcceptedRunState WithRevision(
+        SessionAcceptedRunState active, SessionLaneRevision laneRevision, OperationStateRevision stateRevision)
+    {
+        Debug.Assert(active is not null, "An installed accepted run is required.");
+        return new SessionAcceptedRunState(
+            active.Address, active.ExecutionLaneId, laneRevision, active.Correlation, stateRevision,
+            active.Identity, active.Authorization, active.SessionProfile, active.Configuration,
+            active.PreviousCursor, active.CommittedCursor, active.PromotionCutoff, active.InitiatingAdmissionId,
+            active.PromotedAdmissionIds, active.MaterializedEntryIds, active.MaterializedMessageIds,
+            active.InitialTurnId, active.AcceptedAt);
     }
 
     private ValueTask<SessionPendingInputsResult> LoadPendingInputsCoreAsync(

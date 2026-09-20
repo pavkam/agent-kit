@@ -107,7 +107,7 @@ public sealed class AgentEngineBuilder
                     static serviceProvider =>
                     {
                         var composition = AgentCompositionValidator.Validate(serviceProvider);
-                        return new AgentEngine(serviceProvider, (IAsyncDisposable) serviceProvider, composition);
+                        return new AgentEngine(new AgentEngineRuntime(serviceProvider, (IAsyncDisposable) serviceProvider, composition));
                     }));
             }
 
@@ -125,7 +125,7 @@ public sealed class AgentEngineBuilder
             // diagnostic the metadata-only registration count check would have reported.
             return hasFacadeDescriptor
                 ? provider.GetRequiredService<AgentEngine>()
-                : new AgentEngine(provider, provider, AgentCompositionValidator.Validate(provider));
+                : new AgentEngine(new AgentEngineRuntime(provider, provider, AgentCompositionValidator.Validate(provider)));
         }
         catch (Exception original)
         {

@@ -102,6 +102,9 @@ internal sealed class SessionRecord
     /// <summary>Gets successful lane-release receipts keyed by release idempotency identity.</summary>
     public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionRunReleaseRequest, SessionRunReleased>> RunReleaseIdempotency { get; } = [];
 
+    /// <summary>Gets successful durable-abort receipts keyed by abort idempotency identity.</summary>
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionRunAbortRequest, SessionRunAbortRecorded>> RunAbortIdempotency { get; } = [];
+
     /// <summary>Gets successful mid-run input-promotion receipts keyed by promotion idempotency identity.</summary>
     public Dictionary<IdempotencyKey, InputPromotionReceipt> InputPromotionIdempotency { get; } = [];
 }

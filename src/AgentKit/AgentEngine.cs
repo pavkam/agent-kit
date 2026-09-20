@@ -4,153 +4,64 @@
 namespace AgentKit;
 
 /// <summary>
-/// Represents an immutable process-level AgentKit composition that hosts a
-/// versioned catalog of agent definitions and runs them concurrently.
+/// Represents an immutable process-level AgentKit composition that hosts a versioned catalog of agent definitions
+/// and runs them concurrently.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The engine is not an agent. It carries no agent's mutable state and never
-/// makes a process-wide singleton out of a run scope. Each invocation creates
-/// an isolated dependency-injection scope and a fresh <see cref="RunId"/>.
+/// The engine is not an agent. It carries no agent's mutable state. Admission, scope ownership, and disposal live
+/// on the package-internal <see cref="AgentEngineRuntime"/> this type delegates to. Callers never receive that
+/// runtime or a service provider from an <see cref="Agent"/> handle.
 /// </para>
 /// <para>
-/// An engine created by <see cref="AgentEngineBuilder.Build"/> owns the
-/// service provider captured by that build and disposes it exactly once. An
-/// engine resolved from a host-owned provider does not own or dispose that
+/// An engine created by <see cref="AgentEngineBuilder.Build"/> owns the service provider captured by that build
+/// and disposes it exactly once. An engine resolved from a host-owned provider does not own or dispose that
 /// provider.
-/// </para>
-/// <para>
-/// The container is never exposed. Callers resolve agents by
-/// <see cref="AgentId"/> and run them through the returned
-/// <see cref="Agent"/> handle, so no caller can bypass definition resolution
-/// or substitute a component the composition did not validate.
 /// </para>
 /// </remarks>
 public sealed class AgentEngine: IAsyncDisposable
 {
-    private readonly Lock _disposeLock = new();
-    private readonly IAsyncDisposable? _ownedProvider;
-    private readonly IAgentDefinitionCatalog _catalog;
-    private readonly IIdentifierGenerator<RunId> _runIds;
-    private readonly IIdentifierGenerator<OperationId> _operationIds;
-    private readonly IAgentRunProfilePublicationReader _runProfiles;
-    private readonly ISecurityProfileSelector _securityProfiles;
-    private readonly ImmutableDictionary<(AgentId, AgentDefinitionRevision), AgentRunProfilePublication> _pinnedRunProfiles;
-    private readonly IIdentifierGenerator<MessageId> _messageIds;
-    private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
-    private readonly IIdentifierGenerator<TurnId> _turnIds;
-    private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
-    private readonly IIdentifierGenerator<InputId> _inputIds;
-    private readonly SessionLaneRegistry _lanes = new();
-    private readonly ILogger<AgentEngine> _logger;
-    private Task? _disposeTask;
-    private bool _disposed;
+    private readonly AgentEngineRuntime _runtime;
 
-    /// <summary>
-    /// Initializes an engine over one captured composition.
-    /// </summary>
-    /// <param name="services">
-    /// The composition the engine resolves scoped run services from.
-    /// </param>
-    /// <param name="ownedProvider">
-    /// The standalone provider owned by this engine, or <see langword="null"/>
-    /// when an external host owns the provider.
-    /// </param>
-    /// <param name="validatedComposition">
-    /// The exact immutable readiness evidence already inspected by composition validation.
-    /// Engine construction pins this supplied value without consulting replaceable readers again.
-    /// </param>
-    /// <exception cref="ArgumentNullException">
-    /// <paramref name="services"/> or <paramref name="validatedComposition"/> is
-    /// <see langword="null"/>.
-    /// </exception>
-    /// <exception cref="InvalidOperationException">
-    /// The composition does not contain the engine-wide services the facade
-    /// requires.
-    /// </exception>
-    internal AgentEngine(
-        IServiceProvider services,
-        IAsyncDisposable? ownedProvider,
-        AgentCompositionSnapshot validatedComposition)
+    /// <summary>Initializes an engine over one runtime.</summary>
+    /// <param name="runtime">The non-null lifecycle coordinator. The engine does not construct a second one.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="runtime"/> is null.</exception>
+    internal AgentEngine(AgentEngineRuntime runtime)
     {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(validatedComposition);
-
-        Services = services;
-        _ownedProvider = ownedProvider;
-        TimeProvider = services.GetRequiredService<TimeProvider>();
-        _catalog = services.GetRequiredService<IAgentDefinitionCatalog>();
-        _runIds = services.GetRequiredService<IIdentifierGenerator<RunId>>();
-        _operationIds = services.GetRequiredService<IIdentifierGenerator<OperationId>>();
-        _runProfiles = services.GetRequiredService<IAgentRunProfilePublicationReader>();
-        _securityProfiles = services.GetRequiredService<ISecurityProfileSelector>();
-        _messageIds = services.GetRequiredService<IIdentifierGenerator<MessageId>>();
-        _entryIds = services.GetRequiredService<IIdentifierGenerator<SessionEntryId>>();
-        _turnIds = services.GetRequiredService<IIdentifierGenerator<TurnId>>();
-        _admissionIds = services.GetRequiredService<IIdentifierGenerator<AdmissionId>>();
-        _inputIds = services.GetRequiredService<IIdentifierGenerator<InputId>>();
-        ComponentRegistrations = validatedComposition.ComponentRegistrations;
-        _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
-            static publication => (
-                publication.SecurityProfile.AgentId,
-                publication.SecurityProfile.AgentDefinitionRevision));
-        _logger = services.GetService<ILogger<AgentEngine>>() ?? NullLogger<AgentEngine>.Instance;
+        ArgumentNullException.ThrowIfNull(runtime);
+        _runtime = runtime;
     }
 
     /// <summary>
-    /// Gets the engine-wide clock captured at composition time.
-    /// </summary>
-    /// <value>
-    /// The singleton <see cref="System.TimeProvider"/> selected by the
-    /// standalone builder or external host. The reference never changes for
-    /// this engine.
-    /// </value>
-    /// <summary>
-    /// Gets the composed service provider so the application that built this engine can reach the
-    /// services it registered, in the same way an <c>IHost</c> exposes its services.
+    /// Gets the composed service provider so the application that built this engine can reach the services it
+    /// registered, in the same way an <c>IHost</c> exposes its services.
     /// </summary>
     /// <remarks>
-    /// This is a composition-root surface for the application only. Runtime components never receive
-    /// it: every framework collaborator is injected through its constructor. The provider's lifetime is
-    /// the engine's; for a standalone engine it is disposed with the engine, and for a host-managed engine
-    /// it is the host's provider.
+    /// This is a composition-root surface for the application only. Runtime components never receive it: every
+    /// framework collaborator is injected through its constructor. The provider's lifetime is the engine's; for a
+    /// standalone engine it is disposed with the engine, and for a host-managed engine it is the host's provider.
     /// </remarks>
-    public IServiceProvider Services { get; }
+    public IServiceProvider Services => _runtime.Services;
 
-    internal TimeProvider TimeProvider { get; }
+    /// <summary>Gets the engine-wide clock captured at composition time.</summary>
+    internal TimeProvider TimeProvider => _runtime.TimeProvider;
 
     /// <summary>Gets the exact partial component-registration evidence validated for this engine.</summary>
-    /// <value>The build-local immutable snapshot; it never changes when a builder collection is later mutated.</value>
-    internal ComponentRegistrationSnapshot ComponentRegistrations { get; }
+    internal ComponentRegistrationSnapshot ComponentRegistrations => _runtime.ComponentRegistrations;
 
-    /// <summary>
-    /// Creates a mutable builder for a new standalone engine composition.
-    /// </summary>
-    /// <returns>
-    /// A new builder with an independent service collection and the AgentKit
-    /// facade defaults registered.
-    /// </returns>
+    /// <summary>Creates a mutable builder for a new standalone engine composition.</summary>
+    /// <returns>A new builder with an independent service collection and the AgentKit facade defaults registered.</returns>
     public static AgentEngineBuilder CreateBuilder() => new();
 
-    /// <summary>
-    /// Lists every agent this engine currently hosts.
-    /// </summary>
+    /// <summary>Lists every agent this engine currently hosts.</summary>
     /// <param name="cancellationToken">A token that cancels the read.</param>
     /// <returns>The current catalog snapshot, including its version and definitions in composition order.</returns>
-    /// <exception cref="OperationCanceledException">
-    /// <paramref name="cancellationToken"/> was signalled.
-    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
     /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
-    public async ValueTask<AgentCatalogSnapshot> GetAgentsAsync(
-        CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-    }
+    public ValueTask<AgentCatalogSnapshot> GetAgentsAsync(CancellationToken cancellationToken = default) =>
+        _runtime.GetAgentsAsync(cancellationToken);
 
-    /// <summary>
-    /// Resolves one hosted agent to a runnable handle.
-    /// </summary>
+    /// <summary>Resolves one hosted agent to a runnable handle.</summary>
     /// <param name="agentId">The agent identity to resolve.</param>
     /// <param name="cancellationToken">A token that cancels the read.</param>
     /// <returns>
@@ -158,716 +69,54 @@ public sealed class AgentEngine: IAsyncDisposable
     /// this engine hosts no such agent, or <see cref="InvalidAgent"/> when the agent exists but its definition
     /// cannot be used with this composition.
     /// </returns>
-    /// <remarks>
-    /// An unknown identity returns a typed result rather than throwing, because agent identities routinely arrive
-    /// from outside the process and a host should be able to answer "no such agent" without catching.
-    /// </remarks>
-    /// <exception cref="OperationCanceledException">
-    /// <paramref name="cancellationToken"/> was signalled.
-    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
     /// <exception cref="ObjectDisposedException">This engine has already been disposed.</exception>
-    public async ValueTask<AgentResolution> GetAgentAsync(
-        AgentId agentId,
-        CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var resolution = await _catalog.ResolveAsync(agentId, cancellationToken).ConfigureAwait(false);
+    public ValueTask<AgentResolution> GetAgentAsync(AgentId agentId, CancellationToken cancellationToken = default) =>
+        _runtime.GetAgentAsync(agentId, cancellationToken);
 
-        return resolution switch
-        {
-            ResolvedAgentDefinition resolved =>
-                new ResolvedAgent(new Agent(this, resolved.Definition, resolved.CatalogVersion)),
-            AgentDefinitionNotFound notFound => new AgentNotFound(notFound.AgentId),
-            InvalidAgentDefinition invalid => new InvalidAgent(invalid.AgentId, invalid.Diagnostics),
-            _ => throw new InvalidOperationException(
-                $"Unrecognized {nameof(AgentDefinitionResolution)} kind '{resolution.GetType()}'."),
-        };
-    }
-
-    /// <summary>
-    /// Releases the standalone service provider owned by this engine.
-    /// </summary>
-    /// <returns>
-    /// An operation that completes when owned services have finished
-    /// asynchronous disposal. Hosted engines complete without disposing any
-    /// host-owned service.
-    /// </returns>
-    /// <remarks>
-    /// Disposal is thread-safe and idempotent. Concurrent and subsequent calls
-    /// observe the same disposal operation, so the owned provider is disposed
-    /// at most once.
-    /// </remarks>
-    public ValueTask DisposeAsync()
-    {
-        lock (_disposeLock)
-        {
-            _disposed = true;
-            _disposeTask ??= DisposeOwnedProviderAsync(_ownedProvider);
-            return new ValueTask(_disposeTask);
-        }
-    }
-
-    /// <summary>
-    /// Creates a new session for one agent without admitting any turn.
-    /// </summary>
+    /// <summary>Creates a new session for one agent without admitting any turn.</summary>
     /// <param name="request">The agent, identity, conversation, idempotency key, and extensions for the new session.</param>
     /// <param name="cancellationToken">A token that cancels the creation.</param>
     /// <returns>
-    /// <see cref="AgentSessionCreated"/> naming the new (or, for a retried idempotency key, existing) session, or
-    /// <see cref="AgentSessionCreationFailed"/> with safe, closed evidence describing why creation did not succeed.
+    /// <see cref="AgentSessionCreated"/> naming the new or existing session, or <see cref="AgentSessionCreationFailed"/>
+    /// with safe, closed evidence.
     /// </returns>
-    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="ObjectDisposedException">This engine has been disposed.</exception>
-    /// <remarks>
-    /// This resolves <see cref="AgentSessionCreateRequest.AgentId"/> fresh against the current catalog rather than
-    /// through an already-pinned <see cref="Agent"/> handle, since a caller may hold only the identity. A removed,
-    /// disabled, or otherwise unusable agent is reported as <see cref="SessionCreationFailureKind.AgentUnavailable"/>
-    /// rather than thrown, matching this method's typed-result contract.
-    /// </remarks>
-    public async Task<AgentSessionCreationResult> CreateSessionAsync(
+    public Task<AgentSessionCreationResult> CreateSessionAsync(
         AgentSessionCreateRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        CancellationToken cancellationToken = default) =>
+        _runtime.CreateSessionAsync(request, cancellationToken);
 
-        var resolution = await _catalog.ResolveAsync(request.AgentId, cancellationToken).ConfigureAwait(false);
-        if (resolution is not ResolvedAgentDefinition { Definition: var definition, CatalogVersion: var catalogVersion })
-        {
-            var reason = resolution switch
-            {
-                AgentDefinitionNotFound => "The requested agent is not hosted by this engine.",
-                InvalidAgentDefinition invalid => $"The requested agent's definition is unusable: {string.Join("; ", invalid.Diagnostics)}",
-                _ => $"Unrecognized {nameof(AgentDefinitionResolution)} kind '{resolution.GetType()}'.",
-            };
-            return new AgentSessionCreationFailed(
-                request.AgentId, new SessionCreationFailure(SessionCreationFailureKind.AgentUnavailable, reason));
-        }
-
-        if (!_pinnedRunProfiles.TryGetValue((definition.Id, definition.Revision), out var pinnedPublication))
-        {
-            return new AgentSessionCreationFailed(
-                request.AgentId,
-                new SessionCreationFailure(
-                    SessionCreationFailureKind.AgentUnavailable,
-                    "The built composition has no pinned run-profile publication for this definition."));
-        }
-
-        await using var scope = Services.CreateAsyncScope();
-        var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-        var sessions = AgentRunServicesFactory.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
-
-        SecurityAuthorizationContext authorization;
-        try
-        {
-            var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
-            authorization = await CaptureAsync(
-                definition, catalogVersion, pinnedPublication.SecurityProfile, null, correlation, request.Identity, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (AgentAdmissionRejectedException exception)
-        {
-            return new AgentSessionCreationFailed(
-                request.AgentId,
-                new SessionCreationFailure(SessionCreationFailureKind.AuthorizationUnavailable, exception.Rejection.Reason));
-        }
-
-        var result = await sessions.CreateAsync(
-            new SessionCreateRequest(definition.Id, request.Identity, authorization, request.ConversationId, request.IdempotencyKey, request.Extensions),
-            pinnedPublication.SessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (result is not SessionCreated created)
-        {
-            return new AgentSessionCreationFailed(
-                request.AgentId,
-                new SessionCreationFailure(
-                    SessionCreationFailureKind.StoreRejected, $"The session could not be created: {result.GetType().Name}."));
-        }
-
-        AgentAdmissionLog.SessionCreated(_logger, definition.Id, created.Descriptor.Address.SessionId);
-        return new AgentSessionCreated(
-            definition.Id, created.Descriptor.Address.SessionId, created.Descriptor.ConversationId, created.Existing);
-    }
-
-    /// <summary>
-    /// Admits one user turn for an agent: creates or opens the session, takes the session's lane, appends the
-    /// user message, and runs the agent in a fresh, isolated run scope.
-    /// </summary>
-    /// <param name="definition">The immutable definition to run.</param>
-    /// <param name="request">The identity, message, session selection, overrides, and observer for this turn.</param>
-    /// <param name="cancellationToken">
-    /// Cancels the caller's wait. Before the user message is committed, cancellation propagates and leaves no
-    /// durable effect; afterwards the loop settles the run with a typed cancelled outcome that is returned.
-    /// </param>
-    /// <returns>The loop's terminal result, naming the session, branch, and run the turn was recorded against.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="definition"/> or <paramref name="request"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">An override in <paramref name="request"/> is wider than the definition's default.</exception>
-    /// <exception cref="AgentAdmissionRejectedException">
-    /// The catalog no longer enables the exact pinned definition, the run-profile publication or authorization
-    /// changed after validation, the requested session does not exist or is not owned by the requesting agent,
-    /// tenant, and principal, or the session could not be created, loaded, or appended to. Raised before any run
-    /// effect other than, at most, a newly created empty session.
-    /// </exception>
-    /// <exception cref="AgentSessionBusyException">
-    /// The session is running another turn and the pinned session profile rejects concurrent turns.
-    /// </exception>
+    /// <summary>Runs one request to settlement.</summary>
+    /// <typeparam name="TOutput">The requested output type.</typeparam>
+    /// <param name="request">The agent, session, identity, and input.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    /// <returns>The finished envelope, or a rejection that carries no run identity.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="ObjectDisposedException">This engine has been disposed.</exception>
-    /// <remarks>
-    /// <para>
-    /// The session lane is entered before anything is appended, so two turns racing for the same session either
-    /// serialize (<see cref="SessionBusyBehavior.Wait"/>) or the loser fails without effect
-    /// (<see cref="SessionBusyBehavior.Reject"/>). Different sessions, of the same or different agents, run
-    /// concurrently. The lane is process-local; distributed exclusion is the session run coordinator's lease.
-    /// </para>
-    /// <para>
-    /// The user message is appended with the run's own identity and an idempotency key derived from it, so a retried
-    /// append cannot duplicate the message. The run then observes that message as the newest history entry.
-    /// </para>
-    /// </remarks>
-    internal async Task<AgentLoopResult> SendAgentAsync(
-        AgentDefinition definition,
-        AgentSendRequest request,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(request);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var activity = AgentAdmissionObservability.Start(definition.Id);
-        var admissionCompleted = false;
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var (catalogVersion, pinnedPublication) = await ValidatePinnedDefinitionAsync(definition, activity, cancellationToken)
-                .ConfigureAwait(false);
-            var maxTurns = ResolveMaxTurns(definition, request.MaxTurns, nameof(request));
-            var attemptTimeout = ResolveAttemptTimeout(definition, request.AttemptTimeout, nameof(request));
-            var security = pinnedPublication.SecurityProfile;
-            var sessionProfile = pinnedPublication.SessionProfile;
+    public Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
+        AgentRunRequest request,
+        CancellationToken cancellationToken = default) =>
+        _runtime.RunAsync<TOutput>(request, cancellationToken);
 
-            await using var scope = Services.CreateAsyncScope();
-            var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-            var loop = scope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
+    /// <summary>Subscribes to one request's run before the loop is driven.</summary>
+    /// <typeparam name="TOutput">The requested output type.</typeparam>
+    /// <param name="request">The agent, session, identity, and input.</param>
+    /// <param name="cancellationToken">Cancels admission and the drive. Disposing the stream does not.</param>
+    /// <returns>A started stream, or a rejection with no subscription and no run identity.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="ObjectDisposedException">This engine has been disposed.</exception>
+    public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
+        AgentRunRequest request,
+        CancellationToken cancellationToken = default) =>
+        _runtime.StreamAsync<TOutput>(request, cancellationToken);
 
-            // The session coordinator and run coordinator are resolved directly, ahead of compiling the full
-            // AgentRunServices bundle, so SessionExecutionCapability can be built and installed into this scope's
-            // RunScopeState before anything else in the scope resolves it. AgentRunServicesFactory.Compile
-            // resolves the session coordinator through the exact same keyed-or-shared lookup below, so
-            // runServices.Session below is this same instance, not a second resolution.
-            var sessions = AgentRunServicesFactory.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
-            var runCoordinator = scope.ServiceProvider.GetRequiredService<ISessionRunCoordinator>();
-            var capability = new SessionExecutionCapability(sessionProfile, sessions, runCoordinator);
-            scope.ServiceProvider.GetRequiredService<RunScopeState>().Session = capability;
-            var runServices = AgentRunServicesFactory.Compile(scope.ServiceProvider, loopKey);
-
-            var descriptor = request.SessionId is { } requested
-                ? await OpenSessionAsync(definition, catalogVersion, security, sessionProfile, sessions, requested, request.Identity, cancellationToken).ConfigureAwait(false)
-                : await CreateSessionAsync(definition, catalogVersion, security, sessionProfile, sessions, request.Identity, cancellationToken).ConfigureAwait(false);
-            var sessionId = descriptor.Address.SessionId;
-            var branchId = descriptor.ActiveBranchId;
-            _ = activity?.SetTag(AgentKitTagNames.SessionId, sessionId.ToString());
-
-            var executionLaneId = new ExecutionLaneId(sessionId.Value);
-
-            var runId = _runIds.Create();
-            scope.ServiceProvider.GetRequiredService<RunScopeState>().Identity =
-                new RunScopeIdentity(definition.Id, sessionId, descriptor.ConversationId, runId);
-            using var lane = await _lanes.EnterAsync(definition.Id, sessionId, runId, sessionProfile.BusyBehavior, cancellationToken)
-                .ConfigureAwait(false);
-
-            var beforeRunCorrelation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
-            var beforeRunAuthorization = await CaptureAsync(
-                definition, catalogVersion, security, sessionId, beforeRunCorrelation, request.Identity, cancellationToken).ConfigureAwait(false);
-            var beforeRunContext = new SessionOperationContext(
-                definition.Id, sessionId, executionLaneId, beforeRunCorrelation, request.Identity, beforeRunAuthorization);
-
-            var tip = await LoadBranchTipAsync(definition, catalogVersion, sessions, sessionProfile, beforeRunContext, branchId, cancellationToken)
-                .ConfigureAwait(false);
-            var laneState = await sessions.LoadLaneStateAsync(new SessionLaneStateRequest(beforeRunContext), capability, cancellationToken)
-                .ConfigureAwait(false);
-
-            var now = TimeProvider.GetUtcNow();
-            var policyVersion = RunPolicyVersioning.Compute(maxTurns, attemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey);
-            var configuration = new RunConfigurationReference(
-                beforeRunAuthorization.ConfigurationVersion, policyVersion, sessionProfile.ConfigurationFingerprint);
-
-            SessionLaneRevision laneRevision;
-            SessionBranchCursor branchCursor;
-            SessionVersion sessionVersion;
-            switch (laneState)
-            {
-                case SessionLaneStateLoaded { State.AcceptedState: not null }:
-                    throw AdmissionRejected(
-                        definition, catalogVersion, "The session's execution lane is occupied by an unreleased prior run.");
-                case SessionLaneStateLoaded loaded:
-                    laneRevision = loaded.State.Revision;
-                    branchCursor = loaded.State.BranchCursor;
-                    sessionVersion = tip.Version;
-                    break;
-                case SessionLaneStateNotProvisioned:
-                    var provisionResult = await sessions.ProvisionLaneAsync(
-                        new SessionExecutionLaneProvisionRequest(
-                            beforeRunContext, tip.Cursor, tip.Version, _entryIds.Create(), sessionProfile.Reference,
-                            configuration, now, new IdempotencyKey($"agentkit.engine:{sessionId}:lane:{executionLaneId}")),
-                        capability, cancellationToken).ConfigureAwait(false);
-                    if (provisionResult is not SessionExecutionLaneProvisioned provisioned)
-                    {
-                        throw AdmissionRejected(
-                            definition, catalogVersion, $"The session's execution lane could not be provisioned: {provisionResult.GetType().Name}.");
-                    }
-
-                    laneRevision = provisioned.LaneRevision;
-                    branchCursor = provisioned.BranchCursor;
-                    sessionVersion = provisioned.SessionVersion;
-                    break;
-                default:
-                    throw AdmissionRejected(definition, catalogVersion, "The session's execution lane could not be discovered.");
-            }
-
-            var admissionId = _admissionIds.Create();
-            var admissionEntryId = _entryIds.Create();
-            var input = new AgentInput(_inputIds.Create(), InputDelivery.Steer, request.Parts, ExtensionData.Empty);
-            var fingerprint = InputPayloadFingerprint.Create(input);
-            var preprocessing = new InputPreprocessingManifest(new ConfigurationVersion(1), fingerprint, fingerprint);
-            var admissionResult = await sessions.AdmitInputAsync(
-                new SessionInputAdmissionRequest(
-                    beforeRunContext, admissionId, admissionEntryId, input, input, preprocessing, now, sessionVersion,
-                    laneRevision, branchCursor, new IdempotencyKey($"agentkit.engine:{runId}:admit"), maximumPendingInputs: 8),
-                capability, cancellationToken).ConfigureAwait(false);
-            if (admissionResult is not AcceptedInput accepted)
-            {
-                throw AdmissionRejected(definition, catalogVersion, $"The user input could not be admitted: {admissionResult.GetType().Name}.");
-            }
-
-            var initialTurnId = _turnIds.Create();
-            var acceptedCorrelation = new InRunOperationCorrelation(beforeRunCorrelation.OperationId, runId, initialTurnId);
-            var acceptedAuthorization = await CaptureAsync(
-                definition, catalogVersion, security, sessionId, acceptedCorrelation, request.Identity, cancellationToken).ConfigureAwait(false);
-            var messageId = _messageIds.Create();
-            var admittedCursor = new SessionBranchCursor(branchId, admissionEntryId);
-            var startResult = await sessions.AcceptRunAsync(
-                new SessionRunStartRequest(
-                    beforeRunContext, admissionId, [admissionId], accepted.Receipt.AdmittedSequence,
-                    new SessionLaneRevision(laneRevision.Value + 1), new SessionVersion(sessionVersion.Value + 1),
-                    admittedCursor, expectedFencingToken: null, runId, initialTurnId, _entryIds.Create(),
-                    [_entryIds.Create()], [messageId], _entryIds.Create(), new OperationStateRevision(1),
-                    sessionProfile.Reference, configuration, acceptedAuthorization, now,
-                    new IdempotencyKey($"agentkit.engine:{runId}:accept")),
-                capability, cancellationToken).ConfigureAwait(false);
-            if (startResult is not SessionRunAccepted)
-            {
-                throw AdmissionRejected(definition, catalogVersion, $"The run could not be accepted: {startResult.GetType().Name}.");
-            }
-
-            var laneAdmission = new LoopLaneAdmission(executionLaneId, acceptedCorrelation, new OperationStateRevision(1));
-            var runRequest = BuildRunRequest(
-                definition, pinnedPublication, sessionId, branchId, runId, request.Identity, acceptedAuthorization, maxTurns, attemptTimeout) with
-            {
-                Observer = request.Observer,
-                LaneAdmission = laneAdmission,
-            };
-
-            AgentAdmissionObservability.Complete(activity, _logger, "admitted");
-            activity = null;
-            admissionCompleted = true;
-            var loopResult = await loop.RunAsync(runRequest, runServices, cancellationToken).ConfigureAwait(false);
-            if (loopResult.FinalVersion is { } finalVersion)
-            {
-                await ReleaseLaneAsync(
-                    sessions, capability, definition.Id, sessionId, executionLaneId, acceptedCorrelation,
-                    request.Identity, acceptedAuthorization, finalVersion, runId).ConfigureAwait(false);
-            }
-
-            return loopResult;
-        }
-        catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "cancelled", nameof(OperationCanceledException));
-            AgentAdmissionObservability.LogCancelled(_logger);
-            throw;
-        }
-        catch (AgentSessionBusyException) when (!admissionCompleted)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "busy", nameof(AgentSessionBusyException));
-            activity = null;
-            admissionCompleted = true;
-            throw;
-        }
-        catch (AgentAdmissionRejectedException) when (!admissionCompleted)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "rejected", nameof(AgentAdmissionRejectedException));
-            activity = null;
-            admissionCompleted = true;
-            throw;
-        }
-        catch (Exception exception) when (!admissionCompleted)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "failed", exception.GetType().Name);
-            AgentAdmissionObservability.LogFailed(_logger, exception.GetType().Name);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Runs one agent in a fresh, isolated run scope, bypassing the session lane protocol.
-    /// </summary>
-    /// <param name="definition">The immutable definition to run.</param>
-    /// <param name="sessionId">The session this run reads from and commits to.</param>
-    /// <param name="branchId">The branch this run reads from and commits to.</param>
-    /// <param name="identity">The already-authenticated identity the run is performed for.</param>
-    /// <param name="options">The bounded overrides for this invocation, or <see langword="null"/> for none.</param>
-    /// <param name="cancellationToken">A token that cancels the run.</param>
-    /// <returns>The loop's terminal result.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="sessionId"/> or <paramref name="branchId"/> is default, or an override in
-    /// <paramref name="options"/> is wider than the definition's corresponding default.
-    /// </exception>
-    /// <exception cref="ArgumentNullException">
-    /// <paramref name="definition"/> or <paramref name="identity"/> is
-    /// <see langword="null"/>.
-    /// </exception>
-    /// <exception cref="AgentAdmissionRejectedException">
-    /// The current catalog does not enable <paramref name="definition"/>'s
-    /// exact pinned content and revision. The exception is raised before a
-    /// run identity or scope is created.
-    /// </exception>
-    /// <exception cref="ObjectDisposedException">
-    /// This engine has already been disposed. Raised before a run identity is minted or
-    /// authorization is captured, on both the standalone and host-managed ownership paths.
-    /// </exception>
-    internal async Task<AgentLoopResult> RunAgentAsync(
-        AgentDefinition definition,
-        SessionId sessionId,
-        BranchId branchId,
-        ExecutionIdentity identity,
-        AgentRunOptions? options,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(definition);
-        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
-        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default, nameof(branchId));
-        ArgumentNullException.ThrowIfNull(identity);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var activity = AgentAdmissionObservability.Start(definition.Id);
-        var admissionCompleted = false;
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var (pinnedCatalogVersion, pinnedPublication) = await ValidatePinnedDefinitionAsync(definition, activity, cancellationToken)
-                .ConfigureAwait(false);
-            var maxTurns = ResolveMaxTurns(definition, options?.MaxTurns, nameof(options));
-            var attemptTimeout = ResolveAttemptTimeout(definition, options?.AttemptTimeout, nameof(options));
-
-            var runId = _runIds.Create();
-            var runCorrelation = new InRunOperationCorrelation(_operationIds.Create(), runId, turnId: null);
-            var authorization = await CaptureAsync(
-                definition, pinnedCatalogVersion, pinnedPublication.SecurityProfile, sessionId, runCorrelation, identity, cancellationToken)
-                .ConfigureAwait(false);
-
-            await using var scope = Services.CreateAsyncScope();
-            var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-            var loop = scope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
-            var runServices = AgentRunServicesFactory.Compile(scope.ServiceProvider, loopKey);
-            var request = BuildRunRequest(
-                definition, pinnedPublication, sessionId, branchId, runId, identity, authorization, maxTurns, attemptTimeout);
-
-            AgentAdmissionObservability.Complete(activity, _logger, "admitted");
-            activity = null;
-            admissionCompleted = true;
-            return await loop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "cancelled", nameof(OperationCanceledException));
-            AgentAdmissionObservability.LogCancelled(_logger);
-            throw;
-        }
-        catch (AgentAdmissionRejectedException) when (!admissionCompleted)
-        {
-            AgentAdmissionObservability.Complete(
-                activity, _logger, "rejected", nameof(AgentAdmissionRejectedException));
-            activity = null;
-            admissionCompleted = true;
-            throw;
-        }
-        catch (Exception exception) when (!admissionCompleted)
-        {
-            AgentAdmissionObservability.Complete(activity, _logger, "failed", exception.GetType().Name);
-            AgentAdmissionObservability.LogFailed(_logger, exception.GetType().Name);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Revalidates that the catalog still enables the exact pinned definition and that its run-profile publication
-    /// is unchanged since composition.
-    /// </summary>
-    /// <param name="definition">The pinned definition.</param>
-    /// <param name="activity">The admission activity to tag with the catalog version, or null.</param>
-    /// <param name="cancellationToken">Cancels the catalog and publication reads.</param>
-    /// <returns>The current catalog version and the pinned publication.</returns>
-    /// <exception cref="AgentAdmissionRejectedException">The definition or its publication changed.</exception>
-    private async Task<(AgentCatalogVersion CatalogVersion, AgentRunProfilePublication Publication)> ValidatePinnedDefinitionAsync(
-        AgentDefinition definition,
-        Activity? activity,
-        CancellationToken cancellationToken)
-    {
-        Debug.Assert(definition is not null, "Callers validate the definition.");
-        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        _ = activity?.SetTag(AgentKitTagNames.AgentCatalogVersion, snapshot.Version.ToString());
-        var current = snapshot.FindDefinition(definition.Id);
-        if (current is null || current.Revision != definition.Revision || !current.Equals(definition))
-        {
-            throw AdmissionRejected(
-                definition, snapshot.Version,
-                current is null
-                    ? "The pinned agent definition is no longer enabled for new admission."
-                    : "The pinned agent definition was replaced and cannot be silently upgraded.");
-        }
-
-        if (!_pinnedRunProfiles.TryGetValue((definition.Id, definition.Revision), out var pinnedPublication))
-        {
-            throw AdmissionRejected(definition, snapshot.Version, "The built composition has no pinned run-profile publication for this definition.");
-        }
-
-        var publicationResult = await _runProfiles.ReadAsync(definition.Id, definition.Revision, cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        return publicationResult is AgentRunProfilePublicationFound found && found.Publication == pinnedPublication
-            ? (snapshot.Version, pinnedPublication)
-            : throw AdmissionRejected(definition, snapshot.Version, "The exact run-profile publication changed after composition validation.");
-    }
-
-    /// <summary>Captures fresh authorization for one operation scope and verifies it matches the pinned publication.</summary>
-    private async Task<SecurityAuthorizationContext> CaptureAsync(
-        AgentDefinition definition,
-        AgentCatalogVersion catalogVersion,
-        SecurityProfilePublication security,
-        SessionId? sessionId,
-        OperationCorrelation correlation,
-        ExecutionIdentity identity,
-        CancellationToken cancellationToken)
-    {
-        Debug.Assert(security is not null, "The pinned publication carries the security profile.");
-        var result = await _securityProfiles.SelectAsync(
-            new SecurityAuthorizationCaptureRequest(
-                new SecurityAuthorizationScope(definition.Id, sessionId, correlation),
-                security.ProfileKey,
-                security.AgentDefinitionRevision,
-                security.ConfigurationVersion,
-                identity),
-            cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        return result is SecurityAuthorizationCaptured captured
-            && Matches(captured.Authorization, security, correlation, sessionId, identity)
-            ? captured.Authorization
-            : throw AdmissionRejected(definition, catalogVersion, "Fresh authorization did not match the pinned security publication.");
-    }
-
-    /// <summary>Reads the current whole-session version and exact branch tip needed to provision or reuse an execution lane.</summary>
-    private static async Task<(SessionVersion Version, SessionBranchCursor Cursor)> LoadBranchTipAsync(
-        AgentDefinition definition,
-        AgentCatalogVersion catalogVersion,
-        ISessionCoordinator sessions,
-        SessionProfileSnapshot sessionProfile,
-        SessionOperationContext context,
-        BranchId branchId,
-        CancellationToken cancellationToken)
-    {
-        var head = await sessions.ReadAsync(
-            new SessionReadRequest(context, branchId, new SessionSequence(0), pageSize: 1), sessionProfile, cancellationToken)
-            .ConfigureAwait(false);
-        if (head is not SessionPage { Snapshot: { } snapshot })
-        {
-            throw AdmissionRejected(definition, catalogVersion, "The session's current history snapshot could not be captured.");
-        }
-
-        if (snapshot.UpperSequence.Value == 0)
-        {
-            return (snapshot.Version, new SessionBranchCursor(branchId, null));
-        }
-
-        var tail = await sessions.ReadAsync(
-            new SessionReadRequest(
-                context, branchId, new SessionSequence(snapshot.UpperSequence.Value - 1), pageSize: 1, snapshot),
-            sessionProfile, cancellationToken).ConfigureAwait(false);
-        return tail is SessionPage { Entries.Length: > 0 } page
-            ? (snapshot.Version, new SessionBranchCursor(branchId, page.Entries[^1].Id))
-            : throw AdmissionRejected(definition, catalogVersion, "The session's current branch tip could not be captured.");
-    }
-
-    /// <summary>Releases a durably admitted run's lane once the loop has returned, regardless of which <see cref="IAgentLoop"/> drove it.</summary>
-    /// <remarks>
-    /// This is best-effort and never changes the already-determined loop result: a rejection or fault is logged
-    /// and swallowed. Release happens here, at the same admission boundary that accepted the run, rather than
-    /// relying solely on the driving loop to release it — a scripted or third-party <see cref="IAgentLoop"/> that
-    /// never learned about the lane protocol would otherwise leave every session's lane permanently occupied
-    /// after its first run. The first-party <c>DefaultAgentLoop</c> also attempts this release itself once it
-    /// settles; the second attempt here then finds no accepted run and is a harmless no-op.
-    /// </remarks>
-    private async Task ReleaseLaneAsync(
-        ISessionCoordinator sessions,
-        SessionExecutionCapability capability,
-        AgentId agentId,
-        SessionId sessionId,
-        ExecutionLaneId executionLaneId,
-        InRunOperationCorrelation acceptedCorrelation,
-        ExecutionIdentity identity,
-        SecurityAuthorizationContext acceptedAuthorization,
-        SessionVersion finalVersion,
-        RunId runId)
-    {
-        try
-        {
-            var releaseContext = new SessionOperationContext(
-                agentId, sessionId, executionLaneId, acceptedCorrelation, identity, acceptedAuthorization);
-            var release = new SessionRunReleaseRequest(
-                releaseContext, new OperationStateRevision(1), finalVersion,
-                new IdempotencyKey($"agentkit.engine:{runId}:release"));
-            var result = await sessions.ReleaseRunAsync(release, capability, CancellationToken.None).ConfigureAwait(false);
-            if (result is not SessionRunReleased)
-            {
-                AgentAdmissionLog.LaneReleaseRejected(_logger, agentId, sessionId, result.GetType().Name);
-            }
-        }
-        catch (Exception exception)
-        {
-            AgentAdmissionLog.LaneReleaseFaulted(_logger, agentId, sessionId, exception.GetType().FullName ?? exception.GetType().Name);
-        }
-    }
-
-    /// <summary>Creates a new session owned by <paramref name="identity"/> for the agent.</summary>
-    private async Task<SessionDescriptor> CreateSessionAsync(
-        AgentDefinition definition,
-        AgentCatalogVersion catalogVersion,
-        SecurityProfilePublication security,
-        SessionProfileSnapshot sessionProfile,
-        ISessionCoordinator sessions,
-        ExecutionIdentity identity,
-        CancellationToken cancellationToken)
-    {
-        var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
-        var authorization = await CaptureAsync(definition, catalogVersion, security, null, correlation, identity, cancellationToken).ConfigureAwait(false);
-        var result = await sessions.CreateAsync(
-            new SessionCreateRequest(
-                definition.Id, identity, authorization, null,
-                new IdempotencyKey($"agentkit.engine:{definition.Id}:create:{correlation.OperationId}"), ExtensionData.Empty),
-            sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (result is not SessionCreated created)
-        {
-            throw AdmissionRejected(definition, catalogVersion, $"The session could not be created: {result.GetType().Name}.");
-        }
-
-        AgentAdmissionLog.SessionCreated(_logger, definition.Id, created.Descriptor.Address.SessionId);
-        return created.Descriptor;
-    }
-
-    /// <summary>Loads an existing session and verifies the agent, tenant, and principal own it.</summary>
-    private async Task<SessionDescriptor> OpenSessionAsync(
-        AgentDefinition definition,
-        AgentCatalogVersion catalogVersion,
-        SecurityProfilePublication security,
-        SessionProfileSnapshot sessionProfile,
-        ISessionCoordinator sessions,
-        SessionId sessionId,
-        ExecutionIdentity identity,
-        CancellationToken cancellationToken)
-    {
-        var correlation = new BeforeRunOperationCorrelation(_operationIds.Create(), null);
-        var authorization = await CaptureAsync(definition, catalogVersion, security, sessionId, correlation, identity, cancellationToken).ConfigureAwait(false);
-        var result = await sessions.LoadAsync(
-            new SessionOperationContext(definition.Id, sessionId, null, correlation, identity, authorization),
-            sessionProfile,
-            cancellationToken).ConfigureAwait(false);
-        if (result is not SessionLoaded { Descriptor: var descriptor }
-            || descriptor.Address.AgentId != definition.Id
-            || descriptor.TenantId != identity.TenantId
-            || descriptor.OwnerId != identity.PrincipalId
-            || descriptor.State != SessionLifecycleState.Active)
-        {
-            AgentAdmissionLog.SessionNotVisible(_logger, definition.Id, sessionId);
-            throw AdmissionRejected(definition, catalogVersion, "The requested session is unavailable or not visible to this agent and identity.");
-        }
-
-        return descriptor;
-    }
-
-    /// <summary>Builds the loop request from the pinned publication, preferring the configuration-bearing constructor.</summary>
-    private static AgentLoopRunRequest BuildRunRequest(
-        AgentDefinition definition,
-        AgentRunProfilePublication pinnedPublication,
-        SessionId sessionId,
-        BranchId branchId,
-        RunId runId,
-        ExecutionIdentity identity,
-        SecurityAuthorizationContext authorization,
-        int maxTurns,
-        TimeSpan attemptTimeout) =>
-        pinnedPublication.Configuration is { } configuration
-            ? new AgentLoopRunRequest(
-                definition, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
-                configuration, maxTurns, attemptTimeout, definition.Extensions)
-            : new AgentLoopRunRequest(
-                definition.Id, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
-                definition.Models, definition.ModelRequirements, definition.Instructions, definition.Tools,
-                definition.ToolChoice, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)
-            {
-                Output = definition.Output,
-            };
-
-    private static AgentAdmissionRejectedException AdmissionRejected(
-        AgentDefinition definition,
-        AgentCatalogVersion catalogVersion,
-        string reason) => new(new AgentAdmissionRejection(definition.Id, definition.Revision, catalogVersion, reason));
-
-    private static bool Matches(
-        SecurityAuthorizationContext authorization,
-        SecurityProfilePublication publication,
-        OperationCorrelation correlation,
-        SessionId? sessionId,
-        ExecutionIdentity identity)
-    {
-        Debug.Assert(authorization is not null, "Captured authorization is required for evidence matching.");
-        Debug.Assert(publication is not null, "Pinned security publication is required for evidence matching.");
-
-        return authorization.Scope.AgentId == publication.AgentId
-            && authorization.Scope.SessionId == sessionId
-            && authorization.Scope.Correlation == correlation
-            && authorization.Identity == identity
-            && authorization.ProfileKey == publication.ProfileKey
-            && authorization.ProfileVersion == publication.ProfileVersion
-            && authorization.PolicySnapshot == publication.PolicySnapshot
-            && authorization.AuthorityKey == publication.AuthorityKey
-            && authorization.AgentDefinitionRevision == publication.AgentDefinitionRevision
-            && authorization.ConfigurationVersion == publication.ConfigurationVersion;
-    }
-
-    private static int ResolveMaxTurns(AgentDefinition definition, int? maxTurns, string paramName) =>
-        maxTurns is not { } requested
-            ? definition.RunDefaults.MaxTurns
-            : requested <= definition.RunDefaults.MaxTurns
-                ? requested
-                : throw new ArgumentOutOfRangeException(
-                    paramName,
-                    requested,
-                    "A run override may only narrow the definition's turn limit of "
-                    + $"{definition.RunDefaults.MaxTurns}.");
-
-    private static TimeSpan ResolveAttemptTimeout(AgentDefinition definition, TimeSpan? attemptTimeout, string paramName) =>
-        attemptTimeout is not { } requested
-            ? definition.RunDefaults.AttemptTimeout
-            : requested <= definition.RunDefaults.AttemptTimeout
-                ? requested
-                : throw new ArgumentOutOfRangeException(
-                    paramName,
-                    requested,
-                    "A run override may only narrow the definition's attempt timeout of "
-                    + $"{definition.RunDefaults.AttemptTimeout}.");
-
-    private static async Task DisposeOwnedProviderAsync(IAsyncDisposable? ownedProvider)
-    {
-        if (ownedProvider is not null)
-        {
-            await ownedProvider.DisposeAsync().ConfigureAwait(false);
-        }
-    }
+    /// <summary>Releases the standalone service provider owned by this engine.</summary>
+    /// <returns>
+    /// An operation that completes when owned services have finished asynchronous disposal. Hosted engines complete
+    /// without disposing any host-owned service.
+    /// </returns>
+    /// <remarks>Disposal is thread-safe and idempotent. Concurrent calls observe the same disposal operation.</remarks>
+    public ValueTask DisposeAsync() => _runtime.DisposeAsync();
 }

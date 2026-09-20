@@ -109,11 +109,6 @@ public sealed class EngineDelegationChannel: ITaskDelegationChannel
             EngineDelegationLog.ChildRejected(_logger, prompt.Id, prompt.TargetAgentId, exception.GetType().Name);
             return new TaskDelegationRejected(prompt.Id, exception.Rejection.Reason);
         }
-        catch (AgentSessionBusyException exception)
-        {
-            EngineDelegationLog.ChildRejected(_logger, prompt.Id, prompt.TargetAgentId, exception.GetType().Name);
-            return new TaskDelegationRejected(prompt.Id, "The target agent's session was busy.");
-        }
 
         var status = result.Outcome switch
         {

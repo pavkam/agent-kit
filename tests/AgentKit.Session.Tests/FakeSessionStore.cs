@@ -120,6 +120,12 @@ internal sealed class FakeSessionStore: ISessionStore
         ValueTask.FromResult(OnReleaseRun?.Invoke(request.Request)
             ?? new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, "not configured"));
 
+    public ValueTask<SessionRunAbortResult> AbortRunAsync(
+        AuthorizedSessionStoreRequest<SessionRunAbortRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SessionRunAbortResult>(
+            new SessionRunAbortRejected(SessionRunAbortRejectionKind.Unsupported, "not configured"));
+
     public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(
         AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
         CancellationToken cancellationToken = default) =>

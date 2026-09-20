@@ -88,6 +88,12 @@ public sealed partial class SqliteSessionStore
             static reason => new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, reason), cancellationToken);
 
     /// <inheritdoc/>
+    public ValueTask<SessionRunAbortResult> AbortRunAsync(AuthorizedSessionStoreRequest<SessionRunAbortRequest> request, CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            (uow, token) => AbortRunCoreAsync(uow, request.Request, token), static result => result is SessionRunAbortRecorded,
+            static reason => new SessionRunAbortRejected(SessionRunAbortRejectionKind.Unsupported, reason), cancellationToken);
+
+    /// <inheritdoc/>
     public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
             (uow, token) => LoadPendingInputsCoreAsync(uow, request.Request, token), static result => result is SessionPendingInputsLoaded,
@@ -266,6 +272,7 @@ public sealed partial class SqliteSessionStore
         SessionRunStartRequest => "run_accept",
         SessionRunStateRequest => "run_state_load",
         SessionRunReleaseRequest => "run_release",
+        SessionRunAbortRequest => "run_abort",
         SessionPendingInputsRequest => "pending_inputs_load",
         SessionInputPromotionRequest => "input_promote",
         _ => "unknown",
@@ -291,6 +298,7 @@ public sealed partial class SqliteSessionStore
         SessionRunStartRequest value => value.Context,
         SessionRunStateRequest value => value.Context,
         SessionRunReleaseRequest value => value.Context,
+        SessionRunAbortRequest value => value.Context,
         SessionPendingInputsRequest value => value.Context,
         SessionInputPromotionRequest value => value.Context,
         _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
@@ -310,6 +318,7 @@ public sealed partial class SqliteSessionStore
         SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+        SessionRunAbortRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionPendingInputsRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionInputPromotionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),

@@ -20,6 +20,9 @@ read the [modern C# rules](../references/modern-csharp.md).
   [sessions, persistence, and branching](../../../docs/concepts/sessions-persistence-and-branching.md)
   specification for record, concurrency, branching, and store semantics.
 - Read
+  [session execution lanes](../../../docs/concepts/session-execution-lanes.md)
+  for one-active-run ownership and the durable abort marker.
+- Read
   [input admission and message queues](../../../docs/concepts/input-admission-and-message-queues.md)
   when changing admitted-input records or promotion.
 - Read the

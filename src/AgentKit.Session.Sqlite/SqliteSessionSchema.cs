@@ -91,6 +91,7 @@ internal static class SqliteSessionSchema
             branch_cursor_entry_id TEXT NULL,
             revision INTEGER NOT NULL,
             accepted_state BLOB NULL,
+            abort_requested INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (agent_id, session_id, lane_id),
             FOREIGN KEY (agent_id, session_id) REFERENCES {SessionsTable} (agent_id, session_id)
         );

@@ -14,6 +14,8 @@
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit.IO/AgentKit.IO.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj" />
     <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj" />
     <ProjectReference Include="../../src/AgentKit.Session.Json/AgentKit.Session.Json.csproj" />
     <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />

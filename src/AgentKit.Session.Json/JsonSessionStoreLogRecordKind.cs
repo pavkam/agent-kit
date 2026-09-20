@@ -37,4 +37,7 @@ public enum JsonSessionStoreLogRecordKind
 
     /// <summary>Records one atomic mid-run promotion of durably admitted input into an already-accepted run's turn.</summary>
     InputPromoted = 9,
+
+    /// <summary>Records one durable abort: cancel marker, pending-admission prune, and revision advance.</summary>
+    RunAborted = 10,
 }

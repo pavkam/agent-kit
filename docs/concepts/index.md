@@ -59,6 +59,8 @@ stitching point; the filenames deliberately carry no sequence.
 - [Sessions, persistence, and branching](sessions-persistence-and-branching.md)
   defines immutable entry trees, current lane state, usage ledgers, serialized
   mutation, snapshots, and branches.
+- [Session execution lanes](session-execution-lanes.md) defines one-active-run
+  lane ownership and the durable abort marker exposed by loaded run state.
 - [Context compaction](context-compaction.md) bounds working context without
   deleting or rewriting canonical history.
 - [Memory, retrieval, and storage](memory-retrieval-and-storage.md) keeps

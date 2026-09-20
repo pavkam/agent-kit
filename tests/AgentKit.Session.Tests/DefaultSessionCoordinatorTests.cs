@@ -1787,6 +1787,8 @@ public sealed class DefaultSessionCoordinatorTests
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunAbortResult> AbortRunAsync(AuthorizedSessionStoreRequest<SessionRunAbortRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionPendingInputsResult> LoadPendingInputsAsync(AuthorizedSessionStoreRequest<SessionPendingInputsRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionInputPromotionResult> PromoteInputAsync(AuthorizedSessionStoreRequest<SessionInputPromotionRequest> request,
