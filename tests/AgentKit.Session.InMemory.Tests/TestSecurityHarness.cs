@@ -158,6 +158,7 @@ internal sealed class TestSecurityHarness
         SessionRunStartRequest value => value.Context,
         SessionRunStateRequest value => value.Context,
         SessionRunReleaseRequest value => value.Context,
+        SessionRunAbortRequest value => value.Context,
         _ => throw new InvalidOperationException($"Unsupported test request {typeof(TRequest).FullName}."),
     };
 
@@ -175,6 +176,7 @@ internal sealed class TestSecurityHarness
         SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+        SessionRunAbortRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         _ => throw new InvalidOperationException($"Unsupported test request {typeof(TRequest).FullName}."),
     };
 

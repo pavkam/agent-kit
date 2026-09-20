@@ -31,16 +31,26 @@ internal sealed class ScopedRecordingAgentLoop: IAgentLoop
         _effects.Requests.Add(request);
         return _effects.LoopException is { } exception
             ? Task.FromException<AgentLoopResult>(exception)
-            : Task.FromResult(new AgentLoopResult(
+            : CompleteAsync(request, services, cancellationToken);
+    }
+
+    private static async Task<AgentLoopResult> CompleteAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        CancellationToken cancellationToken)
+    {
+        var version = await CompositionTestData.CurrentSessionVersionAsync(request, services, cancellationToken)
+            .ConfigureAwait(false);
+        return new AgentLoopResult(
             request.AgentId,
             request.SessionId,
             request.BranchId,
             request.RunId,
             new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.RequestLimit))),
             [],
-            new SessionVersion(0),
+            version,
             null,
             new RunUsage(request.RunId, []),
-            new RunSettlementCompleted()));
+            new RunSettlementCompleted());
     }
 }

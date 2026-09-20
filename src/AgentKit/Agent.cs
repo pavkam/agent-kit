@@ -170,4 +170,56 @@ public sealed class Agent
         ArgumentNullException.ThrowIfNull(request);
         return _runtime.SendAsync(this, request, cancellationToken);
     }
+
+    /// <summary>Admits steering input for the next safe boundary of the session's current or next run.</summary>
+    /// <param name="sessionId">The session whose lane receives the input. The session must already exist.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="input">Steering input. Follow-up input is rejected.</param>
+    /// <param name="executionLaneId">The lane to admit into, or <see langword="null"/> to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels the wait before admission commits.</param>
+    /// <returns>The durable admission result. Acceptance does not start a run or append history.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> or <paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="input"/> is not <see cref="InputDelivery.Steer"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The session, definition, authorization, or input coordinator is unavailable.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before admission committed.</exception>
+    public Task<InputAdmissionResult> SteerAsync(
+        SessionId sessionId,
+        ExecutionIdentity identity,
+        AgentInput input,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(input.Delivery, InputDelivery.Steer, nameof(input));
+        return _runtime.AdmitInputAsync(this, sessionId, identity, input, executionLaneId, cancellationToken);
+    }
+
+    /// <summary>Admits follow-up input that becomes eligible only when current work would otherwise finish.</summary>
+    /// <param name="sessionId">The session whose lane receives the input. The session must already exist.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="input">Follow-up input. Steering input is rejected.</param>
+    /// <param name="executionLaneId">The lane to admit into, or <see langword="null"/> to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels the wait before admission commits.</param>
+    /// <returns>The durable admission result. Acceptance does not start a run or append history.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> or <paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="input"/> is not <see cref="InputDelivery.FollowUp"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The session, definition, authorization, or input coordinator is unavailable.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before admission committed.</exception>
+    public Task<InputAdmissionResult> FollowUpAsync(
+        SessionId sessionId,
+        ExecutionIdentity identity,
+        AgentInput input,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(input.Delivery, InputDelivery.FollowUp, nameof(input));
+        return _runtime.AdmitInputAsync(this, sessionId, identity, input, executionLaneId, cancellationToken);
+    }
 }

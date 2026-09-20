@@ -28,16 +28,14 @@ var first = await agent.SendAsync(new AgentSendRequest(identity, "Hello"), cance
 var second = await agent.SendAsync(new AgentSendRequest(identity, "And then?", first.SessionId), cancellationToken);
 ```
 
-One engine hosts every published definition and coordinates their sessions:
-`Agent.SendAsync` creates or opens the session (verifying the agent, tenant, and
-principal own it), enters a per-session lane that applies the pinned session
-profile's `SessionBusyBehavior`, appends the user message under the run's
-identity, and runs the agent in a fresh keyed scope. Turns on different sessions
-run concurrently; a `Reject` profile fails a contender with
-`AgentSessionBusyException`.
-`Agent.RunAsync(sessionId, branchId, identity, options)` remains for a caller
-that already admitted input into an existing session and branch, bypassing the
-lane protocol entirely.
+One engine hosts every published definition. `Agent.RunAsync<TOutput>` and
+`StreamAsync<TOutput>` open the named session, revalidate the pinned definition,
+and admit the turn. `SendAsync` is the same admission with the existing
+`AgentLoopResult` return: it creates a session when the caller does not name
+one. A `Reject` profile returns `AgentRunRejected<T>` from the typed methods and
+`AgentAdmissionRejectedException` from `SendAsync`, with no store append. A
+`Wait` profile serializes the second caller until the first releases the
+in-process gate. Durable lane admission still follows that gate.
 
 `AddEngineDelegationChannel()` registers the engine-backed
 `ITaskDelegationChannel`: with `AgentKit.Goals`'s broker and the `task` tool,

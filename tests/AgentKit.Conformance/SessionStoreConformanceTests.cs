@@ -1058,7 +1058,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
             await AuthorizeAsync(fixture, new SessionExecutionLaneProvisionRequest(
                 otherContext, new SessionBranchCursor(forked.NewBranchId, null), afterFork.Version,
                 Identifier<SessionEntryId>(1242), Profile(), Configuration(), Timestamp(1242),
-                new IdempotencyKey("abort-other-provision")),
+                new IdempotencyKey("abort-sibling-lane")),
                 SecurityOperationKind.StateMutation, SecurityEffect.Create),
             TestContext.Current.CancellationToken);
         var otherAdmission = Identifier<AdmissionId>(1250);

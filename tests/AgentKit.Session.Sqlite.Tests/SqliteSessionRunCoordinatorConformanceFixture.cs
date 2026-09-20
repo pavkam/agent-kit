@@ -86,23 +86,7 @@ public sealed class SqliteSessionRunCoordinatorConformanceFixture:
         var inRunContext = LaneContext(descriptor.Address, laneId, correlation, createRequest.Identity);
         var loaded = (await coordinator.LoadRunStateAsync(new SessionRunStateRequest(inRunContext),
             session, cancellationToken)).ShouldBeOfType<SessionRunStateLoaded>().State;
-        if (!loaded.Equals(accepted))
-        {
-            static string Ids<T>(ImmutableArray<T> values) where T : struct =>
-                values.IsDefault ? "<default>" : string.Join(",", values);
-            throw new InvalidOperationException(
-                $"addr={loaded.Address.Equals(accepted.Address)};lane={loaded.ExecutionLaneId.Equals(accepted.ExecutionLaneId)};rev={loaded.LaneRevision.Equals(accepted.LaneRevision)};corr={loaded.Correlation.Equals(accepted.Correlation)};op={loaded.OperationStateRevision.Equals(accepted.OperationStateRevision)};id={loaded.Identity.Equals(accepted.Identity)};auth={loaded.Authorization.Equals(accepted.Authorization)};profile={loaded.SessionProfile.Equals(accepted.SessionProfile)};cfg={loaded.Configuration.Equals(accepted.Configuration)};prev={loaded.PreviousCursor.Equals(accepted.PreviousCursor)};commit={loaded.CommittedCursor.Equals(accepted.CommittedCursor)};cut={loaded.PromotionCutoff.Equals(accepted.PromotionCutoff)};init={loaded.InitiatingAdmissionId.Equals(accepted.InitiatingAdmissionId)};prom={loaded.PromotedAdmissionIds.SequenceEqual(accepted.PromotedAdmissionIds)}[{Ids(loaded.PromotedAdmissionIds)}|{Ids(accepted.PromotedAdmissionIds)}];entries={loaded.MaterializedEntryIds.SequenceEqual(accepted.MaterializedEntryIds)}[{Ids(loaded.MaterializedEntryIds)}|{Ids(accepted.MaterializedEntryIds)}];msgs={loaded.MaterializedMessageIds.SequenceEqual(accepted.MaterializedMessageIds)}[{Ids(loaded.MaterializedMessageIds)}|{Ids(accepted.MaterializedMessageIds)}];turn={loaded.InitialTurnId.Equals(accepted.InitialTurnId)};at={loaded.AcceptedAt.Equals(accepted.AcceptedAt)} {loaded.AcceptedAt.UtcTicks}/{accepted.AcceptedAt.UtcTicks};state={loaded.State.Equals(accepted.State)};claims={loaded.Identity.Claims.Length}/{accepted.Identity.Claims.Length};deleg={loaded.Identity.DelegationChain.Length}/{accepted.Identity.DelegationChain.Length}");
-        }
-
-        if (!loaded.Equals(accepted))
-        {
-            static string Ids<T>(ImmutableArray<T> values) where T : struct =>
-                values.IsDefault ? "<default>" : string.Join(",", values);
-            throw new InvalidOperationException(
-                $"addr={loaded.Address.Equals(accepted.Address)};lane={loaded.ExecutionLaneId.Equals(accepted.ExecutionLaneId)};rev={loaded.LaneRevision.Equals(accepted.LaneRevision)};corr={loaded.Correlation.Equals(accepted.Correlation)};op={loaded.OperationStateRevision.Equals(accepted.OperationStateRevision)};id={loaded.Identity.Equals(accepted.Identity)};auth={loaded.Authorization.Equals(accepted.Authorization)};profile={loaded.SessionProfile.Equals(accepted.SessionProfile)};cfg={loaded.Configuration.Equals(accepted.Configuration)};prev={loaded.PreviousCursor.Equals(accepted.PreviousCursor)};commit={loaded.CommittedCursor.Equals(accepted.CommittedCursor)};cut={loaded.PromotionCutoff.Equals(accepted.PromotionCutoff)};init={loaded.InitiatingAdmissionId.Equals(accepted.InitiatingAdmissionId)};prom={loaded.PromotedAdmissionIds.SequenceEqual(accepted.PromotedAdmissionIds)}[{Ids(loaded.PromotedAdmissionIds)}|{Ids(accepted.PromotedAdmissionIds)}];entries={loaded.MaterializedEntryIds.SequenceEqual(accepted.MaterializedEntryIds)}[{Ids(loaded.MaterializedEntryIds)}|{Ids(accepted.MaterializedEntryIds)}];msgs={loaded.MaterializedMessageIds.SequenceEqual(accepted.MaterializedMessageIds)}[{Ids(loaded.MaterializedMessageIds)}|{Ids(accepted.MaterializedMessageIds)}];turn={loaded.InitialTurnId.Equals(accepted.InitialTurnId)};at={loaded.AcceptedAt.Equals(accepted.AcceptedAt)} {loaded.AcceptedAt.UtcTicks}/{accepted.AcceptedAt.UtcTicks};state={loaded.State.Equals(accepted.State)};claims={loaded.Identity.Claims.Length}/{accepted.Identity.Claims.Length};deleg={loaded.Identity.DelegationChain.Length}/{accepted.Identity.DelegationChain.Length}");
-        }
-
-        loaded.ShouldBe(accepted);
+        loaded.ShouldBeEquivalentTo(accepted);
         var request = new SessionRunLeaseRequest(inRunContext, accepted.OperationStateRevision);
         return new SessionRunCoordinatorConformanceScenario(runCoordinator, request, session, accepted);
     }

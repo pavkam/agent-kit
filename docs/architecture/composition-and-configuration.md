@@ -474,33 +474,41 @@ introducing a new failure-evidence pattern.
 
 ### Current admission surface
 
-The process-level surface above is the target shape. The facade currently ships
-its reduced form, `Agent.SendAsync(AgentSendRequest)`, which already gives one
-engine the coordination role the invariant requires:
+`AgentEngineRuntime` owns admission for every facade entry point. `Agent` and
+`AgentEngine` are thin handles over that runtime. `RunAsync<TOutput>` and
+`StreamAsync<TOutput>` are the typed surface. `SendAsync` is the same protocol
+with the existing `AgentLoopResult` return and `AgentAdmissionRejectedException`
+failure mapping.
 
-- `AgentSendRequest` carries the identity, the user content parts, an optional
-  `SessionId`, narrowing overrides, and an `IAgentRunObserver`.
-- The engine revalidates the pinned definition and publication, then creates a
-  session owned by the identity or loads the named one and verifies the agent,
-  tenant, principal, and active state own it. A session that is not visible is
-  an `AgentAdmissionRejectedException`, not a silent new session.
-- A process-local lane per `(AgentId, SessionId)` is entered before anything is
-  appended and applies the pinned session profile's `SessionBusyBehavior`:
-  `Reject` fails the contender with `AgentSessionBusyException` naming the
-  active run, `Wait` serializes it. Different sessions, of the same or different
-  agents, run concurrently on the same engine. Distributed exclusion remains the
-  session run coordinator's durable lease.
-- The user message is appended under the run's identity with an idempotency key
-  derived from it, the run request is compiled in a fresh scope with the keyed
-  loop and services (including the optional output processor), and the loop
-  settles the run. `AgentLoopResult.SessionId` is the resume token.
+- The caller names an existing session. The runtime selects that session's
+  active branch; the typed methods do not take a `BranchId`. `SendAsync` still
+  creates a session when the caller does not name one.
+- The runtime revalidates the pinned definition and publication, then opens the
+  session and checks that the agent, tenant, principal, and active state own it.
+  A missing or foreign session, an unusable definition, unavailable
+  authorization, or an output type the pinned definition cannot produce is
+  `AgentRunRejected<TOutput>` on the typed surface and
+  `AgentAdmissionRejectedException` from `SendAsync`. None of those failures
+  allocate a `RunId` or append to the store.
+- An in-process gate per `(AgentId, SessionId)` applies the pinned session
+  profile's `SessionBusyBehavior` before durable admission. `Reject` returns
+  `AgentRunRejected<TOutput>` with `AgentErrorCodes.SessionBusy` and appends
+  nothing. `Wait` serializes the caller until the active run releases the gate.
+  Different sessions stay concurrent. The durable lane sequence — provision,
+  admit, accept, release — still runs after the gate is acquired, and the
+  `RunId` is minted only then.
+- Accepted runs return `AgentRunFinished<TOutput>` built from the loop result
+  plus the admission-time conversation and previous cursor. `StreamAsync`
+  subscribes on `ISubscribableOutputPublisher` before the loop is driven. A
+  publisher that does not implement that interface is
+  `AgentRunStreamRejected<TOutput>`, not an empty stream. Disposing the
+  subscription does not cancel the run.
 
 `AgentKit.Simple` exposes this through `AddAgent(agentId, configure)` for
 additional definitions on the same engine and `engine.Identity` for the composed
 identity; `engine.Conversation` remains the single-session convenience.
-Queue-backed admission through `AgentKit.IO`, engine-level run attachment and
-cancellation by `RunId`, and durable lane acceptance are the remaining steps to
-the full surface.
+Queue-backed admission through `AgentKit.IO` and engine-level run attachment and
+cancellation by `RunId` remain later steps.
 
 ### Compiled run activation
 
@@ -564,6 +572,11 @@ internal sealed class AgentRunScopeLease : IAsyncDisposable
     public ValueTask DisposeAsync() => OwnedScope.DisposeAsync();
 }
 ```
+
+`HookDispatchContext` is omitted from the landed `AgentRunPlan`. The type exists,
+but run-scoped hook activation has not landed, and the runtime does not construct
+a stand-in. `OptionalCapabilities` is `AgentOptionalCapabilitySelection.None`
+until a definition carries a selection.
 
 `AgentRunScopeFactory` is the sole owner of `IServiceScopeFactory` and arbitrary
 keyed contract resolution. It creates the scope, resolves the scoped

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class AgentEngineTests
 {
     [Fact]
@@ -28,7 +30,7 @@ public sealed class AgentEngineTests
     public void Constructor_WhenServicesIsNull_ThrowsBeforeAssignment()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new AgentEngine(
+            () => new AgentEngineRuntime(
                 null!, ownedProvider: null, Composition()));
 
         exception.ParamName.ShouldBe("services");
@@ -38,7 +40,7 @@ public sealed class AgentEngineTests
     public void Constructor_WhenValidatedCompositionIsNull_ThrowsBeforeResolvingServices()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new AgentEngine(MinimalProvider(), ownedProvider: null, null!));
+            () => new AgentEngineRuntime(MinimalProvider(), ownedProvider: null, null!));
 
         exception.ParamName.ShouldBe("validatedComposition");
     }
@@ -82,7 +84,7 @@ public sealed class AgentEngineTests
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddSingleton<IAgentDefinitionCatalog>(new FixedResolutionAgentDefinitionCatalog(resolution));
         await using var provider = services.BuildServiceProvider();
-        await using var engine = new AgentEngine(provider, ownedProvider: null, Composition());
+        await using var engine = new AgentEngine(new AgentEngineRuntime(provider, ownedProvider: null, Composition()));
 
         var result = await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken);
 
@@ -106,19 +108,17 @@ public sealed class AgentEngineTests
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         await using var successfullyBuilt = builder.Build();
         await using var provider = builder.Services.BuildServiceProvider();
-        await using var engine = new AgentEngine(
+        await using var engine = new AgentEngine(new AgentEngineRuntime(
             provider,
             ownedProvider: null,
             new AgentCompositionSnapshot(
                 new AgentRunProfilePublicationSnapshot([]),
-                successfullyBuilt.ComponentRegistrations));
+                successfullyBuilt.ComponentRegistrations)));
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
 
-        var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(
-            async () => await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
-
-        exception.Rejection.AgentId.ShouldBe(definition.Id);
-        exception.Rejection.Reason.ShouldContain("no pinned run-profile publication");
+        var rejected = (await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken)).ShouldBeOfType<AgentRunRejected<string>>();
+        rejected.AgentId.ShouldBe(definition.Id);
+        rejected.Failure.SafeMessage.ShouldContain("no pinned run-profile publication");
         runIds.Created.ShouldBe(0);
     }
 
@@ -142,8 +142,7 @@ public sealed class AgentEngineTests
     {
         // This is the regression the keyed, scoped IAgentLoop fix exists for: before it, every agent definition
         // in one engine shared whatever single unkeyed IContextAssembler (and every other collaborator) happened
-        // to be registered, because DefaultAgentLoop resolved it through an unkeyed constructor dependency that
-        // could never honor a per-definition key. With the fix, AgentRunServicesFactory compiles a distinct
+        // to be registered, because the run-plan compiler builds a distinct
         // AgentRunServices bundle per run, preferring the collaborator registered under the run's own loop key.
         var firstLoopKey = new ComponentKey<IAgentLoop>("regression-loop-a");
         var secondLoopKey = new ComponentKey<IAgentLoop>("regression-loop-b");
@@ -155,6 +154,10 @@ public sealed class AgentEngineTests
         var secondContextAssembler = new TestSupport.UnsupportedContextAssembler();
 
         var builder = AgentEngine.CreateBuilder();
+        var sessions = new InMemoryTestSessionCoordinator();
+        var firstSession = new SessionId(Guid.NewGuid());
+        var secondSession = new SessionId(Guid.NewGuid());
+        _ = builder.Services.AddSingleton<ISessionCoordinator>(sessions);
         CompositionTestData.AddRunServicesFakes(builder.Services);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(firstLoopKey.Value, firstLoop);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(secondLoopKey.Value, secondLoop);
@@ -163,19 +166,21 @@ public sealed class AgentEngineTests
         _ = builder.Services.AddAgent(firstDefinition);
         _ = builder.Services.AddAgent(secondDefinition);
         CompositionTestData.AddRunProfiles(builder.Services, firstDefinition, secondDefinition);
+        CompositionTestData.SeedSession(sessions, firstDefinition.Id, firstSession);
+        CompositionTestData.SeedSession(sessions, secondDefinition.Id, secondSession);
 
         await using var engine = builder.Build();
         var firstAgent = (await engine.GetAgentAsync(firstDefinition.Id, TestContext.Current.CancellationToken)).RequireResolved();
         var secondAgent = (await engine.GetAgentAsync(secondDefinition.Id, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await firstAgent.RunAsync(
-            new SessionId(Guid.NewGuid()), CompositionTestData.BranchId, CompositionTestData.Identity(),
-            CompositionTestData.RunOptions(),
-            TestContext.Current.CancellationToken);
-        _ = await secondAgent.RunAsync(
-            new SessionId(Guid.NewGuid()), CompositionTestData.BranchId, CompositionTestData.Identity(),
-            CompositionTestData.RunOptions(),
-            TestContext.Current.CancellationToken);
+        _ = await firstAgent.RunAsync<string>(
+            firstSession, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: CompositionTestData.RunOptions(),
+            cancellationToken: TestContext.Current.CancellationToken);
+        _ = await secondAgent.RunAsync<string>(
+            secondSession, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: CompositionTestData.RunOptions(),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         firstLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(firstContextAssembler);
         secondLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(secondContextAssembler);
@@ -191,10 +196,10 @@ public sealed class AgentEngineTests
             CompositionTestData.AgentId,
             TestContext.Current.CancellationToken)).RequireResolved();
 
-        var result = await agent.RunAsync(
-            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
-            CompositionTestData.RunOptions(),
-            TestContext.Current.CancellationToken);
+        var result = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: CompositionTestData.RunOptions(),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var request = loop.ReceivedRequests.ShouldHaveSingleItem();
         request.AgentId.ShouldBe(CompositionTestData.AgentId);
@@ -202,7 +207,7 @@ public sealed class AgentEngineTests
         request.BranchId.ShouldBe(CompositionTestData.BranchId);
         request.MaxTurns.ShouldBe(8);
         request.ModelPolicy.Candidates.ShouldHaveSingleItem().Value.ShouldBe("chat");
-        result.RunId.ShouldBe(request.RunId);
+        result.ShouldBeOfType<AgentRunFinished<string>>().RunId.ShouldBe(request.RunId);
     }
 
     [Fact]
@@ -215,7 +220,7 @@ public sealed class AgentEngineTests
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeSameAs(processor);
     }
@@ -227,7 +232,7 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeNull();
     }
@@ -244,7 +249,7 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().Output.ShouldBe(output);
     }
@@ -259,7 +264,7 @@ public sealed class AgentEngineTests
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().Budgets.ShouldBeSameAs(authority);
     }
@@ -273,7 +278,7 @@ public sealed class AgentEngineTests
         await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().BudgetLimits.ShouldBe([limit]);
     }
@@ -287,8 +292,8 @@ public sealed class AgentEngineTests
             CompositionTestData.AgentId,
             TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
-        _ = await agent.RunAsync(CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(), CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests[0].RunId.ShouldNotBe(loop.ReceivedRequests[1].RunId);
     }
@@ -302,10 +307,10 @@ public sealed class AgentEngineTests
             CompositionTestData.AgentId,
             TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(
-            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
-            CompositionTestData.RunOptions(maxTurns: 3),
-            TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: CompositionTestData.RunOptions(maxTurns: 3),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().MaxTurns.ShouldBe(3);
     }
@@ -320,10 +325,10 @@ public sealed class AgentEngineTests
             TestContext.Current.CancellationToken)).RequireResolved();
 
         var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
-            async () => await agent.RunAsync(
-                CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
-                CompositionTestData.RunOptions(maxTurns: 99),
-                TestContext.Current.CancellationToken));
+            async () => await agent.RunAsync<string>(
+                CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+                options: CompositionTestData.RunOptions(maxTurns: 99),
+                cancellationToken: TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("options");
         loop.ReceivedRequests.ShouldBeEmpty();
@@ -339,10 +344,10 @@ public sealed class AgentEngineTests
             TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await Should.ThrowAsync<ArgumentOutOfRangeException>(
-            async () => await agent.RunAsync(
-                CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
-                CompositionTestData.RunOptions(attemptTimeout: TimeSpan.FromHours(1)),
-                TestContext.Current.CancellationToken));
+            async () => await agent.RunAsync<string>(
+                CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+                options: CompositionTestData.RunOptions(attemptTimeout: TimeSpan.FromHours(1)),
+                cancellationToken: TestContext.Current.CancellationToken));
 
         loop.ReceivedRequests.ShouldBeEmpty();
     }
@@ -356,9 +361,9 @@ public sealed class AgentEngineTests
             CompositionTestData.AgentId,
             TestContext.Current.CancellationToken)).RequireResolved();
 
-        _ = await agent.RunAsync(
-            CompositionTestData.SessionId, CompositionTestData.BranchId, CompositionTestData.Identity(),
-            options: null, TestContext.Current.CancellationToken);
+        _ = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: null, cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedRequests.ShouldHaveSingleItem().MaxTurns.ShouldBe(8);
     }
@@ -367,8 +372,8 @@ public sealed class AgentEngineTests
     public async Task DisposeAsync_WhenCalledConcurrently_DisposesOwnerOnceAndSharesCompletion()
     {
         var owner = new BlockingAsyncDisposable();
-        var engine = new AgentEngine(
-            MinimalProvider(), owner, Composition());
+        var engine = new AgentEngine(new AgentEngineRuntime(
+            MinimalProvider(), owner, Composition()));
 
         var firstDisposal = engine.DisposeAsync().AsTask();
         var secondDisposal = engine.DisposeAsync().AsTask();
@@ -387,8 +392,8 @@ public sealed class AgentEngineTests
     public async Task DisposeAsync_WhenOwnerThrowsSynchronously_CachesFailureWithoutRetrying()
     {
         var owner = new ThrowingAsyncDisposable();
-        var engine = new AgentEngine(
-            MinimalProvider(), owner, Composition());
+        var engine = new AgentEngine(new AgentEngineRuntime(
+            MinimalProvider(), owner, Composition()));
 
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());

@@ -246,6 +246,98 @@ internal sealed class AgentEngineRuntime
         return outcome.LoopResult ?? throw new InvalidOperationException("SendAsync completed without a loop result.");
     }
 
+    /// <summary>
+    /// Admits steering or follow-up input into an existing session without starting a run.
+    /// </summary>
+    /// <param name="agent">The pinned handle whose definition and security publication are revalidated.</param>
+    /// <param name="sessionId">The session that already owns the lane. This method does not create a session.</param>
+    /// <param name="identity">The already-authenticated caller. A fresh authorization capture must match it.</param>
+    /// <param name="input">The immutable input. Its delivery class selects steering versus follow-up.</param>
+    /// <param name="executionLaneId">The lane to admit into, or <see langword="null"/> to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels the wait before the queue commits. It does not undo a committed admission.</param>
+    /// <returns>The queue's durable admission result. Failure does not fabricate a run identity.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="agent"/>, <paramref name="identity"/>, or <paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or a present <paramref name="executionLaneId"/> is default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">
+    /// The definition is unavailable, the session is not visible, authorization could not be captured, or no input
+    /// coordinator is composed.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before admission committed.</exception>
+    /// <remarks>
+    /// Each call opens a fresh scope, installs <see cref="RunScopeState.Session"/>, captures a new
+    /// <see cref="BeforeRunOperationCorrelation"/>, and admits through <see cref="IInputCoordinator.AdmitAsync"/>.
+    /// It does not take the in-process busy gate and does not append history. Promotion remains the loop's job.
+    /// </remarks>
+    internal async Task<InputAdmissionResult> AdmitInputAsync(
+        Agent agent,
+        SessionId sessionId,
+        ExecutionIdentity identity,
+        AgentInput input,
+        ExecutionLaneId? executionLaneId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(input);
+        if (executionLaneId is { } suppliedLane)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(suppliedLane, default, nameof(executionLaneId));
+        }
+
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        var definition = agent.Definition;
+        var (catalogVersion, publication) = await ValidatePinnedDefinitionAsync(definition, activity: null, cancellationToken)
+            .ConfigureAwait(false);
+        AgentRunScopeLease? lease = null;
+        try
+        {
+            var (result, prepared) = await _scopes.PrepareAsync(
+                new ResolvedAgentDefinition(definition, catalogVersion),
+                async (provider, token) =>
+                {
+                    var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+                    var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(provider, loopKey);
+                    _ = await OpenSessionAsync(
+                        definition, catalogVersion, publication.SecurityProfile, publication.SessionProfile,
+                        sessions, sessionId, identity, token).ConfigureAwait(false);
+                    return new AgentRunRequest(definition.Id, sessionId, conversationId: null, identity, input, executionLaneId: executionLaneId);
+                },
+                cancellationToken).ConfigureAwait(false);
+            lease = prepared ?? throw AdmissionRejected(
+                definition,
+                catalogVersion,
+                result is InvalidAgentRunPlan invalid
+                    ? string.Join("; ", invalid.Diagnostics.Select(static diagnostic => diagnostic.SafeMessage))
+                    : "The run plan could not be compiled.");
+            if (lease.Plan.Services.Input is not { } coordinator)
+            {
+                throw AdmissionRejected(definition, catalogVersion, "No input coordinator is composed for this agent.");
+            }
+
+            if (lease.Plan.Authorization.Scope.Correlation is not BeforeRunOperationCorrelation)
+            {
+                throw AdmissionRejected(definition, catalogVersion, "Input admission did not capture a before-run operation correlation.");
+            }
+
+            var laneId = executionLaneId ?? new ExecutionLaneId(sessionId.Value);
+            return await coordinator.AdmitAsync(
+                new InputAdmissionRequest(
+                    definition.Id, sessionId, laneId, identity, lease.Plan.Authorization.Scope.Correlation,
+                    lease.Plan.Authorization, input),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (lease is not null)
+            {
+                await lease.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <summary>Runs one existing session and returns a typed finished or rejected envelope.</summary>
     /// <typeparam name="TOutput">The requested output type.</typeparam>
     /// <param name="agent">The pinned handle.</param>

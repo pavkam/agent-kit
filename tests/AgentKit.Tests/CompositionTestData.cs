@@ -88,10 +88,65 @@ internal static class CompositionTestData
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
         new(maxTurns, attemptTimeout);
 
+    /// <summary>Builds the input the facade run tests admit.</summary>
+    /// <returns>A steer input with one plain text part.</returns>
+    public static AgentInput Input() =>
+        new(
+            new InputId(Guid.Parse("e0000000-0000-0000-0000-000000000005")),
+            InputDelivery.Steer,
+            [new TextPart("run", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+
+    /// <summary>Seeds one active session the runtime can open without creating it.</summary>
+    /// <param name="sessions">The coordinator that will load the session.</param>
+    /// <param name="agentId">The agent that owns the session.</param>
+    /// <param name="sessionId">The session identity admission will open.</param>
+    public static void SeedSession(InMemoryTestSessionCoordinator sessions, AgentId agentId, SessionId sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(sessions);
+        var identity = Identity();
+        sessions.Seed(new SessionDescriptor(
+            new SessionAddress(agentId, sessionId),
+            conversationId: null,
+            identity.TenantId,
+            identity.PrincipalId,
+            new SessionStoreKey("store"),
+            BranchId,
+            new SessionVersion(0),
+            SessionLifecycleState.Active,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            ExtensionData.Empty));
+    }
+
+    /// <summary>
+    /// Reads the session version admission has already advanced, so a scripted loop can release the lane.
+    /// </summary>
+    /// <param name="request">The run request whose session is read.</param>
+    /// <param name="services">The compiled collaborators, including the session coordinator.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The snapshot version, or <see langword="null"/> when the page has no snapshot.</returns>
+    public static async Task<SessionVersion?> CurrentSessionVersionAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(services);
+        var context = new SessionOperationContext(
+            request.AgentId, request.SessionId, executionLaneId: null, request.Authorization.Scope.Correlation,
+            request.Identity, request.Authorization);
+        var page = await services.Session.ReadAsync(
+            new SessionReadRequest(context, request.BranchId, new SessionSequence(0), pageSize: 1),
+            request.SessionProfile, cancellationToken).ConfigureAwait(false);
+        return page is SessionPage { Snapshot: { } snapshot } ? snapshot.Version : null;
+    }
+
     /// <summary>
     /// Registers unbehavioral placeholder collaborators for every part of the compiled
     /// <see cref="AgentRunServices"/> bundle a scripted <see cref="IAgentLoop"/> like <see cref="RecordingAgentLoop"/>
-    /// never actually reaches, so <see cref="AgentEngine.RunAgentAsync"/> can compile the bundle without throwing.
+    /// never actually reaches, so run-plan compilation can build the bundle without throwing.
     /// </summary>
     public static void AddRunServicesFakes(IServiceCollection services)
     {
@@ -168,10 +223,13 @@ internal static class CompositionTestData
         AgentDefinition? definition = null)
     {
         var builder = AgentEngine.CreateBuilder();
+        var sessions = new InMemoryTestSessionCoordinator();
+        _ = builder.Services.AddSingleton<ISessionCoordinator>(sessions);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(
             AgentLoopComponentDefaults.LoopKeyValue, loop ?? new RecordingAgentLoop());
         AddRunServicesFakes(builder.Services);
         var selectedDefinition = definition ?? Definition();
+        SeedSession(sessions, selectedDefinition.Id, SessionId);
         AddRunProfiles(builder.Services, selectedDefinition);
         _ = builder.Services.AddAgent(selectedDefinition);
         return builder;
@@ -190,7 +248,7 @@ internal sealed class RecordingAgentLoop: IAgentLoop
     /// <summary>Gets every compiled per-run collaborator bundle this loop received, in call order.</summary>
     public List<AgentRunServices> ReceivedServices { get; } = [];
 
-    public Task<AgentLoopResult> RunAsync(
+    public async Task<AgentLoopResult> RunAsync(
         AgentLoopRunRequest request,
         AgentRunServices services,
         CancellationToken cancellationToken = default)
@@ -200,18 +258,20 @@ internal sealed class RecordingAgentLoop: IAgentLoop
         cancellationToken.ThrowIfCancellationRequested();
         ReceivedRequests.Add(request);
         ReceivedServices.Add(services);
+        var version = await CompositionTestData.CurrentSessionVersionAsync(request, services, cancellationToken)
+            .ConfigureAwait(false);
 
-        return Task.FromResult(new AgentLoopResult(
+        return new AgentLoopResult(
             request.AgentId,
             request.SessionId,
             request.BranchId,
             request.RunId,
             new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.RequestLimit))),
             [],
-            new SessionVersion(0),
+            version,
             null,
             new RunUsage(request.RunId, []),
-            new RunSettlementCompleted()));
+            new RunSettlementCompleted());
     }
 }
 
