@@ -23,7 +23,7 @@ Owning documents: [Extensions](../architecture/extensions.md),
 - [x] WS2-C6 migrate `DefaultAgentLoop` and `AgentHookPointDefinitions`
 - [x] WS2-C7 remove legacy kernel surface
 - [x] WS2-C8 composition validation for hook services
-- [ ] WS2-C9 `AgentDefinition.HookProfile`
+- [x] WS2-C9 `AgentDefinition.HookProfile`
 - [ ] WS2-C10 named hook profiles
 - [ ] WS2-C11 diagnostic sinks
 - [ ] WS2-C12 timeout and quiescence

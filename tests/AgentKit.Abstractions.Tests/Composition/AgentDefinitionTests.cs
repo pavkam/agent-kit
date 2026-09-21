@@ -30,6 +30,13 @@ public sealed class AgentDefinitionTests
     }
 
     [Fact]
+    public void AgentDefinition_WhenHookProfileUnset_UsesDefaultProfileKey()
+    {
+        var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        definition.HookProfile.ShouldBe(HookRegistrationDescriptors.DefaultProfileKey);
+    }
+
+    [Fact]
     public void With_WhenIdIsDefault_ThrowsExactParameter()
     {
         var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));

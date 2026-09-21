@@ -187,6 +187,13 @@ public sealed record AgentDefinition
     /// <value>A nonblank key for runnable definitions; default only on the retained legacy unrunnable shape.</value>
     public SessionProfileKey SessionProfile { get; }
 
+    /// <summary>Gets the hook profile whose captured catalog and registrations this agent's runs dispatch through.</summary>
+    /// <value>
+    /// Defaults to <see cref="HookRegistrationDescriptors.DefaultProfileKey"/> when unset. Composition validation
+    /// resolves this key through <see cref="IHookProfileSelector"/> for every published definition.
+    /// </value>
+    public HookProfileKey HookProfile { get; init; } = HookRegistrationDescriptors.DefaultProfileKey;
+
     /// <summary>Gets the explicitly selected keyed <see cref="IAgentLoop"/> this definition runs under.</summary>
     /// <value>
     /// The selected key, or <see langword="null"/> when this definition leaves the loop unspecified. A

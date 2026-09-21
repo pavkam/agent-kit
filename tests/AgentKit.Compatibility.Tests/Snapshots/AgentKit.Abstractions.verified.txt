@@ -130,6 +130,7 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public string DisplayName { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.HookProfileKey HookProfile { get; init; }
         public AgentKit.AgentId Id { get; init; }
         public AgentKit.ComponentKey<AgentKit.IInputCoordinator>? InputCoordinatorKey { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
@@ -352,6 +353,7 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.HookProfileKey HookProfile { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
         public AgentKit.LoopLaneAdmission? LaneAdmission { get; init; }

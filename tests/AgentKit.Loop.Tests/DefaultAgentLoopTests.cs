@@ -4012,6 +4012,7 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
         IHookCatalog? hookCatalog = null,
         IHookInstanceFactory? hookInstanceFactory = null,
+        IHookProfileSelector? hookProfileSelector = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
@@ -4054,6 +4055,11 @@ public sealed class DefaultAgentLoopTests
                 beforeToolInvocationHooks);
         }
 
+        if (hookDispatcher is not null && hookProfileSelector is null)
+        {
+            hookProfileSelector = new Hooks.DefaultHookProfileSelector();
+        }
+
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
@@ -4066,7 +4072,8 @@ public sealed class DefaultAgentLoopTests
             logger,
             hookDispatcher,
             hookCatalog,
-            hookInstanceFactory);
+            hookInstanceFactory,
+            hookProfileSelector);
     }
 
     private DefaultAgentLoop CreateLoopWith(

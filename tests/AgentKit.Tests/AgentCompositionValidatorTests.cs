@@ -249,4 +249,15 @@ public sealed class AgentCompositionValidatorTests
 
         exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-point.collision");
     }
+
+    [Fact]
+    public void Build_WhenDefinitionSelectsUnknownHookProfile_RejectsWithHookProfileUnavailable()
+    {
+        var definition = CompositionTestData.Definition() with { HookProfile = new HookProfileKey("unknown-profile") };
+        var builder = CompositionTestData.RunnableBuilder(definition: definition);
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-profile.unavailable");
+    }
 }

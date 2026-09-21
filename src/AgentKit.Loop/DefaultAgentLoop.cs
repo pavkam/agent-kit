@@ -69,6 +69,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly IHookDispatcher? _hookDispatcher;
     private readonly IHookCatalog? _hookCatalog;
     private readonly IHookInstanceFactory? _hookInstanceFactory;
+    private readonly IHookProfileSelector? _hookProfileSelector;
     private readonly IIdentifierGenerator<HookDispatchId> _hookDispatchIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
@@ -155,6 +156,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="hookInstanceFactory">
     /// Creates the per-run activation lease, or <see langword="null"/> when hooks are not composed.
     /// </param>
+    /// <param name="hookProfileSelector">
+    /// Resolves the hook profile for each run, or <see langword="null"/> when hooks are not composed.
+    /// </param>
     /// <param name="hookDispatchIds">The generator for hook dispatch identities, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="usageEntryIds">The generator for usage-accounting entry identities, or <see langword="null"/> for a GUID generator.</param>
@@ -168,8 +172,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <see cref="AgentLoopOptions.EstimatedCharactersPerToken"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// <paramref name="hookDispatcher"/>, <paramref name="hookCatalog"/>, and <paramref name="hookInstanceFactory"/>
-    /// are not all composed together or all omitted.
+    /// The hook kernel services are not all composed together or all omitted.
     /// </exception>
     public DefaultAgentLoop(
         IIdentifierGenerator<OperationId> operationIds,
@@ -184,6 +187,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IHookDispatcher? hookDispatcher = null,
         IHookCatalog? hookCatalog = null,
         IHookInstanceFactory? hookInstanceFactory = null,
+        IHookProfileSelector? hookProfileSelector = null,
         IIdentifierGenerator<HookDispatchId>? hookDispatchIds = null,
         IIdentifierGenerator<CompactionId>? compactionIds = null,
         IIdentifierGenerator<UsageEntryId>? usageEntryIds = null)
@@ -226,11 +230,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _hookDispatcher = hookDispatcher;
         _hookCatalog = hookCatalog;
         _hookInstanceFactory = hookInstanceFactory;
+        _hookProfileSelector = hookProfileSelector;
         var hooksComposed = hookDispatcher is not null;
-        if (hooksComposed != (hookCatalog is not null) || hooksComposed != (hookInstanceFactory is not null))
+        if (hooksComposed != (hookCatalog is not null)
+            || hooksComposed != (hookInstanceFactory is not null)
+            || hooksComposed != (hookProfileSelector is not null))
         {
             throw new InvalidOperationException(
-                "Hook dispatch requires IHookDispatcher, IHookCatalog, and IHookInstanceFactory to be composed together; register AddAgentHooks or omit all three.");
+                "Hook dispatch requires IHookDispatcher, IHookCatalog, IHookInstanceFactory, and IHookProfileSelector to be composed together; register AddAgentHooks or omit all four.");
         }
 
         _hookDispatchIds = hookDispatchIds ?? new GuidIdentifierGenerator<HookDispatchId>(static value => new HookDispatchId(value));
@@ -248,18 +255,34 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private bool HooksComposed => _hookDispatcher is not null;
 
-    private async ValueTask<HookActivationScope?> OpenHookScopeAsync(CancellationToken cancellationToken)
+    private async ValueTask<(HookActivationScope? Scope, AgentRunOutcome? Failure)> OpenHookScopeAsync(
+        AgentLoopRunRequest request,
+        CancellationToken cancellationToken)
     {
         if (!HooksComposed)
         {
-            return null;
+            return (null, null);
         }
 
+        var selection = await _hookProfileSelector!
+            .SelectAsync(new HookProfileSelectionRequest(request.HookProfile, request.AgentId), cancellationToken)
+            .ConfigureAwait(false);
+        if (selection is HookProfileUnavailable unavailable)
+        {
+            return (null, RunOutcomes.InvalidState($"Hook profile '{unavailable.RequestedProfile}' is not available."));
+        }
+
+        if (selection is not HookProfileSelected selected)
+        {
+            return (null, RunOutcomes.InvalidState("Hook profile selection did not resolve to an available profile."));
+        }
+
+        var profileKey = selected.ProfileKey;
         var snapshot = await _hookCatalog!
-            .CaptureAsync(new HookCatalogRequest(new HookProfileKey("default")), cancellationToken)
+            .CaptureAsync(new HookCatalogRequest(profileKey), cancellationToken)
             .ConfigureAwait(false);
         var lease = await _hookInstanceFactory!.CreateAsync(snapshot, cancellationToken).ConfigureAwait(false);
-        return new HookActivationScope(snapshot, lease);
+        return (new HookActivationScope(snapshot, lease), null);
     }
 
     private static bool CatalogIncludesPoint(HookCatalogSnapshot catalog, HookPointId point) =>
@@ -522,7 +545,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var tracking = new RunTracking();
-        await using var hookScope = await OpenHookScopeAsync(cancellationToken).ConfigureAwait(false);
+        var (hookScopeLease, hookProfileFailure) = await OpenHookScopeAsync(request, cancellationToken).ConfigureAwait(false);
+        if (hookProfileFailure is not null)
+        {
+            return BuildResult(
+                request,
+                hookProfileFailure,
+                committedMessages.ToImmutable(),
+                currentVersion,
+                laneState.Usage);
+        }
+
+        await using var hookScope = hookScopeLease;
         if (!request.BudgetLimits.IsEmpty)
         {
             if (services.Budgets is not { } budgets)

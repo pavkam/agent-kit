@@ -93,6 +93,11 @@ internal static class AgentCompositionValidator
         if (catalog is not null)
         {
             validatedRunProfiles = ValidateCatalog(catalog, profileReader, componentRegistrations, diagnostics);
+            var hookProfileSelector = provider.GetService<IHookProfileSelector>();
+            if (hookProfileSelector is not null)
+            {
+                HookCompositionValidator.ValidateDefinitionHookProfiles(catalog, hookProfileSelector, diagnostics);
+            }
         }
 
         if (diagnostics.Count > 0)

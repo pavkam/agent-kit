@@ -1203,6 +1203,7 @@ internal sealed class AgentEngineRuntime
                 definition.ToolChoice, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)
             {
                 Output = definition.Output,
+                HookProfile = definition.HookProfile,
             };
 
     private static AgentAdmissionRejectedException AdmissionRejected(

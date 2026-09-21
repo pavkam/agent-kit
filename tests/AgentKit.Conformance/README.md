@@ -38,6 +38,9 @@ concrete fixture inherits the suite for its own production class.
   cancellation, disposal, single-reader ownership and independent completion.
 - [ArtifactStoreConformanceTests](ArtifactStoreConformanceTests.cs)
 - [IdentityNormalizerConformanceTests](IdentityNormalizerConformanceTests.cs)
+- [IdentityIssuerConformanceTests](IdentityIssuerConformanceTests.cs)
+- [IdentityValidationPolicyConformanceTests](IdentityValidationPolicyConformanceTests.cs)
+- [DelegatedIdentityDeriverConformanceTests](DelegatedIdentityDeriverConformanceTests.cs)
 - [InputPromotionPolicyConformanceTests](InputPromotionPolicyConformanceTests.cs)
 - [OutputSchemaEngineConformanceTests](OutputSchemaEngineConformanceTests.cs)
 - [RunContinuationPolicyConformanceTests](RunContinuationPolicyConformanceTests.cs)

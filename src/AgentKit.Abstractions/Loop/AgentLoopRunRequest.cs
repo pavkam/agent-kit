@@ -159,6 +159,7 @@ public sealed record AgentLoopRunRequest
         Output = agent.Output;
         BudgetLimits = agent.BudgetLimits;
         Configuration = configuration;
+        HookProfile = agent.HookProfile;
     }
 
     /// <summary>Gets the agent this run belongs to.</summary>
@@ -392,6 +393,27 @@ public sealed record AgentLoopRunRequest
         }
     } = [];
 
+    /// <summary>Gets the hook profile whose captured catalog this run dispatches through.</summary>
+    /// <value>
+    /// Defaults to <see cref="HookRegistrationDescriptors.DefaultProfileKey"/>. When <see cref="Agent"/> is pinned,
+    /// a record copy must not diverge from the agent's own selection.
+    /// </value>
+    /// <exception cref="ArgumentException">A record copy assigns a value different from the pinned <see cref="Agent"/>'s own.</exception>
+    public HookProfileKey HookProfile
+    {
+        get;
+        init
+        {
+            if (Agent is not null && !Agent.HookProfile.Equals(value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own hook profile.", nameof(HookProfile));
+            }
+
+            field = value;
+        }
+    } = HookRegistrationDescriptors.DefaultProfileKey;
+
     /// <summary>Gets the optional best-effort observer for provisional model and tool progress.</summary>
     /// <remarks>
     /// The observer is operational wiring rather than semantic request data, so it does not participate in
@@ -448,6 +470,7 @@ public sealed record AgentLoopRunRequest
         && AttemptTimeout == other.AttemptTimeout
         && Equals(Output, other.Output)
         && BudgetLimits.SequenceEqual(other.BudgetLimits)
+        && HookProfile.Equals(other.HookProfile)
         && Extensions.Equals(other.Extensions)
         && Equals(LaneAdmission, other.LaneAdmission);
 
@@ -486,6 +509,7 @@ public sealed record AgentLoopRunRequest
             hash.Add(limit);
         }
 
+        hash.Add(HookProfile);
         hash.Add(Extensions);
         hash.Add(LaneAdmission);
         return hash.ToHashCode();

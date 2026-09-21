@@ -48,6 +48,42 @@ internal static class HookCompositionValidator
         }
     }
 
+    /// <summary>Validates that every published agent definition selects a resolvable hook profile.</summary>
+    /// <param name="catalog">The agent definition catalog whose current snapshot is inspected.</param>
+    /// <param name="profileSelector">The hook profile selector registered in the composition.</param>
+    /// <param name="diagnostics">The initialized diagnostic collector.</param>
+    internal static void ValidateDefinitionHookProfiles(
+        IAgentDefinitionCatalog catalog,
+        IHookProfileSelector profileSelector,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(profileSelector);
+        Debug.Assert(diagnostics is not null, "Composition validation owns an initialized diagnostic collector.");
+
+        var snapshot = catalog.CurrentSnapshot;
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        foreach (var definition in snapshot.Definitions)
+        {
+            var selection = profileSelector
+                .SelectAsync(new HookProfileSelectionRequest(definition.HookProfile, definition.Id), CancellationToken.None)
+                .AsTask()
+                .ConfigureAwait(continueOnCapturedContext: false)
+                .GetAwaiter()
+                .GetResult();
+            if (selection is HookProfileUnavailable unavailable)
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.hook-profile.unavailable",
+                    $"Agent '{definition.Id}' selects hook profile '{unavailable.RequestedProfile}' but it is not registered."));
+            }
+        }
+    }
+
     /// <summary>Validates singular unkeyed hook kernel registrations from build-local metadata.</summary>
     /// <param name="snapshot">The frozen Microsoft DI registrations for this build.</param>
     /// <param name="diagnostics">The initialized diagnostic collector.</param>
