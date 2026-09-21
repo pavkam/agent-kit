@@ -1,19 +1,18 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Hooks;
+namespace AgentKit;
 
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 
-/// <summary>Deterministic <see cref="HookRegistrationId"/> derivation for first-party registration helpers.</summary>
+/// <summary>Deterministic <see cref="HookRegistrationId"/> derivation from author-supplied hook identities.</summary>
 /// <remarks>
-/// Legacy <see cref="IHook"/> implementations identify themselves with <see cref="HookId"/> text. Until every
-/// registration supplies an explicit <see cref="HookRegistrationDescriptor"/>, the first-party
-/// <c>Add*Hook&lt;T&gt;</c> helpers derive registration identity from that author id so soft and hard ordering
-/// edges continue to reference the same stable value.
+/// Author-supplied <see cref="HookId"/> values derive stable <see cref="HookRegistrationId"/> identities for
+/// <see cref="HookRegistrationDescriptor"/> construction at registration time.
 /// </remarks>
-internal static class HookRegistrationIds
+public static class HookRegistrationIds
 {
     private static readonly Guid _namespace = new("f4b9d2c6-3a71-4f5e-9c88-2e6b0d1a7f3e");
 

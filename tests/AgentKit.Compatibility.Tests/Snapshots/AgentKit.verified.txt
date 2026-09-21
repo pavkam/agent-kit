@@ -8,9 +8,14 @@ namespace AgentKit
         public AgentKit.AgentCatalogVersion CatalogVersion { get; }
         public AgentKit.AgentDefinition Definition { get; }
         public AgentKit.AgentId Id { get; }
+        public System.Threading.Tasks.Task<AgentKit.AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(AgentKit.RunId runId, AgentKit.SessionId sessionId, AgentKit.ExecutionIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.SessionRunAbortResult> CancelAsync(AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.Task<AgentKit.AgentSessionCreationResult> CreateSessionAsync(AgentKit.ExecutionIdentity identity, AgentKit.IdempotencyKey idempotencyKey, AgentKit.ConversationId? conversationId = default, AgentKit.ExtensionData? extensions = null, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.ExecutionIdentity identity, AgentKit.AgentRunOptions? options = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.InputAdmissionResult> FollowUpAsync(AgentKit.SessionId sessionId, AgentKit.ExecutionIdentity identity, AgentKit.AgentInput input, AgentKit.ExecutionLaneId? executionLaneId = default, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentRunResult<TOutput>> RunAsync<TOutput>(AgentKit.SessionId sessionId, AgentKit.ExecutionIdentity identity, AgentKit.AgentInput input, AgentKit.ConversationId? conversationId = default, AgentKit.AgentRunOptions? options = null, AgentKit.ExecutionLaneId? executionLaneId = default, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> SendAsync(AgentKit.AgentSendRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.InputAdmissionResult> SteerAsync(AgentKit.SessionId sessionId, AgentKit.ExecutionIdentity identity, AgentKit.AgentInput input, AgentKit.ExecutionLaneId? executionLaneId = default, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(AgentKit.SessionId sessionId, AgentKit.ExecutionIdentity identity, AgentKit.AgentInput input, AgentKit.ConversationId? conversationId = default, AgentKit.AgentRunOptions? options = null, AgentKit.ExecutionLaneId? executionLaneId = default, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class AgentAdmissionRejectedException : System.InvalidOperationException
     {
@@ -25,6 +30,30 @@ namespace AgentKit
         public AgentCompositionException(string message, System.Exception innerException) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> Diagnostics { get; }
     }
+    public sealed class AgentConversationOpenRejected : AgentKit.AgentConversationOpenResult, System.IEquatable<AgentKit.AgentConversationOpenRejected>
+    {
+        public AgentConversationOpenRejected(AgentKit.AgentId AgentId, string SafeMessage) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class AgentConversationOpenRequest : System.IEquatable<AgentKit.AgentConversationOpenRequest>
+    {
+        public AgentConversationOpenRequest(AgentKit.AgentId AgentId, AgentKit.ExecutionIdentity Identity, AgentKit.SessionId? SessionId = default) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public AgentKit.ExecutionIdentity Identity { get; init; }
+        public AgentKit.SessionId? SessionId { get; init; }
+    }
+    public abstract class AgentConversationOpenResult : System.IEquatable<AgentKit.AgentConversationOpenResult>
+    {
+        protected AgentConversationOpenResult() { }
+    }
+    public sealed class AgentConversationOpened : AgentKit.AgentConversationOpenResult, System.IEquatable<AgentKit.AgentConversationOpened>
+    {
+        public AgentConversationOpened(AgentKit.AgentId AgentId, AgentKit.SessionId SessionId, AgentKit.BranchId BranchId) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.SessionId SessionId { get; init; }
+    }
     public sealed class AgentEngine : System.IAsyncDisposable
     {
         public System.IServiceProvider Services { get; }
@@ -32,6 +61,9 @@ namespace AgentKit
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public System.Threading.Tasks.ValueTask<AgentKit.AgentResolution> GetAgentAsync(AgentKit.AgentId agentId, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.AgentCatalogSnapshot> GetAgentsAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentConversationOpenResult> OpenSessionAsync(AgentKit.AgentConversationOpenRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentRunResult<TOutput>> RunAsync<TOutput>(AgentKit.AgentRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(AgentKit.AgentRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public static AgentKit.AgentEngineBuilder CreateBuilder() { }
     }
     public sealed class AgentEngineBuilder
@@ -94,13 +126,6 @@ namespace AgentKit
         public bool Equals(AgentKit.AgentSendRequest? other) { }
         public override int GetHashCode() { }
     }
-    public sealed class AgentSessionBusyException : System.InvalidOperationException
-    {
-        public AgentSessionBusyException(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId activeRunId) { }
-        public AgentKit.RunId ActiveRunId { get; }
-        public AgentKit.AgentId AgentId { get; }
-        public AgentKit.SessionId SessionId { get; }
-    }
     public sealed class AgentSessionCreateRequest : System.IEquatable<AgentKit.AgentSessionCreateRequest>
     {
         public AgentSessionCreateRequest(AgentKit.AgentId agentId, AgentKit.ExecutionIdentity identity, AgentKit.ConversationId? conversationId, AgentKit.IdempotencyKey idempotencyKey, AgentKit.ExtensionData extensions) { }
@@ -134,6 +159,10 @@ namespace AgentKit
     {
         public EngineDelegationChannelOptions() { }
         public int MaximumSummaryCharacters { get; set; }
+    }
+    public interface IConversationEngineHost
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.AgentConversationOpenResult> OpenAsync(AgentKit.AgentConversationOpenRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public sealed class InvalidAgent : AgentKit.AgentResolution, System.IEquatable<AgentKit.InvalidAgent>
     {

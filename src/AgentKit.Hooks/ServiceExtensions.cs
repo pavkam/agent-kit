@@ -4,6 +4,7 @@
 namespace AgentKit.Hooks;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>Dependency-injection registration for the first-party hook dispatcher.</summary>
 public static class ServiceExtensions
@@ -22,24 +23,6 @@ public static class ServiceExtensions
         /// </param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>
-        /// <para>
-        /// The options are validated at startup and again when the dispatcher
-        /// is first resolved: <see cref="AgentHookOptions.MaximumInvocationDepth"/>
-        /// must be at least 1 and <see cref="AgentHookOptions.MinimumFailureMode"/>
-        /// must be a defined value. Invalid values surface as
-        /// <c>OptionsValidationException</c> rather than as a mid-run failure.
-        /// </para>
-        /// <para>
-        /// Idempotent for the dispatcher: it uses <c>TryAdd</c> semantics, so
-        /// calling this more than once keeps the first dispatcher registration.
-        /// Each non-null <paramref name="configure"/> delegate is additive, in
-        /// call order, as is standard for the options pattern. This method does
-        /// not register any concrete hook implementations; applications and
-        /// feature packages register their own hooks additively against
-        /// whichever hook interface their point defines.
-        /// </para>
-        /// </remarks>
         public IServiceCollection AddAgentHooks(Action<AgentHookOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -48,41 +31,90 @@ public static class ServiceExtensions
 
         /// <summary>Registers one <see cref="IRunStartedHook"/> additively for the <see cref="AgentHookPoints.RunStarted"/> point.</summary>
         /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <param name="descriptor">The registration descriptor for this hook.</param>
         /// <returns>The same <paramref name="services"/> instance.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>
-        /// Registrations are additive and de-duplicated per implementation type. <see cref="AddAgentHooks"/> is also
-        /// registered so the loop has a dispatcher; a loop that finds hooks without a dispatcher fails closed.
-        /// </remarks>
-        public IServiceCollection AddRunStartedHook<THook>()
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        public IServiceCollection AddRunStartedHook<THook>(HookRegistrationDescriptor descriptor)
             where THook : class, IRunStartedHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            return HookServiceRegistration.AddRunStartedHook<THook>(services);
+            return HookServiceRegistration.AddRunStartedHook<THook>(services, descriptor);
         }
 
         /// <summary>Registers one <see cref="IBeforeModelRequestHook"/> additively for the <see cref="AgentHookPoints.BeforeModelRequest"/> point.</summary>
         /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <param name="descriptor">The registration descriptor for this hook.</param>
         /// <returns>The same <paramref name="services"/> instance.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>Registrations are additive and de-duplicated per implementation type; <see cref="AddAgentHooks"/> is also registered.</remarks>
-        public IServiceCollection AddBeforeModelRequestHook<THook>()
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        public IServiceCollection AddBeforeModelRequestHook<THook>(HookRegistrationDescriptor descriptor)
             where THook : class, IBeforeModelRequestHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            return HookServiceRegistration.AddBeforeModelRequestHook<THook>(services);
+            return HookServiceRegistration.AddBeforeModelRequestHook<THook>(services, descriptor);
         }
 
         /// <summary>Registers one <see cref="IBeforeToolInvocationHook"/> additively for the <see cref="AgentHookPoints.BeforeToolInvocation"/> point.</summary>
         /// <typeparam name="THook">The hook implementation; it must be safe to share as a singleton.</typeparam>
+        /// <param name="descriptor">The registration descriptor for this hook.</param>
         /// <returns>The same <paramref name="services"/> instance.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>Registrations are additive and de-duplicated per implementation type; <see cref="AddAgentHooks"/> is also registered.</remarks>
-        public IServiceCollection AddBeforeToolInvocationHook<THook>()
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        public IServiceCollection AddBeforeToolInvocationHook<THook>(HookRegistrationDescriptor descriptor)
             where THook : class, IBeforeToolInvocationHook
         {
             ArgumentNullException.ThrowIfNull(services);
-            return HookServiceRegistration.AddBeforeToolInvocationHook<THook>(services);
+            return HookServiceRegistration.AddBeforeToolInvocationHook<THook>(services, descriptor);
+        }
+
+        /// <summary>Replaces the singular <see cref="IHookDispatcher"/> registration.</summary>
+        /// <typeparam name="TDispatcher">The replacement dispatcher type.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceHookDispatcher<TDispatcher>()
+            where TDispatcher : class, IHookDispatcher
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks(configure: null);
+            _ = services.RemoveAll<IHookDispatcher>();
+            return services.AddSingleton<IHookDispatcher, TDispatcher>();
+        }
+
+        /// <summary>Replaces the singular <see cref="IHookCatalog"/> registration.</summary>
+        /// <typeparam name="TCatalog">The replacement catalog type.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceHookCatalog<TCatalog>()
+            where TCatalog : class, IHookCatalog
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks(configure: null);
+            _ = services.RemoveAll<IHookCatalog>();
+            return services.AddSingleton<IHookCatalog, TCatalog>();
+        }
+
+        /// <summary>Replaces the singular <see cref="IHookOrderResolver"/> registration.</summary>
+        /// <typeparam name="TResolver">The replacement resolver type.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceHookOrderResolver<TResolver>()
+            where TResolver : class, IHookOrderResolver
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks(configure: null);
+            _ = services.RemoveAll<IHookOrderResolver>();
+            return services.AddSingleton<IHookOrderResolver, TResolver>();
+        }
+
+        /// <summary>Replaces the singular <see cref="IHookProfileSelector"/> registration.</summary>
+        /// <typeparam name="TSelector">The replacement selector type.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceHookProfileSelector<TSelector>()
+            where TSelector : class, IHookProfileSelector
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentHooks(configure: null);
+            _ = services.RemoveAll<IHookProfileSelector>();
+            return services.AddSingleton<IHookProfileSelector, TSelector>();
         }
     }
 }

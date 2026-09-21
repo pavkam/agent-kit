@@ -67,9 +67,8 @@ using Microsoft.Extensions.Options;
 public sealed class DefaultAgentLoop: IAgentLoop
 {
     private readonly IHookDispatcher? _hookDispatcher;
-    private readonly ImmutableArray<IRunStartedHook> _runStartedHooks;
-    private readonly ImmutableArray<IBeforeModelRequestHook> _beforeModelRequestHooks;
-    private readonly ImmutableArray<IBeforeToolInvocationHook> _beforeToolInvocationHooks;
+    private readonly IHookCatalog? _hookCatalog;
+    private readonly IHookInstanceFactory? _hookInstanceFactory;
     private readonly IIdentifierGenerator<HookDispatchId> _hookDispatchIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
@@ -148,11 +147,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </param>
     /// <param name="hookDispatcher">
     /// The typed dispatch kernel the first-party hook points run through, or <see langword="null"/> when the
-    /// composition registers no hooks. Required as soon as any hook collection below is non-empty.
+    /// composition registers no hooks.
     /// </param>
-    /// <param name="runStartedHooks">The registered <see cref="IRunStartedHook"/> implementations, or <see langword="null"/> for none.</param>
-    /// <param name="beforeModelRequestHooks">The registered <see cref="IBeforeModelRequestHook"/> implementations, or <see langword="null"/> for none.</param>
-    /// <param name="beforeToolInvocationHooks">The registered <see cref="IBeforeToolInvocationHook"/> implementations, or <see langword="null"/> for none.</param>
+    /// <param name="hookCatalog">
+    /// Captures the hook catalog for each run, or <see langword="null"/> when hooks are not composed.
+    /// </param>
+    /// <param name="hookInstanceFactory">
+    /// Creates the per-run activation lease, or <see langword="null"/> when hooks are not composed.
+    /// </param>
     /// <param name="hookDispatchIds">The generator for hook dispatch identities, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="usageEntryIds">The generator for usage-accounting entry identities, or <see langword="null"/> for a GUID generator.</param>
@@ -166,8 +168,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <see cref="AgentLoopOptions.EstimatedCharactersPerToken"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// Hooks are registered but <paramref name="hookDispatcher"/> is <see langword="null"/>; the loop fails closed
-    /// rather than silently skipping registered hooks.
+    /// <paramref name="hookDispatcher"/>, <paramref name="hookCatalog"/>, and <paramref name="hookInstanceFactory"/>
+    /// are not all composed together or all omitted.
     /// </exception>
     public DefaultAgentLoop(
         IIdentifierGenerator<OperationId> operationIds,
@@ -180,9 +182,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         [ServiceKey] string loopKey,
         ILogger<DefaultAgentLoop>? logger = null,
         IHookDispatcher? hookDispatcher = null,
-        IEnumerable<IRunStartedHook>? runStartedHooks = null,
-        IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
-        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IHookCatalog? hookCatalog = null,
+        IHookInstanceFactory? hookInstanceFactory = null,
         IIdentifierGenerator<HookDispatchId>? hookDispatchIds = null,
         IIdentifierGenerator<CompactionId>? compactionIds = null,
         IIdentifierGenerator<UsageEntryId>? usageEntryIds = null)
@@ -222,20 +223,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _maximumPromotionsPerBoundary = loopOptions.MaximumPromotionsPerBoundary;
         _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
         _usageEntryIds = usageEntryIds ?? new GuidIdentifierGenerator<UsageEntryId>(static value => new UsageEntryId(value));
-        _runStartedHooks = [.. runStartedHooks ?? []];
-        _beforeModelRequestHooks = [.. beforeModelRequestHooks ?? []];
-        _beforeToolInvocationHooks = [.. beforeToolInvocationHooks ?? []];
-        ArgumentException.ThrowIfContainsNull(_runStartedHooks, nameof(runStartedHooks));
-        ArgumentException.ThrowIfContainsNull(_beforeModelRequestHooks, nameof(beforeModelRequestHooks));
-        ArgumentException.ThrowIfContainsNull(_beforeToolInvocationHooks, nameof(beforeToolInvocationHooks));
-        if (hookDispatcher is null
-            && (!_runStartedHooks.IsEmpty || !_beforeModelRequestHooks.IsEmpty || !_beforeToolInvocationHooks.IsEmpty))
+        _hookDispatcher = hookDispatcher;
+        _hookCatalog = hookCatalog;
+        _hookInstanceFactory = hookInstanceFactory;
+        var hooksComposed = hookDispatcher is not null;
+        if (hooksComposed != (hookCatalog is not null) || hooksComposed != (hookInstanceFactory is not null))
         {
             throw new InvalidOperationException(
-                "Hooks are registered but no IHookDispatcher is composed; register AddAgentHooks so registered hooks are dispatched rather than silently skipped.");
+                "Hook dispatch requires IHookDispatcher, IHookCatalog, and IHookInstanceFactory to be composed together; register AddAgentHooks or omit all three.");
         }
 
-        _hookDispatcher = hookDispatcher;
         _hookDispatchIds = hookDispatchIds ?? new GuidIdentifierGenerator<HookDispatchId>(static value => new HookDispatchId(value));
     }
 
@@ -248,6 +245,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var timestamp = _timeProvider.GetUtcNow();
         return new HookDispatchMetadata(point, _hookDispatchIds.Create(), correlation, timestamp, timestamp + _hookDispatchTimeout);
     }
+
+    private bool HooksComposed => _hookDispatcher is not null;
+
+    private async ValueTask<HookActivationScope?> OpenHookScopeAsync(CancellationToken cancellationToken)
+    {
+        if (!HooksComposed)
+        {
+            return null;
+        }
+
+        var snapshot = await _hookCatalog!
+            .CaptureAsync(new HookCatalogRequest(new HookProfileKey("default")), cancellationToken)
+            .ConfigureAwait(false);
+        var lease = await _hookInstanceFactory!.CreateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        return new HookActivationScope(snapshot, lease);
+    }
+
+    private static bool CatalogIncludesPoint(HookCatalogSnapshot catalog, HookPointId point) =>
+        catalog.Registrations.Any(registration => registration.Point.Equals(point));
 
     /// <inheritdoc/>
     public async Task<AgentLoopResult> RunAsync(
@@ -506,6 +522,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var tracking = new RunTracking();
+        await using var hookScope = await OpenHookScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!request.BudgetLimits.IsEmpty)
         {
             if (services.Budgets is not { } budgets)
@@ -542,19 +559,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
             _ = runActivity?.SetTag(AgentKitTagNames.BudgetScopeId, created.Scope.Id.ToString());
         }
 
-        if (_hookDispatcher is not null && !_runStartedHooks.IsEmpty)
+        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.RunStarted))
         {
-            // Read-only point: failures are isolated by default, cancellation still propagates.
-            await _hookDispatcher.DispatchAsync(
-                AgentHookPoints.RunStarted,
-                _runStartedHooks,
-                new RunStartedEventArgs(
-                    CreateHookDispatch(AgentHookPoints.RunStarted, runCorrelation), request.AgentId, request.SessionId,
-                    request.BranchId, model, request.MaxTurns, request.AttemptTimeout),
-                static (hook, args, _, token) => hook.OnRunStartedAsync(args, token).AsTask(),
-                HookDispatchScope.Root,
+            var runStartedDispatch = CreateHookDispatch(AgentHookPoints.RunStarted, runCorrelation);
+            var runStartedArgs = new RunStartedEventArgs(
+                runStartedDispatch,
+                request.AgentId,
+                request.SessionId,
+                request.BranchId,
+                model,
+                request.MaxTurns,
+                request.AttemptTimeout);
+            var runStartedContext = hookScope.CreateDispatch(runStartedDispatch);
+            await _hookDispatcher!.DispatchAsync(
+                AgentHookPointDefinitions.RunStarted,
+                runStartedContext,
+                runStartedArgs,
                 HookFailureMode.IsolateAndDiagnose,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
         }
 
         var compactionAttempted = false;
@@ -597,6 +619,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     modelResolution.Adjustments,
                     history,
                     tracking,
+                    hookScope,
                     committedMessages,
                     currentVersion,
                     laneState,
@@ -754,6 +777,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<CapabilityAdjustment> selectionAdjustments,
         HistoryView history,
         RunTracking tracking,
+        HookActivationScope? hookScope,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         LoopLaneState laneState,
@@ -844,20 +868,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var context = ((ContextReady) assembleResult).Context;
-        if (_hookDispatcher is not null && !_beforeModelRequestHooks.IsEmpty)
+        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeModelRequest))
         {
+            var beforeModelDispatch = CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation);
             var hookArgs = new BeforeModelRequestEventArgs(
-                CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation), request.AgentId, request.SessionId, turn, context);
+                beforeModelDispatch, request.AgentId, request.SessionId, turn, context);
             try
             {
-                await _hookDispatcher.DispatchAsync(
-                    AgentHookPoints.BeforeModelRequest,
-                    _beforeModelRequestHooks,
+                var hookContext = hookScope.CreateDispatch(beforeModelDispatch);
+                await _hookDispatcher!.DispatchAsync(
+                    AgentHookPointDefinitions.BeforeModelRequest,
+                    hookContext,
                     hookArgs,
-                    static (hook, args, _, token) => hook.OnBeforeModelRequestAsync(args, token).AsTask(),
-                    HookDispatchScope.Root,
                     HookFailureMode.FailOperation,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -961,7 +985,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
                 request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
-                tracking, committedMessages, currentVersion, laneState, cancellationToken)
+                tracking, hookScope, committedMessages, currentVersion, laneState, cancellationToken)
                 .ConfigureAwait(false),
 
             _ => throw new InvalidOperationException(
@@ -994,6 +1018,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         int turn,
         ModelResponse response,
         RunTracking tracking,
+        HookActivationScope? hookScope,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         LoopLaneState laneState,
@@ -1165,7 +1190,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
-                tracking, committedMessages, currentVersion, committedSequence, laneState, cancellationToken)
+                tracking, hookScope, committedMessages, currentVersion, committedSequence, laneState, cancellationToken)
                 .ConfigureAwait(false),
         };
     }
@@ -1706,6 +1731,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         AssistantMessage assistantMessage,
         ImmutableArray<ToolCallPart> toolCalls,
         RunTracking tracking,
+        HookActivationScope? hookScope,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence currentSequence,
@@ -1771,18 +1797,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 }
 
                 var arguments = toolCall.Arguments;
-                if (_hookDispatcher is not null && !_beforeToolInvocationHooks.IsEmpty)
+                if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeToolInvocation))
                 {
+                    var beforeToolDispatch = CreateHookDispatch(AgentHookPoints.BeforeToolInvocation, turnCorrelation);
                     var hookArgs = new BeforeToolInvocationEventArgs(
-                        CreateHookDispatch(AgentHookPoints.BeforeToolInvocation, turnCorrelation), request.AgentId, request.SessionId, toolCall);
-                    await _hookDispatcher.DispatchAsync(
-                        AgentHookPoints.BeforeToolInvocation,
-                        _beforeToolInvocationHooks,
+                        beforeToolDispatch, request.AgentId, request.SessionId, toolCall);
+                    var hookContext = hookScope.CreateDispatch(beforeToolDispatch);
+                    await _hookDispatcher!.DispatchAsync(
+                        AgentHookPointDefinitions.BeforeToolInvocation,
+                        hookContext,
                         hookArgs,
-                        static (hook, args, _, token) => hook.OnBeforeToolInvocationAsync(args, token).AsTask(),
-                        HookDispatchScope.Root,
                         HookFailureMode.FailOperation,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        cancellationToken).ConfigureAwait(false);
                     if (hookArgs.Veto is { } veto)
                     {
                         LoopLog.ToolCallVetoed(_logger, request.RunId, toolCall.CallId);

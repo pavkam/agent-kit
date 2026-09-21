@@ -28,7 +28,7 @@ public sealed class HookRegistrationCatalog: IHookCatalog
 
         _sources = sources;
         _orderResolver = orderResolver;
-        _points = points.ToDictionary(static point => point.Point);
+        _points = HookPointDefinitionRegistrations.ToDictionary(points);
     }
 
     /// <inheritdoc/>

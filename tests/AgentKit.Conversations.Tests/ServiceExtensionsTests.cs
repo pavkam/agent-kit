@@ -35,10 +35,7 @@ public sealed class ServiceExtensionsTests
     [Fact]
     public void AddConversationSession_WhenComposedWithRequiredCollaborators_ResolvesDefaultConversationSession()
     {
-        var services = new ServiceCollection();
-        RegisterCollaborators(services);
-        _ = services.AddConversationSession(Configure);
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider();
 
         var session = provider.GetRequiredService<IConversationSession>();
 
@@ -49,14 +46,11 @@ public sealed class ServiceExtensionsTests
     [Fact]
     public void AddConversationSession_WhenOptionsAreInvalid_ThrowsOptionsValidationExceptionOnResolution()
     {
-        var services = new ServiceCollection();
-        RegisterCollaborators(services);
-        _ = services.AddConversationSession(options =>
+        using var provider = BuildProvider(options =>
         {
             Configure(options);
             options.AgentId = default;
         });
-        using var provider = services.BuildServiceProvider();
 
         var exception = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IConversationSession>);
 
@@ -64,35 +58,42 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddConversationSession_WhenCalled_RegistersDistinctIdentifierGeneratorsForEachTurnScopedIdentity()
+    public void AddConversationSession_WhenCalled_RegistersDistinctOperationIdentifierGenerators()
     {
-        var services = new ServiceCollection();
-        RegisterCollaborators(services);
-        _ = services.AddConversationSession(Configure);
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider();
 
-        var runIds = provider.GetRequiredService<IIdentifierGenerator<RunId>>();
         var operationIds = provider.GetRequiredService<IIdentifierGenerator<OperationId>>();
-        var messageIds = provider.GetRequiredService<IIdentifierGenerator<MessageId>>();
-        var sessionEntryIds = provider.GetRequiredService<IIdentifierGenerator<SessionEntryId>>();
 
-        AssertDistinctNonDefault(runIds.Create, runIds.Create);
         AssertDistinctNonDefault(operationIds.Create, operationIds.Create);
-        AssertDistinctNonDefault(messageIds.Create, messageIds.Create);
-        AssertDistinctNonDefault(sessionEntryIds.Create, sessionEntryIds.Create);
     }
 
     [Fact]
     public void AddConversationSession_WhenLoggingIsNotRegistered_StillResolvesTheSession()
     {
-        var services = new ServiceCollection();
-        RegisterCollaborators(services);
-        _ = services.AddConversationSession(Configure);
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider();
 
         var session = provider.GetRequiredService<IConversationSession>();
 
         _ = session.ShouldNotBeNull();
+    }
+
+    private static ServiceProvider BuildProvider(Action<ConversationSessionOptions>? configure = null)
+    {
+        var services = new ServiceCollection();
+        RegisterCollaborators(services);
+        _ = services.AddConversationSession(configure ?? Configure);
+        ReplaceTurnExecutorWithFake(services);
+        return services.BuildServiceProvider();
+    }
+
+    private static void ReplaceTurnExecutorWithFake(IServiceCollection services)
+    {
+        _ = services.RemoveAll<IConversationTurnExecutor>();
+        _ = services.AddSingleton<IConversationTurnExecutor>(static sp =>
+            new FakeConversationTurnExecutor(
+                (FakeAgentLoop) sp.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue),
+                (FakeSessionCoordinator) sp.GetRequiredService<ISessionCoordinator>()));
+        _ = services.RemoveAll<IConversationEngineHost>();
     }
 
     private static void AssertDistinctNonDefault<TIdentifier>(Func<TIdentifier> first, Func<TIdentifier> second)
@@ -111,37 +112,6 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<ISecurityProfileSelector>(new FakeSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(
             AgentLoopComponentDefaults.LoopKeyValue, new FakeAgentLoop());
-        _ = services.AddSingleton<IContextAssembler>(new UnsupportedContextAssembler());
-        _ = services.AddSingleton<IToolInvoker>(new CaptureTestToolInvoker());
-        _ = services.AddSingleton<IModelCatalog>(new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
-        _ = services.AddSingleton<IModelSelector>(ScriptedModelSelector.Selecting(FakeModelDescriptor()));
-        _ = services.AddSingleton<ILlmModelResolver>(new AliasLlmModelResolver());
-        services.TryAddKeyedSingleton<IRunContinuationPolicy>(
-            AgentLoopComponentDefaults.ContinuationPolicyKeyValue, (_, _) => new UnsupportedRunContinuationPolicy());
-    }
-
-    private static ModelDescriptor FakeModelDescriptor()
-    {
-        var capabilities = new ModelCapabilities(
-            supportsSystemInstructions: true,
-            supportsStreaming: true,
-            supportsToolCalls: true,
-            supportsParallelToolCalls: true,
-            supportsStructuredOutput: true,
-            supportsReasoning: true,
-            supportsVisionInput: true,
-            ExtensionData.Empty);
-
-        return new ModelDescriptor(
-            new ModelAlias("test-model"),
-            new ProviderId("test-provider"),
-            new ApiFamilyId("test-api"),
-            new ModelId("test-model"),
-            deploymentId: null,
-            capabilities,
-            new ModelLimits(maxContextTokens: 4096, maxOutputTokens: 1024),
-            pricing: null,
-            ExtensionData.Empty);
     }
 
     private static void Configure(ConversationSessionOptions options)

@@ -11,8 +11,8 @@ namespace AgentKit;
 /// <remarks>
 /// <para>
 /// Every concrete hook point defines its own <see cref="EventArgs"/>-derived
-/// type deriving from this class (typically through the intermediate
-/// <see cref="AgentScopedHookEventArgs"/> once its stage has an agent),
+/// type deriving from this class and implementing <see cref="IAgentScopedHookStage"/>
+/// once its stage has an agent,
 /// adding writable properties only for its own documented transformations.
 /// This base class deliberately omits an agent or session identity, because
 /// engine construction can precede an <see cref="AgentId"/>, agent

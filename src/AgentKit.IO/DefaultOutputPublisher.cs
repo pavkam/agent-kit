@@ -23,7 +23,7 @@ using System.Collections.Immutable;
 /// exposed evidence.
 /// </para>
 /// </remarks>
-internal sealed class DefaultOutputPublisher: IOutputPublisher
+internal sealed class DefaultOutputPublisher: ISubscribableOutputPublisher
 {
     private readonly Lock _gate = new();
     private readonly ImmutableArray<IRunEventSink> _sinks;
@@ -32,6 +32,9 @@ internal sealed class DefaultOutputPublisher: IOutputPublisher
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _backpressurePollInterval;
     private readonly ILogger<DefaultOutputPublisher> _logger;
+    private readonly TaskCompletionSource<object> _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Type? _outputType;
     private object? _finalResult;
 
     /// <summary>Initializes the publisher over its run-scoped hub and the composition's registered sinks.</summary>
@@ -85,6 +88,13 @@ internal sealed class DefaultOutputPublisher: IOutputPublisher
     }
 
     /// <inheritdoc/>
+    public IAgentRunStream<TOutput> Subscribe<TOutput>()
+    {
+        BindOutputType<TOutput>();
+        return _eventHub.Subscribe(ProjectAsync<TOutput>(_completion.Task));
+    }
+
+    /// <inheritdoc/>
     public ValueTask CompleteAsync<TOutput>(AgentRunFinished<TOutput> result, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -96,6 +106,13 @@ internal sealed class DefaultOutputPublisher: IOutputPublisher
 
         lock (_gate)
         {
+            if (_outputType is { } bound && bound != typeof(TOutput))
+            {
+                throw new ArgumentException(
+                    "This run is already bound to a different validated output type.",
+                    nameof(result));
+            }
+
             if (_finalResult is { } existing)
             {
                 return !existing.Equals(result)
@@ -103,11 +120,35 @@ internal sealed class DefaultOutputPublisher: IOutputPublisher
                     : ValueTask.CompletedTask;
             }
 
+            _outputType = typeof(TOutput);
             _finalResult = result;
             _eventHub.Complete();
+            _ = _completion.TrySetResult(result);
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private void BindOutputType<TOutput>()
+    {
+        lock (_gate)
+        {
+            if (_outputType is { } bound && bound != typeof(TOutput))
+            {
+                throw new InvalidOperationException(
+                    "This run is already bound to a different validated output type.");
+            }
+
+            _outputType = typeof(TOutput);
+        }
+    }
+
+    private static async Task<AgentRunFinished<TOutput>> ProjectAsync<TOutput>(Task<object> completion)
+    {
+        var exposed = await completion.ConfigureAwait(false);
+        return exposed is AgentRunFinished<TOutput> finished
+            ? finished
+            : throw new InvalidOperationException("This run exposed a final envelope of another validated output type.");
     }
 
     /// <summary>Awaits one required sink's delivery, re-consulting backpressure while it remains pending.</summary>

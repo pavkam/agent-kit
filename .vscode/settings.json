@@ -42,6 +42,7 @@
     "toolsets",
     "Uninvoked",
     "workstream",
-    "workstreams"
+    "workstreams",
+    "Xunit"
   ]
 }

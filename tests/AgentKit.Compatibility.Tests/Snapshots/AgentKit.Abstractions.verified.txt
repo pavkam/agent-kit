@@ -265,6 +265,15 @@ namespace AgentKit
         public virtual void RestoreMutableState(object? snapshot) { }
         public virtual void Validate() { }
     }
+    public static class AgentHookPointDefinitions
+    {
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeModelRequestHook, AgentKit.BeforeModelRequestEventArgs> BeforeModelRequest { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeModelRequestRegistration { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeToolInvocationHook, AgentKit.BeforeToolInvocationEventArgs> BeforeToolInvocation { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeToolInvocationRegistration { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IRunStartedHook, AgentKit.RunStartedEventArgs> RunStarted { get; }
+        public static AgentKit.HookPointDefinitionRegistration RunStartedRegistration { get; }
+    }
     public static class AgentHookPoints
     {
         public static AgentKit.HookPointId BeforeModelRequest { get; }
@@ -516,12 +525,6 @@ namespace AgentKit
         public AgentRunToolCallStarted(AgentKit.TurnId turnId, AgentKit.ToolCallPart call) { }
         public AgentKit.ToolCallPart Call { get; init; }
         public AgentKit.TurnId TurnId { get; init; }
-    }
-    public abstract class AgentScopedHookEventArgs : AgentKit.AgentHookEventArgs
-    {
-        protected AgentScopedHookEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId? sessionId) { }
-        public AgentKit.AgentId AgentId { get; }
-        public AgentKit.SessionId? SessionId { get; }
     }
     public readonly struct ApiFamilyId : System.IEquatable<AgentKit.ApiFamilyId>
     {
@@ -1262,12 +1265,14 @@ namespace AgentKit
         Drop = 1,
         Disconnect = 2,
     }
-    public sealed class BeforeModelRequestEventArgs : AgentKit.AgentScopedHookEventArgs
+    public sealed class BeforeModelRequestEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
     {
         public BeforeModelRequestEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, int turn, AgentKit.LlmRequestContext request) { }
+        public AgentKit.AgentId AgentId { get; }
         public AgentKit.LlmRequestSettings OriginalSettings { get; }
         public AgentKit.LlmRequestContext Request { get; }
         public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public AgentKit.LlmRequestSettings Settings { get; set; }
         public bool SettingsChanged { get; }
         public int Turn { get; }
@@ -1281,15 +1286,17 @@ namespace AgentKit
         public BeforeRunOperationCorrelation(AgentKit.OperationId operationId, AgentKit.AdmissionId? admissionId) { }
         public AgentKit.AdmissionId? AdmissionId { get; init; }
     }
-    public sealed class BeforeToolInvocationEventArgs : AgentKit.AgentScopedHookEventArgs, AgentKit.IShortCircuitingHookArgs
+    public sealed class BeforeToolInvocationEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage, AgentKit.IShortCircuitingHookArgs
     {
         public BeforeToolInvocationEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ToolCallPart call) { }
+        public AgentKit.AgentId AgentId { get; }
         public System.Text.Json.JsonElement Arguments { get; set; }
         public bool ArgumentsChanged { get; }
         public AgentKit.ToolCallPart Call { get; }
         public AgentKit.ToolCallId CallId { get; }
         public bool IsShortCircuited { get; }
         public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public AgentKit.ToolReference Tool { get; }
         public AgentKit.TurnId TurnId { get; }
         public AgentKit.ToolInvocationVeto? Veto { get; set; }
@@ -2646,6 +2653,12 @@ namespace AgentKit
         public AgentKit.SessionEntry Entry { get; }
         public AgentKit.SessionEntryWireEnvelope Wire { get; }
     }
+    public sealed class DefaultAgentHookMutationValidator<TEventArgs> : AgentKit.IHookMutationValidator<TEventArgs>
+        where TEventArgs : AgentKit.AgentHookEventArgs
+    {
+        public DefaultAgentHookMutationValidator() { }
+        public void Validate(TEventArgs eventArgs) { }
+    }
     public sealed class DefaultToolCallIdGenerator : AgentKit.IIdentifierGenerator<AgentKit.ToolCallId>
     {
         public DefaultToolCallIdGenerator() { }
@@ -3666,15 +3679,6 @@ namespace AgentKit
         public AgentKit.HookPointId Point { get; }
         public System.DateTimeOffset Timestamp { get; }
     }
-    public sealed class HookDispatchScope : System.IEquatable<AgentKit.HookDispatchScope>
-    {
-        public System.Collections.Immutable.ImmutableDictionary<AgentKit.HookPointId, int> ActiveDepths { get; }
-        public static AgentKit.HookDispatchScope Root { get; }
-        public int DepthOf(AgentKit.HookPointId point) { }
-        public AgentKit.HookDispatchScope Entering(AgentKit.HookPointId point) { }
-        public bool Equals(AgentKit.HookDispatchScope? other) { }
-        public override int GetHashCode() { }
-    }
     public enum HookFailureMode
     {
         FailOperation = 0,
@@ -3790,6 +3794,19 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class HookOrderResult : System.IEquatable<AgentKit.HookOrderResult> { }
+    public sealed class HookPointDefinitionRegistration : System.IEquatable<AgentKit.HookPointDefinitionRegistration>
+    {
+        public HookPointDefinitionRegistration(AgentKit.HookPointId point, System.Type hookInterface, System.Type eventArgsType, AgentKit.HookPointKind kind, AgentKit.HookFailureMode failureInvariant) { }
+        public System.Type EventArgsType { get; }
+        public AgentKit.HookFailureMode FailureInvariant { get; }
+        public System.Type HookInterface { get; }
+        public AgentKit.HookPointKind Kind { get; }
+        public AgentKit.HookPointId Point { get; }
+    }
+    public static class HookPointDefinitionRegistrations
+    {
+        public static System.Collections.Generic.Dictionary<AgentKit.HookPointId, AgentKit.HookPointDefinitionRegistration> ToDictionary(System.Collections.Generic.IReadOnlyList<AgentKit.HookPointDefinitionRegistration> registrations) { }
+    }
     public sealed class HookPointDefinition<THook, TEventArgs> : System.IEquatable<AgentKit.HookPointDefinition<THook, TEventArgs>>
         where THook :  class
         where TEventArgs : AgentKit.AgentHookEventArgs
@@ -3812,12 +3829,6 @@ namespace AgentKit
         Observational = 0,
         Mutating = 1,
         ShortCircuiting = 2,
-    }
-    public enum HookPriority
-    {
-        Normal = 0,
-        First = 1,
-        Last = 2,
     }
     public readonly struct HookProfileKey : System.IEquatable<AgentKit.HookProfileKey>
     {
@@ -3869,11 +3880,21 @@ namespace AgentKit
         public bool Equals(AgentKit.HookRegistrationDescriptor? other) { }
         public override int GetHashCode() { }
     }
+    public static class HookRegistrationDescriptors
+    {
+        public static AgentKit.HookProfileKey DefaultProfileKey { get; }
+        public static AgentKit.HookRegistrationDescriptor ForPoint(AgentKit.HookId authorId, AgentKit.HookPointDefinitionRegistration pointRegistration, AgentKit.HookOrder? order = null, AgentKit.HookLifetime lifetime = 0, AgentKit.HookFailureMode? requestedFailureMode = default, AgentKit.HookReentrancyPolicy reentrancy = 0, System.Collections.Immutable.ImmutableArray<AgentKit.HookId> before = default, System.Collections.Immutable.ImmutableArray<AgentKit.HookId> after = default, System.Collections.Immutable.ImmutableArray<AgentKit.HookId> dependsOn = default) { }
+    }
     public readonly struct HookRegistrationId : System.IEquatable<AgentKit.HookRegistrationId>
     {
         public HookRegistrationId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
+    }
+    public static class HookRegistrationIds
+    {
+        public static AgentKit.HookRegistrationId FromAuthorHookId(AgentKit.HookId authorId) { }
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationId> FromAuthorHookIds(System.Collections.Immutable.ImmutableArray<AgentKit.HookId> authorIds) { }
     }
     public sealed class HookRegistrationSnapshot : System.IEquatable<AgentKit.HookRegistrationSnapshot>
     {
@@ -3998,6 +4019,11 @@ namespace AgentKit
         AgentKit.SessionId SessionId { get; }
         System.Collections.Generic.IAsyncEnumerable<AgentKit.RunEvent> ReadAllAsync(System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IAgentScopedHookStage
+    {
+        AgentKit.AgentId AgentId { get; }
+        AgentKit.SessionId? SessionId { get; }
+    }
     public interface IApprovalBroker
     {
         System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -4043,13 +4069,13 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IBeforeModelRequestHook : AgentKit.IHook
+    public interface IBeforeModelRequestHook
     {
-        System.Threading.Tasks.ValueTask OnBeforeModelRequestAsync(AgentKit.BeforeModelRequestEventArgs args, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeModelRequestEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IBeforeToolInvocationHook : AgentKit.IHook
+    public interface IBeforeToolInvocationHook
     {
-        System.Threading.Tasks.ValueTask OnBeforeToolInvocationAsync(AgentKit.BeforeToolInvocationEventArgs args, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeToolInvocationEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IBudgetAuthority
     {
@@ -4188,14 +4214,6 @@ namespace AgentKit
         System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.FileReadRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.FileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IHook
-    {
-        System.Collections.Immutable.ImmutableArray<AgentKit.HookId> DependsOn { get; }
-        AgentKit.HookId Id { get; }
-        AgentKit.HookPriority Priority { get; }
-        System.Collections.Immutable.ImmutableArray<AgentKit.HookId> RunsAfter { get; }
-        System.Collections.Immutable.ImmutableArray<AgentKit.HookId> RunsBefore { get; }
-    }
     public interface IHookActivationLease : System.IAsyncDisposable
     {
         AgentKit.IHookInvocationTracker InvocationTracker { get; }
@@ -4216,9 +4234,9 @@ namespace AgentKit
     }
     public interface IHookDispatcher
     {
-        System.Threading.Tasks.Task DispatchAsync<THook, TArgs>(AgentKit.HookPointId point, System.Collections.Generic.IEnumerable<THook> hooks, TArgs args, System.Func<THook, TArgs, AgentKit.HookDispatchScope, System.Threading.CancellationToken, System.Threading.Tasks.Task> invoke, AgentKit.HookDispatchScope scope, AgentKit.HookFailureMode failureMode = 0, int maxReentrantDepth = 1, System.Threading.CancellationToken cancellationToken = default)
-            where THook : AgentKit.IHook
-            where TArgs : AgentKit.AgentHookEventArgs;
+        System.Threading.Tasks.ValueTask DispatchAsync<THook, TEventArgs>(AgentKit.HookPointDefinition<THook, TEventArgs> point, AgentKit.HookDispatchContext context, TEventArgs eventArgs, AgentKit.HookFailureMode? failurePolicyTightening = default, System.Threading.CancellationToken cancellationToken = default)
+            where THook :  class
+            where TEventArgs : AgentKit.AgentHookEventArgs;
     }
     public interface IHookInstanceFactory
     {
@@ -4420,9 +4438,9 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask PublishAsync(AgentKit.RunEvent runEvent, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IRunStartedHook : AgentKit.IHook
+    public interface IRunStartedHook
     {
-        System.Threading.Tasks.ValueTask OnRunStartedAsync(AgentKit.RunStartedEventArgs args, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.RunStartedEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISecurityAuditDispatcher
     {
@@ -7081,14 +7099,16 @@ namespace AgentKit
         public RunSettlementRecoveryRequired(AgentKit.AgentError failure) { }
         public AgentKit.AgentError Failure { get; }
     }
-    public sealed class RunStartedEventArgs : AgentKit.AgentScopedHookEventArgs
+    public sealed class RunStartedEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
     {
         public RunStartedEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.ModelDescriptor model, int maxTurns, System.TimeSpan attemptTimeout) { }
+        public AgentKit.AgentId AgentId { get; }
         public System.TimeSpan AttemptTimeout { get; }
         public AgentKit.BranchId BranchId { get; }
         public int MaxTurns { get; }
         public AgentKit.ModelDescriptor Model { get; }
         public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId? SessionId { get; }
     }
     public sealed class RunSucceeded : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunSucceeded>
     {

@@ -37,23 +37,7 @@ namespace AgentKit.Loop
     }
     public sealed class DefaultAgentLoop : AgentKit.IAgentLoop
     {
-        public DefaultAgentLoop(
-                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.TurnId> turnIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds,
-                    System.TimeProvider timeProvider,
-                    Microsoft.Extensions.Options.IOptionsMonitor<AgentKit.Loop.AgentLoopOptions> optionsMonitor,
-                    [Microsoft.Extensions.DependencyInjection.ServiceKey] string loopKey,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Loop.DefaultAgentLoop>? logger = null,
-                    AgentKit.IHookDispatcher? hookDispatcher = null,
-                    System.Collections.Generic.IEnumerable<AgentKit.IRunStartedHook>? runStartedHooks = null,
-                    System.Collections.Generic.IEnumerable<AgentKit.IBeforeModelRequestHook>? beforeModelRequestHooks = null,
-                    System.Collections.Generic.IEnumerable<AgentKit.IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
-                    AgentKit.IIdentifierGenerator<AgentKit.HookInvocationId>? hookInvocationIds = null,
-                    AgentKit.IIdentifierGenerator<AgentKit.CompactionId>? compactionIds = null,
-                    AgentKit.IIdentifierGenerator<AgentKit.UsageEntryId>? usageEntryIds = null) { }
+        public DefaultAgentLoop(AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.TurnId> turnIds, AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptionsMonitor<AgentKit.Loop.AgentLoopOptions> optionsMonitor, [Microsoft.Extensions.DependencyInjection.ServiceKey] string loopKey, Microsoft.Extensions.Logging.ILogger<AgentKit.Loop.DefaultAgentLoop>? logger = null, AgentKit.IHookDispatcher? hookDispatcher = null, AgentKit.IHookCatalog? hookCatalog = null, AgentKit.IHookInstanceFactory? hookInstanceFactory = null, AgentKit.IIdentifierGenerator<AgentKit.HookDispatchId>? hookDispatchIds = null, AgentKit.IIdentifierGenerator<AgentKit.CompactionId>? compactionIds = null, AgentKit.IIdentifierGenerator<AgentKit.UsageEntryId>? usageEntryIds = null) { }
         public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentLoopRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class RunPolicyVersioning

@@ -68,12 +68,12 @@ internal sealed class HookActivationLease: IHookActivationLease
                     $"Registration '{registrationId}' activates '{binding.ImplementationType.Name}', not '{typeof(THook).Name}'."));
         }
 
-        if (binding.Lifetime != HookLifetime.Transient && _resolved.TryGetValue(registrationId, out var cached))
+        if (binding.Descriptor.Lifetime != HookLifetime.Transient && _resolved.TryGetValue(registrationId, out var cached))
         {
             return new ValueTask<HookInstanceResolution<THook>>((HookInstanceResolved<THook>) cached);
         }
 
-        var provider = binding.Lifetime == HookLifetime.Singleton ? _rootProvider : _scope!.ServiceProvider;
+        var provider = binding.Descriptor.Lifetime == HookLifetime.Singleton ? _rootProvider : _scope!.ServiceProvider;
         var services = provider.GetServices(binding.HookServiceType);
         foreach (var service in services)
         {
@@ -83,7 +83,7 @@ internal sealed class HookActivationLease: IHookActivationLease
             }
 
             var resolved = new HookInstanceResolved<THook>(hook);
-            if (binding.Lifetime != HookLifetime.Transient)
+            if (binding.Descriptor.Lifetime != HookLifetime.Transient)
             {
                 _resolved[registrationId] = resolved;
             }

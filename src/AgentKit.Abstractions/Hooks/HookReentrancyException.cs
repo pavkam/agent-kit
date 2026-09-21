@@ -5,16 +5,14 @@ namespace AgentKit;
 
 /// <summary>
 /// Thrown when a dispatch for one hook point is attempted while a dispatch
-/// for that same hook point is already active on the same explicit
-/// <see cref="HookDispatchScope"/>, without a bounded reentrancy policy
-/// permitting it.
+/// for that same hook point is already active on the same activation lease,
+/// without a bounded reentrancy policy permitting it.
 /// </summary>
 /// <remarks>
 /// AgentKit hooks never use async-local or other ambient state as the
-/// authoritative reentrancy mechanism; a <see cref="HookDispatchScope"/> is
-/// threaded explicitly through every dispatch call, and this exception is
-/// thrown when that explicit scope shows the same point already active at
-/// or beyond its configured maximum depth.
+/// authoritative reentrancy mechanism; <see cref="IHookInvocationTracker"/> on the
+/// activation lease records active depth per point, and this exception is thrown when
+/// entering a point would exceed the configured maximum depth.
 /// </remarks>
 public sealed class HookReentrancyException: Exception
 {

@@ -46,7 +46,6 @@ internal static class HookServiceRegistration
         {
             _ = provider.GetRequiredService<HookRegistrationBindingRegistryInitializer>();
             return new HookRegistrationBindingSource(
-                provider,
                 provider.GetRequiredService<HookRegistrationBindingRegistry>(),
                 provider.GetRequiredService<IReadOnlyList<HookPointDefinitionRegistration>>());
         });
@@ -60,33 +59,39 @@ internal static class HookServiceRegistration
         return services;
     }
 
-    internal static IServiceCollection AddRunStartedHook<THook>(IServiceCollection services)
+    internal static IServiceCollection AddRunStartedHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
         where THook : class, IRunStartedHook
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.RunStarted);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IRunStartedHook, THook>());
-        AddBinding<THook>(services, typeof(IRunStartedHook), AgentHookPoints.RunStarted);
+        AddBinding<THook>(services, typeof(IRunStartedHook), descriptor);
         return services;
     }
 
-    internal static IServiceCollection AddBeforeModelRequestHook<THook>(IServiceCollection services)
+    internal static IServiceCollection AddBeforeModelRequestHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
         where THook : class, IBeforeModelRequestHook
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeModelRequest);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeModelRequestHook, THook>());
-        AddBinding<THook>(services, typeof(IBeforeModelRequestHook), AgentHookPoints.BeforeModelRequest);
+        AddBinding<THook>(services, typeof(IBeforeModelRequestHook), descriptor);
         return services;
     }
 
-    internal static IServiceCollection AddBeforeToolInvocationHook<THook>(IServiceCollection services)
+    internal static IServiceCollection AddBeforeToolInvocationHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
         where THook : class, IBeforeToolInvocationHook
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeToolInvocation);
         _ = AddAgentHooks(services, configure: null);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeToolInvocationHook, THook>());
-        AddBinding<THook>(services, typeof(IBeforeToolInvocationHook), AgentHookPoints.BeforeToolInvocation);
+        AddBinding<THook>(services, typeof(IBeforeToolInvocationHook), descriptor);
         return services;
     }
 
@@ -109,15 +114,10 @@ internal static class HookServiceRegistration
     private static void AddBinding<THook>(
         IServiceCollection services,
         Type hookServiceType,
-        HookPointId point)
+        HookRegistrationDescriptor descriptor)
         where THook : class
     {
-        var binding = new HookRegistrationBinding(
-            point,
-            HookProfileOptions.DefaultProfileKey,
-            typeof(THook),
-            hookServiceType,
-            HookLifetime.Singleton);
+        var binding = new HookRegistrationBinding(descriptor, typeof(THook), hookServiceType);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHookRegistrationBindingContributor, HookRegistrationBindingContributor<THook>>(
             _ => new HookRegistrationBindingContributor<THook>(binding)));
     }

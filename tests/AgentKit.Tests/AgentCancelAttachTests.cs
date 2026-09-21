@@ -8,9 +8,6 @@ using AgentKit.TestSupport;
 
 public sealed class AgentCancelAttachTests
 {
-    private static readonly ComponentKey<IInputCoordinator> InputKey = new("attach-input");
-    private static readonly ComponentKey<IOutputPublisher> OutputKey = new("attach-output");
-
     [Fact]
     public async Task CancelAsync_WhenRunIsBlockedOnGate_SettlesCancelledAndReleasesLane()
     {
@@ -33,7 +30,8 @@ public sealed class AgentCancelAttachTests
 
         loop.Gate!.SetResult();
         var finished = (await running).ShouldBeOfType<AgentRunFinished<string>>();
-        finished.Outcome.ShouldBeOfType<RunCancelled>();
+        var cancelled = finished.Outcome.ShouldBeOfType<RunCancelled>();
+        cancelled.Reason.Error.Code.ShouldBe(AgentErrorCodes.Cancelled);
 
         loop.Gate = new TaskCompletionSource();
         var second = agent.RunAsync<string>(
@@ -64,7 +62,11 @@ public sealed class AgentCancelAttachTests
             cancellationToken: TestContext.Current.CancellationToken))
             .ShouldBeOfType<AgentRunFinished<string>>().RunId;
 
-        var rejected = (await agent.AttachAsync<string>(runId, identity, TestContext.Current.CancellationToken))
+        var rejected = (await agent.AttachAsync<string>(
+                runId,
+                CompositionTestData.SessionId,
+                identity,
+                TestContext.Current.CancellationToken))
             .ShouldBeOfType<AgentRunStreamRejected<string>>();
         rejected.Rejection.Failure.Code.ShouldBe(AgentErrorCodes.InvalidState);
     }
@@ -89,7 +91,11 @@ public sealed class AgentCancelAttachTests
         var runId = loop.Requests.Single().RunId;
         var services = loop.Services.Single();
 
-        var attached = (await agent.AttachAsync<string>(runId, identity, TestContext.Current.CancellationToken))
+        var attached = (await agent.AttachAsync<string>(
+                runId,
+                CompositionTestData.SessionId,
+                identity,
+                TestContext.Current.CancellationToken))
             .ShouldBeOfType<AgentRunStreamStarted<string>>().Stream;
 
         if (services.Publisher is IOutputPublisher publisher)
@@ -124,13 +130,12 @@ public sealed class AgentCancelAttachTests
 
     private static AgentEngine BuildStreamableEngine(GatedAgentLoop loop, InMemoryTestSessionCoordinator sessions)
     {
-        var definition = CompositionTestData.Definition() with
-        {
-            InputCoordinatorKey = InputKey,
-            OutputPublisherKey = OutputKey,
-        };
-        var builder = CompositionTestData.SendableBuilder(loop, sessions, definition: definition);
-        _ = builder.Services.AddAgentIO(InputKey, OutputKey);
+        var builder = CompositionTestData.SendableBuilder(loop, sessions);
+        _ = builder.Services.AddLogging();
+        _ = builder.Services.AddSessionBackedInputQueue();
+        _ = builder.Services.AddAgentIO(
+            AgentIOComponentDefaults.InputCoordinatorKey,
+            AgentIOComponentDefaults.OutputPublisherKey);
         return builder.Build();
     }
 }

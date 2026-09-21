@@ -11,7 +11,7 @@ namespace AgentKit;
 /// Raised after admission, session load, and model resolution succeeded, so the run, branch, and selected model are
 /// established facts. Hooks at this point observe; they cannot change the run.
 /// </remarks>
-public sealed class RunStartedEventArgs: AgentScopedHookEventArgs
+public sealed class RunStartedEventArgs: AgentHookEventArgs, IAgentScopedHookStage
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
@@ -32,9 +32,13 @@ public sealed class RunStartedEventArgs: AgentScopedHookEventArgs
         ModelDescriptor model,
         int maxTurns,
         TimeSpan attemptTimeout)
-        : base(dispatch, agentId, sessionId)
+        : base(dispatch)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
         ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation, true, nameof(dispatch));
+        AgentId = agentId;
+        SessionId = sessionId;
         ArgumentOutOfRangeException.ThrowIfEqual(branchId, default);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTurns);
@@ -44,6 +48,12 @@ public sealed class RunStartedEventArgs: AgentScopedHookEventArgs
         MaxTurns = maxTurns;
         AttemptTimeout = attemptTimeout;
     }
+
+    /// <inheritdoc/>
+    public AgentId AgentId { get; }
+
+    /// <inheritdoc/>
+    public SessionId? SessionId { get; }
 
     /// <summary>Gets the run identity.</summary>
     /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>

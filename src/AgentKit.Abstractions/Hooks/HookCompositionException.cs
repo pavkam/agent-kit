@@ -6,9 +6,9 @@ namespace AgentKit;
 /// <summary>
 /// Thrown when the set of hooks registered for one hook point cannot be
 /// resolved into a single deterministic order: a duplicate
-/// <see cref="HookId"/>, an ordering cycle, a missing
-/// <see cref="IHook.DependsOn"/> target, or more than one hook declaring
-/// <see cref="HookPriority.First"/> or <see cref="HookPriority.Last"/>.
+/// <see cref="HookRegistrationId"/>, an ordering cycle, a missing
+/// <see cref="HookRegistrationDescriptor.DependsOn"/> target, or more than one registration declaring
+/// <see cref="HookOrder.First"/> or <see cref="HookOrder.Last"/>.
 /// </summary>
 /// <remarks>
 /// This is a composition-time failure, not a per-dispatch failure: it

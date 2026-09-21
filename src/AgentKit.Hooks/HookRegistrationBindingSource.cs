@@ -3,34 +3,27 @@
 
 namespace AgentKit.Hooks;
 
-using Microsoft.Extensions.DependencyInjection;
-
 /// <summary>Discovers hook registrations emitted by first-party <c>Add*Hook&lt;T&gt;</c> registration bindings.</summary>
 internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
 {
-    private readonly IServiceProvider _provider;
     private readonly HookRegistrationBindingRegistry _bindings;
     private readonly Dictionary<HookPointId, HookPointDefinitionRegistration> _points;
 
     /// <summary>Initializes a new instance of the <see cref="HookRegistrationBindingSource"/> class.</summary>
-    /// <param name="provider">The composition used to resolve hook instances.</param>
     /// <param name="bindings">Every registration binding registered in the composition.</param>
     /// <param name="points">Every closed point definition registered in the composition.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="provider"/>, <paramref name="bindings"/>, or <paramref name="points"/> is null.
+    /// <paramref name="bindings"/> or <paramref name="points"/> is null.
     /// </exception>
     public HookRegistrationBindingSource(
-        IServiceProvider provider,
         HookRegistrationBindingRegistry bindings,
         IReadOnlyList<HookPointDefinitionRegistration> points)
     {
-        ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(bindings);
         ArgumentNullException.ThrowIfNull(points);
 
-        _provider = provider;
         _bindings = bindings;
-        _points = points.ToDictionary(static point => point.Point);
+        _points = HookPointDefinitionRegistrations.ToDictionary(points);
     }
 
     /// <inheritdoc/>
@@ -47,48 +40,30 @@ internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
         }
 
         var registrations = ImmutableArray.CreateBuilder<HookRegistrationDescriptor>();
-        var seenImplementationTypes = new HashSet<Type>();
+        var seenRegistrationIds = new HashSet<HookRegistrationId>();
         foreach (var binding in _bindings.Bindings)
         {
-            if (!binding.ProfileKey.Equals(request.ProfileKey) || !seenImplementationTypes.Add(binding.ImplementationType))
+            if (!binding.Descriptor.ProfileKey.Equals(request.ProfileKey))
             {
                 continue;
             }
 
-            if (!_points.TryGetValue(binding.Point, out var pointRegistration))
+            if (!seenRegistrationIds.Add(binding.Descriptor.Id))
             {
                 throw new HookCompositionException(
-                    $"Hook point '{binding.Point}' is not registered in the point-definition catalog.");
+                    $"Hook registration '{binding.Descriptor.Id}' is duplicated for point '{binding.Descriptor.Point}'.");
             }
 
-            var hook = ResolveHook(binding);
-            registrations.Add(binding.ToDescriptor(hook, pointRegistration));
+            if (!_points.TryGetValue(binding.Descriptor.Point, out var pointRegistration))
+            {
+                throw new HookCompositionException(
+                    $"Hook point '{binding.Descriptor.Point}' is not registered in the point-definition catalog.");
+            }
+
+            ArgumentException.ThrowIfNotEqual(pointRegistration.Point, binding.Descriptor.Point);
+            registrations.Add(binding.Descriptor);
         }
 
         return new ValueTask<HookRegistrationSnapshot>(new HookRegistrationSnapshot(registrations.ToImmutable()));
-    }
-
-    private IHook ResolveHook(HookRegistrationBinding binding) =>
-        binding.HookServiceType switch
-        {
-            var type when type == typeof(IRunStartedHook) => ResolveFrom<IRunStartedHook>(binding),
-            var type when type == typeof(IBeforeModelRequestHook) => ResolveFrom<IBeforeModelRequestHook>(binding),
-            var type when type == typeof(IBeforeToolInvocationHook) => ResolveFrom<IBeforeToolInvocationHook>(binding),
-            _ => throw new HookCompositionException($"Hook service type '{binding.HookServiceType.Name}' is not supported."),
-        };
-
-    private IHook ResolveFrom<THookService>(HookRegistrationBinding binding)
-        where THookService : class, IHook
-    {
-        foreach (var candidate in _provider.GetServices<THookService>())
-        {
-            if (candidate.GetType() == binding.ImplementationType)
-            {
-                return candidate;
-            }
-        }
-
-        throw new HookCompositionException(
-            $"Hook implementation '{binding.ImplementationType.Name}' is registered for point '{binding.Point}' but is not available from dependency injection.");
     }
 }

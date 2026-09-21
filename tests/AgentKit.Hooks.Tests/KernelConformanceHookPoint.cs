@@ -22,20 +22,29 @@ internal static class KernelConformanceHookPoint
         HookPointKind.Mutating,
         HookFailureMode.FailOperation);
 
+    internal static HookPointId ObservingId { get; } = new("agentkit.conformance.kernel.observing");
+
     internal static HookPointDefinition<IKernelObservingHook, KernelObservingEventArgs> ObservingDefinition { get; } = new(
-        new HookPointId("agentkit.conformance.kernel.observing"),
+        ObservingId,
         HookPointKind.Observational,
         HookFailureMode.IsolateAndDiagnose,
         new DefaultAgentHookMutationValidator<KernelObservingEventArgs>(),
         static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    internal static HookPointDefinitionRegistration ObservingRegistration { get; } = new(
+        ObservingId,
+        typeof(IKernelObservingHook),
+        typeof(KernelObservingEventArgs),
+        HookPointKind.Observational,
+        HookFailureMode.IsolateAndDiagnose);
 }
 
-internal interface IKernelConformanceHook: IHook
+internal interface IKernelConformanceHook
 {
     public ValueTask InvokeAsync(KernelConformanceEventArgs args, HookInvocationContext context, CancellationToken cancellationToken);
 }
 
-internal interface IKernelObservingHook: IHook
+internal interface IKernelObservingHook
 {
     public ValueTask InvokeAsync(KernelObservingEventArgs args, HookInvocationContext context, CancellationToken cancellationToken);
 }
@@ -63,5 +72,5 @@ internal sealed class KernelObservingEventArgs: AgentHookEventArgs
 
     public override object? CaptureMutableState() => Payload;
 
-    public override void RestoreMutableState(object? snapshot) => Payload = (string?)snapshot;
+    public override void RestoreMutableState(object? snapshot) => Payload = (string?) snapshot;
 }

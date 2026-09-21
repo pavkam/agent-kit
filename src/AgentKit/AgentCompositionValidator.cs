@@ -76,6 +76,7 @@ internal static class AgentCompositionValidator
         // IModelCatalog is always resolved unkeyed by DefaultAgentRunPlanCompiler.CompileServices (per-loop catalog
         // selection is not a supported axis), so one engine-wide check covers every definition.
         _ = Resolve<IModelCatalog>(provider, diagnostics, "agentkit.model-catalog.missing");
+        HookCompositionValidator.Validate(provider, diagnostics);
         // The continuation policy is resolved from one fixed, well-known key rather than per loop, so
         // this is a single engine-wide check rather than one per runnable definition.
         if (!componentRegistrations.Services.Any(service =>
@@ -151,6 +152,7 @@ internal static class AgentCompositionValidator
         ValidateSingularRegistration<TimeProvider>(snapshot, diagnostics, "agentkit.time");
         ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");
         ValidateSingularRegistration<IIdentifierGenerator<OperationId>>(snapshot, diagnostics, "agentkit.operationid");
+        HookCompositionValidator.ValidateRegistrations(snapshot, diagnostics);
         ValidateAgentLoopRegistered(snapshot, diagnostics);
         return diagnostics.ToImmutable();
     }

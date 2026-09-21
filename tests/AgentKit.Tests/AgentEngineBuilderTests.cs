@@ -85,6 +85,7 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.RemoveAll<TimeProvider>();
         _ = builder.Services.AddSingleton<TimeProvider, TrackingTimeProvider>();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
 
@@ -115,6 +116,7 @@ public sealed class AgentEngineBuilderTests
     {
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
@@ -185,6 +187,7 @@ public sealed class AgentEngineBuilderTests
         var definition = CompositionTestData.Definition();
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedScoped<IAgentLoop, MissingDependencyAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
         var exception = Should.Throw<AggregateException>(builder.Build);
@@ -199,6 +202,7 @@ public sealed class AgentEngineBuilderTests
         var definition = CompositionTestData.Definition();
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedScoped<IAgentLoop>("selected", (_, _) =>
         {
@@ -587,6 +591,7 @@ public sealed class AgentEngineBuilderTests
         ThrowingBootstrapTestSource.Reset();
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
@@ -712,6 +717,7 @@ public sealed class AgentEngineBuilderTests
         var legacy = new AgentDefinition(configured.Id, configured.Revision, configured.DisplayName, configured.Models, configured.ModelRequirements, configured.Instructions, configured.Tools, configured.ToolChoice, configured.Settings, configured.RunDefaults, configured.Extensions);
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(legacy);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
@@ -810,6 +816,7 @@ public sealed class AgentEngineBuilderTests
     {
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>
 /// An <see cref="IAgentLoop"/> that records each request, signals entry, optionally waits on a gate, and completes
 /// with an assistant message so concurrency and observer behaviour can be exercised deterministically.

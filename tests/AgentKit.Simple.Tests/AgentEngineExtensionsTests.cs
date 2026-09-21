@@ -215,6 +215,8 @@ public sealed class AgentEngineExtensionsTests
         // An engine without a conversation is still a valid engine; only the AskAsync surface is absent.
         var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
         _ = builder.Services.RemoveAll<IConversationSession>();
+        _ = builder.Services.RemoveAll<IConversationEngineHost>();
+        _ = builder.Services.RemoveAll<IConversationTurnExecutor>();
         await using var engine = builder.Build();
 
         var exception = Should.Throw<InvalidOperationException>(() => engine.Conversation);

@@ -25,7 +25,7 @@ public sealed class HookRegistrationCatalogTests
     public async Task CaptureAsync_WhenRunStartedHookRegistered_CapturesDescriptor()
     {
         var services = new ServiceCollection();
-        _ = services.AddRunStartedHook<CatalogRunStartedHook>();
+        _ = services.AddRunStartedHook<CatalogRunStartedHook>(RunStartedDescriptor(new HookId("catalog.run-started")));
         using var provider = services.BuildServiceProvider();
         var catalog = provider.GetRequiredService<IHookCatalog>();
 
@@ -42,8 +42,8 @@ public sealed class HookRegistrationCatalogTests
     public async Task CaptureAsync_WhenDuplicateRegistrationId_ThrowsHookCompositionException()
     {
         var services = new ServiceCollection();
-        _ = services.AddRunStartedHook<DuplicateOneRunStartedHook>();
-        _ = services.AddRunStartedHook<DuplicateTwoRunStartedHook>();
+        _ = services.AddRunStartedHook<DuplicateOneRunStartedHook>(RunStartedDescriptor(new HookId("duplicate")));
+        _ = services.AddRunStartedHook<DuplicateTwoRunStartedHook>(RunStartedDescriptor(new HookId("duplicate")));
         using var provider = services.BuildServiceProvider();
         var catalog = provider.GetRequiredService<IHookCatalog>();
 
@@ -56,7 +56,7 @@ public sealed class HookRegistrationCatalogTests
     public async Task CreateAsync_WhenCatalogCaptured_ResolvesRegisteredHook()
     {
         var services = new ServiceCollection();
-        _ = services.AddRunStartedHook<CatalogRunStartedHook>();
+        _ = services.AddRunStartedHook<CatalogRunStartedHook>(RunStartedDescriptor(new HookId("catalog.run-started")));
         using var provider = services.BuildServiceProvider();
         var catalog = provider.GetRequiredService<IHookCatalog>();
         var factory = provider.GetRequiredService<IHookInstanceFactory>();
@@ -72,27 +72,24 @@ public sealed class HookRegistrationCatalogTests
         _ = resolution.ShouldBeOfType<HookInstanceResolved<IRunStartedHook>>().Hook.ShouldBeOfType<CatalogRunStartedHook>();
     }
 
+    private static HookRegistrationDescriptor RunStartedDescriptor(HookId authorId) =>
+        HookRegistrationDescriptors.ForPoint(authorId, AgentHookPointDefinitions.RunStartedRegistration);
+
     private sealed class CatalogRunStartedHook: IRunStartedHook
     {
-        public HookId Id { get; } = new("catalog.run-started");
-
-        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default) =>
+        public ValueTask InvokeAsync(RunStartedEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }
 
     private sealed class DuplicateOneRunStartedHook: IRunStartedHook
     {
-        public HookId Id { get; } = new("duplicate");
-
-        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default) =>
+        public ValueTask InvokeAsync(RunStartedEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }
 
     private sealed class DuplicateTwoRunStartedHook: IRunStartedHook
     {
-        public HookId Id { get; } = new("duplicate");
-
-        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default) =>
+        public ValueTask InvokeAsync(RunStartedEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }
 }

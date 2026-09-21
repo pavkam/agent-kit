@@ -154,6 +154,17 @@ namespace AgentKit.Conversations
         public AgentKit.SessionId? SessionId { get; init; }
         public bool Succeeded { get; init; }
     }
+    public sealed class ConversationTurnRunRequest : System.IEquatable<AgentKit.Conversations.ConversationTurnRunRequest>
+    {
+        public ConversationTurnRunRequest(AgentKit.AgentId AgentId, AgentKit.ExecutionIdentity Identity, AgentKit.SessionId? SessionId, string UserText, int MaxTurns, System.TimeSpan AttemptTimeout, AgentKit.IAgentRunObserver? Observer) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public System.TimeSpan AttemptTimeout { get; init; }
+        public AgentKit.ExecutionIdentity Identity { get; init; }
+        public int MaxTurns { get; init; }
+        public AgentKit.IAgentRunObserver? Observer { get; init; }
+        public AgentKit.SessionId? SessionId { get; init; }
+        public string UserText { get; init; }
+    }
     public sealed class ConversationUsageEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationUsageEvent>
     {
         public ConversationUsageEvent(AgentKit.ModelUsage usage) { }
@@ -161,45 +172,8 @@ namespace AgentKit.Conversations
     }
     public sealed class DefaultConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
     {
-        public DefaultConversationSession(
-                    AgentKit.ISessionCoordinator sessionCoordinator,
-                    AgentKit.ISecurityProfileSelector securityProfileSelector,
-                    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory loopScopeFactory,
-                    AgentKit.IContextAssembler contextAssembler,
-                    AgentKit.IToolInvoker toolInvoker,
-                    AgentKit.IModelCatalog modelCatalog,
-                    AgentKit.IModelSelector modelSelector,
-                    AgentKit.ILlmModelResolver llmModelResolver,
-                    [Microsoft.Extensions.DependencyInjection.FromKeyedServices("agentkit-default-continuation")] AgentKit.IRunContinuationPolicy continuationPolicy,
-                    AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
-                    System.TimeProvider timeProvider,
-                    Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null,
-                    AgentKit.ICompactor? compactor = null,
-                    AgentKit.IBudgetAuthority? budgets = null) { }
-        public DefaultConversationSession(
-                    AgentKit.ISessionCoordinator sessionCoordinator,
-                    AgentKit.ISecurityProfileSelector securityProfileSelector,
-                    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory loopScopeFactory,
-                    AgentKit.IContextAssembler contextAssembler,
-                    AgentKit.IToolInvoker toolInvoker,
-                    AgentKit.IModelCatalog modelCatalog,
-                    AgentKit.IModelSelector modelSelector,
-                    AgentKit.ILlmModelResolver llmModelResolver,
-                    AgentKit.IRunContinuationPolicy continuationPolicy,
-                    AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
-                    System.TimeProvider timeProvider,
-                    Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
-                    AgentKit.IToolPresenter? toolPresenter,
-                    AgentKit.ICompactor? compactor = null,
-                    AgentKit.IBudgetAuthority? budgets = null) { }
+        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.Conversations.IConversationTurnExecutor turnExecutor, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.Conversations.IConversationTurnExecutor turnExecutor, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger, AgentKit.IToolPresenter? toolPresenter) { }
         public AgentKit.BranchId? BranchId { get; }
         public AgentKit.SessionId? SessionId { get; }
         public void Dispose() { }
@@ -224,6 +198,12 @@ namespace AgentKit.Conversations
         System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationHistoryReadResult> ReadHistoryAsync(AgentKit.SessionSequence afterSequence, int maximumEntries, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IConversationTurnExecutor
+    {
+        System.Threading.Tasks.Task<AgentKit.SessionId> EnsureSessionAsync(AgentKit.AgentId agentId, AgentKit.ExecutionIdentity identity, AgentKit.SessionId? existingSessionId, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.AgentRunResult<TOutput>> RunAsync<TOutput>(AgentKit.Conversations.ConversationTurnRunRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.AgentLoopResult> SendObservedAsync(AgentKit.Conversations.ConversationTurnRunRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public sealed class OwnedConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
     {

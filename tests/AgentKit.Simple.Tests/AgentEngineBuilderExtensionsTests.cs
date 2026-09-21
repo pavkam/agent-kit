@@ -581,7 +581,10 @@ public sealed class AgentEngineBuilderExtensionsTests
         var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
         _ = builder.Services.AddInMemoryFileSystem();
         _ = builder.Services.AddReadTool();
-        _ = builder.Services.AddBeforeToolInvocationHook<VetoSecretsHook>();
+        _ = builder.Services.AddBeforeToolInvocationHook<VetoSecretsHook>(
+            HookRegistrationDescriptors.ForPoint(
+                new HookId("test.veto-secrets"),
+                AgentHookPointDefinitions.BeforeToolInvocationRegistration));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -968,9 +971,10 @@ public sealed class AgentEngineBuilderExtensionsTests
 
     private sealed class VetoSecretsHook: IBeforeToolInvocationHook
     {
-        public HookId Id { get; } = new("test.veto-secrets");
-
-        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        public ValueTask InvokeAsync(
+            BeforeToolInvocationEventArgs args,
+            HookInvocationContext context,
+            CancellationToken cancellationToken = default)
         {
             if (args.Arguments.TryGetProperty("path", out var path) && path.GetString()!.Contains("secret", StringComparison.Ordinal))
             {

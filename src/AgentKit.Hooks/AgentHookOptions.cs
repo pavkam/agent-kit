@@ -6,7 +6,7 @@ namespace AgentKit.Hooks;
 /// <summary>
 /// Host-level ceilings for the first-party <see cref="DefaultHookDispatcher"/>. Every value here is a hard bound
 /// that composes monotonically with the per-call arguments of
-/// <see cref="IHookDispatcher.DispatchAsync{THook,TArgs}"/>: a caller may tighten a dispatch beyond these values but
+/// the legacy <c>DispatchAsync</c> overload that accepts an explicit hook sequence: a caller may tighten a dispatch beyond these values but
 /// can never relax past them.
 /// </summary>
 /// <remarks>

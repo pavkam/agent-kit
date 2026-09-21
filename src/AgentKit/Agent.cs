@@ -249,19 +249,22 @@ public sealed class Agent
     /// <summary>Attaches to one active run's durable replay and live event tail.</summary>
     /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
     /// <param name="runId">The accepted run to attach to.</param>
+    /// <param name="sessionId">The session the run belongs to; used for typed rejection evidence when attach is unavailable.</param>
     /// <param name="identity">The already-authenticated caller.</param>
     /// <param name="cancellationToken">Cancels attachment setup. It does not abort the run.</param>
     /// <returns>A started stream, or a rejection when the run settled or cannot be tailed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="identity"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> or <paramref name="sessionId"/> is default.</exception>
     /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
     public Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
         RunId runId,
+        SessionId sessionId,
         ExecutionIdentity identity,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
-        return _runtime.AttachAsync<TOutput>(this, runId, identity, cancellationToken);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        return _runtime.AttachAsync<TOutput>(this, runId, sessionId, identity, cancellationToken);
     }
 }

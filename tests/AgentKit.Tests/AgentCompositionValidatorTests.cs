@@ -64,6 +64,7 @@ public sealed class AgentCompositionValidatorTests
         _ = services.AddAgentKit();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
+        HookCompositionTestSupport.TryAddDefaultHookKernel(services);
         _ = services.AddSingleton<ISecurityGrantStore>(_ =>
         {
             storeFactoryCalls++;
@@ -88,6 +89,7 @@ public sealed class AgentCompositionValidatorTests
         _ = services.AddAgentKit();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
+        HookCompositionTestSupport.TryAddDefaultHookKernel(services);
         _ = services.AddKeyedSingleton<ISecurityGrantStore>(null, grantStore);
         var snapshot = ComponentRegistrationSnapshot.Capture(services);
         var store = snapshot.Services.Where(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ShouldHaveSingleItem();
@@ -193,5 +195,58 @@ public sealed class AgentCompositionValidatorTests
         var exception = Should.Throw<AgentCompositionException>(() => AgentCompositionValidator.ValidateComponentRegistrations(ComponentRegistrationSnapshot.Capture(builder.Services)));
         // Assert
         exception.Diagnostics.Select(static diagnostic => diagnostic.Code).ShouldBe(["agentkit.catalog.missing", "agentkit.security-profile-selector.missing", "agentkit.time.missing"]);
+    }
+
+    [Fact]
+    public void ValidateComponentRegistrations_WhenHookKernelIsMissing_ReportsHookDispatcherMissingWithoutFactories()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
+        var snapshot = ComponentRegistrationSnapshot.Capture(services);
+        var exception = Should.Throw<AgentCompositionException>(() => AgentCompositionValidator.ValidateComponentRegistrations(snapshot));
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-dispatcher.missing");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-catalog.missing");
+    }
+
+    [Fact]
+    public void Build_WhenHookKernelWasNeverRegistered_RejectsWithHookDispatcherMissing()
+    {
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.RemoveAll<IHookDispatcher>();
+        _ = builder.Services.RemoveAll<IHookCatalog>();
+        _ = builder.Services.RemoveAll<IHookProfileSelector>();
+        _ = builder.Services.RemoveAll<IHookOrderResolver>();
+        _ = builder.Services.RemoveAll<IHookInstanceFactory>();
+        _ = builder.Services.RemoveAll<IIdentifierGenerator<HookDispatchId>>();
+        _ = builder.Services.RemoveAll<IIdentifierGenerator<HookInvocationId>>();
+        _ = builder.Services.RemoveAll<IReadOnlyList<HookPointDefinitionRegistration>>();
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-dispatcher.missing");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-catalog.missing");
+    }
+
+    [Fact]
+    public void Build_WhenPointDefinitionsCollide_RejectsWithHookPointCollision()
+    {
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.RemoveAll<IReadOnlyList<HookPointDefinitionRegistration>>();
+        _ = builder.Services.AddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>([
+            AgentHookPointDefinitions.RunStartedRegistration,
+            new HookPointDefinitionRegistration(
+                AgentHookPoints.RunStarted,
+                typeof(IBeforeModelRequestHook),
+                typeof(BeforeModelRequestEventArgs),
+                HookPointKind.Mutating,
+                HookFailureMode.FailOperation),
+        ]);
+
+        var exception = Should.Throw<AgentCompositionException>(() =>
+            AgentCompositionValidator.ValidateComponentRegistrations(ComponentRegistrationSnapshot.Capture(builder.Services)));
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-point.collision");
     }
 }

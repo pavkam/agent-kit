@@ -20,7 +20,7 @@ using System.Text.Json;
 /// This is a transform point: the loop dispatches it with <see cref="HookFailureMode.FailOperation"/>.
 /// </para>
 /// </remarks>
-public sealed class BeforeToolInvocationEventArgs: AgentScopedHookEventArgs, IShortCircuitingHookArgs
+public sealed class BeforeToolInvocationEventArgs: AgentHookEventArgs, IAgentScopedHookStage, IShortCircuitingHookArgs
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
@@ -34,13 +34,23 @@ public sealed class BeforeToolInvocationEventArgs: AgentScopedHookEventArgs, ISh
         AgentId agentId,
         SessionId sessionId,
         ToolCallPart call)
-        : base(dispatch, agentId, sessionId)
+        : base(dispatch)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
         ArgumentNullException.ThrowIfNull(call);
         ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation { TurnId: not null }, true, nameof(dispatch));
+        AgentId = agentId;
+        SessionId = sessionId;
         Call = call;
         Arguments = call.Arguments;
     }
+
+    /// <inheritdoc/>
+    public AgentId AgentId { get; }
+
+    /// <inheritdoc/>
+    public SessionId? SessionId { get; }
 
     /// <summary>Gets the run identity.</summary>
     /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>

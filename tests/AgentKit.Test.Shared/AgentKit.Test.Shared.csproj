@@ -10,5 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj" />
   </ItemGroup>
 </Project>

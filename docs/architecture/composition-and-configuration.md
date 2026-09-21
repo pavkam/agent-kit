@@ -513,6 +513,7 @@ public Task<SessionRunAbortResult> CancelAsync(
 
 public Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
     RunId runId,
+    SessionId sessionId,
     ExecutionIdentity identity,
     CancellationToken cancellationToken = default);
 ```

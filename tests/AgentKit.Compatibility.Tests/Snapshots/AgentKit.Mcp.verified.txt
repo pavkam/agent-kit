@@ -2,11 +2,80 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Mcp
 {
+    public sealed class McpAuthenticationReference : System.IEquatable<AgentKit.Mcp.McpAuthenticationReference>
+    {
+        public McpAuthenticationReference(string credentialProfileKey, string audience) { }
+        public string Audience { get; }
+        public string CredentialProfileKey { get; }
+    }
+    public static class McpCapabilityIds
+    {
+        public static AgentKit.CapabilityId Client { get; }
+    }
+    public sealed class McpCapabilityProfile : System.IEquatable<AgentKit.Mcp.McpCapabilityProfile>
+    {
+        public McpCapabilityProfile(AgentKit.CapabilityId capabilityId, AgentKit.CapabilityProfileId profileId, AgentKit.Mcp.McpCapabilityProfileRevision revision, System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpEndpointKey> endpointKeys) { }
+        public AgentKit.CapabilityId CapabilityId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpEndpointKey> EndpointKeys { get; }
+        public AgentKit.CapabilityProfileId ProfileId { get; }
+        public AgentKit.Mcp.McpCapabilityProfileRevision Revision { get; }
+        public bool Equals(AgentKit.Mcp.McpCapabilityProfile? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct McpCapabilityProfileRevision : System.IEquatable<AgentKit.Mcp.McpCapabilityProfileRevision>
+    {
+        public McpCapabilityProfileRevision(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public readonly struct McpCatalogVersion : System.IEquatable<AgentKit.Mcp.McpCatalogVersion>
     {
         public McpCatalogVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class McpClientOpenRequest : System.IEquatable<AgentKit.Mcp.McpClientOpenRequest>
+    {
+        public McpClientOpenRequest(AgentKit.Mcp.McpCapabilityProfile capabilityProfile, AgentKit.Mcp.McpEndpoint endpoint, AgentKit.ProtectedSemanticOperationContext operation) { }
+        public AgentKit.Mcp.McpCapabilityProfile CapabilityProfile { get; }
+        public AgentKit.Mcp.McpEndpoint Endpoint { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+    }
+    public sealed class McpEndpoint : System.IEquatable<AgentKit.Mcp.McpEndpoint>
+    {
+        public McpEndpoint(AgentKit.Mcp.McpEndpointKey key, AgentKit.Mcp.McpEndpointRevision revision, AgentKit.Mcp.McpTransportProfile transport, AgentKit.Mcp.McpAuthenticationReference? authentication, AgentKit.Mcp.McpEndpointBounds bounds) { }
+        public AgentKit.Mcp.McpAuthenticationReference? Authentication { get; }
+        public AgentKit.Mcp.McpEndpointBounds Bounds { get; }
+        public AgentKit.Mcp.McpEndpointKey Key { get; }
+        public AgentKit.Mcp.McpEndpointRevision Revision { get; }
+        public AgentKit.Mcp.McpTransportProfile Transport { get; }
+    }
+    public sealed class McpEndpointBounds : System.IEquatable<AgentKit.Mcp.McpEndpointBounds>
+    {
+        public McpEndpointBounds(System.TimeSpan handshakeTimeout, System.TimeSpan requestTimeout, System.TimeSpan shutdownTimeout, int maximumFrameBytes, int maximumMessageBytes, int maximumInFlightRequests) { }
+        public System.TimeSpan HandshakeTimeout { get; }
+        public int MaximumFrameBytes { get; }
+        public int MaximumInFlightRequests { get; }
+        public int MaximumMessageBytes { get; }
+        public System.TimeSpan RequestTimeout { get; }
+        public System.TimeSpan ShutdownTimeout { get; }
+    }
+    public readonly struct McpEndpointKey : System.IEquatable<AgentKit.Mcp.McpEndpointKey>
+    {
+        public McpEndpointKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct McpEndpointRevision : System.IEquatable<AgentKit.Mcp.McpEndpointRevision>
+    {
+        public McpEndpointRevision(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class McpHttpTransportProfile : AgentKit.Mcp.McpTransportProfile, System.IEquatable<AgentKit.Mcp.McpHttpTransportProfile>
+    {
+        public McpHttpTransportProfile(System.Uri endpoint) { }
+        public System.Uri Endpoint { get; }
     }
     public static class McpMetadataKeys
     {
@@ -38,6 +107,32 @@ namespace AgentKit.Mcp
         public static AgentKit.Mcp.McpProtocolVersion November2024 { get; }
         public static AgentKit.Mcp.McpProtocolVersion November2025 { get; }
         public static System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpProtocolVersion> SupportedBySdk { get; }
+    }
+    public readonly struct McpRequestId : System.IEquatable<AgentKit.Mcp.McpRequestId>
+    {
+        public McpRequestId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct McpServerKey : System.IEquatable<AgentKit.Mcp.McpServerKey>
+    {
+        public McpServerKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct McpSessionId : System.IEquatable<AgentKit.Mcp.McpSessionId>
+    {
+        public McpSessionId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class McpStdioTransportProfile : AgentKit.Mcp.McpTransportProfile, System.IEquatable<AgentKit.Mcp.McpStdioTransportProfile>
+    {
+        public McpStdioTransportProfile(string command, System.Collections.Immutable.ImmutableArray<string> arguments) { }
+        public System.Collections.Immutable.ImmutableArray<string> Arguments { get; }
+        public string Command { get; }
+        public bool Equals(AgentKit.Mcp.McpStdioTransportProfile? other) { }
+        public override int GetHashCode() { }
     }
     [System.AttributeUsage(System.AttributeTargets.Method, AllowMultiple=false, Inherited=true)]
     public sealed class McpToolAttribute : System.Attribute
@@ -78,6 +173,7 @@ namespace AgentKit.Mcp
         public string Value { get; }
         public override string ToString() { }
     }
+    public abstract class McpTransportProfile : System.IEquatable<AgentKit.Mcp.McpTransportProfile> { }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

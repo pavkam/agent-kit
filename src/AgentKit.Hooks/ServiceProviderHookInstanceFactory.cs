@@ -3,8 +3,6 @@
 
 namespace AgentKit.Hooks;
 
-using Microsoft.Extensions.DependencyInjection;
-
 /// <summary>Creates activation leases backed by the host <see cref="IServiceProvider"/>.</summary>
 public sealed class ServiceProviderHookInstanceFactory: IHookInstanceFactory
 {
@@ -55,13 +53,7 @@ public sealed class ServiceProviderHookInstanceFactory: IHookInstanceFactory
     {
         foreach (var binding in _bindings)
         {
-            if (!binding.Point.Equals(registration.Point) || !binding.ProfileKey.Equals(registration.ProfileKey))
-            {
-                continue;
-            }
-
-            var hook = ResolveHook(binding);
-            if (HookRegistrationIds.FromAuthorHookId(hook.Id).Equals(registration.Id))
+            if (binding.Descriptor.Id.Equals(registration.Id))
             {
                 return binding;
             }
@@ -69,29 +61,5 @@ public sealed class ServiceProviderHookInstanceFactory: IHookInstanceFactory
 
         throw new HookCompositionException(
             $"Hook registration '{registration.Id}' has no dependency-injection binding.");
-    }
-
-    private IHook ResolveHook(HookRegistrationBinding binding) =>
-        binding.HookServiceType switch
-        {
-            var type when type == typeof(IRunStartedHook) => ResolveFrom<IRunStartedHook>(binding),
-            var type when type == typeof(IBeforeModelRequestHook) => ResolveFrom<IBeforeModelRequestHook>(binding),
-            var type when type == typeof(IBeforeToolInvocationHook) => ResolveFrom<IBeforeToolInvocationHook>(binding),
-            _ => throw new HookCompositionException($"Hook service type '{binding.HookServiceType.Name}' is not supported."),
-        };
-
-    private IHook ResolveFrom<THookService>(HookRegistrationBinding binding)
-        where THookService : class, IHook
-    {
-        foreach (var candidate in _provider.GetServices<THookService>())
-        {
-            if (candidate.GetType() == binding.ImplementationType)
-            {
-                return candidate;
-            }
-        }
-
-        throw new HookCompositionException(
-            $"Hook implementation '{binding.ImplementationType.Name}' is registered for point '{binding.Point}' but is not available from dependency injection.");
     }
 }

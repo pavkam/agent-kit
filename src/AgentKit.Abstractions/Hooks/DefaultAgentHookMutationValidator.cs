@@ -1,11 +1,11 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Hooks;
+namespace AgentKit;
 
 /// <summary>Default mutation validator that delegates to <see cref="AgentHookEventArgs.Validate"/>.</summary>
 /// <typeparam name="TEventArgs">The closed event-argument type for one hook point.</typeparam>
-internal sealed class DefaultAgentHookMutationValidator<TEventArgs>: IHookMutationValidator<TEventArgs>
+public sealed class DefaultAgentHookMutationValidator<TEventArgs>: IHookMutationValidator<TEventArgs>
     where TEventArgs : AgentHookEventArgs
 {
     /// <inheritdoc/>

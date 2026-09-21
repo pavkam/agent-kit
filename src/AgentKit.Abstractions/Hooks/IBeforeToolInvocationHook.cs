@@ -8,13 +8,17 @@ namespace AgentKit;
 /// A hook may rewrite the arguments or veto the call with a safe reason. It cannot change the call identity or the
 /// tool, and it cannot grant or bypass authorization: rewritten arguments still pass schema validation and the
 /// security authority. The loop dispatches this point with <see cref="HookFailureMode.FailOperation"/>: a throwing
-/// hook fails the turn. Register implementations additively as <see cref="IBeforeToolInvocationHook"/> singletons.
+/// hook fails the turn. Register implementations additively with an explicit <see cref="HookRegistrationDescriptor"/> per registration.
 /// </remarks>
-public interface IBeforeToolInvocationHook: IHook
+public interface IBeforeToolInvocationHook
 {
     /// <summary>Inspects, rewrites, or vetoes the call about to be invoked.</summary>
     /// <param name="args">The call and its writable arguments and veto.</param>
+    /// <param name="context">This invocation's registration and dispatch identities.</param>
     /// <param name="cancellationToken">Cancels the hook; cancellation propagates to the run.</param>
     /// <returns>A task that completes when the hook has finished.</returns>
-    public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default);
+    public ValueTask InvokeAsync(
+        BeforeToolInvocationEventArgs args,
+        HookInvocationContext context,
+        CancellationToken cancellationToken = default);
 }

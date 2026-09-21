@@ -12,9 +12,6 @@ using AgentKit;
 /// </remarks>
 internal sealed class AgentRunScopeLease: IAsyncDisposable
 {
-    private readonly IAsyncDisposable _ownedScope;
-    private readonly IServiceProvider _provider;
-
     /// <summary>Captures a compiled plan and the scope that produced it.</summary>
     /// <param name="plan">The non-null plan resolved from the scope.</param>
     /// <param name="ownedScope">The scope to dispose exactly once when this lease is disposed.</param>
@@ -26,13 +23,19 @@ internal sealed class AgentRunScopeLease: IAsyncDisposable
         ArgumentNullException.ThrowIfNull(ownedScope);
         ArgumentNullException.ThrowIfNull(provider);
         Plan = plan;
-        _ownedScope = ownedScope;
-        _provider = provider;
+        OwnedScope = ownedScope;
+        ScopeProvider = provider;
     }
 
     /// <summary>Gets the plan compiled inside the owned scope.</summary>
     /// <value>The activation collaborators. They are invalid after this lease is disposed.</value>
     internal AgentRunPlan Plan { get; }
+
+    private IAsyncDisposable OwnedScope { get; }
+
+    /// <summary>Gets the owned scope's service provider.</summary>
+    /// <value>The provider used to resolve run-scoped collaborators after <see cref="BindRunIdentity"/>.</value>
+    internal IServiceProvider ScopeProvider { get; }
 
     /// <summary>Publishes the accepted run identity into this scope.</summary>
     /// <param name="identity">The non-null identity discovered after admission allocated a <see cref="RunId"/>.</param>
@@ -44,10 +47,10 @@ internal sealed class AgentRunScopeLease: IAsyncDisposable
     internal void BindRunIdentity(RunScopeIdentity identity)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        _provider.GetRequiredService<RunScopeState>().Identity = identity;
+        ScopeProvider.GetRequiredService<RunScopeState>().Identity = identity;
     }
 
     /// <summary>Disposes the owned scope.</summary>
     /// <returns>The scope's asynchronous disposal.</returns>
-    public ValueTask DisposeAsync() => _ownedScope.DisposeAsync();
+    public ValueTask DisposeAsync() => OwnedScope.DisposeAsync();
 }

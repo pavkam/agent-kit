@@ -19,7 +19,7 @@ namespace AgentKit;
 /// failure fails the turn rather than sending a request whose settings are in an unknown state.
 /// </para>
 /// </remarks>
-public sealed class BeforeModelRequestEventArgs: AgentScopedHookEventArgs
+public sealed class BeforeModelRequestEventArgs: AgentHookEventArgs, IAgentScopedHookStage
 {
     /// <summary>Initializes the arguments.</summary>
     /// <param name="dispatch">The point identity, dispatch identity, causality, and timing facts for this dispatch.</param>
@@ -36,16 +36,26 @@ public sealed class BeforeModelRequestEventArgs: AgentScopedHookEventArgs
         SessionId sessionId,
         int turn,
         LlmRequestContext request)
-        : base(dispatch, agentId, sessionId)
+        : base(dispatch)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(turn);
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNotEqual(Correlation is InRunOperationCorrelation { TurnId: not null }, true, nameof(dispatch));
+        AgentId = agentId;
+        SessionId = sessionId;
         Turn = turn;
         Request = request;
         OriginalSettings = request.Settings;
         Settings = request.Settings;
     }
+
+    /// <inheritdoc/>
+    public AgentId AgentId { get; }
+
+    /// <inheritdoc/>
+    public SessionId? SessionId { get; }
 
     /// <summary>Gets the run identity.</summary>
     /// <value>Read through the base <see cref="AgentHookEventArgs.Correlation"/>, which the constructor requires to be an in-run correlation; never a second stored copy.</value>

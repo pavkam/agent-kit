@@ -6,9 +6,10 @@ namespace AgentKit.Hooks.Tests;
 using AgentKit.Conformance;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>Composes <see cref="DefaultHookDispatcher"/> through <see cref="ServiceExtensions.AddAgentHooks"/> for conformance.</summary>
-internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherConformanceFixture
+public sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherConformanceFixture
 {
     private readonly ServiceProvider _provider;
 
@@ -40,12 +41,19 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
     public async ValueTask AssertPointMismatchFailsBeforeDispatchAsync(CancellationToken cancellationToken)
     {
         await using var scope = await CreateMutatingScopeAsync(cancellationToken).ConfigureAwait(false);
-        var context = scope.CreateDispatch(CreateMutatingDispatch());
+        var dispatch = CreateMutatingDispatch();
+        var context = scope.CreateDispatch(dispatch);
         var args = CreateMutatingArgs();
-        var wrongPoint = BuiltInAgentHookPointDefinitions.RunStarted;
+        var mismatchedArgs = new KernelConformanceEventArgs(
+            new HookDispatchMetadata(
+                BuiltInAgentHookPointDefinitions.RunStarted.Id,
+                dispatch.DispatchId,
+                dispatch.Correlation,
+                dispatch.Timestamp,
+                dispatch.Deadline));
 
         var exception = await Should.ThrowAsync<ArgumentException>(async () =>
-            await Dispatcher.DispatchAsync(wrongPoint, context, args, cancellationToken: cancellationToken));
+            await Dispatcher.DispatchAsync(KernelConformanceHookPoint.Definition, context, mismatchedArgs, cancellationToken: cancellationToken));
 
         exception.ParamName.ShouldBe("point");
         args.InvocationOrder.ShouldBeEmpty();
@@ -110,61 +118,55 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
 
     private static void RegisterKernelPoint(IServiceCollection services)
     {
-        services.TryAddSingleton(KernelConformanceHookPoint.Definition);
-        services.AddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
+        _ = services.AddSingleton(KernelConformanceHookPoint.Definition);
+        _ = services.AddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
         [
             BuiltInAgentHookPointDefinitions.RunStartedRegistration,
             BuiltInAgentHookPointDefinitions.BeforeModelRequestRegistration,
             BuiltInAgentHookPointDefinitions.BeforeToolInvocationRegistration,
             KernelConformanceHookPoint.Registration,
         ]);
-        RegisterHook<IKernelConformanceHook, KernelFirstHook>(services, KernelConformanceHookPoint.Id);
-        RegisterHook<IKernelConformanceHook, KernelSecondHook>(services, KernelConformanceHookPoint.Id);
-        RegisterHook<IKernelConformanceHook, KernelThirdHook>(services, KernelConformanceHookPoint.Id);
+        RegisterHook<IKernelConformanceHook, KernelFirstHook>(services, KernelConformanceHookPoint.Registration, new HookId("conformance.first"));
+        RegisterHook<IKernelConformanceHook, KernelSecondHook>(services, KernelConformanceHookPoint.Registration, new HookId("conformance.second"));
+        RegisterHook<IKernelConformanceHook, KernelThirdHook>(services, KernelConformanceHookPoint.Registration, new HookId("conformance.third"));
     }
 
     private static void RegisterObservingPoint(IServiceCollection services)
     {
-        services.TryAddSingleton(KernelConformanceHookPoint.ObservingDefinition);
-        services.TryAddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
+        _ = services.AddSingleton(KernelConformanceHookPoint.ObservingDefinition);
+        _ = services.AddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
         [
             BuiltInAgentHookPointDefinitions.RunStartedRegistration,
             BuiltInAgentHookPointDefinitions.BeforeModelRequestRegistration,
             BuiltInAgentHookPointDefinitions.BeforeToolInvocationRegistration,
-            new HookPointDefinitionRegistration(
-                KernelConformanceHookPoint.ObservingDefinition.Id,
-                typeof(IKernelObservingHook),
-                typeof(KernelObservingEventArgs),
-                HookPointKind.Observational,
-                HookFailureMode.IsolateAndDiagnose),
+            KernelConformanceHookPoint.ObservingRegistration,
         ]);
         RegisterHook<IKernelObservingHook, ObservingFailHook>(
             services,
-            KernelConformanceHookPoint.ObservingDefinition.Id);
+            KernelConformanceHookPoint.ObservingRegistration,
+            new HookId("conformance.observing.fail"));
         RegisterHook<IKernelObservingHook, ObservingRecordHook>(
             services,
-            KernelConformanceHookPoint.ObservingDefinition.Id);
+            KernelConformanceHookPoint.ObservingRegistration,
+            new HookId("conformance.observing.record"));
     }
 
-    private static void RegisterHook<THook, TImplementation>(IServiceCollection services, HookPointId point)
-        where THook : class, IHook
+    private static void RegisterHook<THook, TImplementation>(
+        IServiceCollection services,
+        HookPointDefinitionRegistration pointRegistration,
+        HookId authorId)
+        where THook : class
         where TImplementation : class, THook
     {
         services.TryAddEnumerable(ServiceDescriptor.Singleton<THook, TImplementation>());
-        var binding = new HookRegistrationBinding(
-            point,
-            HookProfileOptions.DefaultProfileKey,
-            typeof(TImplementation),
-            typeof(THook),
-            HookLifetime.Singleton);
+        var descriptor = HookRegistrationDescriptors.ForPoint(authorId, pointRegistration);
+        var binding = new HookRegistrationBinding(descriptor, typeof(TImplementation), typeof(THook));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHookRegistrationBindingContributor, HookRegistrationBindingContributor<TImplementation>>(
             _ => new HookRegistrationBindingContributor<TImplementation>(binding)));
     }
 
     private sealed class KernelFirstHook: IKernelConformanceHook
     {
-        public HookId Id { get; } = new("conformance.first");
-
         public ValueTask InvokeAsync(KernelConformanceEventArgs args, HookInvocationContext context, CancellationToken cancellationToken)
         {
             args.InvocationOrder.Add(context.RegistrationId);
@@ -175,8 +177,6 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
 
     private sealed class KernelSecondHook: IKernelConformanceHook
     {
-        public HookId Id { get; } = new("conformance.second");
-
         public ValueTask InvokeAsync(KernelConformanceEventArgs args, HookInvocationContext context, CancellationToken cancellationToken)
         {
             args.InvocationOrder.Add(context.RegistrationId);
@@ -187,8 +187,6 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
 
     private sealed class KernelThirdHook: IKernelConformanceHook
     {
-        public HookId Id { get; } = new("conformance.third");
-
         public ValueTask InvokeAsync(KernelConformanceEventArgs args, HookInvocationContext context, CancellationToken cancellationToken)
         {
             args.InvocationOrder.Add(context.RegistrationId);
@@ -199,8 +197,6 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
 
     private sealed class ObservingFailHook: IKernelObservingHook
     {
-        public HookId Id { get; } = new("conformance.observing.fail");
-
         public ValueTask InvokeAsync(KernelObservingEventArgs args, HookInvocationContext context, CancellationToken cancellationToken)
         {
             args.Payload = "mutated";
@@ -210,8 +206,6 @@ internal sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherCo
 
     private sealed class ObservingRecordHook: IKernelObservingHook
     {
-        public HookId Id { get; } = new("conformance.observing.record");
-
         public ValueTask InvokeAsync(KernelObservingEventArgs args, HookInvocationContext context, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }

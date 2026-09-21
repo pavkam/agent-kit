@@ -20,9 +20,9 @@ Owning documents: [Extensions](../architecture/extensions.md),
 - [x] WS2-C4a order resolver and invocation tracker
 - [x] WS2-C4b registration catalog, instance factory, profile selector
 - [x] WS2-C5 new `DispatchAsync` overload and conformance suite
-- [ ] WS2-C6 migrate `DefaultAgentLoop` and `AgentHookPoints`
-- [ ] WS2-C7 remove legacy kernel surface
-- [ ] WS2-C8 composition validation for hook services
+- [x] WS2-C6 migrate `DefaultAgentLoop` and `AgentHookPointDefinitions`
+- [x] WS2-C7 remove legacy kernel surface
+- [x] WS2-C8 composition validation for hook services
 - [ ] WS2-C9 `AgentDefinition.HookProfile`
 - [ ] WS2-C10 named hook profiles
 - [ ] WS2-C11 diagnostic sinks

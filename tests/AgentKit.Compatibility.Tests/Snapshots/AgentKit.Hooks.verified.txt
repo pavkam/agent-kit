@@ -6,28 +6,80 @@ namespace AgentKit.Hooks
     public sealed class AgentHookOptions
     {
         public AgentHookOptions() { }
+        public System.TimeSpan DefaultHookTimeout { get; set; }
         public int MaximumInvocationDepth { get; set; }
         public AgentKit.HookFailureMode MinimumFailureMode { get; set; }
+        public AgentKit.HookMutationDispatchMode MutationDispatchMode { get; set; }
+        public AgentKit.HookReloadBoundary ReloadBoundary { get; set; }
     }
     public sealed class DefaultHookDispatcher : AgentKit.IHookDispatcher
     {
         public DefaultHookDispatcher(Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
-        public DefaultHookDispatcher(Microsoft.Extensions.Options.IOptions<AgentKit.Hooks.AgentHookOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
-        public System.Threading.Tasks.Task DispatchAsync<THook, TArgs>(AgentKit.HookPointId point, System.Collections.Generic.IEnumerable<THook> hooks, TArgs args, System.Func<THook, TArgs, AgentKit.HookDispatchScope, System.Threading.CancellationToken, System.Threading.Tasks.Task> invoke, AgentKit.HookDispatchScope scope, AgentKit.HookFailureMode failureMode = 0, int maxReentrantDepth = 1, System.Threading.CancellationToken cancellationToken = default)
-            where THook : AgentKit.IHook
-            where TArgs : AgentKit.AgentHookEventArgs { }
+        public DefaultHookDispatcher(Microsoft.Extensions.Options.IOptions<AgentKit.Hooks.AgentHookOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null, AgentKit.IHookOrderResolver? orderResolver = null, AgentKit.IIdentifierGenerator<AgentKit.HookInvocationId>? invocationIds = null) { }
+        public System.Threading.Tasks.ValueTask DispatchAsync<THook, TEventArgs>(AgentKit.HookPointDefinition<THook, TEventArgs> point, AgentKit.HookDispatchContext context, TEventArgs eventArgs, AgentKit.HookFailureMode? failurePolicyTightening = default, System.Threading.CancellationToken cancellationToken = default)
+            where THook :  class
+            where TEventArgs : AgentKit.AgentHookEventArgs { }
+    }
+    public sealed class DefaultHookProfileSelector : AgentKit.IHookProfileSelector
+    {
+        public DefaultHookProfileSelector() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.HookProfileSelectionResult> SelectAsync(AgentKit.HookProfileSelectionRequest request, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class HookInvocationTracker : AgentKit.IHookInvocationTracker
+    {
+        public HookInvocationTracker(int maximumInvocationDepth) { }
+        public void Leave(AgentKit.HookDispatchId dispatchId) { }
+        public AgentKit.HookInvocationTrackingResult TryEnter(AgentKit.HookInvocationAttempt attempt) { }
+    }
+    public static class HookOrderDiagnosticCodes
+    {
+        public const string AnchorContradiction = "agentkit.hook-order.anchor-contradiction";
+        public const string ContradictoryEdges = "agentkit.hook-order.contradictory-edges";
+        public const string Cycle = "agentkit.hook-order.cycle";
+        public const string DuplicateRegistration = "agentkit.hook-order.duplicate-registration";
+        public const string MissingDependency = "agentkit.hook-order.missing-dependency";
+        public const string MultipleFirst = "agentkit.hook-order.multiple-first";
+        public const string MultipleLast = "agentkit.hook-order.multiple-last";
+        public const string SelfReference = "agentkit.hook-order.self-reference";
+    }
+    public sealed class HookOrderResolver : AgentKit.IHookOrderResolver
+    {
+        public HookOrderResolver() { }
+        public AgentKit.HookOrderResult Resolve(System.Collections.Immutable.ImmutableArray<AgentKit.HookRegistrationDescriptor> registrations) { }
+    }
+    public sealed class HookProfileOptions
+    {
+        public HookProfileOptions() { }
+        public static AgentKit.HookProfileKey DefaultProfileKey { get; }
+    }
+    public sealed class HookRegistrationCatalog : AgentKit.IHookCatalog
+    {
+        public HookRegistrationCatalog(System.Collections.Generic.IEnumerable<AgentKit.IHookRegistrationSource> sources, AgentKit.IHookOrderResolver orderResolver, System.Collections.Generic.IReadOnlyList<AgentKit.HookPointDefinitionRegistration> points) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.HookCatalogSnapshot> CaptureAsync(AgentKit.HookCatalogRequest request, System.Threading.CancellationToken cancellationToken) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentHooks(System.Action<AgentKit.Hooks.AgentHookOptions>? configure = null) { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunStartedHook<THook>()
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunStartedHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
                 where THook :  class, AgentKit.IRunStartedHook { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeModelRequestHook<THook>()
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeModelRequestHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
                 where THook :  class, AgentKit.IBeforeModelRequestHook { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeToolInvocationHook<THook>()
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeToolInvocationHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
                 where THook :  class, AgentKit.IBeforeToolInvocationHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IHookDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IHookCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookOrderResolver<TResolver>()
+                where TResolver :  class, AgentKit.IHookOrderResolver { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookProfileSelector<TSelector>()
+                where TSelector :  class, AgentKit.IHookProfileSelector { }
         }
+    }
+    public sealed class ServiceProviderHookInstanceFactory : AgentKit.IHookInstanceFactory
+    {
+        public System.Threading.Tasks.ValueTask<AgentKit.IHookActivationLease> CreateAsync(AgentKit.HookCatalogSnapshot catalog, System.Threading.CancellationToken cancellationToken) { }
     }
 }

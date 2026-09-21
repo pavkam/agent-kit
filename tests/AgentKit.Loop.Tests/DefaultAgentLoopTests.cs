@@ -3204,15 +3204,13 @@ public sealed class DefaultAgentLoopTests
 
     private sealed class RecordingRunStartedHook: IRunStartedHook
     {
-        public HookId Id { get; } = new("test.run-started");
-
         public List<RunStartedEventArgs> Invocations { get; } = [];
 
         public bool Throw { get; init; }
 
         public int? ModelCallsWhenInvoked { get; set; }
 
-        public ValueTask OnRunStartedAsync(RunStartedEventArgs args, CancellationToken cancellationToken = default)
+        public ValueTask InvokeAsync(RunStartedEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default)
         {
             Invocations.Add(args);
             ModelCallsWhenInvoked ??= 1;
@@ -3222,11 +3220,9 @@ public sealed class DefaultAgentLoopTests
 
     private sealed class SettingsHook(Func<LlmRequestSettings, LlmRequestSettings> transform): IBeforeModelRequestHook
     {
-        public HookId Id { get; } = new("test.settings");
-
         public List<BeforeModelRequestEventArgs> Invocations { get; } = [];
 
-        public ValueTask OnBeforeModelRequestAsync(BeforeModelRequestEventArgs args, CancellationToken cancellationToken = default)
+        public ValueTask InvokeAsync(BeforeModelRequestEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default)
         {
             Invocations.Add(args);
             args.Settings = transform(args.Settings);
@@ -3236,9 +3232,7 @@ public sealed class DefaultAgentLoopTests
 
     private sealed class ToolHook(Action<BeforeToolInvocationEventArgs> act): IBeforeToolInvocationHook
     {
-        public HookId Id { get; } = new("test.tool");
-
-        public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken cancellationToken = default)
+        public ValueTask InvokeAsync(BeforeToolInvocationEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default)
         {
             act(args);
             return ValueTask.CompletedTask;
@@ -4016,6 +4010,8 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IHookCatalog? hookCatalog = null,
+        IHookInstanceFactory? hookInstanceFactory = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
@@ -4046,6 +4042,18 @@ public sealed class DefaultAgentLoopTests
             inputCoordinator,
             outputPublisher);
 
+        if (hookCatalog is null && hookInstanceFactory is null
+            && (hookDispatcher is not null
+                || runStartedHooks is not null
+                || beforeModelRequestHooks is not null
+                || beforeToolInvocationHooks is not null))
+        {
+            (hookCatalog, hookInstanceFactory) = StaticHookRunComposition.Create(
+                runStartedHooks,
+                beforeModelRequestHooks,
+                beforeToolInvocationHooks);
+        }
+
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
@@ -4057,9 +4065,8 @@ public sealed class DefaultAgentLoopTests
             TestLoopKey,
             logger,
             hookDispatcher,
-            runStartedHooks,
-            beforeModelRequestHooks,
-            beforeToolInvocationHooks);
+            hookCatalog,
+            hookInstanceFactory);
     }
 
     private DefaultAgentLoop CreateLoopWith(

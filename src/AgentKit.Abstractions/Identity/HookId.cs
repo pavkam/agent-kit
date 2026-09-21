@@ -5,8 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// The stable, author-supplied identity of one hook registration, used for
-/// ordering constraints (<see cref="IHook.RunsBefore"/>,
-/// <see cref="IHook.RunsAfter"/>, <see cref="IHook.DependsOn"/>),
+/// ordering constraints on <see cref="HookRegistrationDescriptor"/> soft and hard edges,
 /// diagnostics, and duplicate-registration detection.
 /// </summary>
 /// <remarks>

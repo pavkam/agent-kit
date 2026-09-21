@@ -173,7 +173,11 @@ public static class AgentEngineExtensions
         {
             ArgumentNullException.ThrowIfNull(engine);
             ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
-            var agent = await ResolveDefaultAgentAsync(engine, cancellationToken).ConfigureAwait(false);
+            var plan = engine.Services.GetRequiredService<SimpleAgentPlan>();
+            var resolution = await engine.GetAgentAsync(plan.EffectiveAgentId, cancellationToken).ConfigureAwait(false);
+            var agent = resolution is ResolvedAgent resolved
+                ? resolved.Agent
+                : throw new InvalidOperationException("The simple agent is not available in the engine catalog.");
             return await agent.CancelAsync(runId, engine.Identity, cancellationToken).ConfigureAwait(false);
         }
 
@@ -191,17 +195,14 @@ public static class AgentEngineExtensions
         {
             ArgumentNullException.ThrowIfNull(engine);
             ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
-            var agent = await ResolveDefaultAgentAsync(engine, cancellationToken).ConfigureAwait(false);
-            return await agent.AttachAsync<TOutput>(runId, engine.Identity, cancellationToken).ConfigureAwait(false);
+            var sessionId = engine.Conversation.SessionId
+                ?? throw new InvalidOperationException("Attach to a run only after the conversation is bound to a session.");
+            var plan = engine.Services.GetRequiredService<SimpleAgentPlan>();
+            var resolution = await engine.GetAgentAsync(plan.EffectiveAgentId, cancellationToken).ConfigureAwait(false);
+            var agent = resolution is ResolvedAgent resolved
+                ? resolved.Agent
+                : throw new InvalidOperationException("The simple agent is not available in the engine catalog.");
+            return await agent.AttachAsync<TOutput>(runId, sessionId, engine.Identity, cancellationToken).ConfigureAwait(false);
         }
-    }
-
-    private static async Task<Agent> ResolveDefaultAgentAsync(AgentEngine engine, CancellationToken cancellationToken)
-    {
-        var plan = engine.Services.GetRequiredService<SimpleAgentPlan>();
-        var resolution = await engine.GetAgentAsync(plan.EffectiveAgentId, cancellationToken).ConfigureAwait(false);
-        return resolution is ResolvedAgent resolved
-            ? resolved.Agent
-            : throw new InvalidOperationException("The simple agent is not available in the engine catalog.");
     }
 }

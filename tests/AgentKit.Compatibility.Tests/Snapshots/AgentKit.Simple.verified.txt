@@ -40,6 +40,9 @@ namespace AgentKit.Simple
             public System.Threading.Tasks.Task<T> AskAsync<T>(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
             public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+            public System.Threading.Tasks.Task<AgentKit.AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(string text, System.Threading.CancellationToken cancellationToken = default) { }
+            public System.Threading.Tasks.Task<AgentKit.SessionRunAbortResult> CancelAsync(AgentKit.RunId runId, System.Threading.CancellationToken cancellationToken = default) { }
+            public System.Threading.Tasks.Task<AgentKit.AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(AgentKit.RunId runId, System.Threading.CancellationToken cancellationToken = default) { }
         }
     }
     public sealed class SimpleAgentException : System.Exception

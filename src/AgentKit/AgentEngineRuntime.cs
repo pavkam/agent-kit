@@ -458,20 +458,23 @@ internal sealed class AgentEngineRuntime
     /// <typeparam name="TOutput">The validated output snapshot type.</typeparam>
     /// <param name="agent">The pinned handle whose definition is revalidated.</param>
     /// <param name="runId">The accepted run to attach to.</param>
+    /// <param name="sessionId">The session the run belongs to; used for typed rejection evidence when attach is unavailable.</param>
     /// <param name="identity">The already-authenticated caller.</param>
     /// <param name="cancellationToken">Cancels attachment setup. It does not abort the run.</param>
     /// <returns>A started attach stream, or a rejection when the run settled or cannot be tailed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="agent"/> or <paramref name="identity"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> is default.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runId"/> or <paramref name="sessionId"/> is default.</exception>
     /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
     internal async Task<AgentRunStreamStartResult<TOutput>> AttachAsync<TOutput>(
         Agent agent,
         RunId runId,
+        SessionId sessionId,
         ExecutionIdentity identity,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
         ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
         ArgumentNullException.ThrowIfNull(identity);
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
@@ -479,7 +482,7 @@ internal sealed class AgentEngineRuntime
         {
             return new AgentRunStreamRejected<TOutput>(Reject<TOutput>(
                 agent.Id,
-                default,
+                sessionId,
                 AgentErrorCodes.InvalidState,
                 "The requested run is not active in this process."));
         }
@@ -728,13 +731,6 @@ internal sealed class AgentEngineRuntime
             var sessionId = descriptor.Address.SessionId;
             var branchId = descriptor.ActiveBranchId;
             _ = activity?.SetTag(AgentKitTagNames.SessionId, sessionId.ToString());
-            if (streaming && plan.Services.Publisher is not ISubscribableOutputPublisher)
-            {
-                return FailBeforeAcceptance<TOutput>(
-                    definition, sessionId, catalogVersion, activity, ref admissionCompleted, typedRejection: true,
-                    AgentErrorCodes.UnsupportedCapability,
-                    "The composed output publisher does not expose a live subscription.");
-            }
 
             var laneId = executionLaneId ?? new ExecutionLaneId(sessionId.Value);
             var acquisition = await _gate.TryEnterAsync(definition.Id, sessionId, sessionProfile.BusyBehavior, cancellationToken)
@@ -803,6 +799,15 @@ internal sealed class AgentEngineRuntime
             var runId = _runIds.Create();
             gate.AssignRun(runId);
             lease.BindRunIdentity(new RunScopeIdentity(definition.Id, sessionId, descriptor.ConversationId, runId));
+            var runServices = ResolveRunScopedServices(lease, definition, plan.Services);
+            if (streaming && runServices.Publisher is not ISubscribableOutputPublisher)
+            {
+                return FailBeforeAcceptance<TOutput>(
+                    definition, sessionId, catalogVersion, activity, ref admissionCompleted, typedRejection: true,
+                    AgentErrorCodes.UnsupportedCapability,
+                    "The composed output publisher does not expose a live subscription.");
+            }
+
             var effectiveInput = capturedInput ?? throw new InvalidOperationException("Admission did not capture input.");
 
             var now = TimeProvider.GetUtcNow();
@@ -862,7 +867,7 @@ internal sealed class AgentEngineRuntime
                 previousCursor,
                 capability.Profile,
                 sessionsForRun,
-                plan.Services.Publisher as ISubscribableOutputPublisher));
+                runServices.Publisher as ISubscribableOutputPublisher));
 
             var laneAdmission = new LoopLaneAdmission(laneId, acceptedCorrelation, new OperationStateRevision(1));
             var runRequest = BuildRunRequest(
@@ -877,7 +882,7 @@ internal sealed class AgentEngineRuntime
 
             if (streaming)
             {
-                var subscribable = (ISubscribableOutputPublisher) plan.Services.Publisher!;
+                var subscribable = (ISubscribableOutputPublisher) runServices.Publisher!;
                 var stream = subscribable.Subscribe<TOutput>();
                 var capturedLease = lease;
                 var capturedGate = gate;
@@ -885,15 +890,15 @@ internal sealed class AgentEngineRuntime
                 gate = null;
                 handedOff = true;
                 _ = FinishStreamAsync<TOutput>(
-                    capturedLease, capturedGate, plan.Loop, runRequest, plan.Services, sessionsForRun, capability,
+                    capturedLease, capturedGate, plan.Loop, runRequest, runServices, sessionsForRun, capability,
                     definition.Id, sessionId, laneId, acceptedCorrelation, identity, acceptedAuthorization, runId,
-                    descriptor.ConversationId, previousCursor, plan.Services.Publisher, cancellationToken);
+                    descriptor.ConversationId, previousCursor, runServices.Publisher, cancellationToken);
                 return new ExecutionOutcome<TOutput>(stream);
             }
 
             try
             {
-                var loopResult = await plan.Loop.RunAsync(runRequest, plan.Services, cancellationToken).ConfigureAwait(false);
+                var loopResult = await plan.Loop.RunAsync(runRequest, runServices, cancellationToken).ConfigureAwait(false);
                 if (loopResult.FinalVersion is { } finalVersion)
                 {
                     await ReleaseLaneAsync(
@@ -1289,6 +1294,38 @@ internal sealed class AgentEngineRuntime
         }
 
         return builder.ToString();
+    }
+
+    private static AgentRunServices ResolveRunScopedServices(
+        AgentRunScopeLease lease,
+        AgentDefinition definition,
+        AgentRunServices compiled)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(compiled);
+        var provider = lease.ScopeProvider;
+        var outputKey = (definition.OutputPublisherKey ?? AgentIOComponentDefaults.OutputPublisherKey).Value;
+        var inputKey = (definition.InputCoordinatorKey ?? AgentIOComponentDefaults.InputCoordinatorKey).Value;
+        var publisher = provider.GetKeyedService<IOutputPublisher>(outputKey) ?? compiled.Publisher;
+        var input = provider.GetKeyedService<IInputCoordinator>(inputKey) ?? compiled.Input;
+        return input == compiled.Input && publisher == compiled.Publisher
+            ? compiled
+            : new AgentRunServices(
+                compiled.Session,
+                compiled.SecurityProfileSelector,
+                compiled.Context,
+                compiled.Tools,
+                compiled.Models,
+                compiled.ModelSelector,
+                compiled.ModelResolver,
+                compiled.ContinuationPolicy,
+                compiled.OutputProcessor,
+                compiled.Compactor,
+                compiled.Budgets,
+                compiled.RunCoordinator,
+                input,
+                publisher);
     }
 
     private static AgentRunRejected<TOutput> Reject<TOutput>(
