@@ -18,7 +18,7 @@ Owning documents:
 - [x] WS3-C2 `ISecurityAuthority` hook-context parameter
 - [x] WS3-C3 policy context and constraint intersection
 - [x] WS3-C4 policy catalog and selector
-- [ ] WS3-C5 request/decision audit; audit dispatcher mandatory
+- [x] WS3-C5 request/decision audit; audit dispatcher mandatory
 - [ ] WS3-C6a grant issuer and decision store
 - [ ] WS3-C6b Json and Sqlite decision stores
 - [ ] WS3-C7a typed `RevokeAsync` and revocation generation

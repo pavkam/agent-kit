@@ -187,11 +187,13 @@ claims, assurance, and delegation.
 
 Security transitions produce redacted audit records: identities, operation
 kinds, resources, decision codes, and timestamps, never prompts, file contents,
-or credentials. Today the approval flow (requests, outcomes, and the grants it
-issues) and session-store enforcement are audited; ordinary allow/deny decisions
-and file or process enforcement are not yet, and the
-[permissions workstream](../workstreams/permissions-approvals-and-audit.md)
-tracks closing that gap.
+or credentials. The first-party `SecurityAuthority` emits `Request` and
+`Decision` audit for every authorization attempt, `GrantIssued` when a grant
+registers, and the approval broker emits `Approval` transitions. Session-store
+enforcement and file or process boundaries continue to add their own enforcement
+audit kinds; see the
+[permissions workstream](../workstreams/permissions-approvals-and-audit.md) for
+remaining grant-lifecycle and boundary coverage.
 
 With `UseLocalDevelopmentDefaults` delivery is best-effort because no sink is
 registered. A real host registers a sink and keeps delivery `Required`, which

@@ -15,7 +15,7 @@ Owning documents: [Context](../architecture/context.md),
 ## Progress
 
 - [x] WS9-C1 contributor and manifest value contracts
-- [ ] WS9-C2 budget allocation contracts and default allocator
+- [x] WS9-C2 budget allocation contracts and default allocator
 - [ ] WS9-C3 keyed `AddAgentContext`, `ContextAssemblerServices`, contributors
       run
 - [ ] WS9-C4 `InstructionSource` and definition migration

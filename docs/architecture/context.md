@@ -295,6 +295,23 @@ public interface IContextAssembler
         CancellationToken cancellationToken = default);
 }
 
+public sealed record ContextBudget(
+    long MaxContextTokens,
+    int ReservedOutputTokens,
+    int ProviderOverheadTokens,
+    double EstimationSafetyMargin);
+
+public sealed record ContextBudgetRequest(
+    ContextBudget Budget,
+    ImmutableArray<ContextCandidate> Candidates,
+    ContextOverflowBehavior OverflowBehavior);
+
+public sealed record ContextBudgetPlan(
+    ImmutableArray<ContextCandidate> Selected,
+    ImmutableArray<ContextCandidate> Omitted,
+    ContextCostEstimate EstimatedTotal,
+    bool MandatoryOverflow);
+
 public interface IContextBudgetAllocator
 {
     ValueTask<ContextBudgetPlan> AllocateAsync(
@@ -427,7 +444,9 @@ public sealed class AgentContextOptions
     public ContextOverflowBehavior OverflowBehavior { get; set; } =
         ContextOverflowBehavior.Fail;
     public int ReservedOutputTokens { get; set; } = 1_024;
+    public int ProviderOverheadTokens { get; set; } = 256;
     public double EstimationSafetyMargin { get; set; } = 0.10;
+    public double EstimatedCharactersPerToken { get; set; } = 4.0;
     public bool AllowParallelContributors { get; set; }
 }
 

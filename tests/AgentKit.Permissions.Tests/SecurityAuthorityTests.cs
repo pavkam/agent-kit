@@ -156,12 +156,11 @@ public sealed class SecurityAuthorityTests
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
         var broker = new ApprovingBroker();
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            broker,
-            new AcceptingAuditDispatcher(),
             store,
-            clock);
+            clock,
+            approvalBroker: broker);
 
         var request = CreateRequest();
         var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
@@ -181,13 +180,12 @@ public sealed class SecurityAuthorityTests
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
         var broker = new SlowApprovingBroker(clock, TimeSpan.FromMinutes(3));
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            broker,
-            new AcceptingAuditDispatcher(),
             store,
             clock,
-            options: new AgentPermissionOptions { MaximumGrantLifetime = TimeSpan.FromMinutes(5) });
+            options: new AgentPermissionOptions { MaximumGrantLifetime = TimeSpan.FromMinutes(5) },
+            approvalBroker: broker);
         var request = CreateRequest() with { Deadline = _now.AddHours(1) };
 
         var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
@@ -202,16 +200,14 @@ public sealed class SecurityAuthorityTests
     {
         // Infrastructure unavailability and an explicit human "no" are different facts; audit must not conflate them.
         var clock = new FakeTimeProvider(_now);
-        var unavailableAuthority = CreateApprovalAuthority(
+        var unavailableAuthority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new FixedBroker(new ApprovalBrokerUnavailable("store offline")),
-            new AcceptingAuditDispatcher(),
-            timeProvider: clock);
-        var deniedAuthority = CreateApprovalAuthority(
+            timeProvider: clock,
+            approvalBroker: new FixedBroker(new ApprovalBrokerUnavailable("store offline")));
+        var deniedAuthority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new DenyingBroker(),
-            new AcceptingAuditDispatcher(),
-            timeProvider: clock);
+            timeProvider: clock,
+            approvalBroker: new DenyingBroker());
 
         var unavailable = await unavailableAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
         var denied = await deniedAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
@@ -379,24 +375,25 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_WhenApprovalRequiredWithoutCoordination_DeniesAsApprovalUnavailable()
+    public async Task AuthorizeAsync_WhenApprovalRequiredAndBrokerDenies_DeniesAsApprovalDenied()
     {
-        var authority = CreateAuthority([new StubPolicy(SecurityPolicyResultKind.RequireApproval)]);
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            approvalBroker: new DenyingBroker());
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
-        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.approval_unavailable");
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.approval_denied");
     }
 
     [Fact]
     public async Task AuthorizeAsync_WhenApprovalExpires_DeniesWithApprovalExpiredCode()
     {
         var clock = new FakeTimeProvider(_now);
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new FixedBroker(new ApprovalBrokerExpired()),
-            new AcceptingAuditDispatcher(),
-            timeProvider: clock);
+            timeProvider: clock,
+            approvalBroker: new FixedBroker(new ApprovalBrokerExpired()));
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
@@ -408,12 +405,11 @@ public sealed class SecurityAuthorityTests
     {
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new MismatchedRequestIdBroker(),
-            new AcceptingAuditDispatcher(),
             store,
-            clock);
+            clock,
+            approvalBroker: new MismatchedRequestIdBroker());
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
@@ -425,11 +421,10 @@ public sealed class SecurityAuthorityTests
     public async Task AuthorizeAsync_WhenRequiredApprovalAuditThrowsOperationCanceled_Propagates()
     {
         var clock = new FakeTimeProvider(_now);
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new ApprovingBroker(),
-            new ThrowingAuditDispatcher(new OperationCanceledException()),
-            timeProvider: clock);
+            timeProvider: clock,
+            auditDispatcher: new ThrowingAuditDispatcher(new OperationCanceledException()));
 
         _ = await Should.ThrowAsync<OperationCanceledException>(
             async () => await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken));
@@ -440,12 +435,11 @@ public sealed class SecurityAuthorityTests
     {
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new ApprovingBroker(),
-            new ThrowingAuditDispatcher(new InvalidOperationException("boom")),
             store,
-            clock);
+            clock,
+            auditDispatcher: new ThrowingAuditDispatcher(new InvalidOperationException("boom")));
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
@@ -460,12 +454,11 @@ public sealed class SecurityAuthorityTests
     {
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new ApprovingBroker(),
-            new RejectingAuditDispatcher(),
             store,
-            clock);
+            clock,
+            auditDispatcher: new RejectingAuditDispatcher());
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
@@ -483,20 +476,24 @@ public sealed class SecurityAuthorityTests
         // registered a grant with no audit record whatsoever.
         var clock = new FakeTimeProvider(_now);
         var dispatcher = new RecordingAuditDispatcher();
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.Allow)],
-            new FaultingBroker(),
-            dispatcher,
-            timeProvider: clock);
+            timeProvider: clock,
+            approvalBroker: new FaultingBroker(),
+            auditDispatcher: dispatcher);
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
         var allowed = decision.ShouldBeOfType<SecurityAllowed>();
-        var audit = dispatcher.Dispatched.ShouldHaveSingleItem();
-        audit.EventKind.ShouldBe(SecurityAuditEventKind.GrantIssued);
-        audit.Outcome.ShouldBe(SecurityAuditOutcome.Accepted);
-        audit.GrantId.ShouldBe(allowed.Grant.Id);
-        audit.ApprovalRequestId.ShouldBeNull();
+        dispatcher.Dispatched.Count.ShouldBe(3);
+        dispatcher.Dispatched[0].EventKind.ShouldBe(SecurityAuditEventKind.Request);
+        dispatcher.Dispatched[1].EventKind.ShouldBe(SecurityAuditEventKind.Decision);
+        var grantAudit = dispatcher.Dispatched[2];
+        grantAudit.EventKind.ShouldBe(SecurityAuditEventKind.GrantIssued);
+        grantAudit.Outcome.ShouldBe(SecurityAuditOutcome.Accepted);
+        grantAudit.GrantId.ShouldBe(allowed.Grant.Id);
+        grantAudit.ApprovalRequestId.ShouldBeNull();
+        dispatcher.Dispatched[1].Fields.ContainsKey(SecurityAuthorityAudit.WinningPolicyCodeField).ShouldBeTrue();
     }
 
     [Fact]
@@ -504,12 +501,12 @@ public sealed class SecurityAuthorityTests
     {
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
-        var authority = CreateApprovalAuthority(
+        var authority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.Allow)],
-            new FaultingBroker(),
-            new RejectingAuditDispatcher(),
             store,
-            clock);
+            clock,
+            approvalBroker: new FaultingBroker(),
+            auditDispatcher: new RejectingAuditDispatcher());
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
@@ -537,11 +534,10 @@ public sealed class SecurityAuthorityTests
         var denyingAuthority = CreateAuthority([], timeProvider: clock, logger: logger);
         using var cts = new CancellationTokenSource();
         var cancellingAuthority = CreateAuthority([new CancelingExternalPolicy(cts)], timeProvider: clock, logger: logger);
-        var faultingAuthority = CreateApprovalAuthority(
+        var faultingAuthority = CreateAuthority(
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
-            new FaultingBroker(),
-            new AcceptingAuditDispatcher(),
             timeProvider: clock,
+            approvalBroker: new FaultingBroker(),
             logger: logger);
 
         _ = await allowingAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
@@ -591,28 +587,10 @@ public sealed class SecurityAuthorityTests
         AgentPermissionOptions? options = null,
         IIdentityValidationPolicy? identityValidation = null,
         ISecurityPolicySelector? policySelector = null,
-        ILogger<SecurityAuthority>? logger = null)
-    {
-        var resolvedOptions = options ?? new AgentPermissionOptions();
-        return new(
-            policies,
-            store ?? new InMemorySecurityGrantStore(timeProvider ?? new FakeTimeProvider(_now)),
-            new StubGrantIdGenerator(),
-            timeProvider ?? new FakeTimeProvider(_now),
-            Options.Create(resolvedOptions),
-            policySelector ?? SecurityAuthorityTestData.CreatePolicySelector(resolvedOptions),
-            logger,
-            identityValidation);
-    }
-
-    private static SecurityAuthority CreateApprovalAuthority(
-        IEnumerable<ISecurityPolicy> policies,
-        IApprovalBroker broker,
-        ISecurityAuditDispatcher auditDispatcher,
-        ISecurityGrantStore? store = null,
-        TimeProvider? timeProvider = null,
-        AgentPermissionOptions? options = null,
-        ILogger<SecurityAuthority>? logger = null)
+        ILogger<SecurityAuthority>? logger = null,
+        IApprovalBroker? approvalBroker = null,
+        ISecurityAuditDispatcher? auditDispatcher = null,
+        IIdentifierGenerator<SecurityAuditRecordId>? auditRecordIds = null)
     {
         var resolvedOptions = options ?? new AgentPermissionOptions();
         var clock = timeProvider ?? new FakeTimeProvider(_now);
@@ -622,11 +600,13 @@ public sealed class SecurityAuthorityTests
             new StubGrantIdGenerator(),
             clock,
             Options.Create(resolvedOptions),
-            SecurityAuthorityTestData.CreatePolicySelector(resolvedOptions),
-            broker,
+            policySelector ?? SecurityAuthorityTestData.CreatePolicySelector(resolvedOptions),
+            approvalBroker ?? new ApprovingBroker(),
             new StubApprovalRequestIdGenerator(),
-            auditDispatcher,
-            logger);
+            auditDispatcher ?? new AcceptingAuditDispatcher(),
+            auditRecordIds ?? new StubAuditRecordIdGenerator(),
+            logger,
+            identityValidation);
     }
 
     private static SecurityPolicySnapshotReference PolicySnapshot(string id, string fingerprint) => new(
@@ -714,6 +694,11 @@ public sealed class SecurityAuthorityTests
     {
         public ApprovalRequestId Create() =>
             new(Guid.Parse("80000000-0000-0000-0000-000000000008"));
+    }
+
+    private sealed class StubAuditRecordIdGenerator: IIdentifierGenerator<SecurityAuditRecordId>
+    {
+        public SecurityAuditRecordId Create() => new(Guid.NewGuid());
     }
 
     private sealed class ApprovingBroker: IApprovalBroker

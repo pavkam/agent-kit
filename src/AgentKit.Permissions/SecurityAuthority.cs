@@ -20,9 +20,10 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly SecurityPolicySnapshotReference? _boundPolicySnapshot;
     private readonly ISecurityPolicySelector _policySelector;
     private readonly ILogger<SecurityAuthority> _logger;
-    private readonly IApprovalBroker? _approvalBroker;
-    private readonly IIdentifierGenerator<ApprovalRequestId>? _approvalRequestIds;
-    private readonly ISecurityAuditDispatcher? _auditDispatcher;
+    private readonly IApprovalBroker _approvalBroker;
+    private readonly IIdentifierGenerator<ApprovalRequestId> _approvalRequestIds;
+    private readonly ISecurityAuditDispatcher _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
     private readonly IIdentityValidationPolicy? _identityValidation;
 
     /// <summary>Initializes the first-party security authority.</summary>
@@ -31,11 +32,15 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// <param name="grantIds">The grant identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated permission configuration.</param>
+    /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
+    /// <param name="approvalBroker">The trusted approval coordinator.</param>
+    /// <param name="approvalRequestIds">The approval-request identity generator.</param>
+    /// <param name="auditDispatcher">The required security-audit dispatcher.</param>
+    /// <param name="auditRecordIds">The audit-record identity generator.</param>
     /// <param name="logger">
     /// The optional logger that receives safe authorization diagnostics; a
     /// Microsoft null logger is used when omitted.
     /// </param>
-    /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
     /// <param name="identityValidation">
     /// The optional identity validation policy that revalidates request identity before policy evaluation. When
     /// omitted, the authority does not perform this check.
@@ -48,6 +53,10 @@ public sealed class SecurityAuthority: ISecurityAuthority
         TimeProvider timeProvider,
         IOptions<AgentPermissionOptions> options,
         ISecurityPolicySelector policySelector,
+        IApprovalBroker approvalBroker,
+        IIdentifierGenerator<ApprovalRequestId> approvalRequestIds,
+        ISecurityAuditDispatcher auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
         ILogger<SecurityAuthority>? logger = null,
         IIdentityValidationPolicy? identityValidation = null)
     {
@@ -57,6 +66,10 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(policySelector);
+        ArgumentNullException.ThrowIfNull(approvalBroker);
+        ArgumentNullException.ThrowIfNull(approvalRequestIds);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
         var optionValues = options.Value;
         ArgumentNullException.ThrowIfNull(optionValues);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.PolicyVersion);
@@ -77,45 +90,12 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _maximumGrantUses = optionValues.MaximumGrantUses;
         _boundPolicySnapshot = optionValues.PolicySnapshot;
         _policySelector = policySelector;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAuthority>.Instance;
-        _identityValidation = identityValidation;
-    }
-
-    /// <summary>Initializes the authority with approval coordination and required approval audit delivery.</summary>
-    /// <param name="policies">The ordered additive policies.</param>
-    /// <param name="grantStore">The authoritative grant state store.</param>
-    /// <param name="grantIds">The grant identity generator.</param>
-    /// <param name="timeProvider">The deterministic clock.</param>
-    /// <param name="options">The validated permission configuration.</param>
-    /// <param name="approvalBroker">The trusted approval coordinator.</param>
-    /// <param name="approvalRequestIds">The approval-request identity generator.</param>
-    /// <param name="auditDispatcher">The required security-audit dispatcher.</param>
-    /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
-    /// <param name="logger">The optional safe diagnostic logger.</param>
-    /// <param name="identityValidation">
-    /// The optional identity validation policy that revalidates request identity before policy evaluation.
-    /// </param>
-    /// <exception cref="ArgumentNullException">A dependency is null.</exception>
-    public SecurityAuthority(
-        IEnumerable<ISecurityPolicy> policies,
-        ISecurityGrantStore grantStore,
-        IIdentifierGenerator<GrantId> grantIds,
-        TimeProvider timeProvider,
-        IOptions<AgentPermissionOptions> options,
-        ISecurityPolicySelector policySelector,
-        IApprovalBroker approvalBroker,
-        IIdentifierGenerator<ApprovalRequestId> approvalRequestIds,
-        ISecurityAuditDispatcher auditDispatcher,
-        ILogger<SecurityAuthority>? logger = null,
-        IIdentityValidationPolicy? identityValidation = null)
-        : this(policies, grantStore, grantIds, timeProvider, options, policySelector, logger, identityValidation)
-    {
-        ArgumentNullException.ThrowIfNull(approvalBroker);
-        ArgumentNullException.ThrowIfNull(approvalRequestIds);
-        ArgumentNullException.ThrowIfNull(auditDispatcher);
         _approvalBroker = approvalBroker;
         _approvalRequestIds = approvalRequestIds;
         _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAuthority>.Instance;
+        _identityValidation = identityValidation;
     }
 
     /// <inheritdoc/>
@@ -205,18 +185,37 @@ public sealed class SecurityAuthority: ISecurityAuthority
         Debug.Assert(request is not null, "A validated security request is required by the authority core.");
         var policyVersion = new SecurityPolicyVersion(_policyVersion);
         var now = _timeProvider.GetUtcNow();
+        var trace = new AuthorizationEvaluationTrace();
+        var requestAuditDenied = await DispatchRequestAuditAsync(request, policyVersion, now, cancellationToken)
+            .ConfigureAwait(false);
+        if (requestAuditDenied is not null)
+        {
+            return requestAuditDenied;
+        }
+
         if (request.Authorization is { } authorization
             && (authorization.Scope != request.Scope
                 || authorization.Identity != request.Identity
                 || _boundPolicySnapshot is null
                 || authorization.PolicySnapshot != _boundPolicySnapshot))
         {
-            return Denied(request, policyVersion, "security.captured_context_mismatch",
-                "The captured authorization context cannot be evaluated by this authority version.");
+            return await DenyAsync(
+                request,
+                policyVersion,
+                "security.captured_context_mismatch",
+                "The captured authorization context cannot be evaluated by this authority version.",
+                trace,
+                cancellationToken).ConfigureAwait(false);
         }
         if (request.Deadline <= now)
         {
-            return Denied(request, policyVersion, "security.deadline_expired", "The authorization deadline has expired.");
+            return await DenyAsync(
+                request,
+                policyVersion,
+                "security.deadline_expired",
+                "The authorization deadline has expired.",
+                trace,
+                cancellationToken).ConfigureAwait(false);
         }
 
         if (_identityValidation is not null)
@@ -233,29 +232,35 @@ public sealed class SecurityAuthority: ISecurityAuthority
             }
             catch (Exception)
             {
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     AgentErrorCodes.CredentialUnavailable.ToString(),
-                    "Identity validation is unavailable.");
+                    "Identity validation is unavailable.",
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             if (validation is IdentityValidationRejected rejected)
             {
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     MapIdentityValidationDenialCode(rejected.Failure.Kind),
-                    rejected.Failure.SafeMessage);
+                    rejected.Failure.SafeMessage,
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             if (validation is not IdentityValidationPassed)
             {
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     AgentErrorCodes.AuthenticationFailed.ToString(),
-                    "Identity validation returned an unsupported result.");
+                    "Identity validation returned an unsupported result.",
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -270,35 +275,43 @@ public sealed class SecurityAuthority: ISecurityAuthority
         }
         catch (Exception)
         {
-            return Denied(
+            return await DenyAsync(
                 request,
                 policyVersion,
                 "security.policy_snapshot_unavailable",
-                "Policy snapshot selection is unavailable.");
+                "Policy snapshot selection is unavailable.",
+                trace,
+                cancellationToken).ConfigureAwait(false);
         }
 
         switch (snapshotSelection)
         {
             case SecurityPolicySnapshotUnavailable unavailable:
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     "security.policy_snapshot_unavailable",
-                    unavailable.SafeReason);
+                    unavailable.SafeReason,
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             case SecurityPolicySnapshotStale stale:
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     "security.policy_snapshot_stale",
-                    stale.SafeReason);
+                    stale.SafeReason,
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             case SecurityPolicySnapshotResolved:
                 break;
             default:
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     "security.policy_snapshot_unavailable",
-                    "Policy snapshot selection returned an unsupported result.");
+                    "Policy snapshot selection returned an unsupported result.",
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
         }
 
         var policyContext = SecurityPolicyEvaluationContexts.Create(
@@ -325,11 +338,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
             }
             catch (Exception)
             {
-                return Denied(
+                return await DenyAsync(
                     request,
                     policyVersion,
                     "security.policy_evaluation_failed",
-                    "Security policy evaluation failed.");
+                    "Security policy evaluation failed.",
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             if (result.Kind == SecurityPolicyResultKind.Deny)
@@ -341,10 +356,12 @@ public sealed class SecurityAuthority: ISecurityAuthority
             if (result.Kind == SecurityPolicyResultKind.Allow)
             {
                 allowed = true;
+                trace.RecordContributingPolicy(result.Code!);
             }
             else if (result.Kind == SecurityPolicyResultKind.RequireApproval)
             {
                 approvalRequired = true;
+                trace.RecordContributingPolicy(result.Code!);
             }
 
             if (result is { Kind: SecurityPolicyResultKind.Allow or SecurityPolicyResultKind.RequireApproval, Constraints: { } constraints })
@@ -355,12 +372,25 @@ public sealed class SecurityAuthority: ISecurityAuthority
 
         if (hardDenial is not null)
         {
-            return Denied(request, policyVersion, hardDenial.Code!, hardDenial.SafeMessage!);
+            return await DenyAsync(
+                request,
+                policyVersion,
+                hardDenial.Code!,
+                hardDenial.SafeMessage!,
+                trace,
+                cancellationToken,
+                winningPolicyCode: hardDenial.Code).ConfigureAwait(false);
         }
 
         if (!allowed && !approvalRequired)
         {
-            return Denied(request, policyVersion, "security.no_policy", "No security policy authorized this operation.");
+            return await DenyAsync(
+                request,
+                policyVersion,
+                "security.no_policy",
+                "No security policy authorized this operation.",
+                trace,
+                cancellationToken).ConfigureAwait(false);
         }
 
         var hostMaximumExpiry = now + _maximumGrantLifetime;
@@ -374,25 +404,26 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 request,
                 hostMaximumExpiry,
                 _maximumGrantUses,
-                out _))
+                out var intersection))
         {
-            return Denied(
+            return await DenyAsync(
                 request,
                 policyVersion,
                 "security.constraint_intersection_empty",
-                "The intersected policy constraints deny this operation.");
+                "The intersected policy constraints deny this operation.",
+                trace,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        if (intersection is not null)
+        {
+            trace.SetIntersection(intersection);
         }
 
         ApprovalRequestId? approvalRequestId = null;
         ApprovalScopeBinding? approvedBinding = null;
         if (approvalRequired)
         {
-            if (_approvalBroker is null || _approvalRequestIds is null || _auditDispatcher is null)
-            {
-                return Denied(request, policyVersion, "security.approval_unavailable",
-                    "Approval is required but approval coordination is unavailable.");
-            }
-
             var approvalExpiry = request.Deadline < now + _maximumGrantLifetime
                 ? request.Deadline
                 : now + _maximumGrantLifetime;
@@ -416,10 +447,27 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 // deadline, and an explicit human denial are different facts and must stay distinguishable in audit.
                 return approvalResult switch
                 {
-                    ApprovalBrokerExpired => Denied(request, policyVersion, "security.approval_expired", "The required approval expired."),
-                    ApprovalBrokerUnavailable => Denied(request, policyVersion, "security.approval_unavailable",
-                        "Approval is required but approval coordination is unavailable."),
-                    _ => Denied(request, policyVersion, "security.approval_denied", "The required approval was not granted."),
+                    ApprovalBrokerExpired => await DenyAsync(
+                        request,
+                        policyVersion,
+                        "security.approval_expired",
+                        "The required approval expired.",
+                        trace,
+                        cancellationToken).ConfigureAwait(false),
+                    ApprovalBrokerUnavailable => await DenyAsync(
+                        request,
+                        policyVersion,
+                        "security.approval_unavailable",
+                        "Approval is required but approval coordination is unavailable.",
+                        trace,
+                        cancellationToken).ConfigureAwait(false),
+                    _ => await DenyAsync(
+                        request,
+                        policyVersion,
+                        "security.approval_denied",
+                        "The required approval was not granted.",
+                        trace,
+                        cancellationToken).ConfigureAwait(false),
                 };
             }
 
@@ -431,8 +479,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 || approved.Response.Resolution != ApprovalResolution.Approved
                 || approved.Response.Binding.RevocationVersion.Value != _revocationVersion)
             {
-                return Denied(request, policyVersion, "security.approval_stale",
-                    "The approval no longer authorizes this request.");
+                return await DenyAsync(
+                    request,
+                    policyVersion,
+                    "security.approval_stale",
+                    "The approval no longer authorizes this request.",
+                    trace,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             approvedBinding = approved.Response.Binding;
@@ -460,42 +513,31 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 request.Effect, request.Resources, request.InputFingerprint, policyVersion,
                 revocationVersion, now, expiresAt, allowedUses);
 
-        // Every registered grant is audited when a dispatcher is configured, not only the ones a human
-        // approved: the ordinary allow path (AllowAllSecurityPolicy, a workspace-scoped policy, ...)
-        // issues a grant just as authoritatively and must be equally visible to required audit.
-        if (_auditDispatcher is not null)
+        var decisionAuditDenied = await DispatchDecisionAuditAsync(
+            request,
+            policyVersion,
+            now,
+            trace,
+            SecurityAuditOutcome.Accepted,
+            trace.WinningAllowPolicyCode ?? "security.allowed",
+            cancellationToken).ConfigureAwait(false);
+        if (decisionAuditDenied is not null)
         {
-            var audit = new SecurityAuditRecord(
-                new SecurityAuditRecordId(grant.Id.Value),
-                request.Scope,
-                request.Id,
-                grant.Id,
-                approvalRequestId,
-                SecurityAuditEventKind.GrantIssued,
-                SecurityAuditOutcome.Accepted,
-                policyVersion,
-                [],
-                now);
-            SecurityAuditDispatchResult auditResult;
-            try
-            {
-                auditResult = await _auditDispatcher.DispatchAsync(audit, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                return Denied(request, policyVersion, "security.audit_unavailable",
-                    "Required security audit failed.");
-            }
-            if (auditResult is not SecurityAuditAccepted)
-            {
-                return Denied(request, policyVersion, "security.audit_unavailable",
-                    "Required security audit was not accepted.");
-            }
+            return decisionAuditDenied;
         }
+
+        var grantAuditDenied = await DispatchGrantIssuedAuditAsync(
+            request,
+            policyVersion,
+            grant,
+            approvalRequestId,
+            now,
+            cancellationToken).ConfigureAwait(false);
+        if (grantAuditDenied is not null)
+        {
+            return grantAuditDenied;
+        }
+
         await _grantStore.RegisterAsync(grant, cancellationToken).ConfigureAwait(false);
         return new SecurityAllowed(request.Id, policyVersion, grant);
     }
@@ -510,6 +552,122 @@ public sealed class SecurityAuthority: ISecurityAuthority
         SecurityPolicyVersion policyVersion,
         string code,
         string message) => new(request.Id, policyVersion, new SecurityDenial(code, message));
+
+    private async ValueTask<SecurityDecision> DenyAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        string code,
+        string message,
+        AuthorizationEvaluationTrace trace,
+        CancellationToken cancellationToken,
+        string? winningPolicyCode = null)
+    {
+        var decision = Denied(request, policyVersion, code, message);
+        var auditDenied = await DispatchDecisionAuditAsync(
+            request,
+            policyVersion,
+            _timeProvider.GetUtcNow(),
+            trace,
+            SecurityAuditOutcome.Denied,
+            code,
+            cancellationToken,
+            winningPolicyCode ?? trace.WinningAllowPolicyCode).ConfigureAwait(false);
+        return auditDenied ?? decision;
+    }
+
+    private async ValueTask<SecurityDenied?> DispatchRequestAuditAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        var record = new SecurityAuditRecord(
+            _auditRecordIds.Create(),
+            request.Scope,
+            request.Id,
+            null,
+            null,
+            SecurityAuditEventKind.Request,
+            SecurityAuditOutcome.Accepted,
+            policyVersion,
+            SecurityAuthorityAudit.CreateRequestFields(request),
+            occurredAt);
+        return await DispatchRequiredAuditAsync(request, policyVersion, record, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<SecurityDenied?> DispatchDecisionAuditAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        DateTimeOffset occurredAt,
+        AuthorizationEvaluationTrace trace,
+        SecurityAuditOutcome outcome,
+        string decisionCode,
+        CancellationToken cancellationToken,
+        string? winningPolicyCode = null)
+    {
+        var record = new SecurityAuditRecord(
+            _auditRecordIds.Create(),
+            request.Scope,
+            request.Id,
+            null,
+            null,
+            SecurityAuditEventKind.Decision,
+            outcome,
+            policyVersion,
+            SecurityAuthorityAudit.CreateDecisionFields(
+                decisionCode,
+                winningPolicyCode ?? trace.WinningAllowPolicyCode,
+                trace.Intersection),
+            occurredAt);
+        return await DispatchRequiredAuditAsync(request, policyVersion, record, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<SecurityDenied?> DispatchGrantIssuedAuditAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        SecurityGrant grant,
+        ApprovalRequestId? approvalRequestId,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        var record = new SecurityAuditRecord(
+            new SecurityAuditRecordId(grant.Id.Value),
+            request.Scope,
+            request.Id,
+            grant.Id,
+            approvalRequestId,
+            SecurityAuditEventKind.GrantIssued,
+            SecurityAuditOutcome.Accepted,
+            policyVersion,
+            [],
+            occurredAt);
+        return await DispatchRequiredAuditAsync(request, policyVersion, record, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<SecurityDenied?> DispatchRequiredAuditAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        SecurityAuditRecord record,
+        CancellationToken cancellationToken)
+    {
+        SecurityAuditDispatchResult auditResult;
+        try
+        {
+            auditResult = await _auditDispatcher.DispatchAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return Denied(request, policyVersion, "security.audit_unavailable", "Required security audit failed.");
+        }
+
+        return auditResult is SecurityAuditAccepted
+            ? null
+            : Denied(request, policyVersion, "security.audit_unavailable", "Required security audit was not accepted.");
+    }
 
     /// <summary>Validates that a policy contribution still satisfies its immutable result contract.</summary>
     /// <param name="result">The contribution returned by the evaluated policy.</param>

@@ -3125,26 +3125,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     /// <param name="messages">The history about to be sent.</param>
     /// <returns>An advisory estimate; never used to block a request on its own.</returns>
-    private long EstimateTokens(ImmutableArray<AgentMessage> messages)
-    {
-        long characters = 0;
-        foreach (var message in messages)
-        {
-            foreach (var part in message.Parts)
-            {
-                characters += part switch
-                {
-                    TextPart text => text.Text.Length,
-                    ToolCallPart call => call.Arguments.ValueKind == System.Text.Json.JsonValueKind.Undefined ? 0 : call.Arguments.GetRawText().Length,
-                    ToolResultPart result => result.Content.OfType<TextPart>().Sum(static inner => (long) inner.Text.Length),
-                    ReasoningPart { Content.Text: { } reasoning } => reasoning.Length,
-                    _ => 0,
-                };
-            }
-        }
-
-        return (long) Math.Ceiling(characters / _estimatedCharactersPerToken);
-    }
+    private long EstimateTokens(ImmutableArray<AgentMessage> messages) =>
+        ContextMessageTokenEstimation.EstimateTokens(messages, _estimatedCharactersPerToken);
 
     /// <summary>
     /// Asks the composed compactor to checkpoint older history and, when it succeeds, reloads the model-facing history
