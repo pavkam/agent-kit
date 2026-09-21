@@ -40,5 +40,26 @@ public static class ServiceExtensions
             }
             return services;
         }
+
+        /// <summary>Adds explicitly ephemeral process-local security-decision storage.</summary>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Repeating this leaf is idempotent. A different leaf or custom store remains visible as another
+        /// <see cref="ISecurityDecisionStore"/> registration so composition rejects ambiguity regardless of registration order.
+        /// </remarks>
+        public IServiceCollection AddInMemorySecurityDecisionStore()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityDecisionStore)
+                    && descriptor.Lifetime == ServiceLifetime.Singleton
+                    && descriptor.ImplementationType == typeof(InMemorySecurityDecisionStore)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityDecisionStore, InMemorySecurityDecisionStore>());
+            }
+
+            return services;
+        }
     }
 }

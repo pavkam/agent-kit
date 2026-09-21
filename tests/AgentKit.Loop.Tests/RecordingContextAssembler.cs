@@ -6,7 +6,7 @@ namespace AgentKit.Loop.Tests;
 /// <summary>Records context requests before delegating to the real reduced assembler.</summary>
 internal sealed class RecordingContextAssembler: IContextAssembler
 {
-    private readonly DefaultContextAssembler _inner = new();
+    private readonly IContextAssembler _inner = ContextAssemblerTestSupport.CreateDefault();
 
     /// <summary>Gets requests in invocation order.</summary>
     public List<ContextAssemblyRequest> Requests { get; } = [];

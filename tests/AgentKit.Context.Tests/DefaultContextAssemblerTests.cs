@@ -5,7 +5,7 @@ namespace AgentKit.Context.Tests;
 
 public sealed class DefaultContextAssemblerTests
 {
-    private readonly DefaultContextAssembler _assembler = new();
+    private readonly DefaultContextAssembler _assembler = ContextTestSupport.CreateAssembler();
 
     [Fact]
     public async Task AssembleAsync_WhenRequestIsNull_ThrowsArgumentNullException()
@@ -199,8 +199,8 @@ public sealed class DefaultContextAssemblerTests
     [Fact]
     public async Task AssembleAsync_WhenRolePartViolationIsRejected_RecordsRejectedMetricAndLog()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
-        var assembler = new DefaultContextAssembler(logger);
+        var logger = new RecordingLogger<DefaultContextAssembler>();
+        var assembler = ContextTestSupport.CreateAssembler(logger);
         var callId = new ToolCallId(Guid.NewGuid());
         var history = ImmutableArray.Create<AgentMessage>(
             TestFactory.UserMessageWithParts([TestFactory.ToolCall(callId)]),
@@ -281,8 +281,8 @@ public sealed class DefaultContextAssemblerTests
     public async Task AssembleAsync_WhenRepairsApplied_LogsCountsWithoutContent()
     {
         const string protectedContent = "do-not-log-this";
-        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
-        var assembler = new DefaultContextAssembler(logger);
+        var logger = new RecordingLogger<DefaultContextAssembler>();
+        var assembler = ContextTestSupport.CreateAssembler(logger);
         var history = ImmutableArray.Create<AgentMessage>(
             TestFactory.UserMessage("keep"),
             TestFactory.UserMessage(protectedContent, MessageState.Incomplete));
@@ -298,8 +298,8 @@ public sealed class DefaultContextAssemblerTests
     public async Task AssembleAsync_WhenHistoryContainsInstructionMessage_LogsExcludedInstructionMessageCountWithoutContent()
     {
         const string protectedContent = "do-not-log-this-instruction";
-        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
-        var assembler = new DefaultContextAssembler(logger);
+        var logger = new RecordingLogger<DefaultContextAssembler>();
+        var assembler = ContextTestSupport.CreateAssembler(logger);
         var smuggled = new DeveloperMessage(
             new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()),
             null, null, DateTimeOffset.UnixEpoch, MessageState.Complete,
@@ -455,7 +455,7 @@ public sealed class DefaultContextAssemblerTests
     [Fact]
     public async Task AssembleAsync_WhenLoggerThrowsOnSuccess_StillReturnsContextReady()
     {
-        var assembler = new DefaultContextAssembler(new ThrowingLogger());
+        var assembler = ContextTestSupport.CreateAssembler(new ThrowingLogger());
         var request = TestFactory.AssemblyRequest([TestFactory.UserMessage()]);
 
         var result = await assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
@@ -467,7 +467,7 @@ public sealed class DefaultContextAssemblerTests
     [Fact]
     public async Task AssembleAsync_WhenLoggerThrowsOnRejection_StillReturnsContextPreparationFailed()
     {
-        var assembler = new DefaultContextAssembler(new ThrowingLogger());
+        var assembler = ContextTestSupport.CreateAssembler(new ThrowingLogger());
         var request = TestFactory.AssemblyRequest([]);
 
         var result = await assembler.AssembleAsync(request, TestContext.Current.CancellationToken);

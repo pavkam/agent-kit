@@ -52,10 +52,12 @@ public static class ServiceExtensions
                 provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
                 provider.GetRequiredService<TimeProvider>()));
             _ = PermissionServiceRegistration.EnsurePolicyCatalogRegistered(services);
+            services.TryAddSingleton<ISecurityGrantIssuer, DefaultSecurityGrantIssuer>();
             services.TryAddSingleton<ISecurityAuthority>(static provider => new SecurityAuthority(
                 provider.GetServices<ISecurityPolicy>(),
                 provider.GetRequiredService<ISecurityGrantStore>(),
-                provider.GetRequiredService<IIdentifierGenerator<GrantId>>(),
+                provider.GetRequiredService<ISecurityGrantIssuer>(),
+                provider.GetRequiredService<ISecurityDecisionStore>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<IOptions<AgentPermissionOptions>>(),
                 provider.GetRequiredService<ISecurityPolicySelector>(),

@@ -16,7 +16,7 @@ Owning documents: [Context](../architecture/context.md),
 
 - [x] WS9-C1 contributor and manifest value contracts
 - [x] WS9-C2 budget allocation contracts and default allocator
-- [ ] WS9-C3 keyed `AddAgentContext`, `ContextAssemblerServices`, contributors
+- [x] WS9-C3 keyed `AddAgentContext`, `ContextAssemblerServices`, contributors
       run
 - [ ] WS9-C4 `InstructionSource` and definition migration
 - [ ] WS9-C5 `IHistoryPipeline` and `IToolSnapshotProvider`

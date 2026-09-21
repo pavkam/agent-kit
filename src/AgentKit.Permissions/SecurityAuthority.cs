@@ -11,7 +11,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
 {
     private readonly ImmutableArray<ISecurityPolicy> _policies;
     private readonly ISecurityGrantStore _grantStore;
-    private readonly IIdentifierGenerator<GrantId> _grantIds;
+    private readonly ISecurityGrantIssuer _grantIssuer;
+    private readonly ISecurityDecisionStore _decisionStore;
     private readonly TimeProvider _timeProvider;
     private readonly long _policyVersion;
     private readonly long _revocationVersion;
@@ -29,7 +30,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// <summary>Initializes the first-party security authority.</summary>
     /// <param name="policies">The ordered additive policies.</param>
     /// <param name="grantStore">The authoritative grant state store.</param>
-    /// <param name="grantIds">The grant identity generator.</param>
+    /// <param name="grantIssuer">The grant issuer that mints bounded grants after a terminal allow decision.</param>
+    /// <param name="decisionStore">The store that retains every terminal decision.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated permission configuration.</param>
     /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
@@ -49,7 +51,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
     public SecurityAuthority(
         IEnumerable<ISecurityPolicy> policies,
         ISecurityGrantStore grantStore,
-        IIdentifierGenerator<GrantId> grantIds,
+        ISecurityGrantIssuer grantIssuer,
+        ISecurityDecisionStore decisionStore,
         TimeProvider timeProvider,
         IOptions<AgentPermissionOptions> options,
         ISecurityPolicySelector policySelector,
@@ -62,7 +65,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
     {
         ArgumentNullException.ThrowIfNull(policies);
         ArgumentNullException.ThrowIfNull(grantStore);
-        ArgumentNullException.ThrowIfNull(grantIds);
+        ArgumentNullException.ThrowIfNull(grantIssuer);
+        ArgumentNullException.ThrowIfNull(decisionStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(policySelector);
@@ -82,7 +86,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
         }
         _policies = [.. policies];
         _grantStore = grantStore;
-        _grantIds = grantIds;
+        _grantIssuer = grantIssuer;
+        _decisionStore = decisionStore;
         _timeProvider = timeProvider;
         _policyVersion = optionValues.PolicyVersion;
         _revocationVersion = optionValues.RevocationVersion;
@@ -190,7 +195,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
             .ConfigureAwait(false);
         if (requestAuditDenied is not null)
         {
-            return requestAuditDenied;
+            return await PersistDecisionAsync(request, policyVersion, requestAuditDenied, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (request.Authorization is { } authorization
@@ -491,27 +497,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
             approvedBinding = approved.Response.Binding;
         }
 
-        // When a human approved a binding, the issued grant is bounded by exactly what was approved: it must not
-        // outlive the approved expiry merely because the lifetime window is re-based on the post-approval clock.
-        var maximumExpiry = now + _maximumGrantLifetime;
-        if (approvedBinding is not null && approvedBinding.ExpiresAt < maximumExpiry)
-        {
-            maximumExpiry = approvedBinding.ExpiresAt;
-        }
-
-        var grantId = _grantIds.Create();
         var revocationVersion = new SecurityRevocationVersion(_revocationVersion);
-        var expiresAt = request.Deadline < maximumExpiry ? request.Deadline : maximumExpiry;
-        var allowedUses = Math.Min(request.RequestedUses, approvedBinding?.AllowedUses ?? _maximumGrantUses);
-        var grant = request.Authorization is { } capturedForGrant
-            ? new SecurityGrant(
-                grantId, request.Id, request.Scope, request.Identity, capturedForGrant, request.Audience,
-                request.Kind, request.Effect, request.Resources, request.InputFingerprint, policyVersion,
-                revocationVersion, now, expiresAt, allowedUses)
-            : new SecurityGrant(
-                grantId, request.Id, request.Scope, request.Identity, request.Audience, request.Kind,
-                request.Effect, request.Resources, request.InputFingerprint, policyVersion,
-                revocationVersion, now, expiresAt, allowedUses);
+        var grant = await _grantIssuer.IssueAsync(
+            request,
+            policyVersion,
+            revocationVersion,
+            approvedBinding,
+            cancellationToken).ConfigureAwait(false);
 
         var decisionAuditDenied = await DispatchDecisionAuditAsync(
             request,
@@ -523,7 +515,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
             cancellationToken).ConfigureAwait(false);
         if (decisionAuditDenied is not null)
         {
-            return decisionAuditDenied;
+            return await PersistDecisionAsync(request, policyVersion, decisionAuditDenied, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var grantAuditDenied = await DispatchGrantIssuedAuditAsync(
@@ -535,11 +528,16 @@ public sealed class SecurityAuthority: ISecurityAuthority
             cancellationToken).ConfigureAwait(false);
         if (grantAuditDenied is not null)
         {
-            return grantAuditDenied;
+            return await PersistDecisionAsync(request, policyVersion, grantAuditDenied, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         await _grantStore.RegisterAsync(grant, cancellationToken).ConfigureAwait(false);
-        return new SecurityAllowed(request.Id, policyVersion, grant);
+        return await PersistDecisionAsync(
+            request,
+            policyVersion,
+            new SecurityAllowed(request.Id, policyVersion, grant),
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string MapIdentityValidationDenialCode(IdentityFailureKind kind) =>
@@ -572,7 +570,33 @@ public sealed class SecurityAuthority: ISecurityAuthority
             code,
             cancellationToken,
             winningPolicyCode ?? trace.WinningAllowPolicyCode).ConfigureAwait(false);
-        return auditDenied ?? decision;
+        return await PersistDecisionAsync(request, policyVersion, auditDenied ?? decision, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<SecurityDecision> PersistDecisionAsync(
+        SecurityRequest request,
+        SecurityPolicyVersion policyVersion,
+        SecurityDecision decision,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _decisionStore.RecordAsync(decision, cancellationToken).ConfigureAwait(false);
+            return decision;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return Denied(
+                request,
+                policyVersion,
+                "security.decision_store_unavailable",
+                "Security decision storage is unavailable.");
+        }
     }
 
     private async ValueTask<SecurityDenied?> DispatchRequestAuditAsync(

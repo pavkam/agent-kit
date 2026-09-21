@@ -3,17 +3,30 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Context
 {
-    public sealed class DefaultContextAssembler : AgentKit.IContextAssembler
+    public sealed class AgentContextOptions
     {
-        public DefaultContextAssembler() { }
-        public DefaultContextAssembler(Microsoft.Extensions.Logging.ILogger<AgentKit.Context.DefaultContextAssembler> logger) { }
-        public System.Threading.Tasks.Task<AgentKit.ContextAssemblyResult> AssembleAsync(AgentKit.ContextAssemblyRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentContextOptions() { }
+        public bool AllowParallelContributors { get; set; }
+        public double EstimatedCharactersPerToken { get; set; }
+        public double EstimationSafetyMargin { get; set; }
+        public AgentKit.ContextOverflowBehavior OverflowBehavior { get; set; }
+        public int ProviderOverheadTokens { get; set; }
+        public int ReservedOutputTokens { get; set; }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentContext() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentContext(System.Action<AgentKit.Context.AgentContextOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentContext(AgentKit.ComponentKey<AgentKit.IContextAssembler> key, System.Action<AgentKit.Context.AgentContextOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddContextAssembler<TAssembler>(AgentKit.ComponentKey<AgentKit.IContextAssembler> key)
+                where TAssembler :  class, AgentKit.IContextAssembler { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceContextAssembler<TAssembler>(AgentKit.ComponentKey<AgentKit.IContextAssembler> key)
+                where TAssembler :  class, AgentKit.IContextAssembler { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddContextContributor<TContributor>(AgentKit.ComponentKey<AgentKit.IContextAssembler> assembler, AgentKit.ContextContributorRegistration registration)
+                where TContributor :  class, AgentKit.IContextContributor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceContextBudgetAllocator<TAllocator>(AgentKit.ComponentKey<AgentKit.IContextAssembler> assembler)
+                where TAllocator :  class, AgentKit.IContextBudgetAllocator { }
         }
     }
 }

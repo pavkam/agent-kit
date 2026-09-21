@@ -4030,7 +4030,7 @@ public sealed class DefaultAgentLoopTests
         _services = new AgentRunServices(
             coordinator,
             securityProfileSelector ?? new FakeSecurityProfileSelector(),
-            contextAssembler ?? new DefaultContextAssembler(),
+            contextAssembler ?? ContextAssemblerTestSupport.CreateDefault(),
             toolInvoker,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),
@@ -4088,7 +4088,7 @@ public sealed class DefaultAgentLoopTests
         _services = new AgentRunServices(
             coordinator,
             new FakeSecurityProfileSelector(),
-            contextAssembler ?? new DefaultContextAssembler(),
+            contextAssembler ?? ContextAssemblerTestSupport.CreateDefault(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             catalog,
             selector,

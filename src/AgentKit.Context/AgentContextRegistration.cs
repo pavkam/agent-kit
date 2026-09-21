@@ -9,11 +9,107 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Registers first-party context services and validates their options.</summary>
 internal static class AgentContextRegistration
 {
+    /// <summary>Registers the built-in assembler under an explicit key.</summary>
+    internal static IServiceCollection Add(
+        IServiceCollection services,
+        ComponentKey<IContextAssembler> key,
+        Action<AgentContextOptions>? configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(key));
+        EnsureNoConflictingAssemblerRegistration<DefaultContextAssembler>(services, key.Value);
+
+        _ = RegisterSharedInfrastructure(services, configure);
+
+        services.TryAddKeyedScoped<IContextAssembler>(key.Value, static (provider, serviceKey) =>
+        {
+            var assemblerKey = (string) serviceKey!;
+            var servicesBundle = ContextAssemblerServicesFactory.Create(provider, assemblerKey);
+            return new DefaultContextAssembler(
+                servicesBundle,
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<DefaultContextAssembler>>());
+        });
+
+        if (key.Equals(AgentContextComponentDefaults.AssemblerKey))
+        {
+            services.TryAddSingleton(static provider =>
+                provider.GetRequiredKeyedService<IContextAssembler>(AgentContextComponentDefaults.AssemblerKey.Value));
+        }
+
+        return services;
+    }
+
+    /// <summary>Additively registers a custom keyed assembler implementation.</summary>
+    internal static IServiceCollection AddAssembler<TAssembler>(IServiceCollection services, ComponentKey<IContextAssembler> key)
+        where TAssembler : class, IContextAssembler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(key));
+        EnsureNoConflictingAssemblerRegistration<TAssembler>(services, key.Value);
+        services.TryAddKeyedScoped<IContextAssembler, TAssembler>(key.Value);
+        return services;
+    }
+
+    /// <summary>Replaces the assembler registered under a key.</summary>
+    internal static IServiceCollection ReplaceAssembler<TAssembler>(IServiceCollection services, ComponentKey<IContextAssembler> key)
+        where TAssembler : class, IContextAssembler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(key));
+        RemoveKeyed<IContextAssembler>(services, key.Value);
+        _ = services.AddKeyedScoped<IContextAssembler, TAssembler>(key.Value);
+        return services;
+    }
+
+    /// <summary>Additively registers one contributor for an assembler profile.</summary>
+    internal static IServiceCollection AddContributor<TContributor>(
+        IServiceCollection services,
+        ComponentKey<IContextAssembler> assemblerKey,
+        ContextContributorRegistration registration)
+        where TContributor : class, IContextContributor
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblerKey.Value, nameof(assemblerKey));
+        ArgumentNullException.ThrowIfNull(registration);
+
+        var existing = services
+            .Select(static descriptor => descriptor.ImplementationInstance as ContextContributorDeclaration)
+            .FirstOrDefault(declaration =>
+                declaration is not null
+                && assemblerKey.Value.Equals(declaration.AssemblerKey, StringComparison.Ordinal)
+                && declaration.Registration.ContributorId.Equals(registration.ContributorId));
+        if (existing is not null)
+        {
+            return existing.Registration.Equals(registration) && existing.ContributorType == typeof(TContributor)
+                ? services
+                : throw new InvalidOperationException(
+                $"A different context contributor is already registered under contributor id '{registration.ContributorId.Value}' " +
+                $"for assembler key '{assemblerKey.Value}'.");
+        }
+
+        _ = services.AddSingleton(new ContextContributorDeclaration(
+            assemblerKey.Value,
+            registration,
+            typeof(TContributor)));
+        services.TryAddScoped<TContributor>();
+        return services;
+    }
+
+    /// <summary>Replaces the budget allocator used by one assembler profile.</summary>
+    internal static IServiceCollection ReplaceBudgetAllocator<TAllocator>(
+        IServiceCollection services,
+        ComponentKey<IContextAssembler> assemblerKey)
+        where TAllocator : class, IContextBudgetAllocator
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblerKey.Value, nameof(assemblerKey));
+        RemoveKeyed<IContextBudgetAllocator>(services, assemblerKey.Value);
+        _ = services.AddKeyedSingleton<IContextBudgetAllocator, TAllocator>(assemblerKey.Value);
+        return services;
+    }
+
     /// <summary>Registers shared context infrastructure used by every assembler registration.</summary>
-    /// <param name="services">The service collection to register into.</param>
-    /// <param name="configure">Optional configuration applied on first registration.</param>
-    /// <returns>The same service collection, for chaining.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
     internal static IServiceCollection RegisterSharedInfrastructure(
         IServiceCollection services,
         Action<AgentContextOptions>? configure)
@@ -29,8 +125,40 @@ internal static class AgentContextRegistration
             _ = optionsBuilder.Configure(configure);
         }
 
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IContextMessageTokenEstimator, CharacterBasedContextMessageTokenEstimator>();
         services.TryAddSingleton<IContextBudgetAllocator, DefaultContextBudgetAllocator>();
         return services;
+    }
+
+    private static void EnsureNoConflictingAssemblerRegistration<TAssembler>(IServiceCollection services, string key)
+        where TAssembler : class, IContextAssembler
+    {
+        var conflict = services.FirstOrDefault(descriptor =>
+            descriptor.IsKeyedService
+            && descriptor.ServiceType == typeof(IContextAssembler)
+            && key.Equals(descriptor.ServiceKey as string, StringComparison.Ordinal)
+            && descriptor.KeyedImplementationType is not null
+            && descriptor.KeyedImplementationType != typeof(TAssembler)
+            && descriptor.ImplementationFactory is null);
+        if (conflict is not null)
+        {
+            throw new InvalidOperationException(
+                $"A different IContextAssembler implementation ('{conflict.KeyedImplementationType!.Name}') is already " +
+                $"registered under key '{key}'. Use ReplaceContextAssembler to replace it explicitly.");
+        }
+    }
+
+    private static void RemoveKeyed<TService>(IServiceCollection services, string key)
+    {
+        var descriptors = services
+            .Where(descriptor => descriptor.IsKeyedService
+                && descriptor.ServiceType == typeof(TService)
+                && key.Equals(descriptor.ServiceKey as string, StringComparison.Ordinal))
+            .ToArray();
+        foreach (var descriptor in descriptors)
+        {
+            _ = services.Remove(descriptor);
+        }
     }
 }

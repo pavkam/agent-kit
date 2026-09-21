@@ -24,6 +24,11 @@ namespace AgentKit.Permissions
         public DefaultApprovalBroker(AgentKit.IApprovalStore store, AgentKit.IApprovalHandler handler, AgentKit.IApprovalResponderAuthorizer responderAuthorizer, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class DefaultSecurityGrantIssuer : AgentKit.ISecurityGrantIssuer
+    {
+        public DefaultSecurityGrantIssuer(AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityGrant> IssueAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, AgentKit.ApprovalScopeBinding? approvedBinding, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class DefaultSecurityPolicySelector : AgentKit.ISecurityPolicySelector
     {
         public DefaultSecurityPolicySelector(AgentKit.ISecurityPolicyCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
@@ -38,8 +43,7 @@ namespace AgentKit.Permissions
     }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
-        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
-        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityGrantIssuer grantIssuer, AgentKit.ISecurityDecisionStore decisionStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
     }

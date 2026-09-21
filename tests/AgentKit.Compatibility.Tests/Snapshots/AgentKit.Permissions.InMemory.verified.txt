@@ -11,6 +11,12 @@ namespace AgentKit.Permissions.InMemory
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class InMemorySecurityDecisionStore : AgentKit.ISecurityDecisionStore
+    {
+        public InMemorySecurityDecisionStore() { }
+        public System.Collections.Generic.IReadOnlyList<AgentKit.SecurityDecision> Decisions { get; }
+        public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityDecision decision, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class InMemorySecurityGrantStore : AgentKit.ISecurityGrantStore
     {
         public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
@@ -26,6 +32,7 @@ namespace AgentKit.Permissions.InMemory
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryApprovalStore() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySecurityGrantStore() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySecurityDecisionStore() { }
         }
     }
 }

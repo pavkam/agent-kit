@@ -33,6 +33,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentPermissions();
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddInMemoryApprovalStore();
+        _ = services.AddInMemorySecurityDecisionStore();
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<ISecurityAuthority>().ShouldBeOfType<SecurityAuthority>();
     }
@@ -304,6 +305,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentPermissions();
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddInMemoryApprovalStore();
+        _ = services.AddInMemorySecurityDecisionStore();
         _ = services.AddSecurityAuthority(key);
         using var provider = services.BuildServiceProvider();
         var expectedAuthority = provider.GetRequiredService<ISecurityAuthority>();
@@ -389,6 +391,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddInMemoryApprovalStore();
+        _ = services.AddInMemorySecurityDecisionStore();
         _ = services.AddStandaloneSecurityProfile(
             agentId,
             revision,

@@ -39,7 +39,8 @@ When changing C#, also read the
   `AddAgentIdentity`; map failures to typed run rejection before admission.
 - Protected-boundary revalidation: when `IIdentityValidationPolicy` is composed,
   `SecurityAuthority` revalidates identity before policy evaluation; expired
-  evidence maps to `AuthorizationDenied`, other failures to `AuthenticationFailed`.
+  evidence maps to `AuthorizationDenied`, other failures to
+  `AuthenticationFailed`.
 
 Test issuer mapping, expiry/revocation, tenant partitioning, propagation,
 delegation narrowing, reauthentication, and the absence of credential leakage.

@@ -8,6 +8,7 @@ global using System.Diagnostics.Metrics;
 global using AgentKit;
 global using AgentKit.Context;
 global using AgentKit.Observability;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
 

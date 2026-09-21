@@ -42,33 +42,32 @@ namespace AgentKit.Context;
 /// rather than sending a provider a request it cannot interpret.
 /// </para>
 /// </remarks>
-public sealed class DefaultContextAssembler: IContextAssembler
+internal sealed class DefaultContextAssembler: IContextAssembler
 {
+    private readonly ContextAssemblerServices _services;
     private readonly ILogger<DefaultContextAssembler> _logger;
+    private readonly HashSet<ContextSourceKey> _oncePerRunContributorsExecuted = [];
 
-    /// <summary>
-    /// Initializes an assembler that emits no logs unless constructed by dependency injection.
-    /// </summary>
-    /// <remarks>
-    /// This compatibility constructor uses Microsoft's null logger. Applications
-    /// should normally resolve the assembler after calling <c>AddAgentContext</c>.
-    /// </remarks>
-    public DefaultContextAssembler()
-        : this(Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultContextAssembler>.Instance)
-    {
-    }
-
-    /// <summary>Initializes an assembler with its type-specific structured logger.</summary>
+    /// <summary>Initializes an assembler with its keyed collaborators.</summary>
+    /// <param name="services">The compiled contributor and budget services for this assembler key.</param>
+    /// <param name="timeProvider">The clock used for contributor freshness evidence.</param>
     /// <param name="logger">The logger that receives safe context-preparation diagnostics.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="logger"/> is null.</exception>
-    public DefaultContextAssembler(ILogger<DefaultContextAssembler> logger)
+    /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    public DefaultContextAssembler(
+        ContextAssemblerServices services,
+        TimeProvider timeProvider,
+        ILogger<DefaultContextAssembler> logger)
     {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
+        _services = services;
+        _ = timeProvider;
         _logger = logger;
     }
 
     /// <inheritdoc/>
-    public Task<ContextAssemblyResult> AssembleAsync(
+    public async Task<ContextAssemblyResult> AssembleAsync(
         ContextAssemblyRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -118,7 +117,7 @@ public sealed class DefaultContextAssembler: IContextAssembler
             SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.InvalidInstructionMessage)));
             SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
             SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.InvalidInstructionMessage));
-            return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(instructionFailure));
+            return new ContextPreparationFailed(instructionFailure);
         }
 
         if (repairedHistory.IsEmpty)
@@ -127,12 +126,11 @@ public sealed class DefaultContextAssembler: IContextAssembler
             SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.EmptyHistory)));
             SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
             SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.EmptyHistory));
-            return Task.FromResult<ContextAssemblyResult>(
-                new ContextPreparationFailed(
-                    new ContextPreparationFailure(
-                        ContextPreparationFailureKind.EmptyHistory,
-                        "The eligible conversation history contains no complete messages to send.",
-                        ExtensionData.Empty)));
+            return new ContextPreparationFailed(
+                new ContextPreparationFailure(
+                    ContextPreparationFailureKind.EmptyHistory,
+                    "The eligible conversation history contains no complete messages to send.",
+                    ExtensionData.Empty));
         }
 
         var messages = instructions.AddRange(repairedHistory);
@@ -149,7 +147,23 @@ public sealed class DefaultContextAssembler: IContextAssembler
             SafeSetActivity(() => activity.SetFailed(outcome, structuralFailure.Kind.ToString()));
             SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
             SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind));
-            return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(structuralFailure));
+            return new ContextPreparationFailed(structuralFailure);
+        }
+
+        ContextManifest? manifest = null;
+        if (request.Evidence is not null && _services.Contributors.Count > 0)
+        {
+            var (Manifest, Failure) = await RunContributorsAsync(request, cancellationToken).ConfigureAwait(false);
+            if (Failure is { } contributorFailure)
+            {
+                const string outcome = "contributor_failure";
+                SafeSetActivity(() => activity.SetFailed(outcome, contributorFailure.Kind.ToString()));
+                SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+                SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, contributorFailure.Kind));
+                return new ContextPreparationFailed(contributorFailure);
+            }
+
+            manifest = Manifest;
         }
 
         var context = new LlmRequestContext(
@@ -159,12 +173,134 @@ public sealed class DefaultContextAssembler: IContextAssembler
             tools,
             toolChoice,
             settings,
-            request.Extensions);
+            request.Extensions)
+        {
+            Manifest = manifest,
+        };
 
         SafeSetActivity(() => activity.SetSuccessful("ready"));
         SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready")));
         SafeLog(() => ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length));
-        return Task.FromResult<ContextAssemblyResult>(new ContextReady(context, repairs));
+        return new ContextReady(context, repairs);
+    }
+
+    private async Task<(ContextManifest? Manifest, ContextPreparationFailure? Failure)> RunContributorsAsync(
+        ContextAssemblyRequest request,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request.Evidence is not null, "Contributors run only when assembly evidence is present.");
+        var evidence = request.Evidence;
+        var contributionRequest = new ContextContributionRequest(
+            evidence.Agent,
+            request.SessionId,
+            evidence.History.SourceCursor.ConversationId,
+            evidence.Identity,
+            request.RunId,
+            request.TurnId,
+            request.ModelRequestId,
+            request.Model,
+            evidence.History,
+            evidence.Authorization,
+            evidence.Configuration);
+
+        var candidates = ImmutableArray.CreateBuilder<ContextCandidate>();
+        foreach (var registered in _services.Contributors)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var registration = registered.Registration;
+            if (registration.Frequency == ContextEvaluationFrequency.OncePerRun
+                && !_oncePerRunContributorsExecuted.Add(registration.ContributorId))
+            {
+                continue;
+            }
+
+            ContextContribution contribution;
+            try
+            {
+                contribution = await registered.Contributor.ContributeAsync(contributionRequest, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (!registration.Required)
+                {
+                    continue;
+                }
+
+                return (null, new ContextPreparationFailure(
+                    ContextPreparationFailureKind.Unknown,
+                    "A required context contributor failed before returning a bounded contribution.",
+                    ExtensionData.Empty));
+            }
+
+            foreach (var candidate in contribution.Candidates)
+            {
+                var trustViolation = ContextTrustRules.ValidateCandidate(candidate);
+                if (trustViolation is not null)
+                {
+                    return (null, new ContextPreparationFailure(ContextPreparationFailureKind.Unknown, trustViolation, ExtensionData.Empty));
+                }
+
+                candidates.Add(candidate);
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var maxContextTokens = request.Model.Limits.MaxContextTokens ?? 128_000;
+        var options = _services.Options;
+        var budget = new ContextBudget(
+            maxContextTokens,
+            options.ReservedOutputTokens,
+            options.ProviderOverheadTokens,
+            options.EstimationSafetyMargin);
+        var budgetRequest = new ContextBudgetRequest(
+            budget,
+            candidates.ToImmutable(),
+            options.OverflowBehavior);
+        var plan = await _services.Budgets.AllocateAsync(budgetRequest, cancellationToken).ConfigureAwait(false);
+        if (plan.MandatoryOverflow)
+        {
+            return (null, new ContextPreparationFailure(
+                ContextPreparationFailureKind.Unknown,
+                "Mandatory context content exceeded the available token budget.",
+                ExtensionData.Empty));
+        }
+
+        var entries = ImmutableArray.CreateBuilder<ContextManifestEntry>();
+        foreach (var candidate in plan.Selected)
+        {
+            entries.Add(new ContextManifestEntry(
+                candidate.Source,
+                ContextManifestDisposition.Included,
+                candidate.Cost,
+                "Selected within the available context budget.",
+                []));
+        }
+
+        foreach (var candidate in plan.Omitted)
+        {
+            entries.Add(new ContextManifestEntry(
+                candidate.Source,
+                ContextManifestDisposition.Omitted,
+                candidate.Cost,
+                "Omitted because optional content did not fit within the available context budget.",
+                []));
+        }
+
+        var manifest = new ContextManifest(
+            request.ModelRequestId,
+            evidence.Agent.Revision,
+            evidence.History.SourceCursor.Version,
+            evidence.Configuration.Version,
+            new ContextContributorCatalogVersion(_services.Contributors.Count),
+            request.Model,
+            entries.ToImmutable(),
+            plan.EstimatedTotal);
+        return (manifest, null);
     }
 
     /// <summary>Runs one activity mutation, containing a hostile diagnostics listener so it cannot alter the returned decision.</summary>

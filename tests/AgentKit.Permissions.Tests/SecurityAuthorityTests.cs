@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Tests;
 
+using AgentKit.Permissions.InMemory;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -594,12 +596,14 @@ public sealed class SecurityAuthorityTests
     {
         var resolvedOptions = options ?? new AgentPermissionOptions();
         var clock = timeProvider ?? new FakeTimeProvider(_now);
+        var optionsWrapper = Options.Create(resolvedOptions);
         return new(
             policies,
             store ?? new InMemorySecurityGrantStore(clock),
-            new StubGrantIdGenerator(),
+            new DefaultSecurityGrantIssuer(new StubGrantIdGenerator(), clock, optionsWrapper),
+            new InMemorySecurityDecisionStore(),
             clock,
-            Options.Create(resolvedOptions),
+            optionsWrapper,
             policySelector ?? SecurityAuthorityTestData.CreatePolicySelector(resolvedOptions),
             approvalBroker ?? new ApprovingBroker(),
             new StubApprovalRequestIdGenerator(),

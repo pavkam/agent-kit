@@ -28,4 +28,16 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         provider.GetServices<IContextAssembler>().Count().ShouldBe(1);
     }
+
+    [Fact]
+    public void AddAgentContext_WhenExplicitKeyUsed_RegistersKeyedAssembler()
+    {
+        var services = new ServiceCollection();
+        var key = new ComponentKey<IContextAssembler>("custom-context");
+
+        _ = services.AddAgentContext(key);
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredKeyedService<IContextAssembler>(key.Value).ShouldBeOfType<DefaultContextAssembler>();
+    }
 }

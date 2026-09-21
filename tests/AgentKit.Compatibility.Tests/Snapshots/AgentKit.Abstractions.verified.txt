@@ -123,6 +123,10 @@ namespace AgentKit
         public AgentKit.ComponentKey<AgentKit.IOutputPublisher> Output { get; }
         public AgentKit.ComponentKey<AgentKit.IOutputProcessor> OutputProcessor { get; }
     }
+    public static class AgentContextComponentDefaults
+    {
+        public static AgentKit.ComponentKey<AgentKit.IContextAssembler> AssemblerKey { get; }
+    }
     public sealed class AgentDefinition : System.IEquatable<AgentKit.AgentDefinition>
     {
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
@@ -2507,6 +2511,29 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class ContextAssemblyResult : System.IEquatable<AgentKit.ContextAssemblyResult> { }
+    public sealed class ContextBudget : System.IEquatable<AgentKit.ContextBudget>
+    {
+        public ContextBudget(long maxContextTokens, int reservedOutputTokens, int providerOverheadTokens, double estimationSafetyMargin) { }
+        public double EstimationSafetyMargin { get; }
+        public long MaxContextTokens { get; }
+        public int ProviderOverheadTokens { get; }
+        public int ReservedOutputTokens { get; }
+    }
+    public sealed class ContextBudgetPlan : System.IEquatable<AgentKit.ContextBudgetPlan>
+    {
+        public ContextBudgetPlan(System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> selected, System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> omitted, AgentKit.ContextCostEstimate estimatedTotal, bool mandatoryOverflow) { }
+        public AgentKit.ContextCostEstimate EstimatedTotal { get; }
+        public bool MandatoryOverflow { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> Omitted { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> Selected { get; }
+    }
+    public sealed class ContextBudgetRequest : System.IEquatable<AgentKit.ContextBudgetRequest>
+    {
+        public ContextBudgetRequest(AgentKit.ContextBudget budget, System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> candidates, AgentKit.ContextOverflowBehavior overflowBehavior) { }
+        public AgentKit.ContextBudget Budget { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContextCandidate> Candidates { get; }
+        public AgentKit.ContextOverflowBehavior OverflowBehavior { get; }
+    }
     public sealed class ContextCandidate : System.IEquatable<AgentKit.ContextCandidate>
     {
         public ContextCandidate(AgentKit.ContextSourceReference source, AgentKit.ContextCandidateKind kind, AgentKit.ContextTrust trust, int priority, AgentKit.ContextScope scope, AgentKit.ContextCostEstimate cost, AgentKit.ContextFreshness freshness, AgentKit.ContextEvaluationFrequency frequency, bool mandatory, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> content, AgentKit.ExtensionData extensions) { }
@@ -2554,6 +2581,14 @@ namespace AgentKit
         public ContextContributorCatalogVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ContextContributorRegistration : System.IEquatable<AgentKit.ContextContributorRegistration>
+    {
+        public ContextContributorRegistration(AgentKit.ContextSourceKey contributorId, int order, AgentKit.ContextEvaluationFrequency frequency, bool required) { }
+        public AgentKit.ContextSourceKey ContributorId { get; }
+        public AgentKit.ContextEvaluationFrequency Frequency { get; }
+        public int Order { get; }
+        public bool Required { get; }
     }
     public sealed class ContextCostEstimate : System.IEquatable<AgentKit.ContextCostEstimate>
     {
@@ -2618,6 +2653,11 @@ namespace AgentKit
         public string Reason { get; }
         public AgentKit.ContextSourceReference Source { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.MessageId> SourceMessageIds { get; }
+    }
+    public static class ContextMessageTokenEstimation
+    {
+        public static long EstimateTokens(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, double estimatedCharactersPerToken) { }
+        public static long EstimateTokens(System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, double estimatedCharactersPerToken) { }
     }
     public enum ContextOverflowBehavior
     {
@@ -4214,9 +4254,18 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ContextAssemblyResult> AssembleAsync(AgentKit.ContextAssemblyRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IContextBudgetAllocator
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ContextBudgetPlan> AllocateAsync(AgentKit.ContextBudgetRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IContextContributor
     {
         System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IContextMessageTokenEstimator
+    {
+        long EstimateTokens(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages);
+        long EstimateTokens(System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts);
     }
     public interface IDelegatedIdentityDeriver
     {
@@ -5272,6 +5321,7 @@ namespace AgentKit
     {
         public LlmRequestContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ModelDescriptor model, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.ExtensionData extensions) { }
         public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.ContextManifest? Manifest { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; init; }
         public AgentKit.ModelDescriptor Model { get; init; }
         public AgentKit.ModelRequestId ModelRequestId { get; init; }

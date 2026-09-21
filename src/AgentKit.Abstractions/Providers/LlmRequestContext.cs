@@ -168,6 +168,10 @@ public sealed record LlmRequestContext
         }
     }
 
+    /// <summary>Gets the assembly manifest when contributor-driven assembly produced provenance evidence.</summary>
+    /// <value>The manifest for this request, or <see langword="null"/> when assembly did not run contributors.</value>
+    public ContextManifest? Manifest { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(LlmRequestContext? other) =>
         other is not null
@@ -177,7 +181,8 @@ public sealed record LlmRequestContext
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
-        && Extensions.Equals(other.Extensions);
+        && Extensions.Equals(other.Extensions)
+        && Equals(Manifest, other.Manifest);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -198,6 +203,7 @@ public sealed record LlmRequestContext
         hash.Add(ToolChoice);
         hash.Add(Settings);
         hash.Add(Extensions);
+        hash.Add(Manifest);
         return hash.ToHashCode();
     }
 }

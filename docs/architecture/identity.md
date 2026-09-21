@@ -142,14 +142,15 @@ registration. Expired evidence yields a security denial whose code is
 `AuthorizationDenied`; other validation failures use `AuthenticationFailed`.
 Absent `AddAgentIdentity`, the authority does not perform this check.
 
-Trusted channel adapters may call `Agent.RunAsync<T>` or `Agent.StreamAsync<T>` with an
-`IdentityAssertion` instead of a pre-resolved `ExecutionIdentity`. The runtime opens one
-scoped service scope, resolves through `IExecutionIdentityResolver`, and only then enters
-the shared admission path. Unknown issuers, malformed assertions, and failed validation
-map to `AgentRunRejected<T>` or `AgentRunStreamRejected<T>` with
-`AgentErrorCodes.AuthenticationFailed` (or `CredentialUnavailable` when identity services
-are unavailable). When `AddAgentIdentity` is absent, assertion ingress fails with
-`AgentErrorCodes.MissingDependency` before session mutation.
+Trusted channel adapters may call `Agent.RunAsync<T>` or `Agent.StreamAsync<T>`
+with an `IdentityAssertion` instead of a pre-resolved `ExecutionIdentity`. The
+runtime opens one scoped service scope, resolves through
+`IExecutionIdentityResolver`, and only then enters the shared admission path.
+Unknown issuers, malformed assertions, and failed validation map to
+`AgentRunRejected<T>` or `AgentRunStreamRejected<T>` with
+`AgentErrorCodes.AuthenticationFailed` (or `CredentialUnavailable` when identity
+services are unavailable). When `AddAgentIdentity` is absent, assertion ingress
+fails with `AgentErrorCodes.MissingDependency` before session mutation.
 
 The issuer mapping owns authenticated subject mapping and claim enrichment.
 After it returns, `IIdentityNormalizationPolicy` is a narrowing boundary: each
