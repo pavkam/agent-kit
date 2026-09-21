@@ -894,9 +894,13 @@ public sealed class AgentEngineBuilderExtensionsTests
     /// <summary>The policy shown in docs/guides/permissions.md.</summary>
     private sealed class ReadOnlyWorkspacePolicy: ISecurityPolicy
     {
-        public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            SecurityPolicyContext context,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(context);
             var mutates = request.Kind is SecurityOperationKind.FileWrite or SecurityOperationKind.DirectoryCreate or SecurityOperationKind.Process;
             return ValueTask.FromResult(mutates
                 ? new SecurityPolicyResult(SecurityPolicyResultKind.Deny, "read-only", "This agent may only read the workspace.")

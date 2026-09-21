@@ -12,7 +12,10 @@ public sealed class AllowAllSecurityPolicyTests
         var policy = new AllowAllSecurityPolicy();
 
         (await Should.ThrowAsync<ArgumentNullException>(async () =>
-            await policy.EvaluateAsync(null!, TestContext.Current.CancellationToken)))
+            await policy.EvaluateAsync(
+                null!,
+                SecurityAuthorityTestData.PolicyContext(SecurityAuthorityTestData.CreateRequest()),
+                TestContext.Current.CancellationToken)))
             .ParamName.ShouldBe("request");
     }
 
@@ -29,7 +32,10 @@ public sealed class AllowAllSecurityPolicyTests
         var policy = new AllowAllSecurityPolicy();
         var request = SecurityAuthorityTestData.CreateRequest() with { Kind = kind };
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(
+            request,
+            SecurityAuthorityTestData.PolicyContext(request),
+            TestContext.Current.CancellationToken);
 
         result.Kind.ShouldBe(SecurityPolicyResultKind.Allow);
         result.Code.ShouldNotBeNullOrWhiteSpace();
@@ -45,6 +51,6 @@ public sealed class AllowAllSecurityPolicyTests
         await cancellation.CancelAsync();
 
         _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await policy.EvaluateAsync(request, cancellation.Token));
+            await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), cancellation.Token));
     }
 }

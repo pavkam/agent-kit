@@ -136,6 +136,12 @@ if (validation is IdentityValidationRejected rejected)
 }
 ```
 
+When the same validation policy is composed, `SecurityAuthority` revalidates the
+request identity immediately before security policy evaluation and grant
+registration. Expired evidence yields a security denial whose code is
+`AuthorizationDenied`; other validation failures use `AuthenticationFailed`.
+Absent `AddAgentIdentity`, the authority does not perform this check.
+
 Trusted channel adapters may call `Agent.RunAsync<T>` or `Agent.StreamAsync<T>` with an
 `IdentityAssertion` instead of a pre-resolved `ExecutionIdentity`. The runtime opens one
 scoped service scope, resolves through `IExecutionIdentityResolver`, and only then enters

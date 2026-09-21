@@ -39,9 +39,13 @@ public sealed class WorkspaceScopedFileAccessPolicy: ISecurityPolicy
     private static readonly SecurityPolicyResult _abstainResult = new(SecurityPolicyResultKind.Abstain, null, null);
 
     /// <inheritdoc/>
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(
+        SecurityRequest request,
+        SecurityPolicyContext context,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!IsGovernedOperation(request.Kind))

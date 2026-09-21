@@ -11,6 +11,20 @@ public sealed class SecurityAuthorityTests
     private static readonly DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task AuthorizeAsync_WhenResourceConstraintsDoNotOverlap_DeniesConstraintIntersectionEmpty()
+    {
+        var authority = CreateAuthority(
+        [
+            new ConstrainedAllowPolicy(new ProtectedResource(ProtectedResourceKind.File, "/a.txt")),
+            new ConstrainedAllowPolicy(new ProtectedResource(ProtectedResourceKind.File, "/b.txt")),
+        ]);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.constraint_intersection_empty");
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenNoPolicyAllows_DeniesFailClosed()
     {
         var authority = CreateAuthority([]);
@@ -19,6 +33,50 @@ public sealed class SecurityAuthorityTests
         var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
 
         decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.no_policy");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenIdentityEvidenceIsExpiredAtProtectedBoundary_DeniesWithAuthorizationDeniedBeforePolicies()
+    {
+        var allow = new StubPolicy(SecurityPolicyResultKind.Allow);
+        var authority = CreateAuthority([allow], identityValidation: new FixedIdentityValidationPolicy(
+            new IdentityValidationRejected(new IdentityFailure(
+                IdentityFailureKind.Expired,
+                "Authentication evidence has expired.",
+                new IdentityIssuerId("issuer")))));
+        var request = CreateRequest();
+
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe(AgentErrorCodes.AuthorizationDenied.ToString());
+        allow.CallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenIdentityValidationPolicyIsAbsent_DoesNotRejectAtProtectedBoundary()
+    {
+        var authority = CreateAuthority([new StubPolicy(SecurityPolicyResultKind.Allow)]);
+        var request = CreateRequest();
+
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = decision.ShouldBeOfType<SecurityAllowed>();
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenIdentityValidationRejectsNonExpiredFailure_UsesAuthenticationFailedCode()
+    {
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Allow)],
+            identityValidation: new FixedIdentityValidationPolicy(
+                new IdentityValidationRejected(new IdentityFailure(
+                    IdentityFailureKind.Revoked,
+                    "Authentication evidence has been revoked.",
+                    new IdentityIssuerId("issuer")))));
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe(AgentErrorCodes.AuthenticationFailed.ToString());
     }
 
     [Fact]
@@ -571,12 +629,14 @@ public sealed class SecurityAuthorityTests
         IEnumerable<ISecurityPolicy> policies,
         ISecurityGrantStore? store = null,
         TimeProvider? timeProvider = null,
-        AgentPermissionOptions? options = null) => new(
+        AgentPermissionOptions? options = null,
+        IIdentityValidationPolicy? identityValidation = null) => new(
             policies,
             store ?? new InMemorySecurityGrantStore(timeProvider ?? new FakeTimeProvider(_now)),
             new StubGrantIdGenerator(),
             timeProvider ?? new FakeTimeProvider(_now),
-            Options.Create(options ?? new AgentPermissionOptions()));
+            Options.Create(options ?? new AgentPermissionOptions()),
+            identityValidation: identityValidation);
 
     private static SecurityPolicySnapshotReference PolicySnapshot(string id, string fingerprint) => new(
         new SecurityPolicySnapshotId(Guid.Parse(id)),
@@ -600,15 +660,47 @@ public sealed class SecurityAuthorityTests
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
 
+    private sealed class FixedIdentityValidationPolicy(IdentityValidationResult result): IIdentityValidationPolicy
+    {
+        public ValueTask<IdentityValidationResult> ValidateAsync(
+            ExecutionIdentity identity,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(identity);
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class ConstrainedAllowPolicy(ProtectedResource resource): ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            SecurityPolicyContext context,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(context);
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new SecurityPolicyResult(
+                SecurityPolicyResultKind.Allow,
+                "test.constrained",
+                "Allowed with resource bounds.",
+                new SecurityAllowConstraints(ImmutableArray.Create(resource), null, null, null, null)));
+        }
+    }
+
     private sealed class StubPolicy(SecurityPolicyResultKind result): ISecurityPolicy
     {
         public int CallCount { get; private set; }
 
         public ValueTask<SecurityPolicyResult> EvaluateAsync(
             SecurityRequest request,
+            SecurityPolicyContext context,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(context);
             cancellationToken.ThrowIfCancellationRequested();
             CallCount++;
             return ValueTask.FromResult(result switch
@@ -778,8 +870,10 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<SecurityPolicyResult> EvaluateAsync(
             SecurityRequest request,
+            SecurityPolicyContext context,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(context);
             externalCancellation.Cancel();
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "test.allow", "Allowed by test policy."));
@@ -790,6 +884,7 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<SecurityPolicyResult> EvaluateAsync(
             SecurityRequest request,
+            SecurityPolicyContext context,
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("policy failure containing protected content");
     }
@@ -798,6 +893,7 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<SecurityPolicyResult> EvaluateAsync(
             SecurityRequest request,
+            SecurityPolicyContext context,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(
                 new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "test.allow", "Allowed by test policy.")
@@ -810,6 +906,7 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<SecurityPolicyResult> EvaluateAsync(
             SecurityRequest request,
+            SecurityPolicyContext context,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromCanceled<SecurityPolicyResult>(new CancellationToken(canceled: true));
     }

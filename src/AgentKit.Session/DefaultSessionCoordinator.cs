@@ -615,9 +615,12 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         }
 
         var requestId = _securityRequestIds.Create();
-        var decision = await selected.Authority.AuthorizeAsync(new SecurityRequest(requestId, authorization.Scope, null,
-            authorization.Identity, authorization, audience, kind, effect, [resource], fingerprint,
-            _timeProvider.GetUtcNow().Add(_securityRequestLifetime)), cancellationToken).ConfigureAwait(false);
+        var decision = await selected.Authority.AuthorizeAsync(
+            new SecurityRequest(requestId, authorization.Scope, null,
+                authorization.Identity, authorization, audience, kind, effect, [resource], fingerprint,
+                _timeProvider.GetUtcNow().Add(_securityRequestLifetime)),
+            hooks: null,
+            cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed
             && allowed.RequestId == requestId
             && allowed.Grant.RequestId == requestId

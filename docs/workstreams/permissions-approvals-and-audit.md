@@ -15,8 +15,8 @@ Owning documents:
 ## Progress
 
 - [x] WS3-C1 security contract additions
-- [ ] WS3-C2 `ISecurityAuthority` hook-context parameter
-- [ ] WS3-C3 policy context and constraint intersection
+- [x] WS3-C2 `ISecurityAuthority` hook-context parameter
+- [x] WS3-C3 policy context and constraint intersection
 - [ ] WS3-C4 policy catalog and selector
 - [ ] WS3-C5 request/decision audit; audit dispatcher mandatory
 - [ ] WS3-C6a grant issuer and decision store

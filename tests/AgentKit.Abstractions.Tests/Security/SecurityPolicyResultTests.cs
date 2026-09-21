@@ -34,6 +34,26 @@ public sealed class SecurityPolicyResultTests
         result.Kind.ShouldBe(SecurityPolicyResultKind.Deny);
         result.Code.ShouldBe("code");
         result.SafeMessage.ShouldBe("message");
+        result.Constraints.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenDenyIncludesConstraints_ThrowsArgumentException()
+    {
+        var constraints = new SecurityAllowConstraints(null, null, null, null, null);
+        Should.Throw<ArgumentException>(() => new SecurityPolicyResult(
+            SecurityPolicyResultKind.Deny,
+            "code",
+            "message",
+            constraints)).ParamName.ShouldBe("constraints");
+    }
+
+    [Fact]
+    public void Constructor_WhenAllowIncludesConstraints_RoundTripsConstraints()
+    {
+        var constraints = new SecurityAllowConstraints(null, SecurityEffect.Observe, null, null, 2);
+        var result = new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "code", "message", constraints);
+        result.Constraints.ShouldBe(constraints);
     }
 
     [Fact]

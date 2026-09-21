@@ -29,9 +29,13 @@ public sealed class AllowAllSecurityPolicy: ISecurityPolicy
         "This composition trusts every operation its own agent can request.");
 
     /// <inheritdoc/>
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(
+        SecurityRequest request,
+        SecurityPolicyContext context,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(_allowResult);
     }

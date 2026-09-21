@@ -59,8 +59,16 @@ public static class ServiceExtensions
                 var timeProvider = provider.GetRequiredService<TimeProvider>();
                 var permissionOptions = provider.GetRequiredService<IOptions<AgentPermissionOptions>>();
                 var logger = provider.GetService<ILogger<SecurityAuthority>>();
+                var identityValidation = provider.GetService<IIdentityValidationPolicy>();
                 return provider.GetService<IApprovalStore>() is null
-                    ? new SecurityAuthority(policies, grantStore, grantIds, timeProvider, permissionOptions, logger)
+                    ? new SecurityAuthority(
+                        policies,
+                        grantStore,
+                        grantIds,
+                        timeProvider,
+                        permissionOptions,
+                        logger,
+                        identityValidation)
                     : new SecurityAuthority(
                         policies,
                         grantStore,
@@ -70,7 +78,8 @@ public static class ServiceExtensions
                         provider.GetRequiredService<IApprovalBroker>(),
                         provider.GetRequiredService<IIdentifierGenerator<ApprovalRequestId>>(),
                         provider.GetRequiredService<ISecurityAuditDispatcher>(),
-                        logger);
+                        logger,
+                        identityValidation);
             });
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
             services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();

@@ -37,6 +37,9 @@ When changing C#, also read the
 - Facade assertion ingress: `Agent.RunAsync` / `StreamAsync` overloads accepting
   `IdentityAssertion` resolve through scoped `IExecutionIdentityResolver` after
   `AddAgentIdentity`; map failures to typed run rejection before admission.
+- Protected-boundary revalidation: when `IIdentityValidationPolicy` is composed,
+  `SecurityAuthority` revalidates identity before policy evaluation; expired
+  evidence maps to `AuthorizationDenied`, other failures to `AuthenticationFailed`.
 
 Test issuer mapping, expiry/revocation, tenant partitioning, propagation,
 delegation narrowing, reauthentication, and the absence of credential leakage.

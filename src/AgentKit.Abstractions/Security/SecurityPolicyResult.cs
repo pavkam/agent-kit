@@ -10,9 +10,16 @@ public sealed record SecurityPolicyResult
     /// <param name="kind">The contribution classification.</param>
     /// <param name="code">A stable policy code for allow or denial evidence.</param>
     /// <param name="safeMessage">A non-sensitive explanation.</param>
+    /// <param name="constraints">
+    /// Optional intersecting bounds when <paramref name="kind"/> is allow or require-approval; otherwise null.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is undefined.</exception>
     /// <exception cref="ArgumentException">A non-abstaining result has a blank code or explanation.</exception>
-    public SecurityPolicyResult(SecurityPolicyResultKind kind, string? code, string? safeMessage)
+    public SecurityPolicyResult(
+        SecurityPolicyResultKind kind,
+        string? code,
+        string? safeMessage,
+        SecurityAllowConstraints? constraints = null)
     {
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         if (kind != SecurityPolicyResultKind.Abstain)
@@ -21,9 +28,17 @@ public sealed record SecurityPolicyResult
             ArgumentException.ThrowIfNullOrWhiteSpace(safeMessage);
         }
 
+        if (kind is not (SecurityPolicyResultKind.Allow or SecurityPolicyResultKind.RequireApproval) && constraints is not null)
+        {
+            throw new ArgumentException(
+                "Constraints are supported only for allow and require-approval results.",
+                nameof(constraints));
+        }
+
         Kind = kind;
         Code = code;
         SafeMessage = safeMessage;
+        Constraints = constraints;
     }
 
     /// <summary>Gets the contribution classification.</summary>
@@ -32,4 +47,9 @@ public sealed record SecurityPolicyResult
     public string? Code { get; init; }
     /// <summary>Gets the non-sensitive explanation when the policy did not abstain.</summary>
     public string? SafeMessage { get; init; }
+
+    /// <summary>
+    /// Gets optional intersecting bounds when <see cref="Kind"/> is allow or require-approval; otherwise null.
+    /// </summary>
+    public SecurityAllowConstraints? Constraints { get; init; }
 }

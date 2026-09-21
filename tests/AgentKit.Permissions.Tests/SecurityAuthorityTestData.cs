@@ -35,6 +35,36 @@ internal static class SecurityAuthorityTestData
             (now ?? DateTimeOffset.UnixEpoch).AddMinutes(10));
     }
 
+    /// <summary>Creates policy evaluation evidence for one request.</summary>
+    /// <param name="request">The request under evaluation.</param>
+    /// <param name="evaluatedAt">The instant evaluation began.</param>
+    /// <returns>A context suitable for direct policy evaluation in tests.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    internal static SecurityPolicyContext PolicyContext(SecurityRequest request, DateTimeOffset? evaluatedAt = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var at = evaluatedAt ?? new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
+        if (request.Authorization is { } captured)
+        {
+            return new SecurityPolicyContext(captured, new SecurityRevocationVersion(1), at);
+        }
+
+        var snapshot = new SecurityPolicySnapshotReference(
+            new SecurityPolicySnapshotId(Guid.Parse("00000000-0000-0000-0000-000000000001")),
+            new SecurityPolicyVersion(1),
+            new ContentHash("sha256:test"));
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("default"),
+            new SecurityProfileVersion(1),
+            snapshot,
+            new ComponentKey<ISecurityAuthority>("default"),
+            new AgentDefinitionRevision(0),
+            new ConfigurationVersion(1),
+            request.Scope,
+            request.Identity);
+        return new SecurityPolicyContext(authorization, new SecurityRevocationVersion(1), at);
+    }
+
     /// <summary>Creates a valid, non-expired approval request bound to a request from <see cref="CreateRequest"/>.</summary>
     /// <param name="now">The optional issue instant used to derive the request and its bounded expiry.</param>
     /// <returns>One approval request suitable for exercising approval-handler and broker behavior.</returns>

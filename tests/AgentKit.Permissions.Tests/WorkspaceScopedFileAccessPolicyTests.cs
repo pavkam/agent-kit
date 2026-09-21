@@ -12,7 +12,10 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
 
         (await Should.ThrowAsync<ArgumentNullException>(async () =>
-            await policy.EvaluateAsync(null!, TestContext.Current.CancellationToken)))
+            await policy.EvaluateAsync(
+                null!,
+                SecurityAuthorityTestData.PolicyContext(SecurityAuthorityTestData.CreateRequest()),
+                TestContext.Current.CancellationToken)))
             .ParamName.ShouldBe("request");
     }
 
@@ -27,7 +30,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(kind, ProtectedResourceKind.File, "notes/todo.txt");
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         result.Kind.ShouldBe(SecurityPolicyResultKind.Allow);
         result.Code.ShouldNotBeNullOrWhiteSpace();
@@ -46,7 +49,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(kind, ProtectedResourceKind.File, "notes/todo.txt");
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         AssertAbstain(result);
     }
@@ -57,7 +60,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(SecurityOperationKind.FileRead, ProtectedResourceKind.NetworkEndpoint, "example.com:443");
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         AssertAbstain(result);
     }
@@ -72,7 +75,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(SecurityOperationKind.FileRead, ProtectedResourceKind.File, identifier);
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         AssertAbstain(result);
     }
@@ -86,7 +89,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(SecurityOperationKind.FileWrite, ProtectedResourceKind.File, identifier);
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         AssertAbstain(result);
     }
@@ -97,7 +100,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         var policy = new WorkspaceScopedFileAccessPolicy();
         var request = Request(SecurityOperationKind.DirectoryRead, ProtectedResourceKind.Directory, ".");
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         result.Kind.ShouldBe(SecurityPolicyResultKind.Allow);
     }
@@ -115,7 +118,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
             ],
         };
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         result.Kind.ShouldBe(SecurityPolicyResultKind.Allow);
     }
@@ -133,7 +136,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
             ],
         };
 
-        var result = await policy.EvaluateAsync(request, TestContext.Current.CancellationToken);
+        var result = await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), TestContext.Current.CancellationToken);
 
         AssertAbstain(result);
     }
@@ -147,7 +150,7 @@ public sealed class WorkspaceScopedFileAccessPolicyTests
         await cancellation.CancelAsync();
 
         _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await policy.EvaluateAsync(request, cancellation.Token));
+            await policy.EvaluateAsync(request, SecurityAuthorityTestData.PolicyContext(request), cancellation.Token));
     }
 
     private static void AssertAbstain(SecurityPolicyResult result)

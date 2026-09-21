@@ -8,10 +8,12 @@ public interface ISecurityPolicy
 {
     /// <summary>Evaluates one normalized security request.</summary>
     /// <param name="request">The complete normalized request.</param>
+    /// <param name="context">The immutable evaluation evidence for this request.</param>
     /// <param name="cancellationToken">Cancels policy evaluation.</param>
     /// <returns>An allow, deny, or abstain proposal.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="context"/> is null.</exception>
     public ValueTask<SecurityPolicyResult> EvaluateAsync(
         SecurityRequest request,
+        SecurityPolicyContext context,
         CancellationToken cancellationToken = default);
 }

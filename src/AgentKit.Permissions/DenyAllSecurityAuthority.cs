@@ -28,6 +28,13 @@ public sealed class DenyAllSecurityAuthority: ISecurityAuthority
     /// <inheritdoc/>
     public ValueTask<SecurityDecision> AuthorizeAsync(
         SecurityRequest request,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken = default) =>
+        AuthorizeAsync(request, cancellationToken);
+
+    /// <inheritdoc/>
+    public ValueTask<SecurityDecision> AuthorizeAsync(
+        SecurityRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

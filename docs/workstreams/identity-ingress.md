@@ -15,7 +15,7 @@ generic conformance fixture.
 - [x] WS16-C2 issuer, validation-policy, deriver conformance suites
 - [x] WS16-C3 admission revalidation in the facade
 - [x] WS16-C4 `IdentityAssertion` ingress overloads
-- [ ] WS16-C5 protected-boundary revalidation
+- [x] WS16-C5 protected-boundary revalidation
 
 ## Verified current state
 

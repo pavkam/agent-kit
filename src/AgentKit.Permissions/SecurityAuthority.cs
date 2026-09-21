@@ -17,11 +17,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly long _revocationVersion;
     private readonly TimeSpan _maximumGrantLifetime;
     private readonly int _maximumGrantUses;
-    private readonly SecurityPolicySnapshotReference? _policySnapshot;
+    private readonly SecurityPolicySnapshotReference? _boundPolicySnapshot;
+    private readonly ISecurityPolicySelector _policySelector;
     private readonly ILogger<SecurityAuthority> _logger;
     private readonly IApprovalBroker? _approvalBroker;
     private readonly IIdentifierGenerator<ApprovalRequestId>? _approvalRequestIds;
     private readonly ISecurityAuditDispatcher? _auditDispatcher;
+    private readonly IIdentityValidationPolicy? _identityValidation;
 
     /// <summary>Initializes the first-party security authority.</summary>
     /// <param name="policies">The ordered additive policies.</param>
@@ -33,6 +35,11 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// The optional logger that receives safe authorization diagnostics; a
     /// Microsoft null logger is used when omitted.
     /// </param>
+    /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
+    /// <param name="identityValidation">
+    /// The optional identity validation policy that revalidates request identity before policy evaluation. When
+    /// omitted, the authority does not perform this check.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     public SecurityAuthority(
         IEnumerable<ISecurityPolicy> policies,
@@ -40,13 +47,16 @@ public sealed class SecurityAuthority: ISecurityAuthority
         IIdentifierGenerator<GrantId> grantIds,
         TimeProvider timeProvider,
         IOptions<AgentPermissionOptions> options,
-        ILogger<SecurityAuthority>? logger = null)
+        ISecurityPolicySelector policySelector,
+        ILogger<SecurityAuthority>? logger = null,
+        IIdentityValidationPolicy? identityValidation = null)
     {
         ArgumentNullException.ThrowIfNull(policies);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(grantIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(policySelector);
         var optionValues = options.Value;
         ArgumentNullException.ThrowIfNull(optionValues);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.PolicyVersion);
@@ -65,8 +75,10 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _revocationVersion = optionValues.RevocationVersion;
         _maximumGrantLifetime = optionValues.MaximumGrantLifetime;
         _maximumGrantUses = optionValues.MaximumGrantUses;
-        _policySnapshot = optionValues.PolicySnapshot;
+        _boundPolicySnapshot = optionValues.PolicySnapshot;
+        _policySelector = policySelector;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAuthority>.Instance;
+        _identityValidation = identityValidation;
     }
 
     /// <summary>Initializes the authority with approval coordination and required approval audit delivery.</summary>
@@ -78,7 +90,11 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// <param name="approvalBroker">The trusted approval coordinator.</param>
     /// <param name="approvalRequestIds">The approval-request identity generator.</param>
     /// <param name="auditDispatcher">The required security-audit dispatcher.</param>
+    /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
     /// <param name="logger">The optional safe diagnostic logger.</param>
+    /// <param name="identityValidation">
+    /// The optional identity validation policy that revalidates request identity before policy evaluation.
+    /// </param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public SecurityAuthority(
         IEnumerable<ISecurityPolicy> policies,
@@ -86,11 +102,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
         IIdentifierGenerator<GrantId> grantIds,
         TimeProvider timeProvider,
         IOptions<AgentPermissionOptions> options,
+        ISecurityPolicySelector policySelector,
         IApprovalBroker approvalBroker,
         IIdentifierGenerator<ApprovalRequestId> approvalRequestIds,
         ISecurityAuditDispatcher auditDispatcher,
-        ILogger<SecurityAuthority>? logger = null)
-        : this(policies, grantStore, grantIds, timeProvider, options, logger)
+        ILogger<SecurityAuthority>? logger = null,
+        IIdentityValidationPolicy? identityValidation = null)
+        : this(policies, grantStore, grantIds, timeProvider, options, policySelector, logger, identityValidation)
     {
         ArgumentNullException.ThrowIfNull(approvalBroker);
         ArgumentNullException.ThrowIfNull(approvalRequestIds);
@@ -99,6 +117,13 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _approvalRequestIds = approvalRequestIds;
         _auditDispatcher = auditDispatcher;
     }
+
+    /// <inheritdoc/>
+    public ValueTask<SecurityDecision> AuthorizeAsync(
+        SecurityRequest request,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken = default) =>
+        AuthorizeAsync(request, cancellationToken);
 
     /// <inheritdoc/>
     public async ValueTask<SecurityDecision> AuthorizeAsync(
@@ -183,8 +208,8 @@ public sealed class SecurityAuthority: ISecurityAuthority
         if (request.Authorization is { } authorization
             && (authorization.Scope != request.Scope
                 || authorization.Identity != request.Identity
-                || _policySnapshot is null
-                || authorization.PolicySnapshot != _policySnapshot))
+                || _boundPolicySnapshot is null
+                || authorization.PolicySnapshot != _boundPolicySnapshot))
         {
             return Denied(request, policyVersion, "security.captured_context_mismatch",
                 "The captured authorization context cannot be evaluated by this authority version.");
@@ -194,15 +219,62 @@ public sealed class SecurityAuthority: ISecurityAuthority
             return Denied(request, policyVersion, "security.deadline_expired", "The authorization deadline has expired.");
         }
 
+        if (_identityValidation is not null)
+        {
+            IdentityValidationResult validation;
+            try
+            {
+                validation = await _identityValidation.ValidateAsync(request.Identity, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                return Denied(
+                    request,
+                    policyVersion,
+                    AgentErrorCodes.CredentialUnavailable.ToString(),
+                    "Identity validation is unavailable.");
+            }
+
+            if (validation is IdentityValidationRejected rejected)
+            {
+                return Denied(
+                    request,
+                    policyVersion,
+                    MapIdentityValidationDenialCode(rejected.Failure.Kind),
+                    rejected.Failure.SafeMessage);
+            }
+
+            if (validation is not IdentityValidationPassed)
+            {
+                return Denied(
+                    request,
+                    policyVersion,
+                    AgentErrorCodes.AuthenticationFailed.ToString(),
+                    "Identity validation returned an unsupported result.");
+            }
+        }
+
+        var policyContext = SecurityPolicyEvaluationContexts.Create(
+            request,
+            policyVersion,
+            _policySnapshot,
+            new SecurityRevocationVersion(_revocationVersion),
+            now);
         var allowed = false;
         var approvalRequired = false;
         SecurityPolicyResult? hardDenial = null;
+        var constraintContributions = new List<SecurityAllowConstraints>();
         foreach (var policy in _policies)
         {
             SecurityPolicyResult result;
             try
             {
-                result = await policy.EvaluateAsync(request, cancellationToken).ConfigureAwait(false);
+                result = await policy.EvaluateAsync(request, policyContext, cancellationToken).ConfigureAwait(false);
                 ValidatePolicyResult(result);
             }
             catch (OperationCanceledException)
@@ -221,10 +293,22 @@ public sealed class SecurityAuthority: ISecurityAuthority
             if (result.Kind == SecurityPolicyResultKind.Deny)
             {
                 hardDenial ??= result;
+                continue;
             }
 
-            allowed |= result.Kind == SecurityPolicyResultKind.Allow;
-            approvalRequired |= result.Kind == SecurityPolicyResultKind.RequireApproval;
+            if (result.Kind == SecurityPolicyResultKind.Allow)
+            {
+                allowed = true;
+            }
+            else if (result.Kind == SecurityPolicyResultKind.RequireApproval)
+            {
+                approvalRequired = true;
+            }
+
+            if (result is { Kind: SecurityPolicyResultKind.Allow or SecurityPolicyResultKind.RequireApproval, Constraints: { } constraints })
+            {
+                constraintContributions.Add(constraints);
+            }
         }
 
         if (hardDenial is not null)
@@ -235,6 +319,26 @@ public sealed class SecurityAuthority: ISecurityAuthority
         if (!allowed && !approvalRequired)
         {
             return Denied(request, policyVersion, "security.no_policy", "No security policy authorized this operation.");
+        }
+
+        var hostMaximumExpiry = now + _maximumGrantLifetime;
+        if (hostMaximumExpiry > request.Deadline)
+        {
+            hostMaximumExpiry = request.Deadline;
+        }
+
+        if (!SecurityAllowConstraintsAlgebra.TryIntersect(
+                constraintContributions,
+                request,
+                hostMaximumExpiry,
+                _maximumGrantUses,
+                out _))
+        {
+            return Denied(
+                request,
+                policyVersion,
+                "security.constraint_intersection_empty",
+                "The intersected policy constraints deny this operation.");
         }
 
         ApprovalRequestId? approvalRequestId = null;
@@ -353,6 +457,11 @@ public sealed class SecurityAuthority: ISecurityAuthority
         await _grantStore.RegisterAsync(grant, cancellationToken).ConfigureAwait(false);
         return new SecurityAllowed(request.Id, policyVersion, grant);
     }
+
+    private static string MapIdentityValidationDenialCode(IdentityFailureKind kind) =>
+        kind == IdentityFailureKind.Expired
+            ? AgentErrorCodes.AuthorizationDenied.ToString()
+            : AgentErrorCodes.AuthenticationFailed.ToString();
 
     private static SecurityDenied Denied(
         SecurityRequest request,

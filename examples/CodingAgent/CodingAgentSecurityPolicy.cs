@@ -7,9 +7,13 @@ namespace CodingAgent;
 internal sealed class CodingAgentSecurityPolicy(PermissionModeController permissions): ISecurityPolicy
 {
     /// <inheritdoc/>
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(
+        SecurityRequest request,
+        SecurityPolicyContext context,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(DecisionFor(permissions.Mode, request.Kind, request.Effect));
     }
