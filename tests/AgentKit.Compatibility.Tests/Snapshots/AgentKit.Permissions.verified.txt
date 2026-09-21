@@ -17,24 +17,36 @@ namespace AgentKit.Permissions
     public sealed class AllowAllSecurityPolicy : AgentKit.ISecurityPolicy
     {
         public AllowAllSecurityPolicy() { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyContext context, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultApprovalBroker : AgentKit.IApprovalBroker
     {
         public DefaultApprovalBroker(AgentKit.IApprovalStore store, AgentKit.IApprovalHandler handler, AgentKit.IApprovalResponderAuthorizer responderAuthorizer, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class DefaultSecurityPolicySelector : AgentKit.ISecurityPolicySelector
+    {
+        public DefaultSecurityPolicySelector(AgentKit.ISecurityPolicyCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicySnapshotResult> SelectAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class DenyAllSecurityAuthority : AgentKit.ISecurityAuthority
     {
         public DenyAllSecurityAuthority() { }
         public DenyAllSecurityAuthority(Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.DenyAllSecurityAuthority> logger) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
-        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }
-        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SecurityPolicyCatalog : AgentKit.ISecurityPolicyCatalog
+    {
+        public SecurityPolicyCatalog(Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, System.Collections.Generic.IEnumerable<AgentKit.SecurityProfilePublication> publications) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicySnapshotResult> ResolveAsync(AgentKit.SecurityPolicySnapshotReference reference, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
@@ -48,11 +60,15 @@ namespace AgentKit.Permissions
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStandaloneSecurityProfile(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityProfileKey profileKey, AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.SecurityProfileVersion? profileVersion = default, long policyVersion = 1, System.Action<AgentKit.Permissions.AgentPermissionOptions>? configurePermissions = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWorkspaceScopedFileAccessPolicy() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllowAllSecurityPolicy() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSecurityPolicyCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.ISecurityPolicyCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSecurityPolicySelector<TSelector>()
+                where TSelector :  class, AgentKit.ISecurityPolicySelector { }
         }
     }
     public sealed class WorkspaceScopedFileAccessPolicy : AgentKit.ISecurityPolicy
     {
         public WorkspaceScopedFileAccessPolicy() { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyContext context, System.Threading.CancellationToken cancellationToken = default) { }
     }
 }

@@ -51,13 +51,10 @@ public sealed class SecurityPolicyCatalog: ISecurityPolicyCatalog
         ArgumentNullException.ThrowIfNull(reference);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_snapshots.ContainsKey(reference))
-        {
-            return new ValueTask<SecurityPolicySnapshotResult>(new SecurityPolicySnapshotResolved(reference));
-        }
-
-        return new ValueTask<SecurityPolicySnapshotResult>(
-            new SecurityPolicySnapshotStale(reference, "The requested policy snapshot is no longer retained."));
+        return _snapshots.ContainsKey(reference)
+            ? new ValueTask<SecurityPolicySnapshotResult>(new SecurityPolicySnapshotResolved(reference))
+            : new ValueTask<SecurityPolicySnapshotResult>(
+                new SecurityPolicySnapshotStale(reference, "The requested policy snapshot is no longer retained."));
     }
 
     private static void Retain(

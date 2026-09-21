@@ -20,6 +20,8 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         provider.GetServices<ISecurityGrantStore>().ShouldBeEmpty();
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityAuthority)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityPolicyCatalog)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityPolicySelector)).ShouldBe(1);
         provider.GetRequiredService<TimeProvider>().ShouldBe(TimeProvider.System);
     }
 

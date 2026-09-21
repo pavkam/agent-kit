@@ -25,6 +25,7 @@ internal static class PermissionServiceRegistration
         where TCatalog : class, ISecurityPolicyCatalog
     {
         ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
         _ = EnsurePolicyCatalogRegistered(services);
         _ = services.RemoveAll<ISecurityPolicyCatalog>();
         return services.AddSingleton<ISecurityPolicyCatalog, TCatalog>();
@@ -34,6 +35,7 @@ internal static class PermissionServiceRegistration
         where TSelector : class, ISecurityPolicySelector
     {
         ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
         _ = EnsurePolicyCatalogRegistered(services);
         _ = services.RemoveAll<ISecurityPolicySelector>();
         return services.AddSingleton<ISecurityPolicySelector, TSelector>();

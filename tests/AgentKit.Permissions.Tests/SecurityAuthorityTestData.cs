@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Tests;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Creates valid request evidence shared by authority tests without selecting a concrete grant-store adapter.</summary>
 internal static class SecurityAuthorityTestData
 {
@@ -63,6 +65,21 @@ internal static class SecurityAuthorityTestData
             request.Scope,
             request.Identity);
         return new SecurityPolicyContext(authorization, new SecurityRevocationVersion(1), at);
+    }
+
+    /// <summary>Creates the default policy selector for one frozen permission-options snapshot.</summary>
+    /// <param name="options">The permission options whose policy snapshot is retained by the catalog.</param>
+    /// <param name="publications">Optional profile publications whose snapshots are also retained.</param>
+    /// <returns>A selector backed by a catalog constructed from the supplied evidence.</returns>
+    internal static ISecurityPolicySelector CreatePolicySelector(
+        AgentPermissionOptions options,
+        IEnumerable<SecurityProfilePublication>? publications = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var catalog = new SecurityPolicyCatalog(
+            Options.Create(options),
+            publications ?? []);
+        return new DefaultSecurityPolicySelector(catalog, Options.Create(options));
     }
 
     /// <summary>Creates a valid, non-expired approval request bound to a request from <see cref="CreateRequest"/>.</summary>

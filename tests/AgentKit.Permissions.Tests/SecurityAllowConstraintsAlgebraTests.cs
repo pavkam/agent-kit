@@ -52,7 +52,7 @@ public sealed class SecurityAllowConstraintsAlgebraTests
     [Fact]
     public void TryIntersect_WhenContributionsOverlap_ReturnsTrue()
     {
-        var request = SecurityAuthorityTestData.CreateRequest(_now);
+        var request = SecurityAuthorityTestData.CreateRequest(_now) with { RequestedUses = 5 };
         var shared = request.Resources[0];
         var first = new SecurityAllowConstraints(ImmutableArray.Create(shared), null, null, null, 3);
         var second = new SecurityAllowConstraints(ImmutableArray.Create(shared), null, _now, null, 2);

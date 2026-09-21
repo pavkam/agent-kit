@@ -259,10 +259,52 @@ public sealed class SecurityAuthority: ISecurityAuthority
             }
         }
 
+        SecurityPolicySnapshotResult snapshotSelection;
+        try
+        {
+            snapshotSelection = await _policySelector.SelectAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return Denied(
+                request,
+                policyVersion,
+                "security.policy_snapshot_unavailable",
+                "Policy snapshot selection is unavailable.");
+        }
+
+        switch (snapshotSelection)
+        {
+            case SecurityPolicySnapshotUnavailable unavailable:
+                return Denied(
+                    request,
+                    policyVersion,
+                    "security.policy_snapshot_unavailable",
+                    unavailable.SafeReason);
+            case SecurityPolicySnapshotStale stale:
+                return Denied(
+                    request,
+                    policyVersion,
+                    "security.policy_snapshot_stale",
+                    stale.SafeReason);
+            case SecurityPolicySnapshotResolved:
+                break;
+            default:
+                return Denied(
+                    request,
+                    policyVersion,
+                    "security.policy_snapshot_unavailable",
+                    "Policy snapshot selection returned an unsupported result.");
+        }
+
         var policyContext = SecurityPolicyEvaluationContexts.Create(
             request,
             policyVersion,
-            _policySnapshot,
+            _boundPolicySnapshot,
             new SecurityRevocationVersion(_revocationVersion),
             now);
         var allowed = false;

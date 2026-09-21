@@ -167,6 +167,13 @@ public enum ContextOverflowBehavior
     CompactWhenConfigured
 }
 
+public enum ContextManifestDisposition
+{
+    Included,
+    Transformed,
+    Omitted
+}
+
 public readonly record struct ContextSourceNamespace(string Value);
 
 public readonly record struct ContextSourceKey(string Value);

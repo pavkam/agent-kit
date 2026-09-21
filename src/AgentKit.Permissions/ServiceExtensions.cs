@@ -51,6 +51,7 @@ public static class ServiceExtensions
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),
                 provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
                 provider.GetRequiredService<TimeProvider>()));
+            _ = PermissionServiceRegistration.EnsurePolicyCatalogRegistered(services);
             services.TryAddSingleton<ISecurityAuthority>(static provider =>
             {
                 var policies = provider.GetServices<ISecurityPolicy>();
@@ -58,6 +59,7 @@ public static class ServiceExtensions
                 var grantIds = provider.GetRequiredService<IIdentifierGenerator<GrantId>>();
                 var timeProvider = provider.GetRequiredService<TimeProvider>();
                 var permissionOptions = provider.GetRequiredService<IOptions<AgentPermissionOptions>>();
+                var policySelector = provider.GetRequiredService<ISecurityPolicySelector>();
                 var logger = provider.GetService<ILogger<SecurityAuthority>>();
                 var identityValidation = provider.GetService<IIdentityValidationPolicy>();
                 return provider.GetService<IApprovalStore>() is null
@@ -67,6 +69,7 @@ public static class ServiceExtensions
                         grantIds,
                         timeProvider,
                         permissionOptions,
+                        policySelector,
                         logger,
                         identityValidation)
                     : new SecurityAuthority(
@@ -75,6 +78,7 @@ public static class ServiceExtensions
                         grantIds,
                         timeProvider,
                         permissionOptions,
+                        policySelector,
                         provider.GetRequiredService<IApprovalBroker>(),
                         provider.GetRequiredService<IIdentifierGenerator<ApprovalRequestId>>(),
                         provider.GetRequiredService<ISecurityAuditDispatcher>(),
@@ -295,5 +299,21 @@ public static class ServiceExtensions
             }
             return services;
         }
+
+        /// <summary>Replaces the singular <see cref="ISecurityPolicyCatalog"/> registration.</summary>
+        /// <typeparam name="TCatalog">The replacement catalog type.</typeparam>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceSecurityPolicyCatalog<TCatalog>()
+            where TCatalog : class, ISecurityPolicyCatalog =>
+            PermissionServiceRegistration.ReplaceSecurityPolicyCatalog<TCatalog>(services);
+
+        /// <summary>Replaces the singular <see cref="ISecurityPolicySelector"/> registration.</summary>
+        /// <typeparam name="TSelector">The replacement selector type.</typeparam>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceSecurityPolicySelector<TSelector>()
+            where TSelector : class, ISecurityPolicySelector =>
+            PermissionServiceRegistration.ReplaceSecurityPolicySelector<TSelector>(services);
     }
 }
