@@ -602,6 +602,7 @@ public sealed class SecurityAuthorityTests
             store ?? new InMemorySecurityGrantStore(clock),
             new DefaultSecurityGrantIssuer(new StubGrantIdGenerator(), clock, optionsWrapper),
             new InMemorySecurityDecisionStore(),
+            new DefaultSecurityRevocationGeneration(optionsWrapper),
             clock,
             optionsWrapper,
             policySelector ?? SecurityAuthorityTestData.CreatePolicySelector(resolvedOptions),

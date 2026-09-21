@@ -901,7 +901,38 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return TurnOutcome.Settled(RunOutcomes.ContextPreparationFailed(prepFailed.Failure), currentVersion);
         }
 
-        var context = ((ContextReady) assembleResult).Context;
+        var contextReady = (ContextReady) assembleResult;
+        var context = contextReady.Context;
+        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.ContextAssembled))
+        {
+            var contextAssembledDispatch = CreateHookDispatch(AgentHookPoints.ContextAssembled, turnCorrelation);
+            var contextAssembledArgs = new ContextAssembledEventArgs(
+                contextAssembledDispatch,
+                request.AgentId,
+                request.SessionId,
+                turn,
+                context,
+                contextReady.Repairs);
+            try
+            {
+                var hookContext = hookScope.CreateDispatch(contextAssembledDispatch);
+                await _hookDispatcher!.DispatchAsync(
+                    AgentHookPointDefinitions.ContextAssembled,
+                    hookContext,
+                    contextAssembledArgs,
+                    HookFailureMode.IsolateAndDiagnose,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.ContextAssembled, exception.GetType().FullName ?? exception.GetType().Name);
+            }
+        }
+
         if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeModelRequest))
         {
             var beforeModelDispatch = CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation);

@@ -14,7 +14,10 @@ internal static class ContextTrustRules
         ArgumentNullException.ThrowIfNull(candidate);
         return candidate.Kind != ContextCandidateKind.Instruction
             ? null
-            : candidate.Trust is ContextTrust.Framework or ContextTrust.HostPolicy or ContextTrust.AgentDefinition
+            : candidate.Trust is ContextTrust.Framework
+                or ContextTrust.HostPolicy
+                or ContextTrust.AgentDefinition
+                or ContextTrust.Workspace
             ? null
             : "A contributor proposed instruction authority from a trust class that cannot carry instruction precedence.";
     }

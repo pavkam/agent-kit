@@ -129,6 +129,8 @@ internal static class AgentContextRegistration
         services.TryAddSingleton<IContextMessageTokenEstimator, CharacterBasedContextMessageTokenEstimator>();
         services.TryAddSingleton<IContextBudgetAllocator, DefaultContextBudgetAllocator>();
         services.TryAddSingleton<IInstructionResolver, DefaultInstructionResolver>();
+        services.TryAddSingleton<IHistoryPipeline, DefaultHistoryPipeline>();
+        services.TryAddSingleton<IToolSnapshotProvider, StaticToolSnapshotProvider>();
         return services;
     }
 

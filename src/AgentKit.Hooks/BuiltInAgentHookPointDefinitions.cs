@@ -9,6 +9,10 @@ internal static class BuiltInAgentHookPointDefinitions
     /// <inheritdoc cref="AgentHookPointDefinitions.RunStarted"/>
     internal static HookPointDefinition<IRunStartedHook, RunStartedEventArgs> RunStarted => AgentHookPointDefinitions.RunStarted;
 
+    /// <inheritdoc cref="AgentHookPointDefinitions.ContextAssembled"/>
+    internal static HookPointDefinition<IContextAssembledHook, ContextAssembledEventArgs> ContextAssembled =>
+        AgentHookPointDefinitions.ContextAssembled;
+
     /// <inheritdoc cref="AgentHookPointDefinitions.BeforeModelRequest"/>
     internal static HookPointDefinition<IBeforeModelRequestHook, BeforeModelRequestEventArgs> BeforeModelRequest =>
         AgentHookPointDefinitions.BeforeModelRequest;
@@ -19,6 +23,10 @@ internal static class BuiltInAgentHookPointDefinitions
 
     /// <inheritdoc cref="AgentHookPointDefinitions.RunStartedRegistration"/>
     internal static HookPointDefinitionRegistration RunStartedRegistration => AgentHookPointDefinitions.RunStartedRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.ContextAssembledRegistration"/>
+    internal static HookPointDefinitionRegistration ContextAssembledRegistration =>
+        AgentHookPointDefinitions.ContextAssembledRegistration;
 
     /// <inheritdoc cref="AgentHookPointDefinitions.BeforeModelRequestRegistration"/>
     internal static HookPointDefinitionRegistration BeforeModelRequestRegistration =>

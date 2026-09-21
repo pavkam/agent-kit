@@ -14,6 +14,14 @@ public static class AgentHookPointDefinitions
         new DefaultAgentHookMutationValidator<RunStartedEventArgs>(),
         static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
 
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.ContextAssembled"/>.</summary>
+    public static HookPointDefinition<IContextAssembledHook, ContextAssembledEventArgs> ContextAssembled { get; } = new(
+        AgentHookPoints.ContextAssembled,
+        HookPointKind.Observational,
+        HookFailureMode.IsolateAndDiagnose,
+        new DefaultAgentHookMutationValidator<ContextAssembledEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
     /// <summary>Gets the closed definition for <see cref="AgentHookPoints.BeforeModelRequest"/>.</summary>
     public static HookPointDefinition<IBeforeModelRequestHook, BeforeModelRequestEventArgs> BeforeModelRequest { get; } = new(
         AgentHookPoints.BeforeModelRequest,
@@ -35,6 +43,14 @@ public static class AgentHookPointDefinitions
         AgentHookPoints.RunStarted,
         typeof(IRunStartedHook),
         typeof(RunStartedEventArgs),
+        HookPointKind.Observational,
+        HookFailureMode.IsolateAndDiagnose);
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.ContextAssembled"/>.</summary>
+    public static HookPointDefinitionRegistration ContextAssembledRegistration { get; } = new(
+        AgentHookPoints.ContextAssembled,
+        typeof(IContextAssembledHook),
+        typeof(ContextAssembledEventArgs),
         HookPointKind.Observational,
         HookFailureMode.IsolateAndDiagnose);
 

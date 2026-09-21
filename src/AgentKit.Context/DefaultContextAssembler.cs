@@ -76,11 +76,18 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         var evidence = request.Evidence;
         var agentId = evidence?.Agent.Id ?? request.AgentId;
         var sessionId = evidence?.History.SourceCursor.SessionId ?? request.SessionId;
-        var history = evidence?.History.Messages ?? request.History;
-        var instructions = evidence?.Agent.Instructions ?? request.Instructions;
-        var tools = evidence?.Agent.Tools ?? request.Tools;
+        var sourceCursor = evidence?.History.SourceCursor
+            ?? new MessageCursor(
+                request.AgentId,
+                request.SessionId,
+                conversationId: null,
+                request.BranchId,
+                new SessionVersion(0),
+                new SessionSequence(0));
+        var rawHistory = evidence?.History.Messages ?? request.History;
         var toolChoice = evidence?.Agent.ToolChoice ?? request.ToolChoice;
         var settings = evidence?.Agent.Settings ?? request.Settings;
+        var fallbackTools = evidence?.Agent.Tools ?? request.Tools;
 
         using var activityScope = AgentKitActivityScope.Start(
             AgentKitActivityNames.ContextPrepare,
@@ -96,64 +103,109 @@ internal sealed class DefaultContextAssembler: IContextAssembler
                 new(AgentKitTagNames.RequestModel, request.Model.ModelId.ToString()),
             });
         var activity = activityScope.Activity;
-        SafeLog(() => ContextLog.Preparing(_logger, request.ModelRequestId, history.Length));
+        SafeLog(() => ContextLog.Preparing(_logger, request.ModelRequestId, rawHistory.Length));
 
-        var repairedHistory = RepairHistory(history, out var repairs, out var excludedIncompleteMessages, out var excludedInstructionMessages);
+        var historyResult = await _services.History.PrepareAsync(
+            new HistoryPreparationRequest(sourceCursor, rawHistory),
+            cancellationToken).ConfigureAwait(false);
+        if (historyResult is RejectedHistory rejectedHistory)
+        {
+            var failure = rejectedHistory.Failure.ToContextPreparationFailure();
+            var outcome = failure.Kind switch
+            {
+                ContextPreparationFailureKind.EmptyHistory => "empty_history",
+                ContextPreparationFailureKind.InvalidRolePartCombination => "invalid_role_part_combination",
+                ContextPreparationFailureKind.BrokenToolCallCausality => "broken_tool_call_causality",
+                _ => "history_preparation_failed",
+            };
+            SafeSetActivity(() => activity.SetFailed(outcome, failure.Kind.ToString()));
+            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, failure.Kind));
+            return new ContextPreparationFailed(failure);
+        }
+
+        var preparedHistory = ((PreparedHistory) historyResult).View;
+        var excludedInstructionMessages = preparedHistory.Repairs.Count(static repair =>
+            repair.Kind == HistoryRepairKind.ExcludedInstructionMessage);
         if (excludedInstructionMessages > 0)
         {
             SafeLog(() => ContextLog.ExcludedInstructionMessagesFromHistory(_logger, request.ModelRequestId, excludedInstructionMessages));
         }
 
-        if (!repairs.IsEmpty)
+        if (!preparedHistory.Repairs.IsEmpty)
         {
+            var excludedIncompleteMessages = preparedHistory.Repairs.Count(static repair =>
+                repair.Kind is HistoryRepairKind.ExcludedIncompleteMessage or HistoryRepairKind.ExcludedIncompleteAssistantContent);
             SafeLog(() => ContextLog.AppliedHistoryRepairs(
-                _logger, request.ModelRequestId, repairs.Length, excludedIncompleteMessages, excludedInstructionMessages));
+                _logger,
+                request.ModelRequestId,
+                preparedHistory.Repairs.Length,
+                excludedIncompleteMessages,
+                excludedInstructionMessages));
         }
 
-        var instructionFailure = ValidateInstructions(instructions);
-        if (instructionFailure is not null)
+        ImmutableArray<AgentMessage> instructions;
+        if (evidence is not null)
         {
-            const string outcome = "invalid_instruction_message";
-            SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.InvalidInstructionMessage)));
-            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.InvalidInstructionMessage));
-            return new ContextPreparationFailed(instructionFailure);
-        }
+            var resolution = await _services.Instructions.ResolveAsync(
+                new InstructionResolutionRequest(
+                    evidence.Agent.InstructionSources,
+                    request.RunId,
+                    request.TurnId,
+                    request.ModelRequestId),
+                cancellationToken).ConfigureAwait(false);
+            if (resolution is InstructionResolutionFailed instructionFailed)
+            {
+                const string outcome = "invalid_instruction_message";
+                SafeSetActivity(() => activity.SetFailed(outcome, instructionFailed.Failure.Kind.ToString()));
+                SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+                SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, instructionFailed.Failure.Kind));
+                return new ContextPreparationFailed(instructionFailed.Failure);
+            }
 
-        if (repairedHistory.IsEmpty)
+            instructions = ((InstructionResolutionResolved) resolution).Messages;
+        }
+        else
         {
-            const string outcome = "empty_history";
-            SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.EmptyHistory)));
-            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.EmptyHistory));
-            return new ContextPreparationFailed(
-                new ContextPreparationFailure(
-                    ContextPreparationFailureKind.EmptyHistory,
-                    "The eligible conversation history contains no complete messages to send.",
-                    ExtensionData.Empty));
+            var instructionFailure = ValidateInstructions(request.Instructions);
+            if (instructionFailure is not null)
+            {
+                const string outcome = "invalid_instruction_message";
+                SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.InvalidInstructionMessage)));
+                SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+                SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.InvalidInstructionMessage));
+                return new ContextPreparationFailed(instructionFailure);
+            }
+
+            instructions = request.Instructions;
         }
 
-        var messages = instructions.AddRange(repairedHistory);
+        var messages = instructions.AddRange(preparedHistory.Messages);
 
         // Validated over the combined messages, not just history: an instruction message could
         // itself carry a ToolCallPart/ToolResultPart, or reference/duplicate a call identity that
         // also appears in history, and neither half alone proves the composed request is coherent.
-        var structuralFailure = ValidateRolePartCombinations(messages) ?? ValidateToolCallCausality(messages);
-        if (structuralFailure is not null)
+        var combinedFailure = HistoryMessageValidation.ValidateRolePartCombinations(messages)?.ToContextPreparationFailure()
+            ?? HistoryMessageValidation.ValidateToolCallCausality(messages)?.ToContextPreparationFailure();
+        if (combinedFailure is not null)
         {
-            var outcome = structuralFailure.Kind == ContextPreparationFailureKind.InvalidRolePartCombination
+            var outcome = combinedFailure.Kind == ContextPreparationFailureKind.InvalidRolePartCombination
                 ? "invalid_role_part_combination"
                 : "broken_tool_call_causality";
-            SafeSetActivity(() => activity.SetFailed(outcome, structuralFailure.Kind.ToString()));
+            SafeSetActivity(() => activity.SetFailed(outcome, combinedFailure.Kind.ToString()));
             SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind));
-            return new ContextPreparationFailed(structuralFailure);
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, combinedFailure.Kind));
+            return new ContextPreparationFailed(combinedFailure);
         }
+
+        var tools = await _services.Tools.ResolveToolsAsync(
+            new ToolSnapshotRequest(catalog: null, fallbackTools),
+            cancellationToken).ConfigureAwait(false);
 
         ContextManifest? manifest = null;
         if (request.Evidence is not null && _services.Contributors.Count > 0)
         {
-            var (Manifest, Failure) = await RunContributorsAsync(request, cancellationToken).ConfigureAwait(false);
+            var (Manifest, Failure) = await RunContributorsAsync(request, preparedHistory, cancellationToken).ConfigureAwait(false);
             if (Failure is { } contributorFailure)
             {
                 const string outcome = "contributor_failure";
@@ -181,11 +233,12 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         SafeSetActivity(() => activity.SetSuccessful("ready"));
         SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready")));
         SafeLog(() => ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length));
-        return new ContextReady(context, repairs);
+        return new ContextReady(context, preparedHistory.Repairs);
     }
 
     private async Task<(ContextManifest? Manifest, ContextPreparationFailure? Failure)> RunContributorsAsync(
         ContextAssemblyRequest request,
+        HistoryView preparedHistory,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request.Evidence is not null, "Contributors run only when assembly evidence is present.");
@@ -199,7 +252,7 @@ internal sealed class DefaultContextAssembler: IContextAssembler
             request.TurnId,
             request.ModelRequestId,
             request.Model,
-            evidence.History,
+            preparedHistory,
             evidence.Authorization,
             evidence.Configuration);
 
@@ -294,7 +347,7 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         var manifest = new ContextManifest(
             request.ModelRequestId,
             evidence.Agent.Revision,
-            evidence.History.SourceCursor.Version,
+            preparedHistory.SourceCursor.Version,
             evidence.Configuration.Version,
             new ContextContributorCatalogVersion(_services.Contributors.Count),
             request.Model,
@@ -343,61 +396,8 @@ internal sealed class DefaultContextAssembler: IContextAssembler
     }
 
     /// <summary>
-    /// Retains only complete messages and excludes any system or developer message found in history:
-    /// instruction authority enters a request exclusively through the explicit instruction set, so a
-    /// stored or imported history can never promote content to system precedence. Every exclusion
-    /// produces one <see cref="HistoryRepair"/> attributed to the excluded message, in source order.
-    /// </summary>
-    private static ImmutableArray<AgentMessage> RepairHistory(
-        ImmutableArray<AgentMessage> history,
-        out ImmutableArray<HistoryRepair> repairs,
-        out int excludedIncompleteMessages,
-        out int excludedInstructionMessages)
-    {
-        Debug.Assert(!history.IsDefault, "The request and evidence contracts guarantee an initialized history.");
-        excludedIncompleteMessages = 0;
-        excludedInstructionMessages = 0;
-        var builder = ImmutableArray.CreateBuilder<AgentMessage>(history.Length);
-        var repairBuilder = ImmutableArray.CreateBuilder<HistoryRepair>();
-        foreach (var message in history)
-        {
-            if (message.State != MessageState.Complete)
-            {
-                excludedIncompleteMessages++;
-                repairBuilder.Add(new HistoryRepair(
-                    [message.Id],
-                    message is AssistantMessage
-                        ? HistoryRepairKind.ExcludedIncompleteAssistantContent
-                        : HistoryRepairKind.ExcludedIncompleteMessage,
-                    $"Excluded a message whose state is {message.State} because only complete messages are sent to a provider.",
-                    ExtensionData.Empty));
-                continue;
-            }
-
-            if (message is SystemMessage or DeveloperMessage)
-            {
-                excludedInstructionMessages++;
-                repairBuilder.Add(new HistoryRepair(
-                    [message.Id],
-                    HistoryRepairKind.ExcludedInstructionMessage,
-                    "Excluded a system or developer message found in history because history never carries instruction authority.",
-                    ExtensionData.Empty));
-                continue;
-            }
-
-            builder.Add(message);
-        }
-
-        repairs = repairBuilder.ToImmutable();
-        return builder.ToImmutable();
-    }
-
-    /// <summary>
     /// Validates that every instruction message is complete and carries system or developer
-    /// authority. Unlike history, an instruction message is never repaired or silently excluded:
-    /// instructions enter a request exclusively through this explicit set, so a caller that places an
-    /// incomplete, user, assistant, or tool message in it has produced an incoherent request that
-    /// assembly must reject rather than send unrepaired and unvalidated.
+    /// authority for the reduced compatibility path that supplies flat instruction messages.
     /// </summary>
     private static ContextPreparationFailure? ValidateInstructions(ImmutableArray<AgentMessage> instructions)
     {
@@ -422,84 +422,5 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Validates that each tool part sits in the only role allowed to carry it: a <see cref="ToolCallPart"/>
-    /// in an <see cref="AssistantMessage"/> and a <see cref="ToolResultPart"/> in a <see cref="ToolMessage"/>.
-    /// Because each half is confined to its own role, a call and its result can never share one message.
-    /// </summary>
-    private static ContextPreparationFailure? ValidateRolePartCombinations(ImmutableArray<AgentMessage> repairedHistory)
-    {
-        Debug.Assert(!repairedHistory.IsDefault, "RepairHistory always returns an initialized array.");
-        foreach (var message in repairedHistory)
-        {
-            foreach (var part in message.Parts)
-            {
-                var violation = part switch
-                {
-                    ToolCallPart when message is not AssistantMessage =>
-                        "History carries a tool call in a message whose role cannot request tools; only assistant messages may.",
-                    ToolResultPart when message is not ToolMessage =>
-                        "History carries a tool result in a message whose role cannot report results; only tool messages may.",
-                    _ => null,
-                };
-                if (violation is not null)
-                {
-                    return new ContextPreparationFailure(
-                        ContextPreparationFailureKind.InvalidRolePartCombination, violation, ExtensionData.Empty);
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Validates tool-call causality in order: every call identity is unique, every result references a
-    /// call in an earlier message, and every call receives exactly one terminal result.
-    /// </summary>
-    private static ContextPreparationFailure? ValidateToolCallCausality(ImmutableArray<AgentMessage> repairedHistory)
-    {
-        Debug.Assert(!repairedHistory.IsDefault, "RepairHistory always returns an initialized array.");
-        var pendingCalls = new HashSet<ToolCallId>();
-        var seenCalls = new HashSet<ToolCallId>();
-        string? violation = null;
-
-        foreach (var message in repairedHistory)
-        {
-            foreach (var part in message.Parts)
-            {
-                switch (part)
-                {
-                    case ToolCallPart toolCall when !seenCalls.Add(toolCall.CallId):
-                        violation = "History requested the same tool call identity more than once.";
-                        break;
-                    case ToolCallPart toolCall:
-                        _ = pendingCalls.Add(toolCall.CallId);
-                        break;
-                    case ToolResultPart toolResult when !pendingCalls.Remove(toolResult.CallId):
-                        violation = seenCalls.Contains(toolResult.CallId)
-                            ? "History carries more than one terminal result for one tool call."
-                            : "History carries a tool result that precedes, or has no, matching tool call.";
-                        break;
-                    default:
-                        break;
-                }
-
-                if (violation is not null)
-                {
-                    return new ContextPreparationFailure(
-                        ContextPreparationFailureKind.BrokenToolCallCausality, violation, ExtensionData.Empty);
-                }
-            }
-        }
-
-        return pendingCalls.Count == 0
-            ? null
-            : new ContextPreparationFailure(
-                ContextPreparationFailureKind.BrokenToolCallCausality,
-                "Every tool call in history must have exactly one matching terminal result.",
-                ExtensionData.Empty);
     }
 }

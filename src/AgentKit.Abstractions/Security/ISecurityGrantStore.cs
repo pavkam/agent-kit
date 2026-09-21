@@ -54,4 +54,30 @@ public interface ISecurityGrantStore
     /// <param name="cancellationToken">Cancels before revocation commits.</param>
     /// <returns><see langword="true"/> when the grant exists, including when already revoked.</returns>
     public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default);
+
+    /// <summary>Revokes one registered grant with an explicit recorded reason.</summary>
+    /// <param name="grantId">The grant to revoke.</param>
+    /// <param name="reason">The non-sensitive revocation reason retained with the store transition.</param>
+    /// <param name="cancellationToken">Cancels before revocation commits.</param>
+    /// <returns>A closed revocation outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reason"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="grantId"/> is default.</exception>
+    /// <remarks>
+    /// First-party stores implement this overload natively so callers can distinguish a fresh revocation from an
+    /// idempotent retry and from an unknown grant. The default implementation delegates to <see cref="RevokeAsync(GrantId, CancellationToken)"/>
+    /// and reports <see cref="GrantRevoked"/> whenever that call returns <see langword="true"/>, which cannot distinguish
+    /// an already-revoked grant until the bool overload is removed.
+    /// </remarks>
+    public async ValueTask<GrantRevocationResult> RevokeAsync(
+        GrantId grantId,
+        RevocationReason reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await RevokeAsync(grantId, cancellationToken).ConfigureAwait(false)
+            ? new GrantRevoked(grantId, reason)
+            : new GrantRevocationNotFound(grantId);
+    }
 }

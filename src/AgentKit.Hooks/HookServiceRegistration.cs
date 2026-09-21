@@ -164,15 +164,18 @@ internal static class HookServiceRegistration
     private static void RegisterBuiltInPointDefinitions(IServiceCollection services)
     {
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.RunStarted);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.ContextAssembled);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeModelRequest);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeToolInvocation);
         services.TryAddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
         [
             BuiltInAgentHookPointDefinitions.RunStartedRegistration,
+            BuiltInAgentHookPointDefinitions.ContextAssembledRegistration,
             BuiltInAgentHookPointDefinitions.BeforeModelRequestRegistration,
             BuiltInAgentHookPointDefinitions.BeforeToolInvocationRegistration,
         ]);
         services.TryAddSingleton<IHookMutationValidator<RunStartedEventArgs>, DefaultAgentHookMutationValidator<RunStartedEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<ContextAssembledEventArgs>, DefaultAgentHookMutationValidator<ContextAssembledEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<BeforeModelRequestEventArgs>, DefaultAgentHookMutationValidator<BeforeModelRequestEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<BeforeToolInvocationEventArgs>, DefaultAgentHookMutationValidator<BeforeToolInvocationEventArgs>>();
     }

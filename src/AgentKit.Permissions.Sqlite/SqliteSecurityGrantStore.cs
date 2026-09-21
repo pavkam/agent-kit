@@ -190,27 +190,61 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before revocation commits.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The exact target, schema, persisted evidence, lock, or provider operation cannot be validated safely.</exception>
     /// <remarks>The adapter owns and disposes the per-call connection and immediate transaction. Revocation is idempotent, so retrying the same grant identity reconciles an uncertain acknowledgement without restoring authority.</remarks>
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ExecuteAsync(
-        "revoke",
-        () =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var connection = OpenStoreConnection();
-            cancellationToken.ThrowIfCancellationRequested();
-            using var transaction = connection.BeginTransaction(deferred: false);
-            cancellationToken.ThrowIfCancellationRequested();
-            ValidateConnection(connection, requireWal: true, performIntegrityCheck: false, transaction);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "UPDATE security_grants SET revoked = 1 WHERE grant_id = $id;";
-            _ = command.Parameters.AddWithValue("$id", SqliteSecurityGrantCodec.EncodeGuid(grantId.Value));
-            cancellationToken.ThrowIfCancellationRequested();
-            var found = command.ExecuteNonQuery() != 0;
-            cancellationToken.ThrowIfCancellationRequested();
-            transaction.Commit();
-            return found;
-        }, null, null, grantId);
+    /// <inheritdoc/>
+    public ValueTask<GrantRevocationResult> RevokeAsync(
+        GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
+        return ExecuteAsync(
+            "revoke",
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var connection = OpenStoreConnection();
+                cancellationToken.ThrowIfCancellationRequested();
+                using var transaction = connection.BeginTransaction(deferred: false);
+                cancellationToken.ThrowIfCancellationRequested();
+                ValidateConnection(connection, requireWal: true, performIntegrityCheck: false, transaction);
+                cancellationToken.ThrowIfCancellationRequested();
+                using var select = connection.CreateCommand();
+                select.Transaction = transaction;
+                select.CommandText = "SELECT revoked FROM security_grants WHERE grant_id = $id;";
+                _ = select.Parameters.AddWithValue("$id", SqliteSecurityGrantCodec.EncodeGuid(grantId.Value));
+                cancellationToken.ThrowIfCancellationRequested();
+                using var reader = select.ExecuteReader();
+                if (!reader.Read())
+                {
+                    return (GrantRevocationResult) new GrantRevocationNotFound(grantId);
+                }
+
+                var alreadyRevoked = reader.GetInt32(0) != 0;
+                reader.Close();
+                if (alreadyRevoked)
+                {
+                    transaction.Commit();
+                    return new GrantAlreadyRevoked(grantId);
+                }
+
+                using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = "UPDATE security_grants SET revoked = 1 WHERE grant_id = $id;";
+                _ = update.Parameters.AddWithValue("$id", SqliteSecurityGrantCodec.EncodeGuid(grantId.Value));
+                cancellationToken.ThrowIfCancellationRequested();
+                _ = update.ExecuteNonQuery();
+                cancellationToken.ThrowIfCancellationRequested();
+                transaction.Commit();
+                return new GrantRevoked(grantId, reason);
+            }, null, null, grantId);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+    {
+        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
+        var result = await RevokeAsync(grantId, reason, cancellationToken).ConfigureAwait(false);
+        return result is GrantRevoked or GrantAlreadyRevoked;
+    }
 
     private GrantConsumptionResult ConsumeCore(
         SecurityGrant grant,

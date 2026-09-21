@@ -376,6 +376,26 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         result.RemainingUses.ShouldBe(1);
     }
 
+    /// <summary>Verifies typed revocation distinguishes fresh, idempotent, and missing grants.</summary>
+    [Fact]
+    public async Task RevokeAsync_WhenReasonIsProvided_ReturnsTypedOutcomes()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var grant = CreateGrant(fixture.TimeProvider.GetUtcNow());
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Explicit revoke.");
+
+        (await store.RevokeAsync(
+            grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
+        (await store.RevokeAsync(
+            grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantAlreadyRevoked>();
+        (await store.RevokeAsync(
+            new GrantId(Guid.Parse("99999999-9999-9999-9999-999999999999")),
+            reason,
+            TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevocationNotFound>();
+    }
+
     /// <summary>Creates deterministic, valid grant evidence for a contract case.</summary>
     /// <param name="now">The fixture-controlled issue instant.</param>
     /// <param name="allowedUses">The number of authorized consumptions.</param>

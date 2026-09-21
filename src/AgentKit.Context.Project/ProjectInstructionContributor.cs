@@ -1,0 +1,128 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Context.Project;
+
+/// <summary>Discovers bounded workspace instruction files and contributes them as instruction candidates.</summary>
+public sealed class ProjectInstructionContributor: IContextContributor
+{
+    private readonly IFileSystem _fileSystem;
+    private readonly ISecurityAuthority _securityAuthority;
+    private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
+    private readonly TimeProvider _timeProvider;
+    private readonly ProjectInstructionOptions _options;
+
+    /// <summary>Initializes the contributor.</summary>
+    /// <param name="fileSystem">The protected file-system boundary used for reads.</param>
+    /// <param name="securityAuthority">The authority used to authorize each read.</param>
+    /// <param name="requestIds">The security-request identity generator.</param>
+    /// <param name="timeProvider">The clock used to bound authorization.</param>
+    /// <param name="options">Validated discovery options captured at construction.</param>
+    /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+    public ProjectInstructionContributor(
+        IFileSystem fileSystem,
+        ISecurityAuthority securityAuthority,
+        IIdentifierGenerator<SecurityRequestId> requestIds,
+        TimeProvider timeProvider,
+        IOptions<ProjectInstructionOptions> options)
+    {
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(requestIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaxBytesPerFile, nameof(options));
+        ArgumentException.ThrowIfContainsNull(options.Value.SearchRoots, nameof(options));
+        ArgumentException.ThrowIfContainsNull(options.Value.InstructionFilenames, nameof(options));
+        _fileSystem = fileSystem;
+        _securityAuthority = securityAuthority;
+        _requestIds = requestIds;
+        _timeProvider = timeProvider;
+        _options = options.Value;
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<ContextContribution> ContributeAsync(
+        ContextContributionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var candidates = ImmutableArray.CreateBuilder<ContextCandidate>();
+        foreach (var root in _options.SearchRoots)
+        {
+            foreach (var filename in _options.InstructionFilenames)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var relativePath = CombineRelativePath(root, filename);
+                var candidate = await TryReadInstructionCandidateAsync(request, relativePath, cancellationToken).ConfigureAwait(false);
+                if (candidate is not null)
+                {
+                    candidates.Add(candidate);
+                }
+            }
+        }
+
+        return new ContextContribution(candidates.ToImmutable(), []);
+    }
+
+    private async Task<ContextCandidate?> TryReadInstructionCandidateAsync(
+        ContextContributionRequest request,
+        FileSystemPath path,
+        CancellationToken cancellationToken)
+    {
+        var authorization = request.Authorization;
+        var securityRequest = new SecurityRequest(
+            _requestIds.Create(),
+            authorization.Scope,
+            toolCallId: null,
+            authorization.Identity,
+            _fileSystem.SecurityAudience,
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [FileSecurityBinding.Resource(path)],
+            FileSecurityBinding.ReadFingerprint(path),
+            _timeProvider.GetUtcNow().AddMinutes(1));
+        var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
+        if (decision is not SecurityAllowed allowed)
+        {
+            return null;
+        }
+
+        var readResult = await _fileSystem.ReadAsync(new FileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
+        if (readResult is not FileRead read || read.Bytes > _options.MaxBytesPerFile)
+        {
+            return null;
+        }
+
+        var text = read.Content;
+        var bytes = Encoding.UTF8.GetByteCount(text);
+        return new ContextCandidate(
+            new ContextSourceReference(
+                new ContextSourceNamespace("agentkit.context.project"),
+                new ContextSourceKey($"project-instructions:{path}"),
+                new ContextSourceVersion("1")),
+            ContextCandidateKind.Instruction,
+            ContextTrust.Workspace,
+            priority: 100,
+            ContextScope.Run,
+            new ContextCostEstimate(bytes, Math.Max(1, bytes / 4)),
+            ContextFreshness.Pinned,
+            ContextEvaluationFrequency.OncePerRun,
+            mandatory: false,
+            [new TextPart(text)],
+            ExtensionData.Empty);
+    }
+
+    private static FileSystemPath CombineRelativePath(string root, string filename)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filename);
+        var combined = root.TrimEnd('/').Length == 0 || root is "."
+            ? filename
+            : $"{root.TrimEnd('/')}/{filename}";
+        return new FileSystemPath(combined);
+    }
+}

@@ -184,29 +184,43 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the revocation append begins.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The store is uninitialized, or the append cannot be completed and flushed.</exception>
     /// <remarks>Revocation is idempotent; revoking an already revoked grant appends nothing and still reports that the grant exists.</remarks>
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ExecuteAsync(
-        "revoke",
-        () =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_gate)
+    public ValueTask<GrantRevocationResult> RevokeAsync(
+        GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
+        return ExecuteAsync(
+            "revoke",
+            () =>
             {
-                RequireInitialized();
-                if (!_grants.TryGetValue(grantId, out var state))
-                {
-                    return false;
-                }
-                if (state.Revoked)
-                {
-                    return true;
-                }
-
                 cancellationToken.ThrowIfCancellationRequested();
-                AppendRecord(JsonSecurityGrantLogRecord.ForRevocation(grantId), cancellationToken);
-                _grants[grantId] = state with { Revoked = true };
-                return true;
-            }
-        }, null, null, grantId);
+                lock (_gate)
+                {
+                    RequireInitialized();
+                    if (!_grants.TryGetValue(grantId, out var state))
+                    {
+                        return (GrantRevocationResult) new GrantRevocationNotFound(grantId);
+                    }
+                    if (state.Revoked)
+                    {
+                        return new GrantAlreadyRevoked(grantId);
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AppendRecord(JsonSecurityGrantLogRecord.ForRevocation(grantId), cancellationToken);
+                    _grants[grantId] = state with { Revoked = true };
+                    return new GrantRevoked(grantId, reason);
+                }
+            }, null, null, grantId);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+    {
+        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
+        var result = await RevokeAsync(grantId, reason, cancellationToken).ConfigureAwait(false);
+        return result is GrantRevoked or GrantAlreadyRevoked;
+    }
 
     /// <summary>Releases the advisory exclusive lock held for this store's lifetime.</summary>
     /// <remarks>

@@ -17,6 +17,11 @@ public static class AgentHookPoints
     public static HookPointId RunStarted { get; } = new("agentkit.run.started");
 
     /// <summary>
+    /// Dispatched after context assembly succeeds for one model request. Read-only; failures may be isolated.
+    /// </summary>
+    public static HookPointId ContextAssembled { get; } = new("agentkit.context.assembled");
+
+    /// <summary>
     /// Dispatched before each model request with the assembled context. Hooks may narrow the request settings;
     /// a failure fails the turn.
     /// </summary>

@@ -15,7 +15,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly ISecurityDecisionStore _decisionStore;
     private readonly TimeProvider _timeProvider;
     private readonly long _policyVersion;
-    private readonly long _revocationVersion;
+    private readonly ISecurityRevocationGeneration _revocationGeneration;
     private readonly TimeSpan _maximumGrantLifetime;
     private readonly int _maximumGrantUses;
     private readonly SecurityPolicySnapshotReference? _boundPolicySnapshot;
@@ -32,6 +32,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// <param name="grantStore">The authoritative grant state store.</param>
     /// <param name="grantIssuer">The grant issuer that mints bounded grants after a terminal allow decision.</param>
     /// <param name="decisionStore">The store that retains every terminal decision.</param>
+    /// <param name="revocationGeneration">The live revocation epoch source.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated permission configuration.</param>
     /// <param name="policySelector">The selector that resolves the effective policy snapshot for each request.</param>
@@ -53,6 +54,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ISecurityGrantStore grantStore,
         ISecurityGrantIssuer grantIssuer,
         ISecurityDecisionStore decisionStore,
+        ISecurityRevocationGeneration revocationGeneration,
         TimeProvider timeProvider,
         IOptions<AgentPermissionOptions> options,
         ISecurityPolicySelector policySelector,
@@ -67,6 +69,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(grantIssuer);
         ArgumentNullException.ThrowIfNull(decisionStore);
+        ArgumentNullException.ThrowIfNull(revocationGeneration);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(policySelector);
@@ -88,9 +91,9 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _grantStore = grantStore;
         _grantIssuer = grantIssuer;
         _decisionStore = decisionStore;
+        _revocationGeneration = revocationGeneration;
         _timeProvider = timeProvider;
         _policyVersion = optionValues.PolicyVersion;
-        _revocationVersion = optionValues.RevocationVersion;
         _maximumGrantLifetime = optionValues.MaximumGrantLifetime;
         _maximumGrantUses = optionValues.MaximumGrantUses;
         _boundPolicySnapshot = optionValues.PolicySnapshot;
@@ -189,6 +192,26 @@ public sealed class SecurityAuthority: ISecurityAuthority
     {
         Debug.Assert(request is not null, "A validated security request is required by the authority core.");
         var policyVersion = new SecurityPolicyVersion(_policyVersion);
+        SecurityRevocationVersion revocationVersion;
+        try
+        {
+            revocationVersion = await _revocationGeneration.GetCurrentAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return await DenyAsync(
+                request,
+                policyVersion,
+                "security.revocation_unavailable",
+                "The revocation generation is unavailable.",
+                new AuthorizationEvaluationTrace(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var now = _timeProvider.GetUtcNow();
         var trace = new AuthorizationEvaluationTrace();
         var requestAuditDenied = await DispatchRequestAuditAsync(request, policyVersion, now, cancellationToken)
@@ -324,7 +347,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
             request,
             policyVersion,
             _boundPolicySnapshot,
-            new SecurityRevocationVersion(_revocationVersion),
+            revocationVersion,
             now);
         var allowed = false;
         var approvalRequired = false;
@@ -436,7 +459,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
             var binding = new ApprovalScopeBinding(
                 request,
                 policyVersion,
-                new SecurityRevocationVersion(_revocationVersion),
+                revocationVersion,
                 now,
                 approvalExpiry,
                 Math.Min(request.RequestedUses, _maximumGrantUses));
@@ -483,7 +506,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 || approved.Response.RequestId != approval.Id
                 || approved.Response.Binding != binding
                 || approved.Response.Resolution != ApprovalResolution.Approved
-                || approved.Response.Binding.RevocationVersion.Value != _revocationVersion)
+                || approved.Response.Binding.RevocationVersion != revocationVersion)
             {
                 return await DenyAsync(
                     request,
@@ -497,7 +520,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
             approvedBinding = approved.Response.Binding;
         }
 
-        var revocationVersion = new SecurityRevocationVersion(_revocationVersion);
         var grant = await _grantIssuer.IssueAsync(
             request,
             policyVersion,

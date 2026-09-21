@@ -264,20 +264,36 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+    public ValueTask<GrantRevocationResult> RevokeAsync(
+        GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(reason);
+        ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
         cancellationToken.ThrowIfCancellationRequested();
         if (!_grants.TryGetValue(grantId, out var state))
         {
-            return ValueTask.FromResult(false);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
         }
 
         lock (state.SyncRoot)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (state.Revoked)
+            {
+                return ValueTask.FromResult<GrantRevocationResult>(new GrantAlreadyRevoked(grantId));
+            }
+
             state.Revoked = true;
-            return ValueTask.FromResult(true);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
         }
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+    {
+        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
+        var result = await RevokeAsync(grantId, reason, cancellationToken).ConfigureAwait(false);
+        return result is GrantRevoked or GrantAlreadyRevoked;
     }
 
     private static bool EnforcementMatches(SecurityGrant grant, SecurityEnforcementRequest enforcement)

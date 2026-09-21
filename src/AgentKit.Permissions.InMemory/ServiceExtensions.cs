@@ -38,6 +38,8 @@ public static class ServiceExtensions
             {
                 services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore, InMemorySecurityGrantStore>());
             }
+
+            services.TryAddSingleton<ISecurityRevocationGeneration, InMemorySecurityRevocationGeneration>();
             return services;
         }
 

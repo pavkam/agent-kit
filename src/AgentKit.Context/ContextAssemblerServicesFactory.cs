@@ -36,6 +36,14 @@ internal static class ContextAssemblerServicesFactory
         var budgets = provider.GetKeyedService<IContextBudgetAllocator>(assemblerKey)
             ?? provider.GetRequiredService<IContextBudgetAllocator>();
         var options = provider.GetRequiredService<IOptions<AgentContextOptions>>().Value;
-        return new ContextAssemblerServices(contributors, budgets, options);
+        var history = provider.GetKeyedService<IHistoryPipeline>(assemblerKey)
+            ?? provider.GetRequiredService<IHistoryPipeline>();
+        return new ContextAssemblerServices(
+            history,
+            provider.GetRequiredService<IInstructionResolver>(),
+            contributors,
+            budgets,
+            provider.GetRequiredService<IToolSnapshotProvider>(),
+            options);
     }
 }
