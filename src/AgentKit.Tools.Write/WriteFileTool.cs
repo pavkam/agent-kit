@@ -36,28 +36,28 @@ public sealed class WriteFileTool: ITool
         """).RootElement;
 
     private readonly IFileSystem _fileSystem;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="WriteFileTool"/> class.</summary>
     /// <param name="fileSystem">The file system this tool writes through.</param>
-    /// <param name="securityAuthority">The system-wide authority used after path, content, and disposition normalization.</param>
+    /// <param name="authoritySelector">The security authority selector used after path, content, and disposition normalization.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     public WriteFileTool(
         IFileSystem fileSystem,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         _fileSystem = fileSystem;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
     }
@@ -112,18 +112,26 @@ public sealed class WriteFileTool: ITool
         }
 
         var context = request.Context;
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failed("The captured security authority is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         var securityRequest = new SecurityRequest(
             _requestIds.Create(),
-            new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+            authorization.Scope,
             context.ToolCallId,
-            context.Identity,
+            authorization.Identity,
+            authorization,
             _fileSystem.SecurityAudience,
             SecurityOperationKind.FileWrite,
             FileSecurityBinding.WriteEffect(mode),
             [FileSecurityBinding.Resource(path)],
             FileSecurityBinding.WriteFingerprint(path, content, mode),
             _timeProvider.GetUtcNow().AddMinutes(1));
-        var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
+        var decision = await selected.Authority.AuthorizeAsync(securityRequest, hooks: null, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
         {
             return Failed(authorizationDenied.Denial.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Skill.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -25,6 +27,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSkillTool(options => options.Skills.Add(Definition()));
         _ = services.AddSingleton<IFileSnapshotReader, RecordingSnapshotReader>();
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, FixedSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
         using var provider = services.BuildServiceProvider();

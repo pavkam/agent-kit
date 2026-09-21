@@ -17,7 +17,7 @@ public sealed class TodoTool: ITool
 
     /// <summary>Initializes the todo compatibility surface over the canonical plan implementation.</summary>
     /// <param name="store">The selected protected plan-state store.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The captured model-facing bounds.</param>
@@ -25,17 +25,17 @@ public sealed class TodoTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public TodoTool(
         IPlanStateStore store,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<PlanToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-        _planTool = new PlanTool(store, securityAuthority, requestIds, timeProvider, options);
+        _planTool = new PlanTool(store, authoritySelector, requestIds, timeProvider, options);
     }
 
     /// <inheritdoc/>

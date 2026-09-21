@@ -46,6 +46,10 @@ internal sealed class RunBudget
     /// <summary>Gets the underlying scope identity.</summary>
     public BudgetScopeId ScopeId => _scope.Id;
 
+    /// <summary>Gets the borrowed scope for tool-execution capability binding.</summary>
+    /// <returns>The live scope this run budget reserves through.</returns>
+    internal IBudgetScope GetScopeForToolExecution() => _scope;
+
     /// <summary>Counts one attempt on a count dimension before the loop commits to it.</summary>
     /// <param name="dimension">The count dimension, such as <see cref="BudgetDimensions.Turns"/>.</param>
     /// <param name="operationId">The operation the attempt belongs to.</param>

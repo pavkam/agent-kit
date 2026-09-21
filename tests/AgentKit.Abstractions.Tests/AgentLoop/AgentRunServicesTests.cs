@@ -8,35 +8,35 @@ public sealed class AgentRunServicesTests
 {
     [Fact]
     public void Constructor_WhenSessionIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(null!, Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("session");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(null!, Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("session");
 
     [Fact]
     public void Constructor_WhenSecurityProfileSelectorIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), null!, Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("securityProfileSelector");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), null!, Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("securityProfileSelector");
 
     [Fact]
     public void Constructor_WhenContextIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), null!, Tools(), Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("context");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), null!, Tools(), null, Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("context");
 
     [Fact]
     public void Constructor_WhenToolsIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), null!, Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("tools");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), null!, null, Catalog(), Selector2(), Resolver(), Policy())).ParamName.ShouldBe("tools");
 
     [Fact]
     public void Constructor_WhenModelsIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), null!, Selector2(), Resolver(), Policy())).ParamName.ShouldBe("models");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), null, null!, Selector2(), Resolver(), Policy())).ParamName.ShouldBe("models");
 
     [Fact]
     public void Constructor_WhenModelSelectorIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), null!, Resolver(), Policy())).ParamName.ShouldBe("modelSelector");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), null!, Resolver(), Policy())).ParamName.ShouldBe("modelSelector");
 
     [Fact]
     public void Constructor_WhenModelResolverIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), null!, Policy())).ParamName.ShouldBe("modelResolver");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), null!, Policy())).ParamName.ShouldBe("modelResolver");
 
     [Fact]
     public void Constructor_WhenContinuationPolicyIsNull_ThrowsExactArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), null!)).ParamName.ShouldBe("continuationPolicy");
+        Should.Throw<ArgumentNullException>(() => new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), null!)).ParamName.ShouldBe("continuationPolicy");
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
@@ -49,7 +49,7 @@ public sealed class AgentRunServicesTests
         var modelSelector = Selector2();
         var modelResolver = Resolver();
         var continuationPolicy = Policy();
-        var services = new AgentRunServices(session, securityProfileSelector, context, tools, models, modelSelector, modelResolver, continuationPolicy);
+        var services = new AgentRunServices(session, securityProfileSelector, context, tools, null, models, modelSelector, modelResolver, continuationPolicy);
         services.Session.ShouldBeSameAs(session);
         services.SecurityProfileSelector.ShouldBeSameAs(securityProfileSelector);
         services.Context.ShouldBeSameAs(context);
@@ -71,7 +71,7 @@ public sealed class AgentRunServicesTests
     {
         var runCoordinator = new FakeSessionRunCoordinator();
         var services = new AgentRunServices(
-            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy(),
             outputProcessor: null, compactor: null, budgets: null, runCoordinator: runCoordinator);
 
         services.RunCoordinator.ShouldBeSameAs(runCoordinator);
@@ -82,7 +82,7 @@ public sealed class AgentRunServicesTests
     {
         var input = new FakeInputCoordinator();
         var services = new AgentRunServices(
-            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy(),
             outputProcessor: null, compactor: null, budgets: null, runCoordinator: null, input: input);
 
         services.Input.ShouldBeSameAs(input);
@@ -91,7 +91,7 @@ public sealed class AgentRunServicesTests
     [Fact]
     public void Constructor_WhenInputIsOmitted_DefaultsToNull()
     {
-        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy());
+        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy());
 
         services.Input.ShouldBeNull();
     }
@@ -101,7 +101,7 @@ public sealed class AgentRunServicesTests
     {
         var publisher = new FakeOutputPublisher();
         var services = new AgentRunServices(
-            Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy(),
+            Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy(),
             outputProcessor: null, compactor: null, budgets: null, runCoordinator: null, input: null, publisher: publisher);
 
         services.Publisher.ShouldBeSameAs(publisher);
@@ -110,7 +110,7 @@ public sealed class AgentRunServicesTests
     [Fact]
     public void Constructor_WhenPublisherIsOmitted_DefaultsToNull()
     {
-        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), Catalog(), Selector2(), Resolver(), Policy());
+        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy());
 
         services.Publisher.ShouldBeNull();
     }
@@ -118,7 +118,7 @@ public sealed class AgentRunServicesTests
     private static FakeSessionCoordinator Session() => new();
     private static FakeSecurityProfileSelector Selector() => new();
     private static FakeContextAssembler Context() => new();
-    private static FakeToolInvoker Tools() => new();
+    private static FakeToolExecutor Tools() => new();
     private static FakeModelCatalog Catalog() => new();
     private static FakeModelSelector Selector2() => new();
     private static FakeLlmModelResolver Resolver() => new();
@@ -144,9 +144,13 @@ public sealed class AgentRunServicesTests
         public Task<ContextAssemblyResult> AssembleAsync(ContextAssemblyRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private sealed class FakeToolInvoker: IToolInvoker
+    private sealed class FakeToolExecutor: IToolExecutor
     {
-        public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ToolBatchResult> ExecuteAsync(
+            IToolCatalogCapture capture,
+            ImmutableArray<ToolCallRequest> calls,
+            ToolExecutionCapability capability,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeModelCatalog: IModelCatalog

@@ -1817,8 +1817,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 { "agentkit.tool.count", toolCalls.Length },
             });
         LoopLog.ToolBatchStarted(_logger, request.RunId, turnId, toolCalls.Length);
+        if (services.ToolCatalogCaptures is null)
+        {
+            activity.SetFailed("tool_catalog_factory_missing", "tool_catalog_factory_missing");
+            LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, "tool_catalog_factory_missing");
+            return TurnOutcome.Settled(
+                RunOutcomes.InvalidState("The composition provides no tool catalog capture factory."),
+                currentVersion);
+        }
+
+        await using var catalogCapture = services.ToolCatalogCaptures.Create(
+            new RunToolCatalogCaptureRequest(
+                request.AgentId, request.SessionId, request.RunId, turnSessionContext.Authorization));
+        var toolCapability = ToolExecutionCapabilityFactory.Create(request, services, turnCorrelation, tracking.Budget);
+        var catalogVersion = catalogCapture.Snapshot.Version;
         var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
         var interrupted = false;
+        var sourceOrdinal = 0;
         foreach (var toolCall in toolCalls)
         {
             // A prior call may have absorbed cancellation into an ordinary settled outcome instead of throwing
@@ -1832,15 +1847,6 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, skippedResult)).ConfigureAwait(false);
                 continue;
             }
-
-            var toolContext = new ToolExecutionContext(
-                request.AgentId,
-                request.SessionId,
-                toolCall.CallId,
-                turnCorrelation,
-                request.Identity,
-                turnSessionContext.Authorization,
-                request.SessionProfile);
 
             ToolResultPart resultPart;
             try
@@ -1886,23 +1892,28 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     arguments = hookArgs.Arguments;
                 }
 
-                var resolved = await services.Tools.InvokeAsync(
-                    new LegacyToolCallRequest(toolCall.Tool, toolContext, arguments, _timeProvider.GetUtcNow()),
-                    cancellationToken).ConfigureAwait(false);
-
-                resultPart = new ToolResultPart(
+                var rawArguments = arguments.ValueKind is JsonValueKind.Undefined
+                    ? ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes("{}"))
+                    : ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes(arguments.GetRawText()));
+                var callRequest = new ToolCallRequest(
+                    request.AgentId,
+                    request.SessionId,
+                    request.RunId,
+                    turnId,
+                    turnCorrelation.OperationId,
                     toolCall.CallId,
-                    resolved.Tool,
-                    resolved.Invocation.Outcome,
-                    resolved.Invocation.Content,
-                    new ToolResultProjectionInfo(
-                        resolved.ProjectionPolicy,
-                        Enum.IsDefined(resolved.Invocation.Outcome.SourceStatus)
-                            ? []
-                            : [ToolResultProjectionLoss.StatusCoarsened],
-                        0,
-                        0),
-                    ExtensionData.Empty);
+                    turnSessionContext.Authorization,
+                    catalogVersion,
+                    sourceOrdinal++,
+                    toolCall.Tool.ProviderAlias,
+                    rawArguments,
+                    _timeProvider.GetUtcNow());
+                var batch = await services.Tools.ExecuteAsync(
+                    catalogCapture,
+                    [callRequest],
+                    toolCapability,
+                    cancellationToken).ConfigureAwait(false);
+                resultPart = ToolCallResultProjection.ToToolResultPart(batch.Results[0], toolCall.Tool);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

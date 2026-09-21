@@ -10,7 +10,8 @@ using System.Buffers.Binary;
 internal sealed class SqliteSecurityGrantCodecWriter
 {
     private const uint _magic = 0x414B5347;
-    private const byte _version = 1;
+    private const byte _grantEnvelopeVersionOne = 1;
+    private const byte _grantEnvelopeVersionTwo = 2;
     private readonly ArrayBufferWriter<byte> _buffer = new();
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private readonly int _maximumBytes;
@@ -31,13 +32,16 @@ internal sealed class SqliteSecurityGrantCodecWriter
         _paramName = paramName;
     }
 
-    /// <summary>Writes the fixed magic, codec version, and exact envelope kind.</summary><param name="kind">The supported envelope discriminator.</param>
-    internal void WriteHeader(byte kind)
+    /// <summary>Writes the fixed magic, codec version, and exact envelope kind.</summary><param name="kind">The supported envelope discriminator.</param><param name="version">The supported envelope version.</param>
+    internal void WriteHeader(byte kind, byte version)
     {
         WriteUInt32(_magic);
-        WriteByte(_version);
+        WriteByte(version);
         WriteByte(kind);
     }
+
+    /// <summary>Writes a single-byte boolean discriminator.</summary><param name="value">The value to encode.</param>
+    internal void WriteBoolean(bool value) => WriteByte(value ? (byte) 1 : (byte) 0);
 
     /// <summary>Writes a GUID in RFC 4122 network byte order.</summary><param name="value">The value to encode.</param>
     internal void WriteGuid(Guid value)

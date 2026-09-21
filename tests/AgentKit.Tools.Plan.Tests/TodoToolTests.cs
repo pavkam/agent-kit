@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Plan.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies TodoTool behavior and contracts.</summary>
@@ -13,7 +15,7 @@ public sealed class TodoToolTests
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
-        var tool = new TodoTool(store, authority, new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
+        var tool = new TodoTool(store, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
         var result = await tool.InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
         tool.Descriptor.Id.ShouldBe(TodoTool.Id);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);

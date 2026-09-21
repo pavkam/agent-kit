@@ -13,6 +13,7 @@ internal static class ArtifactTestData
         new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")), RunId, null);
     internal static ExecutionIdentity Identity { get; } = TestSupport.TestExecutionIdentity.Create(
         new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+    internal static SecurityAuthorizationContext Authorization { get; } = TestSupport.TestSecurityEvidence.Authorization(AgentId, SessionId, Correlation, Identity);
     internal static ArtifactId ArtifactId { get; } = new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     internal static ArtifactPreparationId PreparationId { get; } = new(Guid.Parse("60000000-0000-0000-0000-000000000006"));
     internal static SecurityRequestId SecurityRequestId { get; } = new(Guid.Parse("70000000-0000-0000-0000-000000000007"));
@@ -23,6 +24,7 @@ internal static class ArtifactTestData
         null,
         Correlation,
         Identity,
+        Authorization,
         new ArtifactDirectoryId("tool-output"),
         new ArtifactMetadata(
             new ArtifactOwnerId("session:owner"),

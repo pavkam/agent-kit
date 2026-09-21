@@ -30,14 +30,14 @@ public sealed class GlobTool: ITool
         """).RootElement;
 
     private readonly IFileGlobber _globber;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly GlobToolOptions _options;
 
     /// <summary>Initializes a glob tool.</summary>
     /// <param name="globber">The narrow host glob capability.</param>
-    /// <param name="securityAuthority">The system-wide authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated traversal options.</param>
@@ -45,19 +45,19 @@ public sealed class GlobTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">Any configured bound is invalid.</exception>
     public GlobTool(
         IFileGlobber globber,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<GlobToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(globber);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _globber = globber;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
@@ -92,12 +92,20 @@ public sealed class GlobTool: ITool
         }
 
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return ProjectFailure("The captured security authority is unavailable.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _globber.SecurityAudience,
                 SecurityOperationKind.DirectoryRead,
                 SecurityEffect.Observe,
@@ -112,6 +120,7 @@ public sealed class GlobTool: ITool
                     parsed.MaximumResults,
                     parsed.ExcludedPathPatterns),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

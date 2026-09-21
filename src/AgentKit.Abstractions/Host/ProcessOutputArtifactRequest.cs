@@ -10,23 +10,28 @@ public sealed record ProcessOutputArtifactRequest
     /// <param name="intent">The exact executed process intent.</param>
     /// <param name="scope">The execution security scope.</param>
     /// <param name="identity">The authenticated execution identity.</param>
+    /// <param name="authorization">The captured authorization evidence for artifact coordination.</param>
     /// <param name="kind">The distinct output stream.</param>
     /// <param name="content">The complete bounded bytes.</param>
     /// <param name="idempotencyKey">The stable output-specific replay key.</param>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
     /// <exception cref="ArgumentException">Bytes are default or the replay key is blank.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is undefined.</exception>
-    public ProcessOutputArtifactRequest(ResolvedProcessIntent intent, SecurityAuthorizationScope scope, ExecutionIdentity identity, ProcessOutputKind kind, ImmutableArray<byte> content, IdempotencyKey idempotencyKey)
+    public ProcessOutputArtifactRequest(ResolvedProcessIntent intent, SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityAuthorizationContext authorization, ProcessOutputKind kind, ImmutableArray<byte> content, IdempotencyKey idempotencyKey)
     {
         ArgumentNullException.ThrowIfNull(intent);
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentException.ThrowIfDefault(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
         Intent = intent;
         Scope = scope;
         Identity = identity;
+        Authorization = authorization;
         Kind = kind;
         Content = content;
         IdempotencyKey = idempotencyKey;
@@ -38,6 +43,8 @@ public sealed record ProcessOutputArtifactRequest
     public SecurityAuthorizationScope Scope { get; }
     /// <summary>Gets the authenticated execution identity.</summary>
     public ExecutionIdentity Identity { get; }
+    /// <summary>Gets the captured authorization evidence.</summary>
+    public SecurityAuthorizationContext Authorization { get; }
     /// <summary>Gets the distinct output stream.</summary>
     public ProcessOutputKind Kind { get; }
     /// <summary>Gets the complete bounded bytes.</summary>

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Skill.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies bounded readable presentation of actual skill-tool call and result shapes.</summary>
 public sealed class SkillToolPresentationFormatterTests
 {
@@ -298,7 +300,7 @@ public sealed class SkillToolPresentationFormatterTests
         var captured = Options.Create(options);
         return new SkillTool(
             reader,
-            authority,
+            new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
             new ConfiguredSkillCatalog(captured),

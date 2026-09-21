@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Patch.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class PatchToolTests
 {
     [Theory]
@@ -507,8 +509,7 @@ public sealed class PatchToolTests
         ISecurityAuthority authority,
         PatchToolOptions? options = null) => new(
             snapshotReader,
-            applier,
-            authority,
+            applier, new FixedSecurityAuthoritySelector(authority),
             new SequenceSecurityRequestIdGenerator(),
             new SequenceMutationIdGenerator(),
             new FixedTimeProvider(),

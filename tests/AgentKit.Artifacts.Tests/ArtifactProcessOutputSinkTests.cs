@@ -59,7 +59,7 @@ public sealed class ArtifactProcessOutputSinkTests
         var scope = new SecurityAuthorizationScope(
             ArtifactTestData.AgentId, ArtifactTestData.SessionId, ArtifactTestData.Correlation);
         return new ProcessOutputArtifactRequest(
-            ProcessTestIntent.Create(), scope, ArtifactTestData.Identity, ProcessOutputKind.StandardOutput,
+            ProcessTestIntent.Create(), scope, ArtifactTestData.Identity, ArtifactTestData.Authorization, ProcessOutputKind.StandardOutput,
             [.. bytes], new IdempotencyKey("process-output:test"));
     }
 

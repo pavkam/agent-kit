@@ -3,12 +3,14 @@
 
 namespace AgentKit.Tools.Write.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Provides construction helpers for write-file tool tests.</summary>
 internal static class TestFactory
 {
     public static WriteFileTool Tool(IFileSystem? fileSystem = null, ISecurityAuthority? authority = null) => new(
         fileSystem ?? new FakeFileSystem(),
-        authority ?? new AllowingSecurityAuthority(),
+        new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),
         new SecurityRequestIdGenerator(),
         TimeProvider.System);
 
@@ -59,6 +61,7 @@ internal static class TestFactory
 
     public static IServiceCollection AddSecurityDependencies(IServiceCollection services) => services
         .AddSingleton<ISecurityAuthority, AllowingSecurityAuthority>()
+        .AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()))
         .AddSingleton<IIdentifierGenerator<SecurityRequestId>, SecurityRequestIdGenerator>()
         .AddSingleton(TimeProvider.System);
 

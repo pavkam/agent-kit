@@ -330,6 +330,11 @@ public static class ServiceExtensions
                 provider.GetRequiredService<ILogger<DefaultToolInvoker>>(),
                 provider.GetRequiredService<IToolSchemaEngine>(),
                 provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits));
+            services.TryAddSingleton<IToolExecutor>(static provider => new LegacyToolInvokerExecutor(
+                provider.GetRequiredService<IToolInvoker>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<LegacyToolInvokerExecutor>>()));
+            services.TryAddSingleton<IToolRunCatalogCaptureFactory, LegacyToolRunCatalogCaptureFactory>();
 
             return services;
         }

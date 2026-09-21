@@ -35,14 +35,14 @@ public sealed class SearchTool: ITool
         """).RootElement;
 
     private readonly IFileContentSearcher _searcher;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly SearchToolOptions _options;
 
     /// <summary>Initializes a search tool.</summary>
     /// <param name="searcher">The narrow host search capability.</param>
-    /// <param name="securityAuthority">The system-wide authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated search bounds.</param>
@@ -50,19 +50,19 @@ public sealed class SearchTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured default or ceiling is invalid.</exception>
     public SearchTool(
         IFileContentSearcher searcher,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<SearchToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(searcher);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _searcher = searcher;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
@@ -98,18 +98,27 @@ public sealed class SearchTool: ITool
 
         var context = request.Context;
         var fingerprint = Fingerprint(parsed);
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _searcher.SecurityAudience,
                 SecurityOperationKind.FileSearch,
                 SecurityEffect.Observe,
                 [FileSearchSecurityBinding.Resource(parsed.BasePath)],
                 fingerprint,
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

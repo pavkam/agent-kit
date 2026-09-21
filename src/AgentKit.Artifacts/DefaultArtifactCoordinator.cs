@@ -7,7 +7,7 @@ namespace AgentKit.Artifacts;
 public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
 {
     private readonly IArtifactStore _store;
-    private readonly ISecurityAuthority _authority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityIds;
     private readonly IIdentifierGenerator<ArtifactId> _artifactIds;
     private readonly IIdentifierGenerator<ArtifactPreparationId> _preparationIds;
@@ -15,16 +15,16 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     private readonly AgentArtifactOptions _options;
 
     /// <summary>Initializes the coordinator over one selected backend and captured profile.</summary>
-    /// <param name="store">The effecting artifact backend.</param><param name="authority">The system-wide security authority.</param>
+    /// <param name="store">The effecting artifact backend.</param><param name="authoritySelector">The selector that activates the captured authority for each request.</param>
     /// <param name="securityIds">The security request identity source.</param><param name="artifactIds">The artifact identity source.</param>
     /// <param name="preparationIds">The staging identity source.</param><param name="time">The deterministic clock.</param>
     /// <param name="options">The captured mechanics and profile.</param>
     /// <exception cref="ArgumentNullException">A dependency is null or the selected profile key has a null value.</exception>
     /// <exception cref="ArgumentException">The selected profile key is empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound or profile version is invalid.</exception>
-    public DefaultArtifactCoordinator(IArtifactStore store, ISecurityAuthority authority, IIdentifierGenerator<SecurityRequestId> securityIds, IIdentifierGenerator<ArtifactId> artifactIds, IIdentifierGenerator<ArtifactPreparationId> preparationIds, TimeProvider time, IOptions<AgentArtifactOptions> options)
+    public DefaultArtifactCoordinator(IArtifactStore store, ISecurityAuthoritySelector authoritySelector, IIdentifierGenerator<SecurityRequestId> securityIds, IIdentifierGenerator<ArtifactId> artifactIds, IIdentifierGenerator<ArtifactPreparationId> preparationIds, TimeProvider time, IOptions<AgentArtifactOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(store); ArgumentNullException.ThrowIfNull(authority); ArgumentNullException.ThrowIfNull(securityIds);
+        ArgumentNullException.ThrowIfNull(store); ArgumentNullException.ThrowIfNull(authoritySelector); ArgumentNullException.ThrowIfNull(securityIds);
         ArgumentNullException.ThrowIfNull(artifactIds); ArgumentNullException.ThrowIfNull(preparationIds); ArgumentNullException.ThrowIfNull(time); ArgumentNullException.ThrowIfNull(options);
         var configured = options.Value;
         var snapshot = new AgentArtifactOptions
@@ -43,7 +43,7 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(snapshot.PreparationLifetime, TimeSpan.Zero, nameof(options));
         ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.ProfileKey.Value, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(snapshot.ProfileVersion.Value, nameof(options));
-        _store = store; _authority = authority; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = snapshot;
+        _store = store; _authoritySelector = authoritySelector; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = snapshot;
     }
 
     /// <inheritdoc/>
@@ -76,15 +76,20 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
         var preparationLifetime = _options.PreparationLifetime;
         var now = _time.GetUtcNow();
         var expiresAt = now.Add(preparationLifetime);
-        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        var decision = await _authority.AuthorizeAsync(new SecurityRequest(
-            _securityIds.Create(), scope, request.ToolCallId, request.Identity, _store.SecurityAudience,
-            SecurityOperationKind.Artifact, SecurityEffect.Create,
-            [ArtifactSecurityBinding.ArtifactResource(artifactId), ArtifactSecurityBinding.PreparationResource(preparationId)],
-            ArtifactSecurityBinding.PrepareFingerprint(
-                artifactId, preparationId, version, profileKey, profileVersion,
-                request.Identity.TenantId, request.Identity.PrincipalId, request.DirectoryId,
-                request.Metadata, now, expiresAt), now.AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+        var authorization = request.Authorization;
+        var scope = authorization.Scope;
+        var decision = await AuthorizeAsync(
+            authorization,
+            new SecurityRequest(
+                _securityIds.Create(), scope, request.ToolCallId, authorization.Identity, authorization,
+                _store.SecurityAudience,
+                SecurityOperationKind.Artifact, SecurityEffect.Create,
+                [ArtifactSecurityBinding.ArtifactResource(artifactId), ArtifactSecurityBinding.PreparationResource(preparationId)],
+                ArtifactSecurityBinding.PrepareFingerprint(
+                    artifactId, preparationId, version, profileKey, profileVersion,
+                    request.Identity.TenantId, request.Identity.PrincipalId, request.DirectoryId,
+                    request.Metadata, now, expiresAt), now.AddMinutes(1)),
+            cancellationToken).ConfigureAwait(false);
         return decision is not SecurityAllowed allowed
             ? RejectPrepare(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact staging was not authorized.")
             : await _store.PrepareAsync(new ArtifactStorePrepareRequest(
@@ -97,12 +102,17 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     public async ValueTask<ArtifactFinalizeResult> FinalizeAsync(ArtifactFinalizeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        var decision = await _authority.AuthorizeAsync(new SecurityRequest(
-            _securityIds.Create(), scope, request.ToolCallId, request.Identity, _store.SecurityAudience,
-            SecurityOperationKind.Artifact, SecurityEffect.CreateOrReplace,
-            [ArtifactSecurityBinding.PreparationResource(request.PreparationId)], ArtifactSecurityBinding.FinalizeFingerprint(request.PreparationId),
-            _time.GetUtcNow().AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+        var authorization = request.Authorization;
+        var scope = authorization.Scope;
+        var decision = await AuthorizeAsync(
+            authorization,
+            new SecurityRequest(
+                _securityIds.Create(), scope, request.ToolCallId, authorization.Identity, authorization,
+                _store.SecurityAudience,
+                SecurityOperationKind.Artifact, SecurityEffect.CreateOrReplace,
+                [ArtifactSecurityBinding.PreparationResource(request.PreparationId)], ArtifactSecurityBinding.FinalizeFingerprint(request.PreparationId),
+                _time.GetUtcNow().AddMinutes(1)),
+            cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed
             ? await _store.FinalizeAsync(new ArtifactStoreFinalizeRequest(request.PreparationId, scope, request.Identity, allowed.Grant, request.IdempotencyKey), cancellationToken).ConfigureAwait(false)
             : new ArtifactFinalizeRejected(new ArtifactFailure(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact publication was not authorized."));
@@ -112,12 +122,17 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     public async ValueTask<ArtifactAbortResult> AbortAsync(ArtifactAbortRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        var decision = await _authority.AuthorizeAsync(new SecurityRequest(
-            _securityIds.Create(), scope, null, request.Identity, _store.SecurityAudience,
-            SecurityOperationKind.Artifact, SecurityEffect.Delete,
-            [ArtifactSecurityBinding.PreparationResource(request.PreparationId)], ArtifactSecurityBinding.AbortFingerprint(request.PreparationId, request.Reason),
-            _time.GetUtcNow().AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+        var authorization = request.Authorization;
+        var scope = authorization.Scope;
+        var decision = await AuthorizeAsync(
+            authorization,
+            new SecurityRequest(
+                _securityIds.Create(), scope, null, authorization.Identity, authorization,
+                _store.SecurityAudience,
+                SecurityOperationKind.Artifact, SecurityEffect.Delete,
+                [ArtifactSecurityBinding.PreparationResource(request.PreparationId)], ArtifactSecurityBinding.AbortFingerprint(request.PreparationId, request.Reason),
+                _time.GetUtcNow().AddMinutes(1)),
+            cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed
             ? await _store.AbortAsync(new ArtifactStoreAbortRequest(request.PreparationId, request.Reason, scope, request.Identity, allowed.Grant, request.IdempotencyKey), cancellationToken).ConfigureAwait(false)
             : new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact abort was not authorized."));
@@ -127,12 +142,17 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     public async ValueTask<ArtifactReadResult> ReadAsync(ArtifactReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        var decision = await _authority.AuthorizeAsync(new SecurityRequest(
-            _securityIds.Create(), scope, request.ToolCallId, request.Identity, _store.SecurityAudience,
-            SecurityOperationKind.Artifact, SecurityEffect.Observe,
-            [ArtifactSecurityBinding.ArtifactResource(request.Reference.Id)], ArtifactSecurityBinding.ReadFingerprint(request.Reference),
-            _time.GetUtcNow().AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+        var authorization = request.Authorization;
+        var scope = authorization.Scope;
+        var decision = await AuthorizeAsync(
+            authorization,
+            new SecurityRequest(
+                _securityIds.Create(), scope, request.ToolCallId, authorization.Identity, authorization,
+                _store.SecurityAudience,
+                SecurityOperationKind.Artifact, SecurityEffect.Observe,
+                [ArtifactSecurityBinding.ArtifactResource(request.Reference.Id)], ArtifactSecurityBinding.ReadFingerprint(request.Reference),
+                _time.GetUtcNow().AddMinutes(1)),
+            cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed
             ? await _store.ReadAsync(new ArtifactStoreReadRequest(request.Reference, scope, request.Identity, allowed.Grant), cancellationToken).ConfigureAwait(false)
             : new ArtifactReadRejected(new ArtifactFailure(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact reading was not authorized."));
@@ -147,15 +167,31 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
             return new ArtifactDeleteRejected(new ArtifactFailure(ArtifactFailureKind.RetentionConflict, "Artifact retention prohibits deletion."));
         }
 
-        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        var decision = await _authority.AuthorizeAsync(new SecurityRequest(
-            _securityIds.Create(), scope, request.ToolCallId, request.Identity, _store.SecurityAudience,
-            SecurityOperationKind.Artifact, SecurityEffect.Delete,
-            [ArtifactSecurityBinding.ArtifactResource(request.Reference.Id)], ArtifactSecurityBinding.DeleteFingerprint(request.Reference),
-            _time.GetUtcNow().AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+        var authorization = request.Authorization;
+        var scope = authorization.Scope;
+        var decision = await AuthorizeAsync(
+            authorization,
+            new SecurityRequest(
+                _securityIds.Create(), scope, request.ToolCallId, authorization.Identity, authorization,
+                _store.SecurityAudience,
+                SecurityOperationKind.Artifact, SecurityEffect.Delete,
+                [ArtifactSecurityBinding.ArtifactResource(request.Reference.Id)], ArtifactSecurityBinding.DeleteFingerprint(request.Reference),
+                _time.GetUtcNow().AddMinutes(1)),
+            cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed
             ? await _store.DeleteAsync(new ArtifactStoreDeleteRequest(request.Reference, scope, request.Identity, allowed.Grant, request.IdempotencyKey), cancellationToken).ConfigureAwait(false)
             : new ArtifactDeleteRejected(new ArtifactFailure(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact deletion was not authorized."));
+    }
+
+    private async ValueTask<SecurityDecision?> AuthorizeAsync(
+        SecurityAuthorizationContext authorization,
+        SecurityRequest request,
+        CancellationToken cancellationToken)
+    {
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        return activated is SecurityAuthoritySelected selected && selected.Authorization == authorization
+            ? await selected.Authority.AuthorizeAsync(request, hooks: null, cancellationToken).ConfigureAwait(false)
+            : null;
     }
 
     private static async Task<ImmutableArray<byte>?> ReadBoundedAsync(Stream stream, long maximum, int bufferSize, CancellationToken cancellationToken)

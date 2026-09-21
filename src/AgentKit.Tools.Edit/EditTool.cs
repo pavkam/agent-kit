@@ -28,7 +28,7 @@ public sealed class EditTool: ITool
 
     private readonly IFileSnapshotReader _snapshotReader;
     private readonly IAtomicFileReplacer _replacer;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly IIdentifierGenerator<WorkspaceMutationId> _mutationIds;
     private readonly TimeProvider _timeProvider;
@@ -37,7 +37,7 @@ public sealed class EditTool: ITool
     /// <summary>Initializes an exact text-editing tool.</summary>
     /// <param name="snapshotReader">The exact byte-snapshot capability.</param>
     /// <param name="replacer">The conditional atomic replacement capability.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="mutationIds">The mutation identity generator.</param>
     /// <param name="timeProvider">The deterministic authority-deadline clock.</param>
@@ -47,7 +47,7 @@ public sealed class EditTool: ITool
     public EditTool(
         IFileSnapshotReader snapshotReader,
         IAtomicFileReplacer replacer,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
@@ -55,7 +55,7 @@ public sealed class EditTool: ITool
     {
         ArgumentNullException.ThrowIfNull(snapshotReader);
         ArgumentNullException.ThrowIfNull(replacer);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(mutationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -70,7 +70,7 @@ public sealed class EditTool: ITool
             nameof(options.Value.DefaultMaximumBytes));
         _snapshotReader = snapshotReader;
         _replacer = replacer;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _mutationIds = mutationIds;
         _timeProvider = timeProvider;
@@ -106,6 +106,11 @@ public sealed class EditTool: ITool
         }
 
         var readDecision = await AuthorizeReadAsync(request.Context, arguments, cancellationToken).ConfigureAwait(false);
+        if (readDecision is null)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         if (readDecision is SecurityDenied readDenied)
         {
             return Failure(readDenied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
@@ -173,6 +178,11 @@ public sealed class EditTool: ITool
             snapshot.ContentFingerprint.Value,
             finalBytes,
             cancellationToken).ConfigureAwait(false);
+        if (writeDecision is null)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         if (writeDecision is SecurityDenied writeDenied)
         {
             return Failure(writeDenied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
@@ -203,42 +213,60 @@ public sealed class EditTool: ITool
             : Failure(replacement.SafeMessage ?? "The replacement failed.", replacement.Status.ToString(), replacement.Status is AtomicFileReplaceStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
     }
 
-    private async ValueTask<SecurityDecision> AuthorizeReadAsync(
+    private async ValueTask<SecurityDecision?> AuthorizeReadAsync(
         ToolExecutionContext context,
         ParsedArguments arguments,
-        CancellationToken cancellationToken) => await _securityAuthority.AuthorizeAsync(
-        new SecurityRequest(
-            _requestIds.Create(),
-            new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
-            context.ToolCallId,
-            context.Identity,
-            _snapshotReader.SecurityAudience,
-            SecurityOperationKind.FileRead,
-            SecurityEffect.Observe,
-            [FileSecurityBinding.Resource(arguments.Path)],
-            FileSecurityBinding.SnapshotFingerprint(arguments.Path, arguments.MaximumBytes),
-            _timeProvider.GetUtcNow().AddMinutes(1)),
-        cancellationToken).ConfigureAwait(false);
+        CancellationToken cancellationToken)
+    {
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        return activated is SecurityAuthoritySelected selected && selected.Authorization == authorization
+            ? await selected.Authority.AuthorizeAsync(
+                new SecurityRequest(
+                    _requestIds.Create(),
+                    authorization.Scope,
+                    context.ToolCallId,
+                    authorization.Identity,
+                    authorization,
+                    _snapshotReader.SecurityAudience,
+                    SecurityOperationKind.FileRead,
+                    SecurityEffect.Observe,
+                    [FileSecurityBinding.Resource(arguments.Path)],
+                    FileSecurityBinding.SnapshotFingerprint(arguments.Path, arguments.MaximumBytes),
+                    _timeProvider.GetUtcNow().AddMinutes(1)),
+                hooks: null,
+                cancellationToken).ConfigureAwait(false)
+            : null;
+    }
 
-    private async ValueTask<SecurityDecision> AuthorizeReplaceAsync(
+    private async ValueTask<SecurityDecision?> AuthorizeReplaceAsync(
         ToolExecutionContext context,
         WorkspaceMutationId mutationId,
         FileSystemPath path,
         ContentHash expected,
         ImmutableArray<byte> content,
-        CancellationToken cancellationToken) => await _securityAuthority.AuthorizeAsync(
-        new SecurityRequest(
-            _requestIds.Create(),
-            new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
-            context.ToolCallId,
-            context.Identity,
-            _replacer.SecurityAudience,
-            SecurityOperationKind.FileWrite,
-            SecurityEffect.Replace,
-            FileSecurityBinding.AtomicReplaceResources(mutationId, path),
-            FileSecurityBinding.AtomicReplaceFingerprint(mutationId, path, expected, content),
-            _timeProvider.GetUtcNow().AddMinutes(1)),
-        cancellationToken).ConfigureAwait(false);
+        CancellationToken cancellationToken)
+    {
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        return activated is SecurityAuthoritySelected selected && selected.Authorization == authorization
+            ? await selected.Authority.AuthorizeAsync(
+                new SecurityRequest(
+                    _requestIds.Create(),
+                    authorization.Scope,
+                    context.ToolCallId,
+                    authorization.Identity,
+                    authorization,
+                    _replacer.SecurityAudience,
+                    SecurityOperationKind.FileWrite,
+                    SecurityEffect.Replace,
+                    FileSecurityBinding.AtomicReplaceResources(mutationId, path),
+                    FileSecurityBinding.AtomicReplaceFingerprint(mutationId, path, expected, content),
+                    _timeProvider.GetUtcNow().AddMinutes(1)),
+                hooks: null,
+                cancellationToken).ConfigureAwait(false)
+            : null;
+    }
 
     private bool TryParse(JsonElement json, out ParsedArguments arguments, out string? error)
     {

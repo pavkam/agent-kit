@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Edit.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class EditToolTests
 {
     [Theory]
@@ -298,8 +300,7 @@ public sealed class EditToolTests
         IAtomicFileReplacer replacer,
         ISecurityAuthority authority) => new(
             snapshotReader,
-            replacer,
-            authority,
+            replacer, new FixedSecurityAuthoritySelector(authority),
             new SequenceSecurityRequestIdGenerator(),
             new StubMutationIdGenerator(),
             new FixedTimeProvider(),

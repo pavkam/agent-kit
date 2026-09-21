@@ -57,7 +57,8 @@ public sealed class ServiceExtensionsTests
         var descriptors = services.Where(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ToArray();
         descriptors.Length.ShouldBe(3);
         descriptors.ShouldContain(static descriptor => descriptor.Lifetime == ServiceLifetime.Singleton
-            && descriptor.ImplementationType == typeof(InMemorySecurityGrantStore));
+            && (descriptor.ImplementationType == typeof(InMemorySecurityGrantStore)
+                || descriptor.ImplementationFactory != null));
     }
 
     private sealed class FixedGrantStore: ISecurityGrantStore

@@ -15,7 +15,7 @@ Owning documents: [Tools](../architecture/tools.md),
 ## Progress
 
 - [x] WS4-C1 executor and batch contracts
-- [ ] WS4-C2 loop and engine consume `IToolExecutor` through a legacy adapter
+- [ ] WS4-C2 loop and engine consume `IToolExecutor` through a legacy adapter (in progress: executor adapter, run services, loop wiring; tests/fixtures still settling)
 - [x] WS4-C3 catalog capture coordinator
 - [ ] WS4-C4 spec-shaped `IToolInvoker` with `ITool` bridge
 - [ ] WS4-C5a `DefaultToolExecutor` single-call pipeline

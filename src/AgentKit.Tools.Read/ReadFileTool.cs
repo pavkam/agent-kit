@@ -52,14 +52,14 @@ public sealed class ReadFileTool: ITool
     private static readonly ExtensionData _incompleteExtensions = CompleteExtensions(false);
 
     private readonly IFileSystem _fileSystem;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ReadFileToolOptions _options;
 
     /// <summary>Initializes a new instance of the <see cref="ReadFileTool"/> class.</summary>
     /// <param name="fileSystem">The file system this tool reads through.</param>
-    /// <param name="securityAuthority">The system-wide authority used after path and argument normalization.</param>
+    /// <param name="authoritySelector">The security authority selector used after path and argument normalization.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
     /// <param name="options">The validated line-window options; the value is captured once at construction.</param>
@@ -70,13 +70,13 @@ public sealed class ReadFileTool: ITool
     /// </exception>
     public ReadFileTool(
         IFileSystem fileSystem,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<ReadFileToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -85,7 +85,7 @@ public sealed class ReadFileTool: ITool
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             options.Value.DefaultMaximumLines, options.Value.MaximumLines);
         _fileSystem = fileSystem;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
@@ -149,18 +149,26 @@ public sealed class ReadFileTool: ITool
         }
 
         var context = request.Context;
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failed("The captured security authority is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         var securityRequest = new SecurityRequest(
             _requestIds.Create(),
-            new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+            authorization.Scope,
             context.ToolCallId,
-            context.Identity,
+            authorization.Identity,
+            authorization,
             _fileSystem.SecurityAudience,
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
             [FileSecurityBinding.Resource(path)],
             FileSecurityBinding.ReadFingerprint(path),
             _timeProvider.GetUtcNow().AddMinutes(1));
-        var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
+        var decision = await selected.Authority.AuthorizeAsync(securityRequest, hooks: null, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
         {
             return Failed(authorizationDenied.Denial.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);

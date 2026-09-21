@@ -25,7 +25,7 @@ public sealed class TaskTool: ITool
         """).RootElement;
 
     private readonly ITaskDelegationBroker _broker;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<DelegationId> _delegationIds;
     private readonly TimeProvider _timeProvider;
@@ -36,7 +36,7 @@ public sealed class TaskTool: ITool
 
     /// <summary>Initializes the task tool over one protected delegation broker.</summary>
     /// <param name="broker">The protected durable-goal dispatch boundary.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="delegationIds">The replaceable delegation identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
@@ -45,21 +45,21 @@ public sealed class TaskTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public TaskTool(
         ITaskDelegationBroker broker,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<DelegationId> delegationIds,
         TimeProvider timeProvider,
         IOptions<TaskToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(broker);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(delegationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _broker = broker;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _delegationIds = delegationIds;
         _timeProvider = timeProvider;
@@ -115,18 +115,27 @@ public sealed class TaskTool: ITool
             parsed.AllowedTools,
             new TaskDelegationBudget(parsed.MaximumTurns, parsed.MaximumToolCalls),
             deadline);
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = request.Context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Rejected("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(request.Context.AgentId, sessionId, correlation),
+                authorization.Scope,
                 request.Context.ToolCallId,
-                request.Context.Identity,
+                authorization.Identity,
+                authorization,
                 _broker.SecurityAudience,
                 SecurityOperationKind.Delegation,
                 SecurityEffect.Create,
                 [TaskDelegationSecurityBinding.Resource(id)],
                 TaskDelegationSecurityBinding.Fingerprint(prompt),
                 Min(deadline, now.AddMinutes(1))),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

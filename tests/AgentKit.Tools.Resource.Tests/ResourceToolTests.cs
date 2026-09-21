@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Resource.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies ResourceTool behavior and contracts.</summary>
@@ -226,7 +228,7 @@ public sealed class ResourceToolTests
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("options");
     }
 
-    private static ResourceTool Tool(IFileSnapshotReader reader, ISecurityAuthority authority, ResourceToolOptions? options = null) => new(reader, authority, new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
+    private static ResourceTool Tool(IFileSnapshotReader reader, ISecurityAuthority authority, ResourceToolOptions? options = null) => new(reader, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
     private static ResourceToolOptions OptionsForTool(ContentHash? expectedHash = null)
     {
         var options = new ResourceToolOptions

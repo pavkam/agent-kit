@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Search.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies SearchTool behavior and contracts.</summary>
@@ -113,7 +115,7 @@ public sealed class SearchToolTests
     }
 
     private static string Status(ToolInvocationResult result) => Encoding.UTF8.GetString(result.Outcome.Extensions.Values["agentkit.search.status"].CanonicalJson.AsSpan());
-    private static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority) => new(searcher, authority, new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new SearchToolOptions()));
+    private static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority) => new(searcher, new FixedSecurityAuthoritySelector(authority), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new SearchToolOptions()));
     private static ToolInvocationRequest Request(string json) => new(TestSupport.TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new InRunOperationCorrelation(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null), TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
     [Fact]
     public void SearchTool_WhenDirectOptionsInvalid_ThrowsExactConstraint()
@@ -122,7 +124,7 @@ public sealed class SearchToolTests
         {
             MaximumFiles = 0
         };
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(new FakeFileContentSearcher(), new RecordingSecurityAuthority(), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(new FakeFileContentSearcher(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
         exception.ParamName.ShouldBe("MaximumFiles");
     }
 

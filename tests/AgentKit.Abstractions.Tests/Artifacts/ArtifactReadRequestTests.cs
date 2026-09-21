@@ -11,7 +11,7 @@ public sealed class ArtifactReadRequestTests
     [Fact]
     public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
     {
-        var request = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference());
+        var request = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), Reference());
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
         request.ToolCallId.ShouldBeNull();
@@ -24,21 +24,21 @@ public sealed class ArtifactReadRequestTests
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, null!, Identity(), Reference()));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, null!, Identity(), Authorization(), Reference()));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), null!, Reference()));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), null!, null!, Reference()));
         exception.ParamName.ShouldBe("identity");
     }
 
     [Fact]
     public void Constructor_WhenReferenceIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), null!));
         exception.ParamName.ShouldBe("reference");
     }
 
@@ -46,12 +46,14 @@ public sealed class ArtifactReadRequestTests
     private static AgentId AgentId() => new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
     private static SessionId SessionId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static InRunOperationCorrelation Correlation() => new(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null);
+
+    private static SecurityAuthorizationContext Authorization() => TestSupport.TestSecurityEvidence.Authorization(AgentId(), SessionId(), Correlation(), Identity());
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference());
+        var original = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), Reference());
         var copy = original with { };
         copy.ShouldBe(original);
     }

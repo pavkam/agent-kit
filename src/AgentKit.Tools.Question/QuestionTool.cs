@@ -36,7 +36,7 @@ public sealed class QuestionTool: ITool
         """).RootElement;
 
     private readonly IHumanQuestionBroker _broker;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<QuestionId> _questionIds;
     private readonly TimeProvider _timeProvider;
@@ -52,7 +52,7 @@ public sealed class QuestionTool: ITool
 
     /// <summary>Initializes the question tool over one selected human interaction channel.</summary>
     /// <param name="broker">The protected publication and response boundary.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="questionIds">The replaceable question identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
@@ -61,21 +61,21 @@ public sealed class QuestionTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured ceiling or default is invalid.</exception>
     public QuestionTool(
         IHumanQuestionBroker broker,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<QuestionId> questionIds,
         TimeProvider timeProvider,
         IOptions<QuestionToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(broker);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(questionIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _broker = broker;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _questionIds = questionIds;
         _timeProvider = timeProvider;
@@ -124,18 +124,27 @@ public sealed class QuestionTool: ITool
             parsed.AllowsFreeText,
             responseDeadline);
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Rejected("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _broker.SecurityAudience,
                 SecurityOperationKind.StateMutation,
                 SecurityEffect.Create,
                 [HumanQuestionSecurityBinding.Resource(questionId)],
                 fingerprint,
                 Min(responseDeadline, now.AddMinutes(1))),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

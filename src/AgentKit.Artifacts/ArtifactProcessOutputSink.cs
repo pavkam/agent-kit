@@ -42,6 +42,7 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             null,
             request.Scope.Correlation,
             request.Identity,
+            request.Authorization,
             _options.ProcessOutputDirectory,
             metadata,
             content,
@@ -59,6 +60,7 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             null,
             request.Scope.Correlation,
             request.Identity,
+            request.Authorization,
             Suffix(request.IdempotencyKey, "finalize")), cancellationToken).ConfigureAwait(false);
         if (finalized is ArtifactFinalized committed)
         {
@@ -71,6 +73,7 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             request.Scope.SessionId,
             request.Scope.Correlation,
             request.Identity,
+            request.Authorization,
             ArtifactAbortReason.ReferenceCommitFailure,
             Suffix(request.IdempotencyKey, "abort")), CancellationToken.None).ConfigureAwait(false);
         return new ProcessOutputArtifactRejected(

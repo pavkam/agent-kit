@@ -23,7 +23,7 @@ public sealed class WebSearchTool: ITool
         """).RootElement;
 
     private readonly IWebSearchProvider _provider;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<WebSearchRequestId> _searchRequestIds;
     private readonly TimeProvider _timeProvider;
@@ -41,7 +41,7 @@ public sealed class WebSearchTool: ITool
 
     /// <summary>Initializes the search tool over one explicitly selected provider operation.</summary>
     /// <param name="provider">The selected search operation.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="searchRequestIds">The replaceable search-attempt identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
@@ -51,14 +51,14 @@ public sealed class WebSearchTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public WebSearchTool(
         IWebSearchProvider provider,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<WebSearchRequestId> searchRequestIds,
         TimeProvider timeProvider,
         IOptions<WebSearchToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(searchRequestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -66,7 +66,7 @@ public sealed class WebSearchTool: ITool
         ArgumentException.ThrowIfNotNetworkEndpointResource(provider.Destination);
         ValidateOptions(options.Value);
         _provider = provider;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _searchRequestIds = searchRequestIds;
         _timeProvider = timeProvider;
@@ -124,18 +124,27 @@ public sealed class WebSearchTool: ITool
             maximumResults,
             deadline);
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Rejected("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _provider.SecurityAudience,
                 SecurityOperationKind.Network,
                 SecurityEffect.Egress,
                 [_provider.Destination],
                 fingerprint,
                 Min(deadline, now.AddMinutes(1))),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

@@ -316,6 +316,7 @@ internal static class AgentCompositionValidator
             // first RunAsync, when a definition's loop key has neither.
             RequireKeyedOrUnkeyed<ISessionCoordinator>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IContextAssembler>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<IToolExecutor>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IToolInvoker>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);

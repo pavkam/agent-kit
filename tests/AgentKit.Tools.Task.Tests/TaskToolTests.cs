@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Task.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies TaskTool behavior and contracts.</summary>
@@ -236,6 +238,6 @@ public sealed class TaskToolTests
         content.RootElement.GetProperty("side_effect_certainty").GetString().ShouldBe(childCertainty.ToString());
     }
 
-    private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, authority, new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
+    private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
     private static ToolInvocationRequest Request(string json, bool withSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
 }

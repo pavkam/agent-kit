@@ -565,10 +565,16 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
 
         try
         {
+            if (processGrant.Authorization is not { } authorization)
+            {
+                return (null, true);
+            }
+
             var result = await _outputArtifacts.StoreAsync(new ProcessOutputArtifactRequest(
                 intent,
                 processGrant.Scope,
                 processGrant.Identity,
+                authorization,
                 kind,
                 capture.ToImmutableArray(),
                 new IdempotencyKey($"process-output:{intent.Request.Id}:{kind}")), cancellationToken).ConfigureAwait(false);

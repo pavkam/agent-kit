@@ -20,7 +20,7 @@ public sealed class SkillTool: ITool
         """).RootElement;
 
     private readonly IFileSnapshotReader _reader;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ISkillCatalog _catalog;
@@ -32,7 +32,7 @@ public sealed class SkillTool: ITool
 
     /// <summary>Initializes the activation tool over the same captured catalog used for discovery context.</summary>
     /// <param name="reader">The exact protected snapshot boundary.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="catalog">The shared immutable skill catalog.</param>
@@ -41,14 +41,14 @@ public sealed class SkillTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A bound is not positive.</exception>
     public SkillTool(
         IFileSnapshotReader reader,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         ISkillCatalog catalog,
         IOptions<SkillToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -56,7 +56,7 @@ public sealed class SkillTool: ITool
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumBytes, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumCharacters, nameof(options));
         _reader = reader;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _catalog = catalog;
@@ -103,18 +103,27 @@ public sealed class SkillTool: ITool
 
         var context = request.Context;
         var fingerprint = FileSecurityBinding.SnapshotFingerprint(skill.Path, _maximumBytes);
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _reader.SecurityAudience,
                 SecurityOperationKind.FileRead,
                 SecurityEffect.Observe,
                 [FileSecurityBinding.Resource(skill.Path)],
                 fingerprint,
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is not SecurityAllowed allowed)
         {

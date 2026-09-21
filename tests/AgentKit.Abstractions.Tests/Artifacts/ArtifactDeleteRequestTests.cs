@@ -15,7 +15,7 @@ public sealed class ArtifactDeleteRequestTests
         var identity = Identity();
         var reference = Reference();
         var key = new IdempotencyKey("delete");
-        var request = new ArtifactDeleteRequest(AgentId(), SessionId(), null, correlation, identity, reference, key);
+        var request = new ArtifactDeleteRequest(AgentId(), SessionId(), null, correlation, identity, Authorization(), reference, key);
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
         request.ToolCallId.ShouldBeNull();
@@ -28,28 +28,28 @@ public sealed class ArtifactDeleteRequestTests
     [Fact]
     public void ArtifactDeleteRequest_WhenIdempotencyKeyIsBlank_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference(), default));
+        var exception = Should.Throw<ArgumentException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), Reference(), default));
         exception.ParamName.ShouldBe("idempotencyKey");
     }
 
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, null!, Identity(), Reference(), new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, null!, Identity(), Authorization(), Reference(), new IdempotencyKey("delete")));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), null!, Reference(), new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), null!, null!, Reference(), new IdempotencyKey("delete")));
         exception.ParamName.ShouldBe("identity");
     }
 
     [Fact]
     public void Constructor_WhenReferenceIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), null!, new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), null!, new IdempotencyKey("delete")));
         exception.ParamName.ShouldBe("reference");
     }
 
@@ -57,12 +57,14 @@ public sealed class ArtifactDeleteRequestTests
     private static AgentId AgentId() => new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
     private static SessionId SessionId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static InRunOperationCorrelation Correlation() => new(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null);
+
+    private static SecurityAuthorizationContext Authorization() => TestSupport.TestSecurityEvidence.Authorization(AgentId(), SessionId(), Correlation(), Identity());
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference(), new IdempotencyKey("delete"));
+        var original = new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), Reference(), new IdempotencyKey("delete"));
         var copy = original with { };
         copy.ShouldBe(original);
     }

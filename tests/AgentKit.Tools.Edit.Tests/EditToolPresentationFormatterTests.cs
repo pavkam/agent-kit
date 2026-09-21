@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Edit.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies exact replacement scope and literal before/after content in edit previews.</summary>
 public sealed class EditToolPresentationFormatterTests
 {
@@ -46,7 +48,7 @@ public sealed class EditToolPresentationFormatterTests
         var tool = new EditTool(
             new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old value") },
             new FakeAtomicFileReplacer(),
-            new SequencedSecurityAuthority(),
+            new FixedSecurityAuthoritySelector(new SequencedSecurityAuthority()),
             new SequenceSecurityRequestIdGenerator(),
             new StubMutationIdGenerator(),
             new FixedTimeProvider(),

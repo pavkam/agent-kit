@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.WebSearch.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies WebSearchTool behavior and contracts.</summary>
@@ -208,7 +210,7 @@ public sealed class WebSearchToolTests
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("provider.Destination");
     }
 
-    private static WebSearchTool Tool(IWebSearchProvider provider, ISecurityAuthority authority, FixedSearchRequestIdGenerator? searchIds = null, WebSearchToolOptions? options = null) => new(provider, authority, new FixedSecurityRequestIdGenerator(), searchIds ?? new FixedSearchRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new WebSearchToolOptions()));
+    private static WebSearchTool Tool(IWebSearchProvider provider, ISecurityAuthority authority, FixedSearchRequestIdGenerator? searchIds = null, WebSearchToolOptions? options = null) => new(provider, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), searchIds ?? new FixedSearchRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new WebSearchToolOptions()));
     private static ToolInvocationRequest Request(string json) => new(TestData.Context, JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 }

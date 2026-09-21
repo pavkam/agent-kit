@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.List.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -11,6 +13,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<IDirectoryReader, FakeDirectoryReader>();
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, StubSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
 

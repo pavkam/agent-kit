@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Read.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Provides construction helpers for read-file tool tests.</summary>
 internal static class TestFactory
 {
@@ -11,7 +13,7 @@ internal static class TestFactory
         ISecurityAuthority? authority = null,
         ReadFileToolOptions? options = null) => new(
         fileSystem ?? new FakeFileSystem(),
-        authority ?? new AllowingSecurityAuthority(),
+        new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),
         new SecurityRequestIdGenerator(),
         TimeProvider.System,
         Options.Create(options ?? new ReadFileToolOptions()));
@@ -68,6 +70,7 @@ internal static class TestFactory
 
     public static IServiceCollection AddSecurityDependencies(IServiceCollection services) => services
         .AddSingleton<ISecurityAuthority, AllowingSecurityAuthority>()
+        .AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()))
         .AddSingleton<IIdentifierGenerator<SecurityRequestId>, SecurityRequestIdGenerator>()
         .AddSingleton(TimeProvider.System);
 

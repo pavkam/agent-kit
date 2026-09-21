@@ -22,7 +22,7 @@ public sealed class WebFetchTool: ITool
 
     private readonly INetworkNameResolver _resolver;
     private readonly INetworkTransport _transport;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<NetworkOperationId> _operationIds;
     private readonly TimeProvider _timeProvider;
@@ -34,7 +34,7 @@ public sealed class WebFetchTool: ITool
     /// <summary>Initializes web fetch over one selected resolver, transport, and system-wide security authority.</summary>
     /// <param name="resolver">The protected destination resolver.</param>
     /// <param name="transport">The protected request transport.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="operationIds">The replaceable network-operation identity source.</param>
     /// <param name="timeProvider">The deterministic overall-deadline clock.</param>
@@ -44,7 +44,7 @@ public sealed class WebFetchTool: ITool
     public WebFetchTool(
         INetworkNameResolver resolver,
         INetworkTransport transport,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<NetworkOperationId> operationIds,
         TimeProvider timeProvider,
@@ -52,7 +52,7 @@ public sealed class WebFetchTool: ITool
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(transport);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -60,7 +60,7 @@ public sealed class WebFetchTool: ITool
         ValidateOptions(options.Value);
         _resolver = resolver;
         _transport = transport;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _operationIds = operationIds;
         _timeProvider = timeProvider;
@@ -209,18 +209,27 @@ public sealed class WebFetchTool: ITool
         CancellationToken cancellationToken)
     {
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return null;
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 audience,
                 SecurityOperationKind.Network,
                 SecurityEffect.Egress,
                 resources,
                 fingerprint,
                 deadline),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         return decision is SecurityAllowed allowed ? allowed.Grant : null;
     }

@@ -9,7 +9,8 @@ using System.Buffers.Binary;
 internal ref struct SqliteSecurityGrantCodecReader
 {
     private const uint _magic = 0x414B5347;
-    private const byte _version = 1;
+    private const byte _grantEnvelopeVersionOne = 1;
+    private const byte _grantEnvelopeVersionTwo = 2;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private int _offset;
@@ -22,13 +23,23 @@ internal ref struct SqliteSecurityGrantCodecReader
         _settings = settings;
     }
 
-    /// <summary>Consumes and validates the fixed magic, codec version, and envelope kind.</summary><param name="expectedKind">The sole supported kind for the caller.</param><exception cref="InvalidDataException">The header is unsupported or truncated.</exception>
-    internal void ReadHeader(byte expectedKind)
+    /// <summary>Consumes and validates the fixed magic, codec version, and envelope kind.</summary><param name="expectedKind">The sole supported kind for the caller.</param><returns>The envelope version byte.</returns><exception cref="InvalidDataException">The header is unsupported or truncated.</exception>
+    internal byte ReadHeader(byte expectedKind)
     {
-        if (ReadUInt32() != _magic || ReadByte() != _version || ReadByte() != expectedKind)
+        if (ReadUInt32() != _magic)
         {
             throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
         }
+
+        var version = ReadByte();
+        if (ReadByte() != expectedKind)
+        {
+            throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
+        }
+
+        return version is _grantEnvelopeVersionOne or _grantEnvelopeVersionTwo
+            ? version
+            : throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
     }
 
     /// <summary>Reads one RFC 4122 network-order GUID.</summary><returns>The decoded value.</returns><exception cref="InvalidDataException">The envelope is truncated.</exception>

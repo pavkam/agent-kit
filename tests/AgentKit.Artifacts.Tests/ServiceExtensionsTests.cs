@@ -3,6 +3,8 @@
 
 namespace AgentKit.Artifacts.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -20,7 +22,9 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IArtifactStore>(new RecordingArtifactStore());
-        _ = services.AddSingleton<ISecurityAuthority>(new RecordingSecurityAuthority());
+        var authority = new RecordingSecurityAuthority();
+        _ = services.AddSingleton<ISecurityAuthority>(authority);
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(new FixedSecurityAuthoritySelector(authority));
         _ = services.AddSingleton<TimeProvider>(new FixedTimeProvider());
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>>(
             new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId));

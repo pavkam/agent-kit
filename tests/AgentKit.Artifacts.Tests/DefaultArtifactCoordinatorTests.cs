@@ -3,6 +3,8 @@
 
 namespace AgentKit.Artifacts.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class DefaultArtifactCoordinatorTests
 {
     [Theory]
@@ -22,7 +24,7 @@ public sealed class DefaultArtifactCoordinatorTests
         }
 
         void Construct() => _ = new DefaultArtifactCoordinator(
-                new RecordingArtifactStore(), new RecordingSecurityAuthority(),
+                new RecordingArtifactStore(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()),
                 new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
                 new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
                 new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
@@ -144,7 +146,7 @@ public sealed class DefaultArtifactCoordinatorTests
             ProfileVersion = new ArtifactProfileVersion(7),
         };
         var coordinator = new DefaultArtifactCoordinator(
-            store, authority, new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
+            store, new FixedSecurityAuthoritySelector(authority), new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
             new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
             new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
             new FixedTimeProvider(), Options.Create(options));
@@ -176,7 +178,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactFinalizeRequest(
             ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId, null,
-            ArtifactTestData.Correlation, ArtifactTestData.Identity, new IdempotencyKey("finalize-1"));
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactTestData.Authorization, new IdempotencyKey("finalize-1"));
 
         _ = await coordinator.FinalizeAsync(request, TestContext.Current.CancellationToken);
 
@@ -197,7 +199,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactFinalizeRequest(
             ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId, null,
-            ArtifactTestData.Correlation, ArtifactTestData.Identity, new IdempotencyKey("finalize-1"));
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactTestData.Authorization, new IdempotencyKey("finalize-1"));
 
         var result = await coordinator.FinalizeAsync(request, TestContext.Current.CancellationToken);
 
@@ -213,7 +215,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactAbortRequest(
             ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId,
-            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort-1"));
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactTestData.Authorization, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort-1"));
 
         _ = await coordinator.AbortAsync(request, TestContext.Current.CancellationToken);
 
@@ -236,7 +238,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactAbortRequest(
             ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId,
-            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactAbortReason.Abandoned, new IdempotencyKey("abort-1"));
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactTestData.Authorization, ArtifactAbortReason.Abandoned, new IdempotencyKey("abort-1"));
 
         var result = await coordinator.AbortAsync(request, TestContext.Current.CancellationToken);
 
@@ -253,7 +255,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var reference = ArtifactTestData.CreateReference();
         var request = new ArtifactDeleteRequest(
             ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
-            ArtifactTestData.Identity, reference, new IdempotencyKey("delete-1"));
+            ArtifactTestData.Identity, ArtifactTestData.Authorization, reference, new IdempotencyKey("delete-1"));
 
         _ = await coordinator.DeleteAsync(request, TestContext.Current.CancellationToken);
 
@@ -274,7 +276,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactDeleteRequest(
             ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
-            ArtifactTestData.Identity, ArtifactTestData.CreateReference(), new IdempotencyKey("delete-1"));
+            ArtifactTestData.Identity, ArtifactTestData.Authorization, ArtifactTestData.CreateReference(), new IdempotencyKey("delete-1"));
 
         var result = await coordinator.DeleteAsync(request, TestContext.Current.CancellationToken);
 
@@ -291,7 +293,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var reference = ArtifactTestData.CreateReference();
         var request = new ArtifactReadRequest(
             ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
-            ArtifactTestData.Identity, reference);
+            ArtifactTestData.Identity, ArtifactTestData.Authorization, reference);
 
         _ = await coordinator.ReadAsync(request, TestContext.Current.CancellationToken);
 
@@ -311,7 +313,7 @@ public sealed class DefaultArtifactCoordinatorTests
         var coordinator = CreateCoordinator(store, authority);
         var request = new ArtifactDeleteRequest(
             ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
-            ArtifactTestData.Identity, ArtifactTestData.CreateReference(legalHold: true), new IdempotencyKey("delete-1"));
+            ArtifactTestData.Identity, ArtifactTestData.Authorization, ArtifactTestData.CreateReference(legalHold: true), new IdempotencyKey("delete-1"));
 
         var result = await coordinator.DeleteAsync(request, TestContext.Current.CancellationToken);
 
@@ -325,7 +327,7 @@ public sealed class DefaultArtifactCoordinatorTests
         ISecurityAuthority authority,
         long maximumBytes = 1_024) => new(
             store,
-            authority,
+            new FixedSecurityAuthoritySelector(authority),
             new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
             new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
             new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),

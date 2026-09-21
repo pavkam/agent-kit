@@ -28,7 +28,7 @@ public sealed class LanguageTool: ITool
         """).RootElement;
 
     private readonly ILanguageIntelligenceService _service;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<LanguageQueryId> _queryIds;
     private readonly TimeProvider _timeProvider;
@@ -44,7 +44,7 @@ public sealed class LanguageTool: ITool
 
     /// <summary>Initializes the language tool over one selected provider and the system-wide authority.</summary>
     /// <param name="service">The protected language-intelligence provider.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="queryIds">The replaceable language-query identity source.</param>
     /// <param name="timeProvider">The deterministic security-deadline clock.</param>
@@ -53,21 +53,21 @@ public sealed class LanguageTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured default or ceiling is invalid.</exception>
     public LanguageTool(
         ILanguageIntelligenceService service,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<LanguageQueryId> queryIds,
         TimeProvider timeProvider,
         IOptions<LanguageToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(service);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(queryIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _service = service;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _queryIds = queryIds;
         _timeProvider = timeProvider;
@@ -114,18 +114,27 @@ public sealed class LanguageTool: ITool
             parsed.MaximumResults,
             parsed.Timeout);
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _service.SecurityAudience,
                 SecurityOperationKind.FileRead,
                 SecurityEffect.Observe,
                 [resource],
                 fingerprint,
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.List.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ListDirectoryToolTests
 {
     [Fact]
@@ -169,8 +171,7 @@ public sealed class ListDirectoryToolTests
     private static ListDirectoryTool CreateTool(
         IDirectoryReader reader,
         ISecurityAuthority authority) => new(
-            reader,
-            authority,
+            reader, new FixedSecurityAuthoritySelector(authority),
             new StubSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
             Options.Create(new ListDirectoryToolOptions()));

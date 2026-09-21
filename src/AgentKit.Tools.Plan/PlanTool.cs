@@ -37,7 +37,7 @@ public sealed class PlanTool: ITool
         """).RootElement;
 
     private readonly IPlanStateStore _store;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly int _maximumTitleCharacters;
@@ -50,7 +50,7 @@ public sealed class PlanTool: ITool
 
     /// <summary>Initializes the plan tool over one protected plan-state store.</summary>
     /// <param name="store">The selected protected plan-state store.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The captured model-facing bounds.</param>
@@ -58,19 +58,19 @@ public sealed class PlanTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public PlanTool(
         IPlanStateStore store,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<PlanToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
         _store = store;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _maximumTitleCharacters = options.Value.MaximumTitleCharacters;
@@ -143,19 +143,27 @@ public sealed class PlanTool: ITool
             "set_status" => PlanSecurityBinding.StatusFingerprint(address, itemId, status, expectedRevision!.Value),
             _ => throw new UnreachableException(),
         };
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Rejected("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, sessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
-                context.Authorization,
+                authorization.Identity,
+                authorization,
                 _store.SecurityAudience,
                 kind,
                 effect,
                 [PlanSecurityBinding.Resource(address)],
                 fingerprint,
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Web.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -112,7 +114,9 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<INetworkNameResolver>(new ScriptedNetworkNameResolver(store, new FixedTimeProvider()));
         _ = services.AddSingleton<INetworkTransport>(new ScriptedNetworkTransport(store, new FixedTimeProvider()));
-        _ = services.AddSingleton<ISecurityAuthority>(new RecordingSecurityAuthority(store));
+        var authority = new RecordingSecurityAuthority(store);
+        _ = services.AddSingleton<ISecurityAuthority>(authority);
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(new FixedSecurityAuthoritySelector(authority));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, SequenceSecurityRequestIdGenerator>();
         _ = services.AddSingleton<IIdentifierGenerator<NetworkOperationId>, SequenceNetworkOperationIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();

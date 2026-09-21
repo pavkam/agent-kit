@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Glob.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class GlobToolTests
 {
     [Theory]
@@ -164,8 +166,7 @@ public sealed class GlobToolTests
         result.Outcome.Extensions.Values["agentkit.glob.status"].CanonicalJson.AsSpan());
 
     private static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority) => new(
-        globber,
-        authority,
+        globber, new FixedSecurityAuthoritySelector(authority),
         new StubSecurityRequestIdGenerator(),
         new FixedTimeProvider(),
         Options.Create(new GlobToolOptions()));

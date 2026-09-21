@@ -4021,9 +4021,12 @@ public sealed class DefaultAgentLoopTests
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
-        toolInvoker = resolvedToolHandler is not null
+        var fakeInvoker = resolvedToolHandler is not null
             ? new FakeToolInvoker(resolvedToolHandler)
             : new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
+        toolInvoker = fakeInvoker;
+        var toolExecutor = new FakeToolExecutor(fakeInvoker);
+        var toolCatalogCaptures = new FakeToolRunCatalogCaptureFactory();
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
 
@@ -4031,7 +4034,8 @@ public sealed class DefaultAgentLoopTests
             coordinator,
             securityProfileSelector ?? new FakeSecurityProfileSelector(),
             contextAssembler ?? ContextAssemblerTestSupport.CreateDefault(),
-            toolInvoker,
+            toolExecutor,
+            toolCatalogCaptures,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
@@ -4089,7 +4093,8 @@ public sealed class DefaultAgentLoopTests
             coordinator,
             new FakeSecurityProfileSelector(),
             contextAssembler ?? ContextAssemblerTestSupport.CreateDefault(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
+            new FakeToolExecutor(new FakeToolInvoker(_ => TestFactory.SuccessResult())),
+            new FakeToolRunCatalogCaptureFactory(),
             catalog,
             selector,
             resolver,

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Command.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class CommandToolTests
 {
     [Fact]
@@ -325,8 +327,7 @@ public sealed class CommandToolTests
         ISecurityAuthority authority,
         CommandToolOptions? options = null) => new(
             resolver,
-            runner,
-            authority,
+            runner, new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
             new FixedProcessOperationIdGenerator(),
             new FixedTimeProvider(),

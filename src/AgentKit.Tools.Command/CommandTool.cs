@@ -25,7 +25,7 @@ public sealed class CommandTool: ITool
 
     private readonly IProcessIntentResolver _resolver;
     private readonly IProcessRunner _runner;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<ProcessOperationId> _processOperationIds;
     private readonly TimeProvider _timeProvider;
@@ -46,7 +46,7 @@ public sealed class CommandTool: ITool
     /// <summary>Initializes the explicit shell tool over provider-neutral process and security contracts.</summary>
     /// <param name="resolver">The resolver that canonicalizes the shell, working directory, and bounds before authorization.</param>
     /// <param name="runner">The effecting process boundary that revalidates intent and consumes the exact grant.</param>
-    /// <param name="securityAuthority">The system-wide authority for the resolved process effect.</param>
+    /// <param name="authoritySelector">The security authority selector for the resolved process effect.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="processOperationIds">The replaceable process-operation identity source.</param>
     /// <param name="timeProvider">The deterministic security-deadline clock.</param>
@@ -57,7 +57,7 @@ public sealed class CommandTool: ITool
     public CommandTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<ProcessOperationId> processOperationIds,
         TimeProvider timeProvider,
@@ -65,7 +65,7 @@ public sealed class CommandTool: ITool
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(runner);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(processOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -73,7 +73,7 @@ public sealed class CommandTool: ITool
         ValidateOptions(options.Value);
         _resolver = resolver;
         _runner = runner;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _processOperationIds = processOperationIds;
         _timeProvider = timeProvider;
@@ -152,18 +152,27 @@ public sealed class CommandTool: ITool
 
         var intent = resolution.Intent;
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _securityRequestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _runner.SecurityAudience,
                 SecurityOperationKind.Process,
                 SecurityEffect.Execute,
                 ProcessSecurityBinding.Resources(intent),
                 ProcessSecurityBinding.Fingerprint(intent),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

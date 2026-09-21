@@ -1516,6 +1516,7 @@ internal sealed class AgentEngineRuntime
                 compiled.SecurityProfileSelector,
                 compiled.Context,
                 compiled.Tools,
+                compiled.ToolCatalogCaptures,
                 compiled.Models,
                 compiled.ModelSelector,
                 compiled.ModelResolver,

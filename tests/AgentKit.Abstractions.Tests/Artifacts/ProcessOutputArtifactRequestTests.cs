@@ -11,7 +11,7 @@ public sealed class ProcessOutputArtifactRequestTests
     [Fact]
     public void ProcessOutputArtifactRequest_WhenContentIsDefault_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ProcessOutputArtifactRequest(Intent(), Scope(), Identity(), ProcessOutputKind.StandardOutput, default, new IdempotencyKey("output")));
+        var exception = Should.Throw<ArgumentException>(() => new ProcessOutputArtifactRequest(Intent(), Scope(), Identity(), Authorization(), ProcessOutputKind.StandardOutput, default, new IdempotencyKey("output")));
         exception.ParamName.ShouldBe("content");
     }
 
@@ -25,5 +25,6 @@ public sealed class ProcessOutputArtifactRequestTests
     private static AgentId AgentId() => new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
     private static SessionId SessionId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static InRunOperationCorrelation Correlation() => new(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null);
+    private static SecurityAuthorizationContext Authorization() => TestSupport.TestSecurityEvidence.Authorization(AgentId(), SessionId(), Correlation(), Identity());
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 }

@@ -12,6 +12,7 @@ public sealed record ArtifactPrepareRequest
     /// <param name="toolCallId">The causing tool call, when applicable.</param>
     /// <param name="correlation">The causal operation.</param>
     /// <param name="identity">The authenticated identity.</param>
+    /// <param name="authorization">The captured authorization evidence for authority selection.</param>
     /// <param name="directoryId">The logical directory.</param>
     /// <param name="metadata">The declared content and policy.</param>
     /// <param name="content">The readable caller-owned stream retained only until prepare returns.</param>
@@ -21,17 +22,22 @@ public sealed record ArtifactPrepareRequest
     public ArtifactPrepareRequest(
         AgentId agentId, SessionId? sessionId, ToolCallId? toolCallId,
         OperationCorrelation correlation, ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
         ArtifactDirectoryId directoryId, ArtifactMetadata metadata,
         Stream content, IdempotencyKey idempotencyKey)
     {
         ArgumentNullException.ThrowIfNull(correlation);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentException.ThrowIfNotEqual(
+            authorization.Scope, new SecurityAuthorizationScope(agentId, sessionId, correlation), nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryId.Value, nameof(directoryId));
         ArgumentNullException.ThrowIfNull(metadata);
         ArgumentException.ThrowIfNotReadable(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
         AgentId = agentId; SessionId = sessionId; ToolCallId = toolCallId;
-        Correlation = correlation; Identity = identity; DirectoryId = directoryId;
+        Correlation = correlation; Identity = identity; Authorization = authorization; DirectoryId = directoryId;
         Metadata = metadata; Content = content; IdempotencyKey = idempotencyKey;
     }
     /// <summary>Gets the acting agent.</summary>
@@ -44,6 +50,8 @@ public sealed record ArtifactPrepareRequest
     public OperationCorrelation Correlation { get; }
     /// <summary>Gets the authenticated identity.</summary>
     public ExecutionIdentity Identity { get; }
+    /// <summary>Gets the captured authorization evidence.</summary>
+    public SecurityAuthorizationContext Authorization { get; }
     /// <summary>Gets the logical directory.</summary>
     public ArtifactDirectoryId DirectoryId { get; }
     /// <summary>Gets declared content and policy.</summary>

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Resource.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies bounded readable presentation of actual resource-tool call and result shapes.</summary>
 public sealed class ResourceToolPresentationFormatterTests
 {
@@ -313,7 +315,7 @@ public sealed class ResourceToolPresentationFormatterTests
             expectedContentHash: null));
         return new ResourceTool(
             reader,
-            authority,
+            new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
             Options.Create(options));

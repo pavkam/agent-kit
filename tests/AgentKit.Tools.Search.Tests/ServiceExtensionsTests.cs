@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Search.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -32,6 +34,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<IFileContentSearcher, FakeFileContentSearcher>();
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, StubSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
         return services;

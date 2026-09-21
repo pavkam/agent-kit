@@ -9,6 +9,8 @@ internal static class SqliteSecurityGrantCodec
 {
     private const byte _grantKind = 1;
     private const byte _enforcementKind = 2;
+    private const byte _grantEnvelopeVersionOne = 1;
+    private const byte _grantEnvelopeVersionTwo = 2;
 
     /// <summary>Encodes one complete validated immutable grant.</summary>
     /// <param name="grant">The non-null evidence to encode.</param>
@@ -21,7 +23,7 @@ internal static class SqliteSecurityGrantCodec
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(settings);
         var writer = new SqliteSecurityGrantCodecWriter(settings, settings.MaximumGrantBytes, nameof(grant));
-        writer.WriteHeader(_grantKind);
+        writer.WriteHeader(_grantKind, _grantEnvelopeVersionTwo);
         writer.WriteGuid(grant.Id.Value);
         writer.WriteGuid(grant.RequestId.Value);
         writer.WriteScope(grant.Scope);
@@ -37,6 +39,16 @@ internal static class SqliteSecurityGrantCodec
         writer.WriteDateTimeOffset(grant.NotBefore);
         writer.WriteDateTimeOffset(grant.ExpiresAt);
         writer.WriteInt32(grant.AllowedUses);
+        if (grant.Approval is { } approval)
+        {
+            writer.WriteBoolean(true);
+            writer.WriteGuid(approval.Value);
+        }
+        else
+        {
+            writer.WriteBoolean(false);
+        }
+
         return writer.ToArray();
     }
 
@@ -56,7 +68,7 @@ internal static class SqliteSecurityGrantCodec
         try
         {
             var reader = new SqliteSecurityGrantCodecReader(payload, settings);
-            reader.ReadHeader(_grantKind);
+            var envelopeVersion = reader.ReadHeader(_grantKind);
             var id = new GrantId(reader.ReadGuid());
             var requestId = new SecurityRequestId(reader.ReadGuid());
             var scope = reader.ReadScope();

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Read.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ReadFileToolTests
 {
     [Fact]
@@ -19,7 +21,7 @@ public sealed class ReadFileToolTests
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
             new FakeFileSystem(),
-            TestFactory.DenyingAuthority(),
+            new FixedSecurityAuthoritySelector(TestFactory.DenyingAuthority()),
             TestFactory.RequestIds(),
             TimeProvider.System,
             null!));
@@ -304,7 +306,9 @@ public sealed class ReadFileToolTests
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
         var tool = TestFactory.Tool(
-            fileSystem, new TestSupport.UninvokedSecurityAuthority(), new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
+            fileSystem,
+            new TestSupport.UninvokedSecurityAuthority(),
+            options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": 5}"""), TestContext.Current.CancellationToken);

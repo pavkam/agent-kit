@@ -14,7 +14,7 @@ public sealed class ArtifactAbortRequestTests
         var correlation = Correlation();
         var identity = Identity();
         var key = new IdempotencyKey("abort");
-        var request = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), correlation, identity, ArtifactAbortReason.Cancelled, key);
+        var request = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), correlation, identity, Authorization(), ArtifactAbortReason.Cancelled, key);
         request.PreparationId.ShouldBe(PreparationId());
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
@@ -27,35 +27,35 @@ public sealed class ArtifactAbortRequestTests
     [Fact]
     public void ArtifactAbortRequest_WhenReasonIsUndefined_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), (ArtifactAbortReason) 999, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), (ArtifactAbortReason) 999, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("reason");
     }
 
     [Fact]
     public void Constructor_WhenPreparationIdIsEmpty_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(default, AgentId(), SessionId(), Correlation(), Identity(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(default, AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("preparationId");
     }
 
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), null!, Identity(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), null!, Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), null!, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), null!, null!, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("identity");
     }
 
     [Fact]
     public void Constructor_WhenIdempotencyKeyIsBlank_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), ArtifactAbortReason.Cancelled, default));
+        var exception = Should.Throw<ArgumentException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, default));
         exception.ParamName.ShouldBe("idempotencyKey");
     }
 
@@ -63,12 +63,14 @@ public sealed class ArtifactAbortRequestTests
     private static SessionId SessionId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static ArtifactPreparationId PreparationId() => new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     private static InRunOperationCorrelation Correlation() => new(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null);
+
+    private static SecurityAuthorizationContext Authorization() => TestSupport.TestSecurityEvidence.Authorization(AgentId(), SessionId(), Correlation(), Identity());
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort"));
+        var original = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort"));
         var copy = original with { };
         copy.ShouldBe(original);
     }

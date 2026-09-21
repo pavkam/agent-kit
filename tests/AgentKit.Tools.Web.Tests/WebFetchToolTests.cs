@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Web.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class WebFetchToolTests
 {
     [Theory]
@@ -552,7 +554,7 @@ public sealed class WebFetchToolTests
             Tool = new WebFetchTool(
                 Resolver,
                 Transport,
-                Authority,
+                new FixedSecurityAuthoritySelector(Authority),
                 new SequenceSecurityRequestIdGenerator(),
                 new SequenceNetworkOperationIdGenerator(),
                 clock ?? new FixedTimeProvider(),

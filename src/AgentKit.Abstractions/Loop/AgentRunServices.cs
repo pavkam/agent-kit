@@ -38,7 +38,11 @@ public sealed class AgentRunServices
     /// <param name="session">Loads eligible history and commits every message and terminal tool result this run produces.</param>
     /// <param name="securityProfileSelector">Captures fresh authorization for each newly identified run or turn operation.</param>
     /// <param name="context">Assembles the provider-ready request for each turn.</param>
-    /// <param name="tools">Resolves, authorizes, and invokes every requested tool call.</param>
+    /// <param name="tools">Executes every requested tool call through the configured tool runtime.</param>
+    /// <param name="toolCatalogCaptures">
+    /// Builds run-bound catalog capture evidence for tool batches, or <see langword="null"/> when the composition
+    /// selects no tool catalog factory; tool batches then fail closed.
+    /// </param>
     /// <param name="models">Supplies the engine-wide versioned view of configured models.</param>
     /// <param name="modelSelector">Chooses one configured model for this run.</param>
     /// <param name="modelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
@@ -77,7 +81,8 @@ public sealed class AgentRunServices
         ISessionCoordinator session,
         ISecurityProfileSelector securityProfileSelector,
         IContextAssembler context,
-        IToolInvoker tools,
+        IToolExecutor tools,
+        IToolRunCatalogCaptureFactory? toolCatalogCaptures,
         IModelCatalog models,
         IModelSelector modelSelector,
         ILlmModelResolver modelResolver,
@@ -102,6 +107,7 @@ public sealed class AgentRunServices
         SecurityProfileSelector = securityProfileSelector;
         Context = context;
         Tools = tools;
+        ToolCatalogCaptures = toolCatalogCaptures;
         Models = models;
         ModelSelector = modelSelector;
         ModelResolver = modelResolver;
@@ -123,8 +129,12 @@ public sealed class AgentRunServices
     /// <summary>Gets the collaborator that assembles the provider-ready request for each turn.</summary>
     public IContextAssembler Context { get; }
 
-    /// <summary>Gets the collaborator that resolves, authorizes, and invokes every requested tool call.</summary>
-    public IToolInvoker Tools { get; }
+    /// <summary>Gets the collaborator that executes every requested tool call.</summary>
+    public IToolExecutor Tools { get; }
+
+    /// <summary>Gets the factory that captures run-bound catalog evidence for tool batches.</summary>
+    /// <value><see langword="null"/> when no tool catalog factory is registered; tool batches then fail closed.</value>
+    public IToolRunCatalogCaptureFactory? ToolCatalogCaptures { get; }
 
     /// <summary>Gets the engine-wide versioned view of configured models.</summary>
     public IModelCatalog Models { get; }

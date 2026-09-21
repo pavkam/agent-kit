@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Command.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -68,6 +70,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<IProcessIntentResolver, RecordingProcessResolver>();
         _ = services.AddSingleton<IProcessRunner, RecordingProcessRunner>();
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, FixedSecurityRequestIdGenerator>();
         _ = services.AddSingleton<IIdentifierGenerator<ProcessOperationId>, FixedProcessOperationIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Skill.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies SkillTool behavior and contracts.</summary>
@@ -195,7 +197,7 @@ public sealed class SkillToolTests
     {
         var configured = options ?? OptionsForTool();
         var captured = Options.Create(configured);
-        return new SkillTool(reader, authority, new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), new ConfiguredSkillCatalog(captured), captured);
+        return new SkillTool(reader, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), new ConfiguredSkillCatalog(captured), captured);
     }
 
     private static SkillToolOptions OptionsForTool(ContentHash? expectedHash = null)

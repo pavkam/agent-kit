@@ -20,7 +20,7 @@ public sealed class ResourceTool: ITool
         """).RootElement;
 
     private readonly IFileSnapshotReader _reader;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ImmutableArray<FileResourceDefinition> _resources;
@@ -33,7 +33,7 @@ public sealed class ResourceTool: ITool
 
     /// <summary>Initializes one immutable resource catalog over a protected snapshot reader.</summary>
     /// <param name="reader">The exact bounded file snapshot boundary.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The configured catalog and host ceilings.</param>
@@ -42,13 +42,13 @@ public sealed class ResourceTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A bound or description length is invalid.</exception>
     public ResourceTool(
         IFileSnapshotReader reader,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<ResourceToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -67,7 +67,7 @@ public sealed class ResourceTool: ITool
         }
 
         _reader = reader;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _resources = resources;
@@ -117,18 +117,27 @@ public sealed class ResourceTool: ITool
 
         var context = request.Context;
         var fingerprint = FileSecurityBinding.SnapshotFingerprint(resource.Path, _maximumBytes);
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failure("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _reader.SecurityAudience,
                 SecurityOperationKind.FileRead,
                 SecurityEffect.Observe,
                 [FileSecurityBinding.Resource(resource.Path)],
                 fingerprint,
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

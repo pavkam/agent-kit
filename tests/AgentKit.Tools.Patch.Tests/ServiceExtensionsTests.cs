@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Patch.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -35,6 +37,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<IFileSnapshotReader, FakeSnapshotReader>();
         _ = services.AddSingleton<IWorkspacePatchApplier, FakePatchApplier>();
         _ = services.AddSingleton<ISecurityAuthority, SequencedSecurityAuthority>();
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, SequenceSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
         return services;

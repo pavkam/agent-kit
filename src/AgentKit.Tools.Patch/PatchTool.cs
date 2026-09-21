@@ -25,7 +25,7 @@ public sealed class PatchTool: ITool
 
     private readonly IFileSnapshotReader _snapshotReader;
     private readonly IWorkspacePatchApplier _applier;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly IIdentifierGenerator<WorkspaceMutationId> _mutationIds;
     private readonly TimeProvider _timeProvider;
@@ -34,7 +34,7 @@ public sealed class PatchTool: ITool
     /// <summary>Initializes a side-effect-free parsed and separately authorized patch tool.</summary>
     /// <param name="snapshotReader">The exact bounded source and absence observation capability.</param>
     /// <param name="applier">The transactional host patch capability.</param>
-    /// <param name="securityAuthority">The system-wide authority for every observation and mutation entry.</param>
+    /// <param name="authoritySelector">The security authority selector for every observation and mutation entry.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="mutationIds">The per-entry mutation identity generator.</param>
     /// <param name="timeProvider">The deterministic authority-deadline clock.</param>
@@ -44,7 +44,7 @@ public sealed class PatchTool: ITool
     public PatchTool(
         IFileSnapshotReader snapshotReader,
         IWorkspacePatchApplier applier,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
@@ -52,7 +52,7 @@ public sealed class PatchTool: ITool
     {
         ArgumentNullException.ThrowIfNull(snapshotReader);
         ArgumentNullException.ThrowIfNull(applier);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(mutationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -62,7 +62,7 @@ public sealed class PatchTool: ITool
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumFileBytes);
         _snapshotReader = snapshotReader;
         _applier = applier;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _mutationIds = mutationIds;
         _timeProvider = timeProvider;
@@ -240,18 +240,27 @@ public sealed class PatchTool: ITool
         FileSystemPath path,
         CancellationToken cancellationToken)
     {
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return (null, "The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _snapshotReader.SecurityAudience,
                 SecurityOperationKind.FileRead,
                 SecurityEffect.Observe,
                 [FileSecurityBinding.Resource(path)],
                 FileSecurityBinding.SnapshotFingerprint(path, _options.MaximumFileBytes),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
@@ -305,19 +314,28 @@ public sealed class PatchTool: ITool
                     entry.ExpectedContentFingerprint!.Value)),
             _ => throw new UnreachableException(),
         };
-        return await _securityAuthority.AuthorizeAsync(
-            new SecurityRequest(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        return activated is SecurityAuthoritySelected selected && selected.Authorization == authorization
+            ? await selected.Authority.AuthorizeAsync(
+                new SecurityRequest(
+                    _requestIds.Create(),
+                    authorization.Scope,
+                    context.ToolCallId,
+                    authorization.Identity,
+                    authorization,
+                    _applier.SecurityAudience,
+                    SecurityOperationKind.FileWrite,
+                    effect,
+                    resources,
+                    fingerprint,
+                    _timeProvider.GetUtcNow().AddMinutes(1)),
+                hooks: null,
+                cancellationToken).ConfigureAwait(false)
+            : new SecurityDenied(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
-                context.ToolCallId,
-                context.Identity,
-                _applier.SecurityAudience,
-                SecurityOperationKind.FileWrite,
-                effect,
-                resources,
-                fingerprint,
-                _timeProvider.GetUtcNow().AddMinutes(1)),
-            cancellationToken).ConfigureAwait(false);
+                new SecurityPolicyVersion(1),
+                new SecurityDenial("security.authority.unavailable", "The captured security authority is unavailable."));
     }
 
     private static WorkspacePatchEntry ToHostEntry(PlannedPatchEntry entry, SecurityGrant grant) =>

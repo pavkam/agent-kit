@@ -31,14 +31,14 @@ public sealed class ListDirectoryTool: ITool
         """).RootElement;
 
     private readonly IDirectoryReader _directoryReader;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ListDirectoryToolOptions _options;
 
     /// <summary>Initializes a directory-listing tool.</summary>
     /// <param name="directoryReader">The narrow host enumeration capability.</param>
-    /// <param name="securityAuthority">The system-wide security authority.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated page options.</param>
@@ -46,13 +46,13 @@ public sealed class ListDirectoryTool: ITool
     /// <exception cref="ArgumentOutOfRangeException">A configured page bound is not positive or the default exceeds the maximum.</exception>
     public ListDirectoryTool(
         IDirectoryReader directoryReader,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<ListDirectoryToolOptions> options)
     {
         ArgumentNullException.ThrowIfNull(directoryReader);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -61,7 +61,7 @@ public sealed class ListDirectoryTool: ITool
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             options.Value.DefaultPageEntries, options.Value.MaximumPageEntries);
         _directoryReader = directoryReader;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
@@ -92,18 +92,27 @@ public sealed class ListDirectoryTool: ITool
         }
 
         var context = request.Context;
-        var decision = await _securityAuthority.AuthorizeAsync(
+        var authorization = context.Authorization;
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return Failed("The captured security authority is unavailable.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(
             new SecurityRequest(
                 _requestIds.Create(),
-                new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+                authorization.Scope,
                 context.ToolCallId,
-                context.Identity,
+                authorization.Identity,
+                authorization,
                 _directoryReader.SecurityAudience,
                 SecurityOperationKind.DirectoryRead,
                 SecurityEffect.Observe,
                 [DirectorySecurityBinding.Resource(path)],
                 DirectorySecurityBinding.Fingerprint(path, maximumEntries, cursor),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
+            hooks: null,
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {

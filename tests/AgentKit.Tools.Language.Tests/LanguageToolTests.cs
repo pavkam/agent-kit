@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Language.Tests;
 
+using AgentKit.TestSupport;
+
 
 
 /// <summary>Verifies LanguageTool behavior and contracts.</summary>
@@ -202,7 +204,7 @@ public sealed class LanguageToolTests
         result.Outcome.Retryable.ShouldBeFalse();
     }
 
-    private static LanguageTool CreateTool(ILanguageIntelligenceService service, ISecurityAuthority authority, LanguageToolOptions? options = null) => new(service, authority, new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
+    private static LanguageTool CreateTool(ILanguageIntelligenceService service, ISecurityAuthority authority, LanguageToolOptions? options = null) => new(service, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
     private static LanguageToolOptions OptionsForTool() => new()
     {
         DefaultMaximumResults = 10,
@@ -221,7 +223,7 @@ public sealed class LanguageToolTests
         {
             MaximumTextCharacters = 0
         };
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LanguageTool(new RecordingLanguageService(), new RecordingSecurityAuthority(), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LanguageTool(new RecordingLanguageService(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
         exception.ParamName.ShouldBe("MaximumTextCharacters");
     }
 }
