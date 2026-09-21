@@ -27,95 +27,54 @@ Owning documents: [Extensions](../architecture/extensions.md),
 - [x] WS2-C10 named hook profiles
 - [x] WS2-C11 diagnostic sinks
 - [x] WS2-C12 timeout and quiescence
-- [ ] WS2-C13 documentation reconciliation
+- [x] WS2-C13 documentation reconciliation
 
 ## Verified current state
 
-| Type                                                                                                                                                                                                                  | State                              | Evidence                                                                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `IHookDispatcher.DispatchAsync<THook,TArgs>(HookPointId, IEnumerable<THook>, TArgs, invoker, HookDispatchScope, HookFailureMode, int, CT)`                                                                            | EXISTS-AND-USED (old shape)        | `src/AgentKit.Abstractions/Hooks/IHookDispatcher.cs:30-73`; only impl `src/AgentKit.Hooks/DefaultHookDispatcher.cs:29`; only consumer `DefaultAgentLoop.cs` |
-| `DefaultHookDispatcher`                                                                                                                                                                                               | EXISTS-AND-USED                    | reentrancy, `HookOrdering.Sort`, isolation snapshot/restore (`:231-263`), post-hook `Validate()` (`:269`), short-circuit (`:271`)                           |
-| `HookOrdering` (internal)                                                                                                                                                                                             | EXISTS-AND-USED                    | `src/AgentKit.Hooks/HookOrdering.cs`; port target for `IHookOrderResolver`                                                                                  |
-| `IHook`, `HookPriority`, `HookDispatchScope`, `AgentScopedHookEventArgs`                                                                                                                                              | EXISTS, to be superseded           | `Abstractions/Hooks/*.cs`; `HookDispatchScope` has 76 test references                                                                                       |
-| `IRunStartedHook`, `IBeforeModelRequestHook`, `IBeforeToolInvocationHook` with `On*Async(args, ct)`                                                                                                                   | EXISTS-AND-USED                    | spec wants `InvokeAsync(args, HookInvocationContext, ct)` (`extensions.md:178-184`)                                                                         |
-| `AgentHookEventArgs(OperationCorrelation, DateTimeOffset, HookInvocationId)`                                                                                                                                          | EXISTS, wrong shape                | carries a per-dispatch-shared `InvocationId` (`extensions.md:149-153`); no `Point`, `DispatchId`, `Deadline`                                                |
-| `RunStartedEventArgs`, `BeforeModelRequestEventArgs`, `BeforeToolInvocationEventArgs`, `IShortCircuitingHookArgs`, `ToolInvocationVeto`                                                                               | EXISTS-AND-USED                    | constructed only at `DefaultAgentLoop.cs:479-481,773-774,1425-1426`                                                                                         |
-| `AgentHookPoints` (three `HookPointId` values)                                                                                                                                                                        | EXISTS, not definitions            | `Abstractions/Hooks/AgentHookPoints.cs`                                                                                                                     |
-| `HookFailureMode { FailOperation, Isolate }`                                                                                                                                                                          | EXISTS, wrong member name          | spec `IsolateAndDiagnose`; 27 references                                                                                                                    |
-| `HookId`, `HookInvocationId`, `HookPointId`, `HookProfileKey`                                                                                                                                                         | EXISTS (`HookProfileKey` un-wired) | `Abstractions/Identity/`                                                                                                                                    |
-| `AgentHookOptions { MaximumInvocationDepth, MinimumFailureMode }`                                                                                                                                                     | EXISTS, partial                    | spec adds `DefaultHookTimeout`, `MutationDispatchMode`, `ReloadBoundary`                                                                                    |
-| `AddAgentHooks`, `Add*Hook<T>()`                                                                                                                                                                                      | EXISTS-AND-USED                    | `src/AgentKit.Hooks/ServiceExtensions.cs:20-105`; called by `AgentKit.Simple/AgentEngineBuilderExtensions.cs:739`                                           |
-| `HookRegistrationId`, `HookDispatchId`, `HookCatalogVersion`, `HookOrder`, `HookLifetime`, `HookReentrancyPolicy`, `HookPointKind`, `HookMutationDispatchMode`, `HookReloadBoundary`                                  | MISSING                            | –                                                                                                                                                           |
-| `HookRegistrationDescriptor`, `HookCatalogSnapshot`, `HookDispatchMetadata`, `HookInvocationContext`, `HookDispatchContext`, `HookProfileOptions`, `HookInvocationDiagnostic`                                         | MISSING                            | –                                                                                                                                                           |
-| `HookPointDefinition<,>`, `HookInvoker<,>`, `IHookMutationValidator<>`                                                                                                                                                | MISSING                            | –                                                                                                                                                           |
-| `IHookRegistrationSource`, `IHookProfileSelector`, `IHookOrderResolver`, `IHookCatalog`, `IHookInstanceFactory`, `IHookActivationLease`, `IHookInvocationTracker`, `IHookDiagnosticSink`, `IHookDiagnosticDispatcher` | MISSING                            | –                                                                                                                                                           |
-| `AgentDefinition.HookProfile`                                                                                                                                                                                         | MISSING                            | `Composition/AgentDefinition.cs` has `SecurityProfile` (`:184`) and `SessionProfile` (`:188`) only                                                          |
-| hook services in composition validation                                                                                                                                                                               | MISSING                            | `src/AgentKit/AgentCompositionValidator.cs` has no hook references                                                                                          |
+| Area                     | State   | Evidence                                                                                                                                                               |
+| ------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kernel dispatch          | EXISTS  | `IHookDispatcher.DispatchAsync<THook,TEventArgs>(HookPointDefinition, HookDispatchContext, …)` in `AgentKit.Abstractions`; `DefaultHookDispatcher` in `AgentKit.Hooks` |
+| Legacy surface           | REMOVED | `IHook`, `HookPriority`, `HookDispatchScope`, old dispatcher overload absent from `src/`                                                                               |
+| Catalog and activation   | EXISTS  | `HookRegistrationCatalog`, `ServiceProviderHookInstanceFactory`, `HookActivationScope`, `HookRegistrationBinding`                                                      |
+| Profiles and diagnostics | EXISTS  | `HookProfileOptions`, `AddHookProfile`, `DefaultHookProfileSelector`, `HookDiagnosticDispatcher`, `AddHookDiagnosticSink`                                              |
+| Loop integration         | EXISTS  | `DefaultAgentLoop` opens `HookActivationScope` per run; dispatches via `AgentHookPointDefinitions`                                                                     |
+| Composition              | EXISTS  | `HookCompositionValidator`; codes such as `agentkit.hook-dispatcher.missing`, `agentkit.hook-profile.unavailable`                                                      |
+| Definition plumbing      | EXISTS  | `AgentDefinition.HookProfile`, `AgentLoopRunRequest.HookProfile`, engine passes profile in `AgentEngineRuntime`                                                        |
+| Conformance              | EXISTS  | `tests/AgentKit.Conformance/HookDispatcherConformanceTests.cs` against `DefaultHookDispatcher`                                                                         |
 
-Dispatch call sites: `DefaultAgentLoop.cs:474-486` (`RunStarted`, isolate),
-`:771-799` (`BeforeModelRequest`, fail operation, applies `Settings`),
-`:1423-1442` (`BeforeToolInvocation`, veto and argument rewrite). The loop
-constructor (`:162-232`) takes `IHookDispatcher?`, three `IEnumerable<I*Hook>?`,
-and `IIdentifierGenerator<HookInvocationId>?`; it fails closed when hooks exist
-without a dispatcher (`:217-222`).
-
-Test doubles: `tests/AgentKit.Hooks.Tests/TestHook.cs` (used by ~50 tests in
-`DefaultHookDispatcherTests.cs`), `TestHookEventArgs.cs`,
-`TestAgentScopedHookEventArgs.cs`, `ServiceExtensionsTests.cs:183-204` (4
-hooks), `tests/AgentKit.Loop.Tests/DefaultAgentLoopTests.cs:3186-3218` (3 hooks;
-10 loop hook tests at `:2998-3182`; `CreateLoop` at `:3646-3705`),
-`tests/AgentKit.Simple.Tests/AgentEngineBuilderExtensionsTests.cs:969`
-(`VetoSecretsHook`, end-to-end via DI at `:584`), 11 files under
-`tests/AgentKit.Abstractions.Tests/Hooks/` (27 `InvocationId` references). There
-are no test implementers of `IHookDispatcher`.
+Remaining gaps called out elsewhere: reload-boundary catalog refresh is
+configured but not yet honored at runtime; bounded post-timeout drain beyond
+cooperative cancellation awaits explicit drain-policy types.
 
 ## Hidden prerequisites
 
-1. `HookDispatchContext` scope contradiction (per-dispatch in
-   `extensions.md:102-105`, per-run elsewhere). Recommended: keep it
-   per-dispatch and add a run-scoped `HookActivationScope(Catalog, Activation)`
-   with `CreateDispatch(HookDispatchMetadata)`; WS1's invocation carries the
-   scope. Record the reconciliation in `extensions.md` and `agent-runtime.md`.
-2. `IIdentifierGenerator<HookDispatchId>` and `<HookInvocationId>` must be
-   registered by `AddAgentHooks`; the loop currently fabricates one
-   (`DefaultAgentLoop.cs:231`). `AgentKit.Hooks` needs its own GUID generator.
-3. Snapshot/restore for isolation is not in the spec; keep
-   `CaptureMutableState`/`RestoreMutableState` on `AgentHookEventArgs` and add a
-   default validator delegating to `Validate()`.
-4. Registration-to-instance binding has no spec type: add an internal
-   `HookRegistrationBinding(Descriptor, HookInterface, ImplementationType|Instance)`
-   emitted by `Add*Hook<T>` and consumed by the catalog and instance factory.
-   Default `HookRegistrationId` derivation is an open question.
-5. A point-definition registry (`HookPointDefinitionRegistration`) is needed to
-   validate registrations against closed definitions; prose only
-   (`extensions.md:498,524`).
-6. `HookDispatchMetadata.Deadline`: kernel clamps to
-   `min(caller, now + DefaultHookTimeout)`; enforcement is C12.
-7. `tests/AgentKit.Tests` composes without `AgentKit.Hooks`; when hook services
-   become required spine (C8), `CompositionTestData.AddRunServicesFakes` needs
-   fakes for `IHookDispatcher`, `IHookCatalog`, `IHookProfileSelector`,
-   `IHookOrderResolver`, `IHookInstanceFactory` in `AgentKit.Test.Shared`.
-8. WS1 moves hook resolution into the run invocation; keep C6's loop change to
-   three constructor parameters so WS1 replaces one block.
-9. `examples/CodingAgent` references `AgentKit.Hooks` but has no hook code.
+1. ~~Hook scope reconciliation~~ — done; documented in `extensions.md` and
+   `agent-runtime.md`.
+2. ~~Identifier generators, binding, point registry, composition fakes~~ —
+   landed in C4–C8.
+3. ~~Profile, diagnostics, timeout~~ — landed in C9–C12.
+4. `examples/CodingAgent` references `AgentKit.Hooks` but has no hook sample
+   code yet.
+5. Catalog reload at `HookReloadBoundary` remains configuration-only until a
+   host refresh path consumes it.
 
 ## Spec coverage
 
-| Contract                                                                                      | Spec                                   | Status                                                                               |
-| --------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
-| identities                                                                                    | `extensions.md:49-63`                  | SPEC                                                                                 |
-| `HookRegistrationDescriptor`                                                                  | `extensions.md:72-82`                  | SPEC; `HookOrder`, `HookLifetime`, `HookReentrancyPolicy` NO-SPEC                    |
-| `HookCatalogSnapshot`, `HookDispatchMetadata`, `HookInvocationContext`, `HookDispatchContext` | `extensions.md:84-105`                 | SPEC (scope conflict)                                                                |
-| `IHookInvocationTracker`, `IHookActivationLease`, `IHookInstanceFactory`                      | `extensions.md:107-128`                | SPEC; attempt/result/resolution types NO-SPEC                                        |
-| `AgentHookEventArgs`                                                                          | `extensions.md:130-138`                | SPEC (properties); capture/restore NO-SPEC                                           |
-| example tool point args                                                                       | `extensions.md:157-207`                | SPEC but uses WS4 types                                                              |
-| source, profile selector, order resolver, catalog                                             | `extensions.md:219-244`                | SPEC; request/result types NO-SPEC                                                   |
-| `HookPointDefinition<,>`, `HookInvoker<,>`, `IHookDispatcher`                                 | `extensions.md:246-273`                | SPEC; `HookPointKind`, validator members NO-SPEC                                     |
-| diagnostic sink and dispatcher                                                                | `extensions.md:283-295`                | SPEC; `HookInvocationDiagnostic` NO-SPEC                                             |
-| `HookDispatcher` ctor                                                                         | `extensions.md:340-345`                | SPEC (class name differs from `DefaultHookDispatcher`)                               |
-| `AgentHookOptions`, `ServiceExtensions`                                                       | `extensions.md:373-437`                | SPEC; `HookMutationDispatchMode`, `HookReloadBoundary`, `HookProfileOptions` NO-SPEC |
-| `AgentDefinition.HookProfile`                                                                 | `composition-and-configuration.md:173` | SPEC                                                                                 |
-| composition requirements                                                                      | `extensions.md:523-533`                | prose; diagnostic codes NO-SPEC                                                      |
+| Contract                                                                                      | Spec                                   | Status                                                                |
+| --------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| identities                                                                                    | `extensions.md:49-63`                  | SPEC                                                                  |
+| `HookRegistrationDescriptor`                                                                  | `extensions.md:72-82`                  | SPEC; `HookOrder`, `HookLifetime`, `HookReentrancyPolicy` NO-SPEC     |
+| `HookCatalogSnapshot`, `HookDispatchMetadata`, `HookInvocationContext`, `HookDispatchContext` | `extensions.md:84-105`                 | SPEC (scope conflict)                                                 |
+| `IHookInvocationTracker`, `IHookActivationLease`, `IHookInstanceFactory`                      | `extensions.md:107-128`                | SPEC; attempt/result/resolution types NO-SPEC                         |
+| `AgentHookEventArgs`                                                                          | `extensions.md:130-138`                | SPEC (properties); capture/restore NO-SPEC                            |
+| example tool point args                                                                       | `extensions.md:157-207`                | SPEC but uses WS4 types                                               |
+| source, profile selector, order resolver, catalog                                             | `extensions.md:219-244`                | SPEC; request/result types NO-SPEC                                    |
+| `HookPointDefinition<,>`, `HookInvoker<,>`, `IHookDispatcher`                                 | `extensions.md:246-273`                | SPEC; `HookPointKind`, validator members NO-SPEC                      |
+| diagnostic sink and dispatcher                                                                | `extensions.md:283-295`                | SPEC; `HookInvocationDiagnostic` NO-SPEC                              |
+| `HookDispatcher` ctor                                                                         | `extensions.md:340-345`                | SPEC (class name differs from `DefaultHookDispatcher`)                |
+| `AgentHookOptions`, `HookProfileOptions`, `ServiceExtensions`                                 | `extensions.md:373-437`                | IMPLEMENTED; catalog reload boundary configured, refresh path pending |
+| `AgentDefinition.HookProfile`                                                                 | `composition-and-configuration.md:173` | SPEC                                                                  |
+| composition requirements                                                                      | `extensions.md:523-533`                | prose; diagnostic codes NO-SPEC                                       |
 
 ## Chunks
 

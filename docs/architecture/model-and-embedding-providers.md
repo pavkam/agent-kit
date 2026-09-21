@@ -831,11 +831,11 @@ event delivery are inherently asynchronous. Interim (WS7-C1): the shipped
 `ModelRequestContext`, and `Budget` and `Hooks` are nullable until a budget
 scope or hook dispatch exists. `ProviderRetryPolicy` bounds same-model retries:
 at least one attempt, a non-negative initial delay, and a maximum delay no
-smaller than that initial delay. Jitter stays in the executor. The observer uses `ValueTask` to
-support synchronous bounded fan-out without allocating per event. Backpressure
-is explicit: the adapter awaits each observer call and cannot continue emitting
-after a terminal event. Observer cancellation and run cancellation retain their
-distinct ownership semantics.
+smaller than that initial delay. Jitter stays in the executor. The observer uses
+`ValueTask` to support synchronous bounded fan-out without allocating per event.
+Backpressure is explicit: the adapter awaits each observer call and cannot
+continue emitting after a terminal event. Observer cancellation and run
+cancellation retain their distinct ownership semantics.
 
 Every attempt emits one `ModelResponseStarted`, then a sequence of
 `ModelPartStarted`, `ModelPartDelta`, `ModelPartCompleted`, and

@@ -6,7 +6,7 @@ namespace AgentKit.Loop.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity() =>
-        TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
+        TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
 
     public static ModelDescriptor Model(string alias = "chat")
     {
@@ -59,8 +59,8 @@ internal static class TestFactory
             branchId,
             selectedRunId,
             identity,
-            TestSupport.TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity),
-            TestSupport.TestSecurityEvidence.SessionProfile(),
+            TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity),
+            TestSecurityEvidence.SessionProfile(),
             policy ?? Policy(),
             requirements ?? ModelRequirements.None,
             instructions: [],
@@ -82,8 +82,8 @@ internal static class TestFactory
         var selectedRunId = runId ?? new RunId(Guid.NewGuid());
         var identity = Identity();
         var correlation = new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), selectedRunId, null);
-        var authorization = TestSupport.TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
-        var profile = TestSupport.TestSecurityEvidence.SessionProfile();
+        var authorization = TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
+        var profile = TestSecurityEvidence.SessionProfile();
         var agent = new AgentDefinition(
             agentId,
             authorization.AgentDefinitionRevision,
@@ -242,7 +242,7 @@ internal static class TestFactory
         var address = new SessionAddress(agentId, sessionId);
         var correlation = Correlation(runId);
         var identity = Identity();
-        var context = TestSupport.TestSecurityEvidence.CompactionContext(
+        var context = TestSecurityEvidence.CompactionContext(
             compactionId ?? new CompactionId(Guid.NewGuid()), agentId, sessionId, correlation, identity);
         var manifest = new CompactionManifest(
             new CompactionManifestId(Guid.NewGuid()),

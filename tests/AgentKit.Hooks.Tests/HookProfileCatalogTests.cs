@@ -20,8 +20,8 @@ public sealed class HookProfileCatalogTests
         var included = CreateDescriptor(profileKey, keepId);
         var excluded = CreateDescriptor(profileKey, dropId);
         var bindings = new HookRegistrationBindingRegistry();
-        bindings.Add(new HookRegistrationBinding(included, typeof(HookProfileCatalogTests.FilteredRunStartedHookA), typeof(IRunStartedHook)));
-        bindings.Add(new HookRegistrationBinding(excluded, typeof(HookProfileCatalogTests.FilteredRunStartedHookB), typeof(IRunStartedHook)));
+        bindings.Add(new HookRegistrationBinding(included, typeof(FilteredRunStartedHookA), typeof(IRunStartedHook)));
+        bindings.Add(new HookRegistrationBinding(excluded, typeof(FilteredRunStartedHookB), typeof(IRunStartedHook)));
 
         var source = new HookRegistrationBindingSource(
             bindings,

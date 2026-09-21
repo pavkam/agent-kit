@@ -28,7 +28,7 @@ dispatch but never relax past the host ceiling.
 | ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MaximumInvocationDepth` | `8`       | Hard ceiling on reentrant dispatches of one point per call path. Effective limit is `min(callerMaxReentrantDepth, MaximumInvocationDepth)`. |
 | `MinimumFailureMode`     | `Isolate` | Least strict `HookFailureMode` permitted (`Isolate < FailOperation`). Effective mode is the stricter of the caller's mode and this value.   |
-| `DefaultHookTimeout`     | `10s`     | Host ceiling on one dispatch when the caller's metadata deadline is later. The kernel clamps and enforces the earlier bound.                  |
+| `DefaultHookTimeout`     | `10s`     | Host ceiling on one dispatch when the caller's metadata deadline is later. The kernel clamps and enforces the earlier bound.                |
 
 Named profiles register through `AddHookProfile` / `ReplaceHookProfile` on
 `HookProfileOptions` (registration filter, profile failure default, reload
@@ -50,13 +50,18 @@ described in the [composition guide](../../docs/guides/composition.md).
 | `AgentHookPoints.BeforeToolInvocation` | `IBeforeToolInvocationHook` | `Arguments`, `Veto`          | `FailOperation` |
 
 ```csharp
-services.AddBeforeToolInvocationHook<BlockDeleteCommands>();
+var registration = HookRegistrationDescriptors.ForPoint(
+    new HookId("acme.block-delete"),
+    AgentHookPointDefinitions.BeforeToolInvocationRegistration);
+
+services.AddBeforeToolInvocationHook<BlockDeleteCommands>(registration);
 
 sealed class BlockDeleteCommands : IBeforeToolInvocationHook
 {
-    public HookId Id { get; } = new("acme.block-delete");
-
-    public ValueTask OnBeforeToolInvocationAsync(BeforeToolInvocationEventArgs args, CancellationToken ct = default)
+    public ValueTask InvokeAsync(
+        BeforeToolInvocationEventArgs args,
+        HookInvocationContext context,
+        CancellationToken cancellationToken = default)
     {
         if (args.Tool.ProviderAlias.Value == "command" && args.Arguments.GetProperty("command").GetString()!.Contains("rm -rf"))
         {

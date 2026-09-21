@@ -303,13 +303,22 @@ loop actually drives a run with: `ISessionCoordinator`,
 and `IOutputPublisher` as optional members resolved unkeyed from the run scope.
 It does not yet carry `SessionExecutionCapability`, `IModelRequestExecutor`,
 `IToolExecutor`, or `BudgetExecutionCapability`, because those packages are not
-yet wired into the reduced loop; `IHookDispatcher` and its typed hook
-collections reach the loop through constructor injection rather than through
-this bundle. What the reduced shape already delivers, matching this document's
-normative intent exactly, is that every collaborator in its `AgentRunServices`
-arrives through `RunAsync` rather than constructor injection, and is compiled
-per run by the facade's run-activation boundary honoring the run's selected
-keyed `IAgentLoop`.
+yet wired into the reduced loop; `IHookDispatcher`, `IHookCatalog`,
+`IHookInstanceFactory`, and `IHookProfileSelector` reach the loop through
+constructor injection rather than through this bundle. What the reduced shape
+already delivers, matching this document's normative intent exactly, is that
+every collaborator in its `AgentRunServices` arrives through `RunAsync` rather
+than constructor injection, and is compiled per run by the facade's
+run-activation boundary honoring the run's selected keyed `IAgentLoop`.
+
+**Hook scope reconciliation.** Normative runtime records such as
+`AgentRunInvocation` still name a `HookDispatchContext` field for the run
+boundary. The implemented loop instead opens one run-scoped
+`HookActivationScope` (captured catalog plus activation lease) and creates a
+fresh per-dispatch `HookDispatchContext` for every emission through
+`HookActivationScope.CreateDispatch`. Treat the run record's hook field as the
+scope holder until those documents are retargeted to `HookActivationScope`; the
+per-dispatch context remains the only value passed to `IHookDispatcher`.
 
 The
 [continuation evaluation contract](../concepts/agent-loop-state-machine.md#continuation-evaluation-boundary)

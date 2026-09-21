@@ -363,6 +363,24 @@ public sealed class Agent
             executionLaneId,
             cancellationToken);
 
+    public Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
+        SessionId sessionId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        ConversationId? conversationId = null,
+        AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default) =>
+        runtime.RunAsync<TOutput>(
+            this,
+            sessionId,
+            conversationId,
+            assertion,
+            input,
+            options,
+            executionLaneId,
+            cancellationToken);
+
     public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
         SessionId sessionId,
         ExecutionIdentity identity,
@@ -376,6 +394,24 @@ public sealed class Agent
             sessionId,
             conversationId,
             identity,
+            input,
+            options,
+            executionLaneId,
+            cancellationToken);
+
+    public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
+        SessionId sessionId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        ConversationId? conversationId = null,
+        AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default) =>
+        runtime.StreamAsync<TOutput>(
+            this,
+            sessionId,
+            conversationId,
+            assertion,
             input,
             options,
             executionLaneId,

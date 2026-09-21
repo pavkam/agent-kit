@@ -774,13 +774,14 @@ bypassing the engine. `AgentKit.Simple.AskAsync`/`SendAsync` delegate to it
   runtime.
 - **Landed (prerequisite: usage accounting)**: `AgentRunFinished<T>` requires a
   real, non-null `RunUsage`, and nothing in the loop produced one before this
-  chunk — `RunUsage`/`UsageAccountingEntry` existed only as un-wired Abstractions
-  types. Added `src/AgentKit.Loop/UsageAccounting.cs` (internal, pure): maps one
-  model response's `ModelUsage` into a `UsageAccountingEntry`, reusing
-  `RunBudget.AccountUsageAsync`'s dimension mapping for input/output/ reasoning
-  tokens and cost, but as a historical record rather than a reservation — it
-  also retains cached-read tokens (`BudgetDimensions .CachedReadTokens`; no
-  budget dimension reserves them today) and accepts any reported cost currency
+  chunk — `RunUsage`/`UsageAccountingEntry` existed only as un-wired
+  Abstractions types. Added `src/AgentKit.Loop/UsageAccounting.cs` (internal,
+  pure): maps one model response's `ModelUsage` into a `UsageAccountingEntry`,
+  reusing `RunBudget.AccountUsageAsync`'s dimension mapping for input/output/
+  reasoning tokens and cost, but as a historical record rather than a
+  reservation — it also retains cached-read tokens
+  (`BudgetDimensions .CachedReadTokens`; no budget dimension reserves them
+  today) and accepts any reported cost currency
   (`new BudgetUnit(currency.ToLowerInvariant())`) rather than only `"usd"`,
   since accounting makes no enforcement decision. Returns `null` when the
   provider reports nothing at all (`ModelUsageReportState.NotReported` or every

@@ -4,7 +4,8 @@
 
 **Architecture:** [Sessions](../architecture/sessions.md)
 
-**Depends on:** [Sessions, persistence, and branching](sessions-persistence-and-branching.md),
+**Depends on:**
+[Sessions, persistence, and branching](sessions-persistence-and-branching.md),
 [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 
 ## Purpose
@@ -24,10 +25,10 @@ installed accepted run. One commit MUST:
 - advance the lane revision and the operation-state revision together.
 
 A later `LoadRunStateAsync` for that accepted run returns
-`SessionRunStateLoaded` with `AbortRequested` true. True means the cancel
-marker is committed and that run's pending admissions were pruned in the same
-commit. `AbortRequested` defaults to false so recovery of a run that has not
-been aborted stays distinguishable. The marker is not added to
+`SessionRunStateLoaded` with `AbortRequested` true. True means the cancel marker
+is committed and that run's pending admissions were pruned in the same commit.
+`AbortRequested` defaults to false so recovery of a run that has not been
+aborted stays distinguishable. The marker is not added to
 `SessionAcceptedRunState`.
 
 Admissions that belong to a different run or lane are not pruned. Already
@@ -39,8 +40,8 @@ The store rejects without mutation when the run is not the accepted run, the
 expected revision does not match, the session or lane is missing, or
 authorization fails the same way as neighboring protected mutations. A missing
 or cross-tenant session is masked as not found. Rejection carries
-`SessionRunAbortRejectionKind` and a content-free reason; it appends nothing
-and prunes nothing.
+`SessionRunAbortRejectionKind` and a content-free reason; it appends nothing and
+prunes nothing.
 
 ```csharp
 public abstract record SessionRunAbortResult;
@@ -62,8 +63,8 @@ public enum SessionRunAbortRejectionKind
 - Aborting the accepted run makes `LoadRunStateAsync` report `AbortRequested`,
   advances the revision, and removes that run's pending admissions.
 - Pending admissions for another run or lane remain.
-- An equivalent abort retry returns the recorded result and does not advance
-  the revision again.
+- An equivalent abort retry returns the recorded result and does not advance the
+  revision again.
 - A stale expected revision or a different run id is `SessionRunAbortRejected`
   and appends or prunes nothing.
 - A stale abort cannot cancel a later operation on the same lane.

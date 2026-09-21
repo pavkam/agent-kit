@@ -20,7 +20,7 @@ public static class ServiceExtensions
         /// <c>AgentEngine</c>: the host still selects a session store, security policies and authority, the
         /// loop/provider/tool registrations its one agent needs, and <c>AddAgentKit</c>, exactly as any other
         /// AgentKit composition does. Turns delegate through <see cref="EngineConversationTurnExecutor"/> to
-        /// <see cref="Agent.RunAsync{TOutput}"/> rather than compiling a private <c>AgentRunServices</c> bundle.
+        /// typed <see cref="Agent"/> run methods rather than compiling a private <c>AgentRunServices</c> bundle.
         /// Every registration here is idempotent
         /// (<c>TryAdd</c>) except the bound options, so calling this more than once with different
         /// <paramref name="configure"/> delegates applies every delegate to the same options instance in call order.

@@ -34,6 +34,9 @@ When changing C#, also read the
   delegate, impersonator, and approver remain distinct causal identities.
 - Keep dependency flow one-way: host authentication to identity normalization to
   admission/run input to downstream security evaluation.
+- Facade assertion ingress: `Agent.RunAsync` / `StreamAsync` overloads accepting
+  `IdentityAssertion` resolve through scoped `IExecutionIdentityResolver` after
+  `AddAgentIdentity`; map failures to typed run rejection before admission.
 
 Test issuer mapping, expiry/revocation, tenant partitioning, propagation,
 delegation narrowing, reauthentication, and the absence of credential leakage.

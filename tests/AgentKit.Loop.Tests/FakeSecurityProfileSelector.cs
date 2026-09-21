@@ -25,7 +25,7 @@ internal sealed class FakeSecurityProfileSelector: ISecurityProfileSelector
         cancellationToken.ThrowIfCancellationRequested();
         Requests.Add(request);
         return ValueTask.FromResult(Override?.Invoke(request) ?? new SecurityAuthorizationCaptured(
-            TestSupport.TestSecurityEvidence.Authorization(
+            TestSecurityEvidence.Authorization(
                 request.Scope.AgentId, request.Scope.SessionId, request.Scope.Correlation, request.Identity)));
     }
 }

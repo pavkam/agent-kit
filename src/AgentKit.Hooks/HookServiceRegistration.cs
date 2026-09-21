@@ -30,7 +30,6 @@ internal static class HookServiceRegistration
 
         services.TryAddSingleton(static _ => new HookProfileRegistry());
         services.TryAddSingleton<HookProfileRegistryInitializer>();
-        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IHookOrderResolver, HookOrderResolver>();
         services.TryAddSingleton<IHookProfileSelector>(static provider =>
         {
@@ -70,7 +69,7 @@ internal static class HookServiceRegistration
             provider.GetRequiredService<IHookOrderResolver>(),
             provider.GetRequiredService<IIdentifierGenerator<HookInvocationId>>(),
             provider.GetRequiredService<IHookDiagnosticDispatcher>(),
-            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<TimeProvider>() ?? TimeProvider.System,
             provider.GetRequiredService<HookProfileRegistry>()));
         return services;
     }

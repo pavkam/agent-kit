@@ -550,6 +550,44 @@ internal sealed class AgentEngineRuntime
         return RunCoreAsync<TOutput>(agent.Definition, sessionId, conversationId, identity, input, options, executionLaneId, cancellationToken);
     }
 
+    /// <summary>Resolves one assertion and runs one existing session.</summary>
+    /// <typeparam name="TOutput">The requested output type.</typeparam>
+    /// <param name="agent">The pinned handle.</param>
+    /// <param name="sessionId">The session to open.</param>
+    /// <param name="conversationId">Ignored in favor of the session's stored conversation.</param>
+    /// <param name="assertion">The trusted ingress assertion.</param>
+    /// <param name="input">The input to admit.</param>
+    /// <param name="options">Narrowing overrides, or null.</param>
+    /// <param name="executionLaneId">The lane to advance, or null to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    /// <returns>A finished envelope, or a rejection that carries no run identity.</returns>
+    internal async Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
+        Agent agent,
+        SessionId sessionId,
+        ConversationId? conversationId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        AgentRunOptions? options,
+        ExecutionLaneId? executionLaneId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        ArgumentNullException.ThrowIfNull(assertion);
+        ArgumentNullException.ThrowIfNull(input);
+        var (identity, rejection) = await ResolveIdentityFromAssertionAsync<TOutput>(
+            agent.Definition.Id, sessionId, assertion, cancellationToken).ConfigureAwait(false);
+        return rejection ?? await RunCoreAsync<TOutput>(
+            agent.Definition,
+            sessionId,
+            conversationId,
+            identity!,
+            input,
+            options,
+            executionLaneId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Resolves <paramref name="request"/>'s agent and runs it.</summary>
     /// <typeparam name="TOutput">The requested output type.</typeparam>
     /// <param name="request">The process-level run request.</param>
@@ -632,6 +670,46 @@ internal sealed class AgentEngineRuntime
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(input);
         return StreamCoreAsync<TOutput>(agent.Definition, sessionId, conversationId, identity, input, options, executionLaneId, cancellationToken);
+    }
+
+    /// <summary>Resolves one assertion and subscribes to one run.</summary>
+    /// <typeparam name="TOutput">The requested output type.</typeparam>
+    /// <param name="agent">The pinned handle.</param>
+    /// <param name="sessionId">The existing session.</param>
+    /// <param name="conversationId">Accepted for signature compatibility; the session's conversation is used.</param>
+    /// <param name="assertion">The trusted ingress assertion.</param>
+    /// <param name="input">The input to admit.</param>
+    /// <param name="options">Narrowing overrides, or null.</param>
+    /// <param name="executionLaneId">The lane to advance, or null to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels admission and the drive.</param>
+    /// <returns>A started stream, or a rejection with no subscription and no run identity.</returns>
+    internal async Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
+        Agent agent,
+        SessionId sessionId,
+        ConversationId? conversationId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        AgentRunOptions? options,
+        ExecutionLaneId? executionLaneId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        ArgumentNullException.ThrowIfNull(assertion);
+        ArgumentNullException.ThrowIfNull(input);
+        var (identity, rejection) = await ResolveIdentityFromAssertionAsync<TOutput>(
+            agent.Definition.Id, sessionId, assertion, cancellationToken).ConfigureAwait(false);
+        return rejection is { } streamRejection
+            ? new AgentRunStreamRejected<TOutput>(streamRejection)
+            : await StreamCoreAsync<TOutput>(
+                agent.Definition,
+                sessionId,
+                conversationId,
+                identity!,
+                input,
+                options,
+                executionLaneId,
+                cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<AgentRunResult<TOutput>> RunCoreAsync<TOutput>(
@@ -986,6 +1064,52 @@ internal sealed class AgentEngineRuntime
             }
         }
     }
+
+    private async ValueTask<(ExecutionIdentity? Identity, AgentRunRejected<TOutput>? Rejection)> ResolveIdentityFromAssertionAsync<TOutput>(
+        AgentId agentId,
+        SessionId sessionId,
+        IdentityAssertion assertion,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        await using var scope = Services.GetRequiredService<IServiceScopeFactory>().CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<IExecutionIdentityResolver>() is not { } resolver)
+        {
+            return (null, Reject<TOutput>(
+                agentId,
+                sessionId,
+                AgentErrorCodes.MissingDependency,
+                "Identity assertion ingress requires AddAgentIdentity."));
+        }
+
+        var result = await resolver.ResolveAsync(assertion, cancellationToken).ConfigureAwait(false);
+        if (result is IdentityResolved resolved)
+        {
+            return (resolved.Identity, null);
+        }
+
+        var failure = result is IdentityRejected rejected
+            ? rejected.Failure
+            : new IdentityFailure(
+                IdentityFailureKind.Unavailable,
+                "Identity resolution returned an unsupported result.",
+                assertion.Issuer);
+        try
+        {
+            AgentAdmissionLog.IdentityRevalidationRejected(_logger, agentId, failure.Kind.ToString());
+        }
+        catch (Exception)
+        {
+        }
+
+        return (null, Reject<TOutput>(agentId, sessionId, MapIdentityFailureCode(failure.Kind), failure.SafeMessage));
+    }
+
+    private static AgentErrorCode MapIdentityFailureCode(IdentityFailureKind kind) =>
+        kind == IdentityFailureKind.Unavailable
+            ? AgentErrorCodes.CredentialUnavailable
+            : AgentErrorCodes.AuthenticationFailed;
 
     private async ValueTask<ExecutionOutcome<TOutput>?> RevalidateIdentityAtAdmissionAsync<TOutput>(
         AgentDefinition definition,

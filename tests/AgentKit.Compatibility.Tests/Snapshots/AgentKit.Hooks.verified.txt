@@ -23,6 +23,7 @@ namespace AgentKit.Hooks
     public sealed class DefaultHookProfileSelector : AgentKit.IHookProfileSelector
     {
         public System.Threading.Tasks.ValueTask<AgentKit.HookProfileSelectionResult> SelectAsync(AgentKit.HookProfileSelectionRequest request, System.Threading.CancellationToken cancellationToken) { }
+        public static AgentKit.Hooks.DefaultHookProfileSelector CreateWithDefaultProfileOnly() { }
     }
     public sealed class HookDiagnosticDispatcher : AgentKit.IHookDiagnosticDispatcher
     {

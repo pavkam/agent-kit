@@ -341,7 +341,7 @@ internal static class AgentCompositionValidator
     }
 
     /// <summary>Requires a registration keyed to <paramref name="loopKey"/>, or an unkeyed fallback, for one collaborator contract.</summary>
-    /// <typeparam name="TService">The collaborator contract <see cref="AgentKit.Internal.DefaultAgentRunPlanCompiler"/> resolves through <c>ResolveKeyedOrShared</c>.</typeparam>
+    /// <typeparam name="TService">The collaborator contract <see cref="Internal.DefaultAgentRunPlanCompiler"/> resolves through <c>ResolveKeyedOrShared</c>.</typeparam>
     private static void RequireKeyedOrUnkeyed<TService>(
         ComponentRegistrationSnapshot componentRegistrations,
         string loopKey,

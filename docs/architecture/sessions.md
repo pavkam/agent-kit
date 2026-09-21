@@ -896,8 +896,8 @@ idempotency key so a retried release after a lost response returns the original
 not widen `SessionAcceptedRunState`. A later `LoadRunStateAsync` returns
 `SessionRunStateLoaded` with `AbortRequested` true only when that marker is
 committed. The same commit prunes pending admissions for that run and advances
-the lane revision and the operation-state revision. Rejection — a different
-run, a stale expected revision, a missing session or lane, or an authorization
+the lane revision and the operation-state revision. Rejection — a different run,
+a stale expected revision, a missing session or lane, or an authorization
 failure — appends nothing and prunes nothing. An equivalent idempotent retry
 returns `SessionRunAbortRecorded` without a second revision advance.
 
@@ -936,8 +936,8 @@ public sealed record SessionRunStateLoaded(
 
 `AbortRequested` defaults to false. True means a durable cancel marker is
 committed for that accepted run and pending admissions for that run were pruned
-in the same commit. Messages on `SessionRunAbortRejected` are content-free.
-The hierarchy is closed: callers match `SessionRunAbortRecorded` or
+in the same commit. Messages on `SessionRunAbortRejected` are content-free. The
+hierarchy is closed: callers match `SessionRunAbortRecorded` or
 `SessionRunAbortRejected` and do not invent a third outcome.
 
 `ISessionRunLease` exposes this as an explicit `ReleaseAsync` member distinct

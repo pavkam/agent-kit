@@ -9,8 +9,8 @@ global using AgentKit.Budgets;
 global using AgentKit.Budgets.InMemory;
 global using AgentKit.Context;
 global using AgentKit.Loop;
-global using AgentKit.TestSupport;
 global using AgentKit.Observability;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Options;

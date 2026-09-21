@@ -222,7 +222,7 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         var compactionId = new CompactionId(Guid.NewGuid());
         var correlation = new InRunOperationCorrelation(operationId, runId, turnId);
         var identity = TestFactory.Identity();
-        var operationContext = TestSupport.TestSecurityEvidence.CompactionContext(compactionId, agentId, sessionId, correlation, identity);
+        var operationContext = TestSecurityEvidence.CompactionContext(compactionId, agentId, sessionId, correlation, identity);
         var manifest = new CompactionManifest(
             new CompactionManifestId(Guid.NewGuid()),
             operationContext,

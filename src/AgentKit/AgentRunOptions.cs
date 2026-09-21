@@ -14,7 +14,7 @@ namespace AgentKit;
 /// </para>
 /// <para>
 /// Session, conversation, execution identity, and input are separate,
-/// explicit parameters on <see cref="Agent.RunAsync"/> and the facade
+/// explicit parameters on typed <see cref="Agent"/> run requests and the facade
 /// <see cref="AgentRunRequest"/> rather than fields here: this type carries
 /// only the bounded overrides, so the same immutable instance can accompany
 /// any invocation regardless of who runs it or on which session.

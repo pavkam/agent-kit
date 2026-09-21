@@ -123,9 +123,9 @@ When `AddAgentIdentity` registers `IIdentityValidationPolicy`, the facade
 revalidates the supplied `ExecutionIdentity` immediately after pinned-definition
 validation and before session creation, run acceptance, or queued-input
 admission. Absent that registration, admission does not perform this check.
-Rejection uses `AgentErrorCodes.AuthenticationFailed` on typed facade methods and
-throws `AgentAdmissionRejectedException` on legacy `SendAsync` before any session
-mutation occurs.
+Rejection uses `AgentErrorCodes.AuthenticationFailed` on typed facade methods
+and throws `AgentAdmissionRejectedException` on legacy `SendAsync` before any
+session mutation occurs.
 
 ```csharp
 // AgentEngineRuntime admission (conceptual)
@@ -135,6 +135,15 @@ if (validation is IdentityValidationRejected rejected)
     return AgentRunRejected<T>(AgentErrorCodes.AuthenticationFailed, rejected.Failure.SafeMessage);
 }
 ```
+
+Trusted channel adapters may call `Agent.RunAsync<T>` or `Agent.StreamAsync<T>` with an
+`IdentityAssertion` instead of a pre-resolved `ExecutionIdentity`. The runtime opens one
+scoped service scope, resolves through `IExecutionIdentityResolver`, and only then enters
+the shared admission path. Unknown issuers, malformed assertions, and failed validation
+map to `AgentRunRejected<T>` or `AgentRunStreamRejected<T>` with
+`AgentErrorCodes.AuthenticationFailed` (or `CredentialUnavailable` when identity services
+are unavailable). When `AddAgentIdentity` is absent, assertion ingress fails with
+`AgentErrorCodes.MissingDependency` before session mutation.
 
 The issuer mapping owns authenticated subject mapping and claim enrichment.
 After it returns, `IIdentityNormalizationPolicy` is a narrowing boundary: each

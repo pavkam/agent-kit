@@ -8,6 +8,10 @@ public sealed class DefaultHookProfileSelector: IHookProfileSelector
 {
     private readonly HookProfileRegistry _profiles;
 
+    /// <summary>Creates a selector that resolves only the built-in default profile.</summary>
+    /// <returns>A selector suitable for tests and isolated loop fixtures.</returns>
+    public static DefaultHookProfileSelector CreateWithDefaultProfileOnly() => new(new HookProfileRegistry());
+
     /// <summary>Initializes a selector backed by the composition's profile registry.</summary>
     /// <param name="profiles">The registry populated during service-provider construction.</param>
     /// <exception cref="ArgumentNullException"><paramref name="profiles"/> is null.</exception>

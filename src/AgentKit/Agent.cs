@@ -13,8 +13,8 @@ namespace AgentKit;
 /// anything but the immutable definition.
 /// </para>
 /// <para>
-/// The handle exposes no service provider. Callers address work through <see cref="RunAsync{TOutput}"/>,
-/// <see cref="StreamAsync{TOutput}"/>, and <see cref="SendAsync"/>. New admissions revalidate the exact pinned
+/// The handle exposes no service provider. Callers address work through the typed run and stream methods,
+/// <see cref="SendAsync"/>, and related admission APIs. New admissions revalidate the exact pinned
 /// definition: unrelated catalog updates remain admissible, while a removal or replacement is rejected.
 /// </para>
 /// </remarks>
@@ -110,6 +110,44 @@ public sealed class Agent
             this, sessionId, conversationId, identity, input, options, executionLaneId, cancellationToken);
 
     /// <summary>
+    /// Runs this agent against an existing session and awaits settlement, resolving a trusted identity assertion first.
+    /// </summary>
+    /// <typeparam name="TOutput">The validated output type. <see cref="string"/> projects committed assistant text.</typeparam>
+    /// <param name="sessionId">The session this run reads from and commits to. The active branch is selected for the caller.</param>
+    /// <param name="assertion">The trusted ingress assertion to resolve through the composed scoped resolver.</param>
+    /// <param name="input">The input to admit before the loop starts.</param>
+    /// <param name="conversationId">
+    /// Accepted for caller convenience. The finished envelope uses the conversation stored on the session.
+    /// </param>
+    /// <param name="options">Narrowing overrides, or <see langword="null"/> for the definition defaults.</param>
+    /// <param name="executionLaneId">The lane to advance, or <see langword="null"/> to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels the wait. Cancellation before acceptance leaves no run identity.</param>
+    /// <returns>
+    /// <see cref="AgentRunFinished{TOutput}"/> after settlement, or <see cref="AgentRunRejected{TOutput}"/> when
+    /// identity resolution or admission fails before acceptance. Rejection does not allocate a <see cref="RunId"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="assertion"/> or <paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="sessionId"/> is default, or an override widens the definition.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before acceptance.</exception>
+    /// <remarks>
+    /// Resolution uses one scoped <see cref="IExecutionIdentityResolver"/> from the engine composition. When
+    /// <c>AddAgentIdentity</c> is absent, resolution fails with <see cref="AgentErrorCodes.MissingDependency"/>.
+    /// </remarks>
+    public Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
+        SessionId sessionId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        ConversationId? conversationId = null,
+        AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default) =>
+        _runtime.RunAsync<TOutput>(
+            this, sessionId, conversationId, assertion, input, options, executionLaneId, cancellationToken);
+
+    /// <summary>
     /// Subscribes to this agent's run before the loop is driven. The stream's completion is the settled result.
     /// </summary>
     /// <typeparam name="TOutput">The validated output type.</typeparam>
@@ -141,6 +179,40 @@ public sealed class Agent
             this, sessionId, conversationId, identity, input, options, executionLaneId, cancellationToken);
 
     /// <summary>
+    /// Subscribes to this agent's run before the loop is driven, resolving a trusted identity assertion first.
+    /// </summary>
+    /// <typeparam name="TOutput">The validated output type.</typeparam>
+    /// <param name="sessionId">The session this run reads from and commits to.</param>
+    /// <param name="assertion">The trusted ingress assertion to resolve through the composed scoped resolver.</param>
+    /// <param name="input">The input to admit.</param>
+    /// <param name="conversationId">Accepted for caller convenience. The session's stored conversation is used.</param>
+    /// <param name="options">Narrowing overrides, or <see langword="null"/>.</param>
+    /// <param name="executionLaneId">The lane to advance, or <see langword="null"/> to derive one from the session.</param>
+    /// <param name="cancellationToken">Cancels admission and the drive. Disposing the stream does not.</param>
+    /// <returns>
+    /// <see cref="AgentRunStreamStarted{TOutput}"/> when subscription succeeds, or
+    /// <see cref="AgentRunStreamRejected{TOutput}"/> when identity resolution or admission fails first.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="assertion"/> or <paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> is default, or an override widens the definition.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled before acceptance.</exception>
+    /// <remarks>
+    /// Resolution uses one scoped <see cref="IExecutionIdentityResolver"/> from the engine composition. When
+    /// <c>AddAgentIdentity</c> is absent, resolution fails with <see cref="AgentErrorCodes.MissingDependency"/>.
+    /// </remarks>
+    public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
+        SessionId sessionId,
+        IdentityAssertion assertion,
+        AgentInput input,
+        ConversationId? conversationId = null,
+        AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
+        CancellationToken cancellationToken = default) =>
+        _runtime.StreamAsync<TOutput>(
+            this, sessionId, conversationId, assertion, input, options, executionLaneId, cancellationToken);
+
+    /// <summary>
     /// Sends one user turn: the runtime creates or opens the session, takes its lane, records the message, and
     /// runs the agent to a terminal outcome.
     /// </summary>
@@ -161,9 +233,10 @@ public sealed class Agent
     /// </exception>
     /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
     /// <remarks>
-    /// This is a wrapper over the same admission protocol as <see cref="RunAsync{TOutput}"/>. It keeps the
-    /// existing exception behavior so callers that already catch <see cref="AgentAdmissionRejectedException"/>
-    /// do not gain a second protocol. Prefer <see cref="RunAsync{TOutput}"/> when a typed rejection is required.
+    /// This is a wrapper over the same admission protocol as the typed run methods that accept
+    /// <see cref="ExecutionIdentity"/>. It keeps the existing exception behavior so callers that already catch
+    /// <see cref="AgentAdmissionRejectedException"/> do not gain a second protocol. Prefer those typed run methods
+    /// when a rejection result is required.
     /// </remarks>
     public Task<AgentLoopResult> SendAsync(AgentSendRequest request, CancellationToken cancellationToken = default)
     {

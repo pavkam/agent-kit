@@ -51,6 +51,27 @@ When changing C#, also read the
 - Hooks do not own telemetry. They emit bounded diagnostics through
   observability contracts, whose sinks remain immutable observers.
 
+## Registration and composition
+
+- Register the kernel with `AddAgentHooks` in `AgentKit.Hooks`. That registers
+  the dispatcher, catalog, order resolver, profile selector, instance factory,
+  identifier generators, built-in point definitions, and default diagnostic
+  dispatcher.
+- Register each hook with `Add*Hook<T>(HookRegistrationDescriptor)` using
+  `HookRegistrationDescriptors.ForPoint` or an explicit descriptor (profile key,
+  order, lifetime, failure mode, reentrancy, edges).
+- Named profiles: `AddHookProfile` / `ReplaceHookProfile` on
+  `HookProfileOptions` (registration filter, profile failure default, reload
+  boundary). Agent definitions select profiles through `HookProfile`.
+- Diagnostics: `AddHookDiagnosticSink<T>()`; replace the fan-out kernel with
+  `ReplaceHookDiagnosticDispatcher<T>()` when needed.
+- Engine composition requires singular hook kernel services when hooks are
+  enabled; validate with `HookCompositionValidator` diagnostics. Partial hook
+  registration must fail closed.
+- Run scope: capture one catalog per run in `HookActivationScope`; create a
+  fresh `HookDispatchContext` per dispatch via
+  `CreateDispatch(HookDispatchMetadata)`.
+
 Timeout does not prove an in-process hook stopped. Do not restore shared event
 arguments and continue while timed-out code can still mutate them. Drain to
 quiescence or fail with explicit ownership; hard isolation requires a host

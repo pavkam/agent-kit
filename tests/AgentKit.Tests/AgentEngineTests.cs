@@ -10,7 +10,7 @@ public sealed class AgentEngineTests
     [Fact]
     public async Task UnsupportedSessionCoordinator_WhenInvokedDirectly_ThrowsFromEveryMemberBecauseCompositionFakesMustNeverBeCalled()
     {
-        var coordinator = new TestSupport.UnsupportedSessionCoordinator();
+        var coordinator = new UnsupportedSessionCoordinator();
 
         _ = await Should.ThrowAsync<NotSupportedException>(
             async () => await coordinator.CreateAsync(null!, null!, TestContext.Current.CancellationToken));
@@ -150,8 +150,8 @@ public sealed class AgentEngineTests
         var secondDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second") with { LoopKey = secondLoopKey };
         var firstLoop = new RecordingAgentLoop();
         var secondLoop = new RecordingAgentLoop();
-        var firstContextAssembler = new TestSupport.UnsupportedContextAssembler();
-        var secondContextAssembler = new TestSupport.UnsupportedContextAssembler();
+        var firstContextAssembler = new UnsupportedContextAssembler();
+        var secondContextAssembler = new UnsupportedContextAssembler();
 
         var builder = AgentEngine.CreateBuilder();
         var sessions = new InMemoryTestSessionCoordinator();

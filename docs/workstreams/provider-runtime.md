@@ -102,10 +102,10 @@ files, untouched.
   `ModelExecutionFailed.cs`, `ModelExecutionCancelled.cs`,
   `ProviderRetryPolicy.cs`; guard tests. Snapshot: Abstractions. Record the
   `LlmRequestContext` deviation in the architecture document.
-- Landed: `ModelExecutionRequest` uses `LlmRequestContext`. `Budget` and
-  `Hooks` are nullable. `ProviderRetryPolicy` stores attempt and delay bounds
-  only. No executor implementation yet. The compatibility snapshot is still
-  outstanding until the shared solution build is green.
+- Landed: `ModelExecutionRequest` uses `LlmRequestContext`. `Budget` and `Hooks`
+  are nullable. `ProviderRetryPolicy` stores attempt and delay bounds only. No
+  executor implementation yet. The compatibility snapshot is still outstanding
+  until the shared solution build is green.
 
 ### WS7-C2: `DefaultModelRequestExecutor` and runtime options
 

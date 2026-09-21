@@ -351,7 +351,7 @@ public abstract class SessionBackedInputQueueConformanceFixture:
         _ = services.AddSingleton<ISecurityProfileSelector>(this);
         _ = services.RemoveAll<ISecurityAuthoritySelector>();
         _ = services.AddSingleton<ISecurityAuthoritySelector>(this);
-        _ = services.AddScoped<SessionExecutionCapability>(_ => _capability
+        _ = services.AddScoped(_ => _capability
             ?? throw new InvalidOperationException("The fixture must accept a lane before resolving the queue."));
         _ = services.AddSessionBackedInputQueue(options => options.MaximumPendingInputsPerLane = PendingCapacity);
         _ = services.AddAgentIO(

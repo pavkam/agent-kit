@@ -731,7 +731,7 @@ public sealed class DefaultAgentLoopTests
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var assembler = new RecordingContextAssembler();
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
         var older = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "older summary");
         var retained5 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5, "retained by newest");
@@ -769,7 +769,7 @@ public sealed class DefaultAgentLoopTests
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var assembler = new RecordingContextAssembler();
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
         var older = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "older summary");
         var retained4 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4, "retained by newest");
@@ -803,7 +803,7 @@ public sealed class DefaultAgentLoopTests
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var assembler = new RecordingContextAssembler();
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
         var first = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1);
         var second = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2);
@@ -980,7 +980,7 @@ public sealed class DefaultAgentLoopTests
         };
         ActivitySource.AddActivityListener(listener);
         var requestId = new ModelRequestId(Guid.NewGuid());
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
         var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3, protectedSummary);
         coordinator.Seed([
@@ -1141,7 +1141,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenTheModelAdapterThrowsANonCancellationException_PropagatesItAndLogsTheFault()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var fault = new InvalidOperationException("adapter fault");
         var loop = CreateLoop(out var coordinator, out _, _ => throw fault, logger: logger);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
@@ -1178,7 +1178,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenAToolBatchIsInvoked_LogsItsStartAndCompletionWithSafeFields()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
         var calls = 0;
@@ -1204,7 +1204,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenATurnSettlesWithoutSuccess_LogsTurnFailedWithTheOutcomeNameOnly()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var failure = TestFactory.Failure("do-not-log-this-safe-message");
         var loop = CreateLoop(
             out var coordinator, out _, _ => new ModelAttemptFailed(failure, [], null), logger: logger);
@@ -1225,7 +1225,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenTheToolMessageCommitFails_LogsToolBatchFailed()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(
@@ -1247,7 +1247,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenCancellationInterruptsAToolBatch_LogsToolBatchInterrupted()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.NewGuid());
         using var cts = new CancellationTokenSource();
@@ -1271,7 +1271,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenAToolInvokerFaults_LogsToolCallFaultedWithTheCallIdAndErrorTypeOnly()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.NewGuid());
         var calls = 0;
@@ -1296,7 +1296,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenOnTheFinalPermittedTurn_LogsFinalTurnToolsDisabled()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
         var calls = 0;
@@ -1319,7 +1319,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenRunObserverFails_LogsTheEventTypeOnly()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var observer = new RecordingAgentRunObserver { ThrowAfterRecording = true };
         var streamed = new ModelPartDelta(requestId, 1, 0, new TextContentDelta("partial"));
@@ -1342,7 +1342,7 @@ public sealed class DefaultAgentLoopTests
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var loop = CreateLoopWith(
             coordinator,
             new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
@@ -1362,7 +1362,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenCancelledBeforeAnyCommit_LogsRunCancelled()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         using var cts = new CancellationTokenSource();
         var loop = CreateLoop(
             out var coordinator, out _,
@@ -1385,7 +1385,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenAssistantAppendConflictsOnce_LogsSessionAppendConflictRetried()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
@@ -1415,7 +1415,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenAssistantAppendConflictsWithAnInterleavedMessage_LogsSessionAppendStaleAfterInterleavedMessage()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
         coordinator.EnforceSequenceContinuity = true;
@@ -1445,7 +1445,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenADanglingToolCallIsSettledBeforeTheFirstTurn_LogsDanglingToolCallsSettled()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
@@ -1468,7 +1468,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenMaxTurnsReachedWithPendingToolCalls_LogsToolBatchRejectedAtTurnLimit()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
         var loop = CreateLoop(
@@ -1488,7 +1488,7 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenModelReportsToolUseWithoutAnyToolCall_LogsModelResponseNotAccepted()
     {
-        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var logger = new RecordingLogger<DefaultAgentLoop>();
         var requestId = new ModelRequestId(Guid.NewGuid());
         var textPart = new TextPart("I will call a tool", TextSemantics.Plain, ExtensionData.Empty);
         var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(
@@ -1562,7 +1562,7 @@ public sealed class DefaultAgentLoopTests
         {
             Override = static request =>
             {
-                var matching = TestSupport.TestSecurityEvidence.Authorization(
+                var matching = TestSecurityEvidence.Authorization(
                     request.Scope.AgentId, request.Scope.SessionId, request.Scope.Correlation, request.Identity);
                 return new SecurityAuthorizationCaptured(new SecurityAuthorizationContext(
                     matching.ProfileKey,
@@ -4057,7 +4057,7 @@ public sealed class DefaultAgentLoopTests
 
         if (hookDispatcher is not null && hookProfileSelector is null)
         {
-            hookProfileSelector = new Hooks.DefaultHookProfileSelector();
+            hookProfileSelector = Hooks.DefaultHookProfileSelector.CreateWithDefaultProfileOnly();
         }
 
         return new DefaultAgentLoop(

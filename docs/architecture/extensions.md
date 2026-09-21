@@ -382,6 +382,14 @@ public sealed class AgentHookOptions
         HookReloadBoundary.NextRun;
 }
 
+public sealed class HookProfileOptions
+{
+    public Func<HookRegistrationDescriptor, bool>? RegistrationFilter { get; set; }
+    public HookFailureMode? DefaultRequestedFailureMode { get; set; }
+    public HookReloadBoundary ReloadBoundary { get; set; } =
+        HookReloadBoundary.NextRun;
+}
+
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
@@ -607,28 +615,50 @@ to infer a point's semantics at runtime.
 
 ### Implemented points
 
-The compiled base shape today is
-`AgentHookEventArgs(agentId, sessionId, correlation, timestamp, invocationId)`
-with `Validate`, `CaptureMutableState`, and `RestoreMutableState`; the
-`HookDispatchMetadata`, `HookInvocationContext`, and profile/catalog types shown
-earlier in this page are the target shape and remain to be introduced.
-`AgentKit.Loop` dispatches three first-party points through `IHookDispatcher`,
-each defined in `AgentKit.Abstractions` under `AgentHookPoints`:
+The compiled kernel matches the typed records and interfaces earlier on this
+page. `AgentHookEventArgs` carries `Point`, `DispatchId`, `Correlation`,
+`Timestamp`, and `Deadline` from one shared `HookDispatchMetadata` instance per
+dispatch; each hook receives a distinct `HookInvocationContext` with its own
+`HookInvocationId`. Isolation uses `CaptureMutableState` / `RestoreMutableState`
+on the event arguments plus point validators after every invocation.
 
-| Point                  | Interface and arguments                                      | Writable                             | Failure mode    |
-| ---------------------- | ------------------------------------------------------------ | ------------------------------------ | --------------- |
-| `RunStarted`           | `IRunStartedHook`, `RunStartedEventArgs`                     | nothing                              | `Isolate`       |
-| `BeforeModelRequest`   | `IBeforeModelRequestHook`, `BeforeModelRequestEventArgs`     | `Settings`; may only narrow the cap  | `FailOperation` |
-| `BeforeToolInvocation` | `IBeforeToolInvocationHook`, `BeforeToolInvocationEventArgs` | `Arguments` (same JSON kind), `Veto` | `FailOperation` |
+At run start the loop captures one profile catalog, creates an activation lease,
+and holds them in a run-scoped `HookActivationScope`. Every dispatch calls
+`HookActivationScope.CreateDispatch(HookDispatchMetadata)` to mint a fresh
+`HookDispatchContext` that shares the catalog and lease but not dispatch
+identity or timing. This reconciles the per-dispatch context record with the
+run-scoped catalog capture described in the runtime documents.
+
+`AgentKit.Loop` dispatches three closed first-party points through
+`IHookDispatcher.DispatchAsync` with the static definitions in
+`AgentHookPointDefinitions`:
+
+| Point                  | Interface and arguments                                      | Writable                             | Failure mode         |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------ | -------------------- |
+| `RunStarted`           | `IRunStartedHook`, `RunStartedEventArgs`                     | nothing                              | `IsolateAndDiagnose` |
+| `BeforeModelRequest`   | `IBeforeModelRequestHook`, `BeforeModelRequestEventArgs`     | `Settings`; may only narrow the cap  | `FailOperation`      |
+| `BeforeToolInvocation` | `IBeforeToolInvocationHook`, `BeforeToolInvocationEventArgs` | `Arguments` (same JSON kind), `Veto` | `FailOperation`      |
+
+Hook implementations expose
+`InvokeAsync(TEventArgs, HookInvocationContext, CancellationToken)`.
+Registrations are additive `HookRegistrationDescriptor` values passed to
+`AddRunStartedHook<T>`, `AddBeforeModelRequestHook<T>`, and
+`AddBeforeToolInvocationHook<T>`. `AgentDefinition.HookProfile` selects a named
+profile through `IHookProfileSelector`; `AddHookProfile` configures filters,
+profile failure defaults, and reload boundaries. The dispatcher enforces host
+ceilings from `AgentHookOptions`, clamps each dispatch to
+`min(metadata.Deadline, metadata.Timestamp + DefaultHookTimeout)`, and publishes
+content-free `HookInvocationDiagnostic` values through
+`IHookDiagnosticDispatcher`.
 
 A veto short-circuits later hooks and settles the call as a rejected,
 not-performed terminal result carrying the veto's safe reason; it is not a
 security decision. Rewritten arguments still pass schema validation and the
 security authority. A transform-point failure settles the turn as `RunFailed`
-without sending the request or invoking the tool. A loop that finds registered
-hooks without a dispatcher fails closed at construction. `AgentKit.Hooks`
-registers hooks per point through `AddRunStartedHook<T>`,
-`AddBeforeModelRequestHook<T>`, and `AddBeforeToolInvocationHook<T>`.
+without sending the request or invoking the tool. Hook kernel services must be
+composed together or omitted together; partial registration fails composition
+validation. A loop that resolves hook collaborators inconsistently fails closed
+at construction.
 
 ## Ordering and dispatch
 
