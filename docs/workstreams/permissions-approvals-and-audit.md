@@ -20,7 +20,7 @@ Owning documents:
 - [x] WS3-C4 policy catalog and selector
 - [x] WS3-C5 request/decision audit; audit dispatcher mandatory
 - [x] WS3-C6a grant issuer and decision store
-- [ ] WS3-C6b Json and Sqlite decision stores
+- [x] WS3-C6b Json and Sqlite decision stores
 - [ ] WS3-C7a typed `RevokeAsync` and revocation generation
 - [ ] WS3-C7b grant-lifecycle audit in grant stores
 - [ ] WS3-C7c flip `RevokeAsync` to abstract

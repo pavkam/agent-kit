@@ -15,6 +15,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<IContextAssembler>().ShouldBeOfType<DefaultContextAssembler>();
         _ = provider.GetRequiredService<IContextBudgetAllocator>().ShouldBeOfType<DefaultContextBudgetAllocator>();
+        _ = provider.GetRequiredService<IInstructionResolver>().ShouldBeOfType<DefaultInstructionResolver>();
     }
 
     [Fact]

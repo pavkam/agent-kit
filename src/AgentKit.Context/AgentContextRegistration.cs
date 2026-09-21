@@ -128,6 +128,7 @@ internal static class AgentContextRegistration
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IContextMessageTokenEstimator, CharacterBasedContextMessageTokenEstimator>();
         services.TryAddSingleton<IContextBudgetAllocator, DefaultContextBudgetAllocator>();
+        services.TryAddSingleton<IInstructionResolver, DefaultInstructionResolver>();
         return services;
     }
 

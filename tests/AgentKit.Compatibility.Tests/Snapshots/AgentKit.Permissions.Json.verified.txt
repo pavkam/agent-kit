@@ -92,6 +92,82 @@ namespace AgentKit.Permissions.Json
         public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
         public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
     }
+    public sealed class JsonSecurityDecision : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecision>
+    {
+        public JsonSecurityDecision(AgentKit.Permissions.Json.JsonSecurityDecisionKind Kind, System.Guid RequestId, long PolicyVersion, AgentKit.Storage.Json.JsonSecurityGrant? Grant, AgentKit.Permissions.Json.JsonSecurityDenial? Denial, AgentKit.Permissions.Json.JsonApprovalRequest? Approval) { }
+        public AgentKit.Permissions.Json.JsonApprovalRequest? Approval { get; init; }
+        public AgentKit.Permissions.Json.JsonSecurityDenial? Denial { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityGrant? Grant { get; init; }
+        public AgentKit.Permissions.Json.JsonSecurityDecisionKind Kind { get; init; }
+        public long PolicyVersion { get; init; }
+        public System.Guid RequestId { get; init; }
+        public AgentKit.SecurityDecision ToDomain() { }
+        public static AgentKit.Permissions.Json.JsonSecurityDecision FromDomain(AgentKit.SecurityDecision value) { }
+    }
+    public enum JsonSecurityDecisionKind
+    {
+        Allowed = 0,
+        Denied = 1,
+        ApprovalRequired = 2,
+    }
+    public sealed class JsonSecurityDecisionLogRecord : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecisionLogRecord>
+    {
+        public JsonSecurityDecisionLogRecord(AgentKit.Permissions.Json.JsonSecurityDecisionLogRecordKind Kind, AgentKit.Permissions.Json.JsonSecurityDecision? Decision) { }
+        public AgentKit.Permissions.Json.JsonSecurityDecision? Decision { get; init; }
+        public AgentKit.Permissions.Json.JsonSecurityDecisionLogRecordKind Kind { get; init; }
+        public static AgentKit.Permissions.Json.JsonSecurityDecisionLogRecord ForRecorded(AgentKit.SecurityDecision decision) { }
+    }
+    public enum JsonSecurityDecisionLogRecordKind
+    {
+        Recorded = 0,
+    }
+    public sealed class JsonSecurityDecisionStore : AgentKit.ISecurityDecisionStore, System.IDisposable
+    {
+        public JsonSecurityDecisionStore(AgentKit.Permissions.Json.JsonSecurityDecisionStoreTarget target, AgentKit.Permissions.Json.JsonSecurityDecisionStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Json.JsonSecurityDecisionStore>? logger = null) { }
+        public System.Collections.Generic.IReadOnlyList<AgentKit.SecurityDecision> Decisions { get; }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityDecision decision, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonSecurityDecisionStoreInstanceId : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecisionStoreInstanceId>
+    {
+        public JsonSecurityDecisionStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonSecurityDecisionStoreOptions
+    {
+        public JsonSecurityDecisionStoreOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingOptions Encoding { get; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonSecurityDecisionStoreSettings : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecisionStoreSettings>
+    {
+        public JsonSecurityDecisionStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Permissions.Json.JsonSecurityDecisionStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonSecurityDecisionStoreTarget : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecisionStoreTarget>
+    {
+        public JsonSecurityDecisionStoreTarget(string directoryPath, AgentKit.Permissions.Json.JsonSecurityDecisionStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Permissions.Json.JsonSecurityDecisionStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public sealed class JsonSecurityDenial : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDenial>
+    {
+        public JsonSecurityDenial(string Code, string SafeMessage) { }
+        public string Code { get; init; }
+        public string SafeMessage { get; init; }
+        public AgentKit.SecurityDenial ToDomain() { }
+        public static AgentKit.Permissions.Json.JsonSecurityDenial FromDomain(AgentKit.SecurityDenial value) { }
+    }
     public sealed class JsonSecurityGrantLogRecord : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantLogRecord>
     {
         public JsonSecurityGrantLogRecord(AgentKit.Permissions.Json.JsonSecurityGrantLogRecordKind Kind, AgentKit.Storage.Json.JsonSecurityGrant? Grant, System.Guid? GrantId, int? RemainingUses, bool? Revoked, AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt) { }
@@ -164,6 +240,8 @@ namespace AgentKit.Permissions.Json
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings settings) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonApprovalStore(AgentKit.Permissions.Json.JsonApprovalStoreTarget target, System.Action<AgentKit.Permissions.Json.JsonApprovalStoreOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonApprovalStore(AgentKit.Permissions.Json.JsonApprovalStoreTarget target, AgentKit.Permissions.Json.JsonApprovalStoreSettings settings) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSecurityDecisionStore(AgentKit.Permissions.Json.JsonSecurityDecisionStoreTarget target, System.Action<AgentKit.Permissions.Json.JsonSecurityDecisionStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonSecurityDecisionStore(AgentKit.Permissions.Json.JsonSecurityDecisionStoreTarget target, AgentKit.Permissions.Json.JsonSecurityDecisionStoreSettings settings) { }
         }
     }
 }

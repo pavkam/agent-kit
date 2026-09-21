@@ -139,6 +139,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for authoritative approval-store operation duration in seconds.</summary>
     public const string SecurityApprovalStoreOperationDuration = "agentkit.security.approval.store.operation.duration";
 
+    /// <summary>Gets the counter for terminal authoritative security-decision store operations.</summary>
+    public const string SecurityDecisionStoreOperationCount = "agentkit.security.decision.store.operation.count";
+
+    /// <summary>Gets the histogram for authoritative security-decision store operation duration in seconds.</summary>
+    public const string SecurityDecisionStoreOperationDuration = "agentkit.security.decision.store.operation.duration";
+
     /// <summary>Gets the counter for terminal session coordination outcomes.</summary>
     public const string SessionOperationCount = "agentkit.session.operation.count";
 

@@ -22,7 +22,7 @@ public sealed class ContextMessageTokenEstimationTests
             [new TextPart("12345678", TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
         ContextMessageTokenEstimation.EstimateTokens(
-            ImmutableArray.Create(message),
+            ImmutableArray<AgentMessage>.Empty.Add(message),
             estimatedCharactersPerToken: 4).ShouldBe(2);
     }
 

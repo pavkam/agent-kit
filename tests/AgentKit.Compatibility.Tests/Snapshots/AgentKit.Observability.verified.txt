@@ -65,6 +65,7 @@ namespace AgentKit.Observability
         public const string SecurityAuditDispatch = "security.audit.dispatch";
         public const string SecurityAuthoritySelect = "security.authority.select";
         public const string SecurityAuthorize = "security.authorize";
+        public const string SecurityDecisionStoreOperation = "security.decision.store.operation";
         public const string SecurityGrantConsume = "security.grant.consume";
         public const string SecurityGrantStoreOperation = "security.grant.store.operation";
         public const string SecurityProfileCapture = "security.profile.capture";
@@ -189,6 +190,8 @@ namespace AgentKit.Observability
         public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
         public const string SecurityAuthoritySelectionDuration = "agentkit.security.authority.selection.duration";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
+        public const string SecurityDecisionStoreOperationCount = "agentkit.security.decision.store.operation.count";
+        public const string SecurityDecisionStoreOperationDuration = "agentkit.security.decision.store.operation.duration";
         public const string SecurityGrantConsumptionCount = "agentkit.security.grant.consumption.count";
         public const string SecurityGrantStoreOperationCount = "agentkit.security.grant.store.operation.count";
         public const string SecurityGrantStoreOperationDuration = "agentkit.security.grant.store.operation.duration";

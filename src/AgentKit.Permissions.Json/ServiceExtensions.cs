@@ -138,6 +138,53 @@ public static class ServiceExtensions
 
             return services;
         }
+
+        /// <summary>Adds one JSON security-decision-store adapter whose bounds and encoding come from an optional configure delegate.</summary>
+        /// <param name="target">The immutable fixed store root and bootstrap effect policy.</param>
+        /// <param name="configure">An optional delegate that mutates a fresh <see cref="JsonSecurityDecisionStoreOptions"/>.</param>
+        /// <returns>The same collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The configured options contain a byte bound or compaction threshold that is not positive.</exception>
+        /// <exception cref="InvalidOperationException">The same leaf was already configured with a different target or different effective settings.</exception>
+        public IServiceCollection AddJsonSecurityDecisionStore(
+            JsonSecurityDecisionStoreTarget target,
+            Action<JsonSecurityDecisionStoreOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            var options = new JsonSecurityDecisionStoreOptions();
+            configure?.Invoke(options);
+            return services.AddJsonSecurityDecisionStore(target, new JsonSecurityDecisionStoreSettings(
+                options.MaximumRecordBytes,
+                options.MaximumDocumentBytes,
+                options.CompactionRecordThreshold,
+                new JsonEncodingSettings(options.Encoding.SerializerOptions)));
+        }
+
+        /// <summary>Adds one explicitly configured JSON security-decision-store adapter without touching its target.</summary>
+        /// <param name="target">The immutable fixed store root and bootstrap effect policy.</param>
+        /// <param name="settings">The immutable evidence bounds, compaction policy, and frozen encoding contract.</param>
+        /// <returns>The same collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="target"/>, or <paramref name="settings"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">The same leaf was already configured with different target or settings evidence.</exception>
+        public IServiceCollection AddJsonSecurityDecisionStore(
+            JsonSecurityDecisionStoreTarget target,
+            JsonSecurityDecisionStoreSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(settings);
+            Capture(services, target, settings, "decision-store");
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityDecisionStore)
+                    && descriptor.Lifetime == ServiceLifetime.Singleton
+                    && descriptor.ImplementationType == typeof(JsonSecurityDecisionStore)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityDecisionStore, JsonSecurityDecisionStore>());
+            }
+
+            return services;
+        }
     }
 
     private static void Capture<TTarget, TSettings>(

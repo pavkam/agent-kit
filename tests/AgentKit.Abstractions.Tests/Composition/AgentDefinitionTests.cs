@@ -176,18 +176,45 @@ public sealed class AgentDefinitionTests
     }
 
     [Fact]
+    public void Constructor_WhenInstructionSourcesProvided_ProjectsInstructions()
+    {
+        var instruction = Instructions()[0];
+        var sources = ImmutableArray<InstructionSource>.Empty.Add(
+            new LiteralInstructionSource(
+                new ContextSourceReference(
+                    InstructionSourceProjection.DefinitionNamespace,
+                    new ContextSourceKey("primary"),
+                    new ContextSourceVersion("1")),
+                ContextTrust.AgentDefinition,
+                0,
+                ContextScope.Agent,
+                ContextEvaluationFrequency.OncePerModelRequest,
+                [instruction]));
+
+        var definition = new AgentDefinition(
+            new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")),
+            new AgentDefinitionRevision(1),
+            "agent",
+            new ModelSelectionPolicy([new ModelAlias("chat")]),
+            ModelRequirements.None,
+            new AgentInstructionSources(sources),
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
+            ExtensionData.Empty,
+            new SecurityProfileKey("security"),
+            new SessionProfileKey("session"));
+
+        definition.InstructionSources.ShouldBe(sources);
+        definition.Instructions.ShouldBe([instruction]);
+    }
+
+    [Fact]
     public void Equality_WhenInstructionsAndToolsAreNonEmpty_MatchesAndHashesEqually()
     {
-        var left = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
-        {
-            Instructions = Instructions(),
-            Tools = Tools(),
-        };
-        var right = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session")) with
-        {
-            Instructions = Instructions(),
-            Tools = Tools(),
-        };
+        var left = DefinitionWithContent(new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        var right = DefinitionWithContent(new SecurityProfileKey("security"), new SessionProfileKey("session"));
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
@@ -198,4 +225,10 @@ public sealed class AgentDefinitionTests
     private static ImmutableArray<LlmToolDefinition> Tools() => [new LlmToolDefinition(new ToolId("tool"), "tool", null, default)];
 
     private static AgentDefinition Definition(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
+
+    private static AgentDefinition DefinitionWithContent(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, SharedInstructions, SharedTools, LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
+
+    private static readonly ImmutableArray<AgentMessage> SharedInstructions = Instructions();
+
+    private static readonly ImmutableArray<LlmToolDefinition> SharedTools = Tools();
 }

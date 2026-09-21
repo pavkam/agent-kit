@@ -32,7 +32,7 @@ public sealed record AgentDefinition
     private readonly string _displayName;
     private readonly ModelSelectionPolicy _models;
     private readonly ModelRequirements _modelRequirements;
-    private readonly ImmutableArray<AgentMessage> _instructions;
+    private readonly ImmutableArray<InstructionSource> _instructionSources;
     private readonly ImmutableArray<LlmToolDefinition> _tools;
     private readonly LlmToolChoice _toolChoice;
     private readonly LlmRequestSettings _settings;
@@ -114,7 +114,7 @@ public sealed record AgentDefinition
         _displayName = displayName;
         _models = models;
         _modelRequirements = modelRequirements;
-        _instructions = instructions;
+        _instructionSources = InstructionSourceProjection.FromLegacyMessages(instructions, revision);
         _tools = tools;
         _toolChoice = toolChoice;
         _settings = settings;
@@ -161,6 +161,57 @@ public sealed record AgentDefinition
         SecurityProfile = securityProfile;
         SessionProfile = sessionProfile;
     }
+
+    /// <summary>Initializes a runnable definition from explicit instruction sources.</summary>
+    /// <param name="id">The agent's stable identity.</param>
+    /// <param name="revision">This definition's content revision.</param>
+    /// <param name="displayName">The human-readable diagnostic name.</param>
+    /// <param name="models">The candidate and fallback model policy.</param>
+    /// <param name="modelRequirements">The portable model behaviors required.</param>
+    /// <param name="instructionSources">The ordered instruction sources placed first in every request.</param>
+    /// <param name="tools">The tools this agent may call.</param>
+    /// <param name="toolChoice">The tool-call selection policy.</param>
+    /// <param name="settings">The effective model request settings.</param>
+    /// <param name="runDefaults">The default bounded run limits.</param>
+    /// <param name="extensions">Application-specific immutable definition data.</param>
+    /// <param name="securityProfile">The explicitly selected nonblank security profile key.</param>
+    /// <param name="sessionProfile">The explicitly selected nonblank session profile key.</param>
+    /// <exception cref="ArgumentException">A profile key is blank, an array contains null, or a source is unsupported.</exception>
+    /// <exception cref="ArgumentNullException">An inherited required reference is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/> is default.</exception>
+    /// <remarks>
+    /// Flat <see cref="Instructions"/> remain available as a projection of literal sources until a later
+    /// workstream makes instruction sources the sole authoring surface.
+    /// </remarks>
+    public AgentDefinition(
+        AgentId id,
+        AgentDefinitionRevision revision,
+        string displayName,
+        ModelSelectionPolicy models,
+        ModelRequirements modelRequirements,
+        AgentInstructionSources instructionSources,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
+        RunPolicyDefaults runDefaults,
+        ExtensionData extensions,
+        SecurityProfileKey securityProfile,
+        SessionProfileKey sessionProfile)
+        : this(
+            id,
+            revision,
+            displayName,
+            models,
+            modelRequirements,
+            InstructionSourceProjection.ToMessages(instructionSources.Sources),
+            tools,
+            toolChoice,
+            settings,
+            runDefaults,
+            extensions,
+            securityProfile,
+            sessionProfile)
+        => _instructionSources = instructionSources.Sources;
 
     /// <summary>Gets the agent's stable identity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -296,18 +347,33 @@ public sealed record AgentDefinition
         }
     }
 
+    /// <summary>Gets the instruction sources placed first in every request.</summary>
+    /// <exception cref="ArgumentException">
+    /// An initializer attempts to set an uninitialized array or one containing <see langword="null"/>.
+    /// </exception>
+    public ImmutableArray<InstructionSource> InstructionSources
+    {
+        get => _instructionSources;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value, nameof(InstructionSources));
+            _instructionSources = value;
+        }
+    }
+
     /// <summary>Gets the instructions placed first in every request.</summary>
+    /// <value>A projection of literal instruction sources for compatibility with the reduced loop.</value>
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set an uninitialized array or one
     /// containing <see langword="null"/>.
     /// </exception>
     public ImmutableArray<AgentMessage> Instructions
     {
-        get => _instructions;
+        get => InstructionSourceProjection.ToMessages(_instructionSources);
         init
         {
             ArgumentException.ThrowIfContainsNull(value, nameof(Instructions));
-            _instructions = value;
+            _instructionSources = InstructionSourceProjection.FromLegacyMessages(value, Revision);
         }
     }
 
@@ -410,6 +476,7 @@ public sealed record AgentDefinition
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
+        && InstructionSources.SequenceEqual(other.InstructionSources)
         && Instructions.SequenceEqual(other.Instructions)
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
@@ -443,6 +510,11 @@ public sealed record AgentDefinition
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);
+        foreach (var source in InstructionSources)
+        {
+            hash.Add(source);
+        }
+
         foreach (var instruction in Instructions)
         {
             hash.Add(instruction);

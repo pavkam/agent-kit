@@ -130,6 +130,7 @@ namespace AgentKit
     public sealed class AgentDefinition : System.IEquatable<AgentKit.AgentDefinition>
     {
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
+        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, AgentKit.AgentInstructionSources instructionSources, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public string DisplayName { get; init; }
@@ -137,6 +138,7 @@ namespace AgentKit
         public AgentKit.HookProfileKey HookProfile { get; init; }
         public AgentKit.AgentId Id { get; init; }
         public AgentKit.ComponentKey<AgentKit.IInputCoordinator>? InputCoordinatorKey { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> InstructionSources { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
         public AgentKit.ComponentKey<AgentKit.IAgentLoop>? LoopKey { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
@@ -305,6 +307,11 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; }
         public AgentKit.InputId Id { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> Parts { get; }
+    }
+    public readonly struct AgentInstructionSources : System.IEquatable<AgentKit.AgentInstructionSources>
+    {
+        public AgentInstructionSources(System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> sources) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> Sources { get; }
     }
     public static class AgentLoopComponentDefaults
     {
@@ -4433,6 +4440,10 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AppendAsync(AgentKit.InputAdmissionRequest request, AgentKit.AdmissionId admissionId, AgentKit.AgentInput effectiveInput, AgentKit.InputPreprocessingManifest preprocessing, System.DateTimeOffset admittedAt, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.InputPromotionResult> PromoteAsync(AgentKit.InputPromotionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IInstructionResolver
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.InstructionResolutionResult> ResolveAsync(AgentKit.InstructionResolutionRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ILanguageIntelligenceService
     {
         AgentKit.ComponentId SecurityAudience { get; }
@@ -5134,6 +5145,40 @@ namespace AgentKit
         StaleVersion = 4,
         NoEligibleInput = 5,
     }
+    public sealed class InstructionResolutionFailed : AgentKit.InstructionResolutionResult, System.IEquatable<AgentKit.InstructionResolutionFailed>
+    {
+        public InstructionResolutionFailed(AgentKit.ContextPreparationFailure failure) { }
+        public AgentKit.ContextPreparationFailure Failure { get; }
+    }
+    public sealed class InstructionResolutionRequest : System.IEquatable<AgentKit.InstructionResolutionRequest>
+    {
+        public InstructionResolutionRequest(System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> sources, AgentKit.RunId runId, AgentKit.TurnId turnId, AgentKit.ModelRequestId modelRequestId) { }
+        public AgentKit.ModelRequestId ModelRequestId { get; }
+        public AgentKit.RunId RunId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> Sources { get; }
+        public AgentKit.TurnId TurnId { get; }
+    }
+    public sealed class InstructionResolutionResolved : AgentKit.InstructionResolutionResult, System.IEquatable<AgentKit.InstructionResolutionResolved>
+    {
+        public InstructionResolutionResolved(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; }
+    }
+    public abstract class InstructionResolutionResult : System.IEquatable<AgentKit.InstructionResolutionResult> { }
+    public abstract class InstructionSource : System.IEquatable<AgentKit.InstructionSource>
+    {
+        public AgentKit.ContextEvaluationFrequency Frequency { get; }
+        public int Priority { get; }
+        public AgentKit.ContextScope Scope { get; }
+        public AgentKit.ContextSourceReference Source { get; }
+        public AgentKit.ContextTrust Trust { get; }
+    }
+    public static class InstructionSourceProjection
+    {
+        public static readonly AgentKit.ContextSourceNamespace DefinitionNamespace;
+        public static readonly AgentKit.ContextSourceKey LegacyInstructionsKey;
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> FromLegacyMessages(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, AgentKit.AgentDefinitionRevision revision) { }
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> ToMessages(System.Collections.Immutable.ImmutableArray<AgentKit.InstructionSource> sources) { }
+    }
     public sealed class InvalidAgentDefinition : AgentKit.AgentDefinitionResolution, System.IEquatable<AgentKit.InvalidAgentDefinition>
     {
         public InvalidAgentDefinition(AgentKit.AgentId agentId, System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> diagnostics) { }
@@ -5300,6 +5345,11 @@ namespace AgentKit
         public AgentKit.ToolExecutionContext Context { get; init; }
         public System.DateTimeOffset RequestedAt { get; init; }
         public AgentKit.ToolReference Tool { get; init; }
+    }
+    public sealed class LiteralInstructionSource : AgentKit.InstructionSource, System.IEquatable<AgentKit.LiteralInstructionSource>
+    {
+        public LiteralInstructionSource(AgentKit.ContextSourceReference source, AgentKit.ContextTrust trust, int priority, AgentKit.ContextScope scope, AgentKit.ContextEvaluationFrequency frequency, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; }
     }
     public sealed class LlmModelRequest : System.IEquatable<AgentKit.LlmModelRequest>
     {

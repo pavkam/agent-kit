@@ -18,6 +18,14 @@ internal static class ContextTestSupport
         return (DefaultContextAssembler) services.BuildServiceProvider().GetRequiredService<IContextAssembler>();
     }
 
+    /// <summary>Resolves the default instruction resolver from a minimal service provider.</summary>
+    internal static IInstructionResolver CreateResolver()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentContext();
+        return services.BuildServiceProvider().GetRequiredService<IInstructionResolver>();
+    }
+
     /// <summary>Resolves the default keyed assembler with a substituted logger.</summary>
     internal static DefaultContextAssembler CreateAssembler(ILogger<DefaultContextAssembler> logger, Action<AgentContextOptions>? configure = null)
     {

@@ -121,5 +121,83 @@ public static class ServiceExtensions
                     : descriptor.ImplementationInstance;
             }
         }
+
+        /// <summary>Adds one SQLite security-decision-store adapter whose bounds come from an optional configure delegate.</summary>
+        /// <param name="target">The immutable fixed target and bootstrap effect policy.</param>
+        /// <param name="configure">An optional delegate that mutates a fresh <see cref="SqliteSecurityDecisionStoreOptions"/>.</param>
+        /// <returns>The same collection for chaining.</returns>
+        public IServiceCollection AddSqliteSecurityDecisionStore(
+            SqliteSecurityDecisionStoreTarget target,
+            Action<SqliteSecurityDecisionStoreOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            var options = new SqliteSecurityDecisionStoreOptions();
+            configure?.Invoke(options);
+            return services.AddSqliteSecurityDecisionStore(target, new SqliteSecurityDecisionStoreSettings(
+                options.LockTimeout,
+                options.MaximumDecisionBytes));
+        }
+
+        /// <summary>Adds one explicitly configured SQLite security-decision-store adapter without opening its target.</summary>
+        /// <param name="target">The immutable fixed target and bootstrap effect policy.</param>
+        /// <param name="settings">The immutable operational and codec bounds.</param>
+        /// <returns>The same collection for chaining.</returns>
+        public IServiceCollection AddSqliteSecurityDecisionStore(
+            SqliteSecurityDecisionStoreTarget target,
+            SqliteSecurityDecisionStoreSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(settings);
+            var existingTarget = GetCapturedDecision<SqliteSecurityDecisionStoreTarget>(services);
+            var existingSettings = GetCapturedDecision<SqliteSecurityDecisionStoreSettings>(services);
+            if (existingTarget is not null && existingTarget != target)
+            {
+                throw new InvalidOperationException("The SQLite decision-store leaf is already configured for a different target.");
+            }
+            if (existingSettings is not null && existingSettings != settings)
+            {
+                throw new InvalidOperationException("The SQLite decision-store leaf is already configured with different settings.");
+            }
+
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            if (existingTarget is null)
+            {
+                _ = services.AddSingleton(target);
+            }
+            if (existingSettings is null)
+            {
+                _ = services.AddSingleton(settings);
+            }
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityDecisionStore)
+                    && descriptor.Lifetime == ServiceLifetime.Singleton
+                    && descriptor.ImplementationType == typeof(SqliteSecurityDecisionStore)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityDecisionStore, SqliteSecurityDecisionStore>());
+            }
+
+            return services;
+
+            static T? GetCapturedDecision<T>(IServiceCollection source)
+                where T : class
+            {
+                var matches = source.Where(static descriptor =>
+                    descriptor.ServiceType == typeof(T) && descriptor.ServiceKey is null).ToArray();
+                return matches.Length switch
+                {
+                    0 => null,
+                    1 when GetInstance(matches[0]) is T value => value,
+                    _ => throw new InvalidOperationException(
+                        $"The SQLite decision-store {typeof(T).Name} registration is not one exact captured instance."),
+                };
+
+                static object? GetInstance(ServiceDescriptor descriptor) => descriptor.IsKeyedService
+                    ? descriptor.KeyedImplementationInstance
+                    : descriptor.ImplementationInstance;
+            }
+        }
     }
 }

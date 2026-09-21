@@ -9,6 +9,8 @@ namespace AgentKit.Permissions.Sqlite
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, System.Action<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, System.Action<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings settings) { }
         }
     }
     public enum SqliteDatabaseOpenMode
@@ -20,6 +22,40 @@ namespace AgentKit.Permissions.Sqlite
     {
         ValidateExact = 0,
         ApplyKnownMigrations = 1,
+    }
+    public sealed class SqliteSecurityDecisionStore : AgentKit.ISecurityDecisionStore
+    {
+        public SqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStore>? logger = null) { }
+        public System.Collections.Generic.IReadOnlyList<AgentKit.SecurityDecision> Decisions { get; }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityDecision decision, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteSecurityDecisionStoreInstanceId : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreInstanceId>
+    {
+        public SqliteSecurityDecisionStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteSecurityDecisionStoreOptions
+    {
+        public SqliteSecurityDecisionStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumDecisionBytes { get; set; }
+    }
+    public sealed class SqliteSecurityDecisionStoreSettings : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings>
+    {
+        public SqliteSecurityDecisionStoreSettings(System.TimeSpan lockTimeout, int maximumDecisionBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumDecisionBytes { get; }
+        public static AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteSecurityDecisionStoreTarget : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget>
+    {
+        public SqliteSecurityDecisionStoreTarget(string databasePath, AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreInstanceId expectedStoreInstanceId, AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Permissions.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Permissions.Sqlite.SqliteSchemaMode SchemaMode { get; }
     }
     public sealed class SqliteSecurityGrantStore : AgentKit.ISecurityGrantStore
     {
