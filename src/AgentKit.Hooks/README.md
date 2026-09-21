@@ -28,11 +28,12 @@ dispatch but never relax past the host ceiling.
 | ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MaximumInvocationDepth` | `8`       | Hard ceiling on reentrant dispatches of one point per call path. Effective limit is `min(callerMaxReentrantDepth, MaximumInvocationDepth)`. |
 | `MinimumFailureMode`     | `Isolate` | Least strict `HookFailureMode` permitted (`Isolate < FailOperation`). Effective mode is the stricter of the caller's mode and this value.   |
+| `DefaultHookTimeout`     | `10s`     | Host ceiling on one dispatch when the caller's metadata deadline is later. The kernel clamps and enforces the earlier bound.                  |
 
-Only these two members are implemented today; the timeout, mutation-dispatch,
-and reload settings described in the
-[hooks architecture](../../docs/architecture/extensions.md) are added when the
-dispatcher honors them.
+Named profiles register through `AddHookProfile` / `ReplaceHookProfile` on
+`HookProfileOptions` (registration filter, profile failure default, reload
+boundary). Content-free invocation diagnostics fan out through
+`AddHookDiagnosticSink<T>()` and `IHookDiagnosticDispatcher`.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

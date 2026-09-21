@@ -24,9 +24,9 @@ Owning documents: [Extensions](../architecture/extensions.md),
 - [x] WS2-C7 remove legacy kernel surface
 - [x] WS2-C8 composition validation for hook services
 - [x] WS2-C9 `AgentDefinition.HookProfile`
-- [ ] WS2-C10 named hook profiles
-- [ ] WS2-C11 diagnostic sinks
-- [ ] WS2-C12 timeout and quiescence
+- [x] WS2-C10 named hook profiles
+- [x] WS2-C11 diagnostic sinks
+- [x] WS2-C12 timeout and quiescence
 - [ ] WS2-C13 documentation reconciliation
 
 ## Verified current state

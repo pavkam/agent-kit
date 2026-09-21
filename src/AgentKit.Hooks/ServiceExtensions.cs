@@ -116,5 +116,49 @@ public static class ServiceExtensions
             _ = services.RemoveAll<IHookProfileSelector>();
             return services.AddSingleton<IHookProfileSelector, TSelector>();
         }
+
+        /// <summary>Registers or merges configuration for one named hook profile.</summary>
+        /// <param name="key">The profile key agents may select through <see cref="AgentDefinition.HookProfile"/>.</param>
+        /// <param name="configure">The profile configuration callback.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
+        public IServiceCollection AddHookProfile(HookProfileKey key, Action<HookProfileOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddHookProfile(services, key, configure);
+        }
+
+        /// <summary>Replaces the configuration for one named hook profile.</summary>
+        /// <param name="key">The profile key to replace.</param>
+        /// <param name="configure">The replacement profile configuration callback.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
+        public IServiceCollection ReplaceHookProfile(HookProfileKey key, Action<HookProfileOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.ReplaceHookProfile(services, key, configure);
+        }
+
+        /// <summary>Registers one content-free hook diagnostic sink additively.</summary>
+        /// <typeparam name="TSink">The sink implementation.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection AddHookDiagnosticSink<TSink>()
+            where TSink : class, IHookDiagnosticSink
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddHookDiagnosticSink<TSink>(services);
+        }
+
+        /// <summary>Replaces the singular <see cref="IHookDiagnosticDispatcher"/> registration.</summary>
+        /// <typeparam name="TDispatcher">The replacement dispatcher type.</typeparam>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceHookDiagnosticDispatcher<TDispatcher>()
+            where TDispatcher : class, IHookDiagnosticDispatcher
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.ReplaceHookDiagnosticDispatcher<TDispatcher>(services);
+        }
     }
 }

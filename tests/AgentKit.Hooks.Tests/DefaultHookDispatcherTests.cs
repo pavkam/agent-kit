@@ -50,6 +50,16 @@ public sealed class DefaultHookDispatcherTests
         exception.ParamName.ShouldBe("options");
     }
 
+    [Fact]
+    public void Constructor_WhenDefaultHookTimeoutZero_ThrowsArgumentOutOfRangeException()
+    {
+        var options = Options.Create(new AgentHookOptions { DefaultHookTimeout = TimeSpan.Zero });
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultHookDispatcher(options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
     private sealed class NullValueOptions: IOptions<AgentHookOptions>
     {
         public AgentHookOptions Value => null!;

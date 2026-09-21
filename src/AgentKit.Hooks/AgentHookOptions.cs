@@ -16,8 +16,8 @@ namespace AgentKit.Hooks;
 /// them at startup and rejects out-of-range values before any dispatch runs.
 /// </para>
 /// <para>
-/// Only the members with a live consumer in the dispatcher are present; timeout, mutation-dispatch, and reload
-/// settings described by the hooks architecture are added when the dispatcher honors them.
+/// <see cref="DefaultHookTimeout"/> is enforced by <see cref="DefaultHookDispatcher"/>; profile reload boundaries are
+/// carried on <see cref="HookProfileOptions"/> until catalog reload honors them.
 /// </para>
 /// </remarks>
 public sealed class AgentHookOptions

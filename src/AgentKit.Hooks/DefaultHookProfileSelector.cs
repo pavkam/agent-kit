@@ -3,13 +3,20 @@
 
 namespace AgentKit.Hooks;
 
-/// <summary>Resolves every hook profile request to the single configured default profile.</summary>
-/// <remarks>
-/// Named profiles and explicit replacement selectors arrive in WS2-C10. Until then, only
-/// <see cref="HookProfileOptions.DefaultProfileKey"/> is supported.
-/// </remarks>
+/// <summary>Resolves hook profile requests against every profile registered in <see cref="HookProfileRegistry"/>.</summary>
 public sealed class DefaultHookProfileSelector: IHookProfileSelector
 {
+    private readonly HookProfileRegistry _profiles;
+
+    /// <summary>Initializes a selector backed by the composition's profile registry.</summary>
+    /// <param name="profiles">The registry populated during service-provider construction.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="profiles"/> is null.</exception>
+    internal DefaultHookProfileSelector(HookProfileRegistry profiles)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        _profiles = profiles;
+    }
+
     /// <inheritdoc/>
     public ValueTask<HookProfileSelectionResult> SelectAsync(
         HookProfileSelectionRequest request,
@@ -18,8 +25,9 @@ public sealed class DefaultHookProfileSelector: IHookProfileSelector
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return request.RequestedProfile is { } requested && !requested.Equals(HookProfileOptions.DefaultProfileKey)
-            ? new ValueTask<HookProfileSelectionResult>(new HookProfileUnavailable(requested))
-            : new ValueTask<HookProfileSelectionResult>(new HookProfileSelected(HookProfileOptions.DefaultProfileKey));
+        var key = request.RequestedProfile ?? HookProfileOptions.DefaultProfileKey;
+        return _profiles.Contains(key)
+            ? new ValueTask<HookProfileSelectionResult>(new HookProfileSelected(key))
+            : new ValueTask<HookProfileSelectionResult>(new HookProfileUnavailable(key));
     }
 }

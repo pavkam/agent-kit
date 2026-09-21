@@ -15,15 +15,19 @@ namespace AgentKit.Hooks
     public sealed class DefaultHookDispatcher : AgentKit.IHookDispatcher
     {
         public DefaultHookDispatcher(Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
-        public DefaultHookDispatcher(Microsoft.Extensions.Options.IOptions<AgentKit.Hooks.AgentHookOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null, AgentKit.IHookOrderResolver? orderResolver = null, AgentKit.IIdentifierGenerator<AgentKit.HookInvocationId>? invocationIds = null) { }
+        public DefaultHookDispatcher(Microsoft.Extensions.Options.IOptions<AgentKit.Hooks.AgentHookOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null, AgentKit.IHookOrderResolver? orderResolver = null, AgentKit.IIdentifierGenerator<AgentKit.HookInvocationId>? invocationIds = null, AgentKit.IHookDiagnosticDispatcher? diagnostics = null, System.TimeProvider? timeProvider = null) { }
         public System.Threading.Tasks.ValueTask DispatchAsync<THook, TEventArgs>(AgentKit.HookPointDefinition<THook, TEventArgs> point, AgentKit.HookDispatchContext context, TEventArgs eventArgs, AgentKit.HookFailureMode? failurePolicyTightening = default, System.Threading.CancellationToken cancellationToken = default)
             where THook :  class
             where TEventArgs : AgentKit.AgentHookEventArgs { }
     }
     public sealed class DefaultHookProfileSelector : AgentKit.IHookProfileSelector
     {
-        public DefaultHookProfileSelector() { }
         public System.Threading.Tasks.ValueTask<AgentKit.HookProfileSelectionResult> SelectAsync(AgentKit.HookProfileSelectionRequest request, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class HookDiagnosticDispatcher : AgentKit.IHookDiagnosticDispatcher
+    {
+        public HookDiagnosticDispatcher(System.Collections.Generic.IEnumerable<AgentKit.IHookDiagnosticSink> sinks) { }
+        public System.Threading.Tasks.ValueTask PublishAsync(AgentKit.HookInvocationDiagnostic diagnostic, System.Threading.CancellationToken cancellationToken) { }
     }
     public sealed class HookInvocationTracker : AgentKit.IHookInvocationTracker
     {
@@ -50,6 +54,9 @@ namespace AgentKit.Hooks
     public sealed class HookProfileOptions
     {
         public HookProfileOptions() { }
+        public AgentKit.HookFailureMode? DefaultRequestedFailureMode { get; set; }
+        public System.Func<AgentKit.HookRegistrationDescriptor, bool>? RegistrationFilter { get; set; }
+        public AgentKit.HookReloadBoundary ReloadBoundary { get; set; }
         public static AgentKit.HookProfileKey DefaultProfileKey { get; }
     }
     public sealed class HookRegistrationCatalog : AgentKit.IHookCatalog
@@ -76,6 +83,12 @@ namespace AgentKit.Hooks
                 where TResolver :  class, AgentKit.IHookOrderResolver { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookProfileSelector<TSelector>()
                 where TSelector :  class, AgentKit.IHookProfileSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHookProfile(AgentKit.HookProfileKey key, System.Action<AgentKit.Hooks.HookProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookProfile(AgentKit.HookProfileKey key, System.Action<AgentKit.Hooks.HookProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHookDiagnosticSink<TSink>()
+                where TSink :  class, AgentKit.IHookDiagnosticSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookDiagnosticDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IHookDiagnosticDispatcher { }
         }
     }
     public sealed class ServiceProviderHookInstanceFactory : AgentKit.IHookInstanceFactory

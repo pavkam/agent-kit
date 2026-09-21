@@ -73,12 +73,13 @@ public sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherConf
             .CreateAsync(catalog, cancellationToken)
             .ConfigureAwait(false);
         await using var scope = new HookActivationScope(catalog, lease);
+        var timestamp = DateTimeOffset.UtcNow;
         var dispatch = new HookDispatchMetadata(
             KernelConformanceHookPoint.ObservingDefinition.Id,
             new HookDispatchId(Guid.NewGuid()),
             new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null),
-            DateTimeOffset.UnixEpoch,
-            DateTimeOffset.UnixEpoch + TimeSpan.FromMinutes(1));
+            timestamp,
+            timestamp + TimeSpan.FromMinutes(1));
         var context = scope.CreateDispatch(dispatch);
         var args = new KernelObservingEventArgs(dispatch) { Payload = "baseline" };
         await dispatcher.DispatchAsync(KernelConformanceHookPoint.ObservingDefinition, context, args, cancellationToken: cancellationToken)
@@ -105,13 +106,16 @@ public sealed class DefaultHookDispatcherConformanceFixture: IHookDispatcherConf
         return new HookActivationScope(catalog, lease);
     }
 
-    private static HookDispatchMetadata CreateMutatingDispatch() =>
-        new(
+    private static HookDispatchMetadata CreateMutatingDispatch()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        return new HookDispatchMetadata(
             KernelConformanceHookPoint.Id,
             new HookDispatchId(Guid.NewGuid()),
             new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
-            DateTimeOffset.UnixEpoch,
-            DateTimeOffset.UnixEpoch + TimeSpan.FromMinutes(1));
+            timestamp,
+            timestamp + TimeSpan.FromMinutes(1));
+    }
 
     private static KernelConformanceEventArgs CreateMutatingArgs() =>
         new(CreateMutatingDispatch());

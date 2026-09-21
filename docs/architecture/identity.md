@@ -119,6 +119,23 @@ version. Admission captures the resulting immutable identity. Later protected
 work uses the applicable live revocation or reauthentication policy rather than
 assuming an earlier validation is permanent authority.
 
+When `AddAgentIdentity` registers `IIdentityValidationPolicy`, the facade
+revalidates the supplied `ExecutionIdentity` immediately after pinned-definition
+validation and before session creation, run acceptance, or queued-input
+admission. Absent that registration, admission does not perform this check.
+Rejection uses `AgentErrorCodes.AuthenticationFailed` on typed facade methods and
+throws `AgentAdmissionRejectedException` on legacy `SendAsync` before any session
+mutation occurs.
+
+```csharp
+// AgentEngineRuntime admission (conceptual)
+var validation = await identityValidationPolicy.ValidateAsync(identity, cancellationToken);
+if (validation is IdentityValidationRejected rejected)
+{
+    return AgentRunRejected<T>(AgentErrorCodes.AuthenticationFailed, rejected.Failure.SafeMessage);
+}
+```
+
 The issuer mapping owns authenticated subject mapping and claim enrichment.
 After it returns, `IIdentityNormalizationPolicy` is a narrowing boundary: each
 stage may remove claims, lower assurance, or reject the candidate. It preserves

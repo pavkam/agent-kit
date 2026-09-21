@@ -28,15 +28,23 @@ internal static class HookServiceRegistration
             _ = options.Configure(configure);
         }
 
-        _ = services.AddOptions<HookProfileOptions>();
+        services.TryAddSingleton(static _ => new HookProfileRegistry());
+        services.TryAddSingleton<HookProfileRegistryInitializer>();
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IHookOrderResolver, HookOrderResolver>();
-        services.TryAddSingleton<IHookProfileSelector, DefaultHookProfileSelector>();
+        services.TryAddSingleton<IHookProfileSelector>(static provider =>
+        {
+            _ = provider.GetRequiredService<HookProfileRegistryInitializer>();
+            return new DefaultHookProfileSelector(provider.GetRequiredService<HookProfileRegistry>());
+        });
+        services.TryAddSingleton<IHookDiagnosticDispatcher, HookDiagnosticDispatcher>();
         services.TryAddSingleton<IHookCatalog, HookRegistrationCatalog>();
         services.TryAddSingleton<HookRegistrationBindingRegistry>();
         services.TryAddSingleton<HookRegistrationBindingRegistryInitializer>();
         services.TryAddSingleton<IHookInstanceFactory>(static provider =>
         {
             _ = provider.GetRequiredService<HookRegistrationBindingRegistryInitializer>();
+            _ = provider.GetRequiredService<HookProfileRegistry>();
             return new ServiceProviderHookInstanceFactory(
                 provider,
                 provider.GetRequiredService<HookRegistrationBindingRegistry>().Bindings,
@@ -47,6 +55,7 @@ internal static class HookServiceRegistration
             _ = provider.GetRequiredService<HookRegistrationBindingRegistryInitializer>();
             return new HookRegistrationBindingSource(
                 provider.GetRequiredService<HookRegistrationBindingRegistry>(),
+                provider.GetRequiredService<HookProfileRegistry>(),
                 provider.GetRequiredService<IReadOnlyList<HookPointDefinitionRegistration>>());
         });
         services.TryAddSingleton<IIdentifierGenerator<HookDispatchId>>(
@@ -55,9 +64,67 @@ internal static class HookServiceRegistration
             static _ => new GuidIdentifierGenerator<HookInvocationId>(static value => new HookInvocationId(value)));
 
         RegisterBuiltInPointDefinitions(services);
-        services.TryAddSingleton<IHookDispatcher, DefaultHookDispatcher>();
+        services.TryAddSingleton<IHookDispatcher>(static provider => new DefaultHookDispatcher(
+            provider.GetRequiredService<IOptions<AgentHookOptions>>(),
+            provider.GetService<ILogger<DefaultHookDispatcher>>(),
+            provider.GetRequiredService<IHookOrderResolver>(),
+            provider.GetRequiredService<IIdentifierGenerator<HookInvocationId>>(),
+            provider.GetRequiredService<IHookDiagnosticDispatcher>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<HookProfileRegistry>()));
         return services;
     }
+
+    internal static IServiceCollection AddHookProfile(
+        IServiceCollection services,
+        HookProfileKey key,
+        Action<HookProfileOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentOutOfRangeException.ThrowIfEqual(key, default);
+        ArgumentNullException.ThrowIfNull(configure);
+        _ = AddAgentHooks(services, configure: null);
+        AddProfileContributor(services, key, configure, replace: false);
+        return services;
+    }
+
+    internal static IServiceCollection ReplaceHookProfile(
+        IServiceCollection services,
+        HookProfileKey key,
+        Action<HookProfileOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentOutOfRangeException.ThrowIfEqual(key, default);
+        ArgumentNullException.ThrowIfNull(configure);
+        _ = AddAgentHooks(services, configure: null);
+        AddProfileContributor(services, key, configure, replace: true);
+        return services;
+    }
+
+    internal static IServiceCollection AddHookDiagnosticSink<TSink>(IServiceCollection services)
+        where TSink : class, IHookDiagnosticSink
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = AddAgentHooks(services, configure: null);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHookDiagnosticSink, TSink>());
+        return services;
+    }
+
+    internal static IServiceCollection ReplaceHookDiagnosticDispatcher<TDispatcher>(IServiceCollection services)
+        where TDispatcher : class, IHookDiagnosticDispatcher
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = AddAgentHooks(services, configure: null);
+        _ = services.RemoveAll<IHookDiagnosticDispatcher>();
+        return services.AddSingleton<IHookDiagnosticDispatcher, TDispatcher>();
+    }
+
+    private static void AddProfileContributor(
+        IServiceCollection services,
+        HookProfileKey key,
+        Action<HookProfileOptions> configure,
+        bool replace) =>
+        _ = services.AddSingleton<IHookProfileContributor>(_ => new HookProfileContributor(key, configure, replace));
 
     internal static IServiceCollection AddRunStartedHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
         where THook : class, IRunStartedHook

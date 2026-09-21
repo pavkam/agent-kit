@@ -81,6 +81,7 @@ public sealed class ServiceExtensionsTests
         _ = provider.GetRequiredService<IHookCatalog>().ShouldBeOfType<HookRegistrationCatalog>();
         _ = provider.GetRequiredService<IHookInstanceFactory>().ShouldBeOfType<ServiceProviderHookInstanceFactory>();
         _ = provider.GetRequiredService<IHookProfileSelector>().ShouldBeOfType<DefaultHookProfileSelector>();
+        _ = provider.GetRequiredService<IHookDiagnosticDispatcher>().ShouldBeOfType<HookDiagnosticDispatcher>();
         _ = provider.GetRequiredService<IHookOrderResolver>().ShouldBeOfType<HookOrderResolver>();
         _ = provider.GetRequiredService<IIdentifierGenerator<HookDispatchId>>().ShouldNotBeNull();
         _ = provider.GetRequiredService<IIdentifierGenerator<HookInvocationId>>().ShouldNotBeNull();
@@ -150,6 +151,20 @@ public sealed class ServiceExtensionsTests
 
         _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentHookOptions>>().Value);
         _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IHookDispatcher>);
+    }
+
+    [Fact]
+    public async Task AddHookProfile_WhenNamedProfileRegistered_SelectorResolvesIt()
+    {
+        var services = new ServiceCollection();
+        var minimal = new HookProfileKey("minimal");
+        _ = services.AddAgentHooks().AddHookProfile(minimal, static _ => { });
+        await using var provider = services.BuildServiceProvider();
+
+        var selection = await provider.GetRequiredService<IHookProfileSelector>()
+            .SelectAsync(new HookProfileSelectionRequest(minimal, null), TestContext.Current.CancellationToken);
+
+        selection.ShouldBeOfType<HookProfileSelected>().ProfileKey.ShouldBe(minimal);
     }
 
     private sealed class TestRunStartedHook: IRunStartedHook

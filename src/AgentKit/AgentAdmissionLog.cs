@@ -38,4 +38,11 @@ internal static partial class AgentAdmissionLog
     /// <summary>Logs that releasing a durably admitted run's lane faulted.</summary>
     [LoggerMessage(18006, LogLevel.Error, "Agent {AgentId} session {SessionId}: releasing the admitted lane faulted with {ErrorType}; the lane was not released.")]
     internal static partial void LaneReleaseFaulted(ILogger logger, AgentId agentId, SessionId sessionId, string errorType);
+
+    /// <summary>Logs that admission rejected identity evidence before any session mutation.</summary>
+    /// <param name="logger">The destination logger.</param>
+    /// <param name="agentId">The agent whose admission was rejected.</param>
+    /// <param name="failureKind">The normalized identity failure classification.</param>
+    [LoggerMessage(18104, LogLevel.Warning, "Agent {AgentId} rejected a turn: identity revalidation failed with {FailureKind} before session admission.")]
+    internal static partial void IdentityRevalidationRejected(ILogger logger, AgentId agentId, string failureKind);
 }

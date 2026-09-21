@@ -355,6 +355,21 @@ internal sealed class AgentEngineRuntime
         var definition = agent.Definition;
         var (catalogVersion, publication) = await ValidatePinnedDefinitionAsync(definition, activity: null, cancellationToken)
             .ConfigureAwait(false);
+        if (Services.GetService<IIdentityValidationPolicy>() is { } inputAdmissionValidation)
+        {
+            var validation = await inputAdmissionValidation.ValidateAsync(identity, cancellationToken).ConfigureAwait(false);
+            if (validation is IdentityValidationRejected rejected)
+            {
+                AgentAdmissionLog.IdentityRevalidationRejected(_logger, definition.Id, rejected.Failure.Kind.ToString());
+                throw AdmissionRejected(definition, catalogVersion, rejected.Failure.SafeMessage);
+            }
+
+            if (validation is not IdentityValidationPassed)
+            {
+                throw AdmissionRejected(definition, catalogVersion, "Identity validation returned an unsupported result.");
+            }
+        }
+
         AgentRunScopeLease? lease = null;
         try
         {
@@ -680,6 +695,19 @@ internal sealed class AgentEngineRuntime
             cancellationToken.ThrowIfCancellationRequested();
             var (catalogVersion, pinnedPublication) = await ValidatePinnedDefinitionAsync(definition, activity, cancellationToken)
                 .ConfigureAwait(false);
+            if (await RevalidateIdentityAtAdmissionAsync<TOutput>(
+                    definition,
+                    identity,
+                    requestedSessionId ?? default,
+                    catalogVersion,
+                    activity,
+                    typedRejection,
+                    cancellationToken).ConfigureAwait(false) is { } identityRejection)
+            {
+                admissionCompleted = true;
+                return identityRejection;
+            }
+
             if (!IsOutputCompatible<TOutput>(definition.Output))
             {
                 return FailBeforeAcceptance<TOutput>(
@@ -957,6 +985,53 @@ internal sealed class AgentEngineRuntime
                 }
             }
         }
+    }
+
+    private async ValueTask<ExecutionOutcome<TOutput>?> RevalidateIdentityAtAdmissionAsync<TOutput>(
+        AgentDefinition definition,
+        ExecutionIdentity identity,
+        SessionId sessionId,
+        AgentCatalogVersion catalogVersion,
+        Activity? activity,
+        bool typedRejection,
+        CancellationToken cancellationToken)
+    {
+        if (Services.GetService<IIdentityValidationPolicy>() is not { } policy)
+        {
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var validation = await policy.ValidateAsync(identity, cancellationToken).ConfigureAwait(false);
+        if (validation is IdentityValidationPassed)
+        {
+            return null;
+        }
+
+        var failure = validation is IdentityValidationRejected rejected
+            ? rejected.Failure
+            : new IdentityFailure(
+                IdentityFailureKind.Unavailable,
+                "Identity validation returned an unsupported result.",
+                identity.Evidence.Issuer);
+        try
+        {
+            AgentAdmissionLog.IdentityRevalidationRejected(_logger, definition.Id, failure.Kind.ToString());
+        }
+        catch (Exception)
+        {
+        }
+
+        var admissionCompleted = false;
+        return FailBeforeAcceptance<TOutput>(
+            definition,
+            sessionId,
+            catalogVersion,
+            activity,
+            ref admissionCompleted,
+            typedRejection,
+            AgentErrorCodes.AuthenticationFailed,
+            failure.SafeMessage);
     }
 
     private ExecutionOutcome<TOutput> FailBeforeAcceptance<TOutput>(

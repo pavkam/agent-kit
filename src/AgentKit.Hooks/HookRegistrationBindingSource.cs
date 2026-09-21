@@ -7,22 +7,27 @@ namespace AgentKit.Hooks;
 internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
 {
     private readonly HookRegistrationBindingRegistry _bindings;
+    private readonly HookProfileRegistry _profiles;
     private readonly Dictionary<HookPointId, HookPointDefinitionRegistration> _points;
 
     /// <summary>Initializes a new instance of the <see cref="HookRegistrationBindingSource"/> class.</summary>
     /// <param name="bindings">Every registration binding registered in the composition.</param>
+    /// <param name="profiles">The registered hook profiles used to apply optional registration filters.</param>
     /// <param name="points">Every closed point definition registered in the composition.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="bindings"/> or <paramref name="points"/> is null.
+    /// <paramref name="bindings"/>, <paramref name="profiles"/>, or <paramref name="points"/> is null.
     /// </exception>
     public HookRegistrationBindingSource(
         HookRegistrationBindingRegistry bindings,
+        HookProfileRegistry profiles,
         IReadOnlyList<HookPointDefinitionRegistration> points)
     {
         ArgumentNullException.ThrowIfNull(bindings);
+        ArgumentNullException.ThrowIfNull(profiles);
         ArgumentNullException.ThrowIfNull(points);
 
         _bindings = bindings;
+        _profiles = profiles;
         _points = HookPointDefinitionRegistrations.ToDictionary(points);
     }
 
@@ -39,11 +44,18 @@ internal sealed class HookRegistrationBindingSource: IHookRegistrationSource
             return new ValueTask<HookRegistrationSnapshot>(new HookRegistrationSnapshot([]));
         }
 
+        var profileOptions = _profiles.GetRequired(request.ProfileKey);
+        var filter = profileOptions.RegistrationFilter;
         var registrations = ImmutableArray.CreateBuilder<HookRegistrationDescriptor>();
         var seenRegistrationIds = new HashSet<HookRegistrationId>();
         foreach (var binding in _bindings.Bindings)
         {
             if (!binding.Descriptor.ProfileKey.Equals(request.ProfileKey))
+            {
+                continue;
+            }
+
+            if (filter is not null && !filter(binding.Descriptor))
             {
                 continue;
             }
