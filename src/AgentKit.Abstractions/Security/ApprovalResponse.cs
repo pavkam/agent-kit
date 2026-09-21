@@ -17,6 +17,30 @@ public sealed record ApprovalResponse
     /// <exception cref="ArgumentOutOfRangeException">An identity is default or <paramref name="resolution"/> is undefined.</exception>
     public ApprovalResponse(ApprovalResponseId id, ApprovalRequestId requestId, ApprovalScopeBinding binding,
         ApprovalResolution resolution, ExecutionIdentity approverIdentity, DateTimeOffset respondedAt)
+        : this(id, requestId, binding, resolution, approverIdentity, respondedAt, authentication: null, idempotencyKey: null)
+    {
+    }
+
+    /// <summary>Initializes a terminal approval response with optional channel authentication and idempotency evidence.</summary>
+    /// <param name="id">The response identity used for idempotency.</param>
+    /// <param name="requestId">The resolved request.</param>
+    /// <param name="binding">The exact approved or denied scope.</param>
+    /// <param name="resolution">The terminal decision.</param>
+    /// <param name="approverIdentity">The complete identity authenticated by trusted broker ingress.</param>
+    /// <param name="respondedAt">The response instant.</param>
+    /// <param name="authentication">Optional trusted-channel authentication evidence for the responder.</param>
+    /// <param name="idempotencyKey">Optional durable idempotency key supplied by the responder ingress.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="approverIdentity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An identity is default or <paramref name="resolution"/> is undefined.</exception>
+    public ApprovalResponse(
+        ApprovalResponseId id,
+        ApprovalRequestId requestId,
+        ApprovalScopeBinding binding,
+        ApprovalResolution resolution,
+        ExecutionIdentity approverIdentity,
+        DateTimeOffset respondedAt,
+        ApprovalAuthenticationEvidence? authentication,
+        IdempotencyKey? idempotencyKey)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(id.Value, Guid.Empty);
         ArgumentOutOfRangeException.ThrowIfEqual(requestId.Value, Guid.Empty);
@@ -29,6 +53,8 @@ public sealed record ApprovalResponse
         Resolution = resolution;
         ApproverIdentity = approverIdentity;
         RespondedAt = respondedAt;
+        Authentication = authentication;
+        IdempotencyKey = idempotencyKey;
     }
 
     /// <summary>Gets the idempotent response identity.</summary>
@@ -43,4 +69,12 @@ public sealed record ApprovalResponse
     public ExecutionIdentity ApproverIdentity { get; }
     /// <summary>Gets the response instant.</summary>
     public DateTimeOffset RespondedAt { get; }
+
+    /// <summary>Gets optional trusted-channel authentication evidence for the responder.</summary>
+    /// <value>Null when the ingress did not capture authentication proof.</value>
+    public ApprovalAuthenticationEvidence? Authentication { get; }
+
+    /// <summary>Gets the optional durable idempotency key supplied by responder ingress.</summary>
+    /// <value>Null when the ingress did not supply a stable replay key.</value>
+    public IdempotencyKey? IdempotencyKey { get; }
 }

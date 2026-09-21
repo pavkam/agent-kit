@@ -60,8 +60,11 @@ internal sealed class StrictGrantStore: ISecurityGrantStore
                 : null));
     }
 
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(_grants.Remove(grantId));
+    public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+    }
 
     private bool Matches(SecurityGrant grant, SecurityEnforcementRequest enforcement) =>
         _grants.TryGetValue(grant.Id, out var registered)

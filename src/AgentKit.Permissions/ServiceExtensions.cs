@@ -43,14 +43,17 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<ApprovalRequestId>, GuidApprovalRequestIdGenerator>();
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>, GuidSecurityAuditRecordIdGenerator>();
             services.TryAddSingleton<IApprovalHandler, DenyApprovalHandler>();
+            services.TryAddSingleton<IApprovalHandlerDispatcher>(static provider =>
+                new DefaultApprovalHandlerDispatcher(provider.GetServices<IApprovalHandler>()));
             services.TryAddSingleton<IApprovalResponderAuthorizer, DenyApprovalResponderAuthorizer>();
             services.TryAddSingleton<IApprovalBroker>(static provider => new DefaultApprovalBroker(
                 provider.GetRequiredService<IApprovalStore>(),
-                provider.GetRequiredService<IApprovalHandler>(),
+                provider.GetRequiredService<IApprovalHandlerDispatcher>(),
                 provider.GetRequiredService<IApprovalResponderAuthorizer>(),
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),
                 provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
-                provider.GetRequiredService<TimeProvider>()));
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<AgentPermissionOptions>>()));
             _ = PermissionServiceRegistration.EnsurePolicyCatalogRegistered(services);
             services.TryAddSingleton<ISecurityGrantIssuer, DefaultSecurityGrantIssuer>();
             services.TryAddSingleton<ISecurityRevocationGeneration, DefaultSecurityRevocationGeneration>();
@@ -299,5 +302,13 @@ public static class ServiceExtensions
         public IServiceCollection ReplaceSecurityPolicySelector<TSelector>()
             where TSelector : class, ISecurityPolicySelector =>
             PermissionServiceRegistration.ReplaceSecurityPolicySelector<TSelector>(services);
+
+        /// <summary>Registers one additive approval handler consulted after earlier handlers decline inline resolution.</summary>
+        /// <typeparam name="THandler">The handler implementation type.</typeparam>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection AddApprovalHandler<THandler>()
+            where THandler : class, IApprovalHandler =>
+            PermissionServiceRegistration.AddApprovalHandler<THandler>(services);
     }
 }

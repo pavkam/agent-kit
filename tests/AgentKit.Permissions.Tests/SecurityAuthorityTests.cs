@@ -725,6 +725,9 @@ public sealed class SecurityAuthorityTests
                 request.CreatedAt.AddSeconds(1));
             return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
         }
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class SlowApprovingBroker(FakeTimeProvider clock, TimeSpan thinkTime): IApprovalBroker
@@ -745,12 +748,18 @@ public sealed class SecurityAuthorityTests
                 clock.GetUtcNow());
             return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
         }
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FixedBroker(ApprovalBrokerResult result): IApprovalBroker
     {
         public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(result);
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>A broker whose unguarded fault escapes directly to the authority's outer catch.</summary>
@@ -758,6 +767,9 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("broker failed");
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RecordingLogger: ILogger<SecurityAuthority>
@@ -784,6 +796,9 @@ public sealed class SecurityAuthorityTests
                 request.CreatedAt.AddSeconds(1));
             return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerDenied(response));
         }
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RecordingAuditDispatcher: ISecurityAuditDispatcher
@@ -844,6 +859,9 @@ public sealed class SecurityAuthorityTests
                 request.CreatedAt.AddSeconds(1));
             return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
         }
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>Cancels an externally observed token and rethrows using the exact same token the authority passed in.</summary>
@@ -920,7 +938,10 @@ public sealed class SecurityAuthorityTests
             CancellationToken cancellationToken = default) =>
             inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-            inner.RevokeAsync(grantId, cancellationToken);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+        }
     }
 }

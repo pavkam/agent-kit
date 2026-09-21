@@ -363,7 +363,9 @@ public sealed class DefaultContextAssemblerTests
         var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
 
         var ready = result.ShouldBeOfType<ContextReady>();
-        ready.Context.Messages.ShouldBe([instruction, userMessage]);
+        ready.Context.Messages.Length.ShouldBe(2);
+        ready.Context.Messages[0].ShouldBe(instruction);
+        ready.Context.Messages[1].Id.ShouldBe(userMessage.Id);
         ready.Context.ModelRequestId.ShouldBe(request.ModelRequestId);
         ready.Context.Model.ShouldBe(request.Model);
         ready.Context.Tools.ShouldBe(request.Tools);
@@ -422,7 +424,8 @@ public sealed class DefaultContextAssemblerTests
         var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
 
         var ready = result.ShouldBeOfType<ContextReady>();
-        ready.Context.Messages.ShouldBe([complete]);
+        ready.Context.Messages.Length.ShouldBe(1);
+        ready.Context.Messages[0].Id.ShouldBe(complete.Id);
     }
 
     [Fact]

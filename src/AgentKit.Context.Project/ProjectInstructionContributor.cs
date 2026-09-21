@@ -33,8 +33,17 @@ public sealed class ProjectInstructionContributor: IContextContributor
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaxBytesPerFile, nameof(options));
-        ArgumentException.ThrowIfContainsNull(options.Value.SearchRoots, nameof(options));
-        ArgumentException.ThrowIfContainsNull(options.Value.InstructionFilenames, nameof(options));
+        ArgumentNullException.ThrowIfNull(options.Value.SearchRoots);
+        ArgumentNullException.ThrowIfNull(options.Value.InstructionFilenames);
+        foreach (var root in options.Value.SearchRoots)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        }
+
+        foreach (var filename in options.Value.InstructionFilenames)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filename);
+        }
         _fileSystem = fileSystem;
         _securityAuthority = securityAuthority;
         _requestIds = requestIds;
@@ -112,7 +121,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
             ContextFreshness.Pinned,
             ContextEvaluationFrequency.OncePerRun,
             mandatory: false,
-            [new TextPart(text)],
+            [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
     }
 

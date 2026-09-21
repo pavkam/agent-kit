@@ -19,10 +19,10 @@ Owning documents: [Context](../architecture/context.md),
 - [x] WS9-C3 keyed `AddAgentContext`, `ContextAssemblerServices`, contributors
       run
 - [x] WS9-C4 `InstructionSource` and definition migration
-- [ ] WS9-C5 `IHistoryPipeline` and `IToolSnapshotProvider`
-- [ ] WS9-C6 `AgentKit.Context.Project` leaf
-- [ ] WS9-C7 skill inventory contributor
-- [ ] WS9-C8 context hooks and validator check
+- [x] WS9-C5 `IHistoryPipeline` and `IToolSnapshotProvider`
+- [x] WS9-C6 `AgentKit.Context.Project` leaf
+- [x] WS9-C7 skill inventory contributor
+- [x] WS9-C8 context hooks and validator check
 
 ## Verified current state
 

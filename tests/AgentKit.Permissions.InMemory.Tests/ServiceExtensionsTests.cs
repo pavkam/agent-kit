@@ -72,7 +72,10 @@ public sealed class ServiceExtensionsTests
             ValueTask.FromResult(new GrantConsumptionResult(
                 GrantConsumptionStatus.Unknown, 0, "The replacement store did not consume a grant."));
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(false);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+        }
     }
 }

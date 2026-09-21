@@ -37,6 +37,7 @@ namespace AgentKit.Storage.Json;
 /// <param name="NotBefore">The earliest valid instant, which must be strictly earlier than <paramref name="ExpiresAt"/>.</param>
 /// <param name="ExpiresAt">The exclusive expiry instant.</param>
 /// <param name="AllowedUses">The positive maximum number of successful consumptions.</param>
+/// <param name="ApprovalResponseId">The optional terminal approval response that bound this grant, or null when none was recorded.</param>
 public sealed record JsonSecurityGrant(
     Guid Id,
     Guid RequestId,
@@ -52,7 +53,8 @@ public sealed record JsonSecurityGrant(
     long RevocationVersion,
     DateTimeOffset NotBefore,
     DateTimeOffset ExpiresAt,
-    int AllowedUses)
+    int AllowedUses,
+    Guid? ApprovalResponseId = null)
 {
     /// <summary>Projects one domain grant into its portable JSON representation.</summary>
     /// <param name="value">The non-null grant to project.</param>
@@ -80,7 +82,8 @@ public sealed record JsonSecurityGrant(
             value.RevocationVersion.Value,
             value.NotBefore,
             value.ExpiresAt,
-            value.AllowedUses);
+            value.AllowedUses,
+            value.Approval?.Value);
     }
 
     /// <summary>Reconstructs the exact domain grant this document was projected from.</summary>
@@ -109,7 +112,7 @@ public sealed record JsonSecurityGrant(
         var inputFingerprint = new InputFingerprint(InputFingerprint);
         var policyVersion = new SecurityPolicyVersion(PolicyVersion);
         var revocationVersion = new SecurityRevocationVersion(RevocationVersion);
-        return Authorization is { } authorization
+        var grant = Authorization is { } authorization
             ? new SecurityGrant(
                 id,
                 requestId,
@@ -141,6 +144,9 @@ public sealed record JsonSecurityGrant(
                 NotBefore,
                 ExpiresAt,
                 AllowedUses);
+        return ApprovalResponseId is Guid approvalId
+            ? grant with { Approval = new ApprovalResponseId(approvalId) }
+            : grant;
     }
 
     /// <summary>Compares grants by ordered resource contents rather than by immutable-array storage identity.</summary>
@@ -167,7 +173,8 @@ public sealed record JsonSecurityGrant(
         && RevocationVersion == other.RevocationVersion
         && NotBefore == other.NotBefore
         && ExpiresAt == other.ExpiresAt
-        && AllowedUses == other.AllowedUses;
+        && AllowedUses == other.AllowedUses
+        && ApprovalResponseId == other.ApprovalResponseId;
 
     /// <summary>Computes a hash consistent with <see cref="Equals(JsonSecurityGrant?)"/>.</summary>
     /// <returns>A hash derived from every scalar member, nested document, and each ordered resource.</returns>
@@ -193,6 +200,7 @@ public sealed record JsonSecurityGrant(
         hash.Add(NotBefore);
         hash.Add(ExpiresAt);
         hash.Add(AllowedUses);
+        hash.Add(ApprovalResponseId);
         return hash.ToHashCode();
     }
 }

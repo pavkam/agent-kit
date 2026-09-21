@@ -43,6 +43,7 @@ public sealed class DefaultSecurityGrantIssuer: ISecurityGrantIssuer
         SecurityPolicyVersion policyVersion,
         SecurityRevocationVersion revocationVersion,
         ApprovalScopeBinding? approvedBinding,
+        ApprovalResponseId? approvalResponseId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -79,6 +80,9 @@ public sealed class DefaultSecurityGrantIssuer: ISecurityGrantIssuer
                 now,
                 expiresAt,
                 allowedUses)
+            {
+                Approval = approvalResponseId,
+            }
             : new SecurityGrant(
                 grantId,
                 request.Id,
@@ -93,7 +97,10 @@ public sealed class DefaultSecurityGrantIssuer: ISecurityGrantIssuer
                 revocationVersion,
                 now,
                 expiresAt,
-                allowedUses);
+                allowedUses)
+            {
+                Approval = approvalResponseId,
+            };
         return new ValueTask<SecurityGrant>(grant);
     }
 }

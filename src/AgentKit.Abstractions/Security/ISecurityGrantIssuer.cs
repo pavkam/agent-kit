@@ -12,6 +12,7 @@ public interface ISecurityGrantIssuer
     /// <param name="policyVersion">The effective policy version that decided the request.</param>
     /// <param name="revocationVersion">The live revocation epoch captured at issue time.</param>
     /// <param name="approvedBinding">The exact human-approved scope, or null when the request was allowed without approval.</param>
+    /// <param name="approvalResponseId">The terminal approval response identity when approval bound the grant.</param>
     /// <param name="cancellationToken">Cancels issuance before it completes.</param>
     /// <returns>The freshly minted, not-yet-registered grant.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
@@ -21,5 +22,6 @@ public interface ISecurityGrantIssuer
         SecurityPolicyVersion policyVersion,
         SecurityRevocationVersion revocationVersion,
         ApprovalScopeBinding? approvedBinding,
+        ApprovalResponseId? approvalResponseId = null,
         CancellationToken cancellationToken = default);
 }

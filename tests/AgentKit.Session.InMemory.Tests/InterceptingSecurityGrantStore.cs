@@ -41,6 +41,9 @@ internal sealed class InterceptingSecurityGrantStore(ISecurityGrantStore inner):
     }
 
     /// <inheritdoc/>
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-        _inner.RevokeAsync(grantId, cancellationToken);
+    public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+    }
 }

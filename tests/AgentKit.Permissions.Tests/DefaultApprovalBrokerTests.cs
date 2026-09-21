@@ -189,12 +189,11 @@ public sealed class DefaultApprovalBrokerTests
                 timeProvider.SetUtcNow(request.Binding.ExpiresAt);
                 return store!.PassthroughReadAsync(id, token);
             });
-        var broker = new DefaultApprovalBroker(
+        var broker = CreateBroker(
             store,
             new DenyApprovalHandler(),
             new AllowResponderAuthorizer(),
             new RecordingAuditDispatcher(),
-            new FixedAuditRecordIdGenerator(),
             timeProvider);
 
         var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
@@ -383,13 +382,18 @@ public sealed class DefaultApprovalBrokerTests
         IApprovalHandler handler,
         IApprovalResponderAuthorizer authorizer,
         ISecurityAuditDispatcher auditDispatcher,
-        TimeProvider? timeProvider = null) => new(
+        TimeProvider? timeProvider = null,
+        HeadlessApprovalBehavior headlessApprovalBehavior = HeadlessApprovalBehavior.Deny) => new(
         store,
-        handler,
+        new DefaultApprovalHandlerDispatcher([handler]),
         authorizer,
         auditDispatcher,
         new FixedAuditRecordIdGenerator(),
-        timeProvider ?? new FakeTimeProvider(_now));
+        timeProvider ?? new FakeTimeProvider(_now),
+        Microsoft.Extensions.Options.Options.Create(new AgentPermissionOptions
+        {
+            HeadlessApprovalBehavior = headlessApprovalBehavior,
+        }));
 
     private static ApprovalRequest CreateApprovalRequest(DateTimeOffset? expiresAt = null)
     {

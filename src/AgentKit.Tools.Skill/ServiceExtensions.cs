@@ -37,7 +37,7 @@ public static class ServiceExtensions
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IToolPresentationFormatter, SkillToolPresentationFormatter>());
             _ = services.AddContextContributor<SkillInventoryContextContributor>(
-                assemblerKey,
+                (ComponentKey<IContextAssembler>) assemblerKey,
                 new ContextContributorRegistration(
                     new ContextSourceKey("agentkit.tools.skill.inventory"),
                     order: 60,

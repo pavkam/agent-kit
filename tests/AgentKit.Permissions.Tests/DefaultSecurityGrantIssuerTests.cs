@@ -32,6 +32,7 @@ public sealed class DefaultSecurityGrantIssuerTests
             new SecurityPolicyVersion(1),
             new SecurityRevocationVersion(1),
             binding,
+            approvalResponseId: null,
             TestContext.Current.CancellationToken);
 
         grant.ExpiresAt.ShouldBe(_now.AddMinutes(5));

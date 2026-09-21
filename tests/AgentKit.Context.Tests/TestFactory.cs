@@ -5,6 +5,14 @@ namespace AgentKit.Context.Tests;
 
 internal static class TestFactory
 {
+    public static MessageCursor MessageCursor() => new(
+        new AgentId(Guid.NewGuid()),
+        new SessionId(Guid.NewGuid()),
+        conversationId: null,
+        new BranchId(Guid.NewGuid()),
+        new SessionVersion(1),
+        new SessionSequence(0));
+
     public static ModelDescriptor Model(string alias = "chat")
     {
         var capabilities = new ModelCapabilities(

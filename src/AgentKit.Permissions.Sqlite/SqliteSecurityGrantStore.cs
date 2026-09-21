@@ -238,14 +238,6 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
             }, null, null, grantId);
     }
 
-    /// <inheritdoc/>
-    public async ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
-    {
-        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
-        var result = await RevokeAsync(grantId, reason, cancellationToken).ConfigureAwait(false);
-        return result is GrantRevoked or GrantAlreadyRevoked;
-    }
-
     private GrantConsumptionResult ConsumeCore(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,

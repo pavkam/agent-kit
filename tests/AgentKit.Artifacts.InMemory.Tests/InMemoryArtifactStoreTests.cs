@@ -820,11 +820,10 @@ public sealed class InMemoryArtifactStoreTests: ArtifactStoreConformanceTests<In
             return ValueTask.FromResult(new GrantConsumptionResult(Status, 0, Status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied.", receipt));
         }
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
         {
-            _ = grantId;
             _ = cancellationToken;
-            return ValueTask.FromResult(true);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
         }
     }
 

@@ -10,6 +10,8 @@ public sealed class JsonSecurityGrantStoreTests
     : SecurityGrantStoreConformanceTests<JsonSecurityGrantStoreConformanceFixture>
 {
     private static readonly DateTimeOffset _now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
+    private static readonly RevocationReason _revocation =
+        new(SecurityRevocationTrigger.Explicit, "Revoked.");
 
     /// <inheritdoc/>
     protected override JsonSecurityGrantStoreConformanceFixture CreateFixture() => new();
@@ -68,7 +70,7 @@ public sealed class JsonSecurityGrantStoreTests
         using var store = CreateStore(root.Path);
 
         var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () =>
-            await store.RevokeAsync(new GrantId(Guid.NewGuid()), TestContext.Current.CancellationToken));
+            await store.RevokeAsync(new GrantId(Guid.NewGuid()), _revocation, TestContext.Current.CancellationToken));
 
         exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
     }
@@ -332,7 +334,7 @@ public sealed class JsonSecurityGrantStoreTests
                 grant, enforcement, intent, TestContext.Current.CancellationToken);
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             receipt = consumed.IntentReceipt;
-            (await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken)).ShouldBeTrue();
+            _ = (await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
         }
 
         using var reopened = new JsonSecurityGrantStore(
@@ -623,15 +625,14 @@ public sealed class JsonSecurityGrantStoreTests
 
     /// <summary>Verifies revoking a grant identity that was never registered returns false without appending anything.</summary>
     [Fact]
-    public async Task RevokeAsync_WhenGrantWasNeverRegistered_ReturnsFalse()
+    public async Task RevokeAsync_WhenGrantWasNeverRegistered_ReturnsNotFound()
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
         await store.InitializeAsync(TestContext.Current.CancellationToken);
 
-        var revoked = await store.RevokeAsync(new GrantId(Guid.NewGuid()), TestContext.Current.CancellationToken);
-
-        revoked.ShouldBeFalse();
+        _ = (await store.RevokeAsync(new GrantId(Guid.NewGuid()), _revocation, TestContext.Current.CancellationToken))
+            .ShouldBeOfType<GrantRevocationNotFound>();
         root.LogLineCount("grants").ShouldBe(0);
     }
 
@@ -645,9 +646,9 @@ public sealed class JsonSecurityGrantStoreTests
         var grant = TestGrantFactory.CreateGrant(_now);
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
 
-        (await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken)).ShouldBeTrue();
+        _ = (await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
         var countAfterFirst = root.LogLineCount("grants");
-        (await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken)).ShouldBeTrue();
+        _ = (await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantAlreadyRevoked>();
 
         root.LogLineCount("grants").ShouldBe(countAfterFirst);
     }

@@ -116,6 +116,8 @@ internal sealed class DefaultContextAssembler: IContextAssembler
                 ContextPreparationFailureKind.EmptyHistory => "empty_history",
                 ContextPreparationFailureKind.InvalidRolePartCombination => "invalid_role_part_combination",
                 ContextPreparationFailureKind.BrokenToolCallCausality => "broken_tool_call_causality",
+                ContextPreparationFailureKind.InvalidInstructionMessage => "invalid_instruction_message",
+                ContextPreparationFailureKind.Unknown => "history_preparation_failed",
                 _ => "history_preparation_failed",
             };
             SafeSetActivity(() => activity.SetFailed(outcome, failure.Kind.ToString()));

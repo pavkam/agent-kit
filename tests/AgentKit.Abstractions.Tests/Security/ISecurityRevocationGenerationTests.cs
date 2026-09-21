@@ -3,32 +3,32 @@
 
 namespace AgentKit.Abstractions.Tests.Security;
 
-/// <summary>Verifies <see cref="ISecurityGrantStore"/> typed revocation default mapping.</summary>
+/// <summary>Verifies typed grant-store revocation outcomes for minimal store implementations.</summary>
 public sealed class ISecurityRevocationGenerationTests
 {
     [Fact]
-    public async Task RevokeAsync_WhenLegacyStoreReturnsFalse_ReportsNotFound()
+    public async Task RevokeAsync_WhenStoreReportsMissing_ReturnsNotFound()
     {
-        ISecurityGrantStore store = new LegacyRevokeGrantStore(revokeReturns: false);
+        ISecurityGrantStore store = new MinimalRevokeGrantStore(found: false);
         var grantId = new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005"));
         var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
 
-        (await store.RevokeAsync(grantId, reason, TestContext.Current.CancellationToken))
+        _ = (await store.RevokeAsync(grantId, reason, TestContext.Current.CancellationToken))
             .ShouldBeOfType<GrantRevocationNotFound>();
     }
 
     [Fact]
-    public async Task RevokeAsync_WhenLegacyStoreReturnsTrue_ReportsRevoked()
+    public async Task RevokeAsync_WhenStoreReportsRevoked_ReturnsRevoked()
     {
-        ISecurityGrantStore store = new LegacyRevokeGrantStore(revokeReturns: true);
+        ISecurityGrantStore store = new MinimalRevokeGrantStore(found: true);
         var grantId = new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005"));
         var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
 
-        (await store.RevokeAsync(grantId, reason, TestContext.Current.CancellationToken))
+        _ = (await store.RevokeAsync(grantId, reason, TestContext.Current.CancellationToken))
             .ShouldBeOfType<GrantRevoked>();
     }
 
-    private sealed class LegacyRevokeGrantStore(bool revokeReturns): ISecurityGrantStore
+    private sealed class MinimalRevokeGrantStore(bool found): ISecurityGrantStore
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
@@ -39,7 +39,13 @@ public sealed class ISecurityRevocationGenerationTests
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "unsupported"));
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(revokeReturns);
+        public ValueTask<GrantRevocationResult> RevokeAsync(
+            GrantId grantId,
+            RevocationReason reason,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<GrantRevocationResult>(
+                found
+                    ? new GrantRevoked(grantId, reason)
+                    : new GrantRevocationNotFound(grantId));
     }
 }

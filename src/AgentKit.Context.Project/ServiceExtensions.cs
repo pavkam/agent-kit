@@ -17,8 +17,7 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
         /// Requires <see cref="IFileSystem"/>, <see cref="ISecurityAuthority"/>, and
-        /// <see cref="AddAgentContext"/> for the same assembler key. Idempotent contributor registration uses the
-        /// same rules as <see cref="ServiceExtensions.AddContextContributor{TContributor}"/>.
+        /// <c>AgentKit.Context</c> registration for the same assembler key.
         /// </remarks>
         public IServiceCollection AddProjectInstructionContributor(
             ComponentKey<IContextAssembler> assemblerKey,

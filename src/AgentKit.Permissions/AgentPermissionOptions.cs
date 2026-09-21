@@ -30,6 +30,10 @@ public sealed class AgentPermissionOptions
     /// <summary>Gets or sets the maximum use count of any issued grant.</summary>
     public int MaximumGrantUses { get; set; } = 1;
 
+    /// <summary>Gets or sets how durable approvals behave when no inline handler resolves them.</summary>
+    /// <value><see cref="HeadlessApprovalBehavior.Deny"/> unless the host explicitly opts into durable deferral.</value>
+    public HeadlessApprovalBehavior HeadlessApprovalBehavior { get; set; } = HeadlessApprovalBehavior.Deny;
+
     /// <summary>Gets or sets the default delivery requirement for security audit records.</summary>
     /// <value><see cref="SecurityAuditDelivery.Required"/> unless the host explicitly accepts best-effort audit export.</value>
     public SecurityAuditDelivery AuditDelivery { get; set; } = SecurityAuditDelivery.Required;

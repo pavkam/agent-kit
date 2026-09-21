@@ -1657,8 +1657,11 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
                 ? throw new InvalidOperationException("Simulated grant-store failure.")
                 : inner.ValidateAndConsumeAsync(grant, enforcement, intent, cancellationToken);
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-            inner.RevokeAsync(grantId, cancellationToken);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+        }
     }
 
     /// <summary>A clock that throws starting from a configured call number, to exercise a post-authorization core-operation failure.</summary>

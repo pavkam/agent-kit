@@ -30,7 +30,7 @@ hours, L three to six hours.
 | 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a    |
 | 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1     |
 | 8   | [Structured output](structured-output.md)                             | 2, 7       | 12     | –      |
-| 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | C1–C4  |
+| 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | C1–C8  |
 | 10  | [Context compaction](context-compaction.md)                           | 7, 9       | 8      | –      |
 | 11  | [Budgets](budgets.md)                                                 | 8, 10      | 6      | –      |
 | 12  | [Durable execution](durable-execution.md)                             | 1, 3       | 14     | –      |

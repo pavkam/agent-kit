@@ -13,4 +13,13 @@ public interface IApprovalBroker
     public ValueTask<ApprovalBrokerResult> RequestAsync(
         ApprovalRequest request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves one durable approval request with externally supplied terminal evidence.</summary>
+    /// <param name="response">The authenticated terminal response to commit.</param>
+    /// <param name="cancellationToken">Cancels before resolution commits.</param>
+    /// <returns>A closed resolution outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="response"/> is null.</exception>
+    public ValueTask<ApprovalResolutionResult> ResolveAsync(
+        ApprovalResponse response,
+        CancellationToken cancellationToken = default);
 }

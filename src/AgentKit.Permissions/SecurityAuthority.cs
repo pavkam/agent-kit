@@ -451,6 +451,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
 
         ApprovalRequestId? approvalRequestId = null;
         ApprovalScopeBinding? approvedBinding = null;
+        ApprovalResponseId? approvalResponseId = null;
         if (approvalRequired)
         {
             var approvalExpiry = request.Deadline < now + _maximumGrantLifetime
@@ -470,6 +471,14 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 $"Approve {request.Kind} for {request.Audience.Value}.",
                 now);
             var approvalResult = await _approvalBroker.RequestAsync(approval, cancellationToken).ConfigureAwait(false);
+            if (approvalResult is ApprovalBrokerDeferred deferred)
+            {
+                return await PersistDecisionAsync(
+                    request,
+                    policyVersion,
+                    new SecurityApprovalRequired(request.Id, policyVersion, deferred.Request),
+                    cancellationToken).ConfigureAwait(false);
+            }
             if (approvalResult is not ApprovalBrokerApproved approved)
             {
                 // Each non-approval outcome keeps its own stable code: an infrastructure outage, an expired
@@ -518,6 +527,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
             }
 
             approvedBinding = approved.Response.Binding;
+            approvalResponseId = approved.Response.Id;
         }
 
         var grant = await _grantIssuer.IssueAsync(
@@ -525,6 +535,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
             policyVersion,
             revocationVersion,
             approvedBinding,
+            approvalResponseId,
             cancellationToken).ConfigureAwait(false);
 
         var decisionAuditDenied = await DispatchDecisionAuditAsync(

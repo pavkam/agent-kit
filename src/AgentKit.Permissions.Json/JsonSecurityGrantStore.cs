@@ -214,14 +214,6 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
             }, null, null, grantId);
     }
 
-    /// <inheritdoc/>
-    public async ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
-    {
-        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
-        var result = await RevokeAsync(grantId, reason, cancellationToken).ConfigureAwait(false);
-        return result is GrantRevoked or GrantAlreadyRevoked;
-    }
-
     /// <summary>Releases the advisory exclusive lock held for this store's lifetime.</summary>
     /// <remarks>
     /// Disposal is idempotent and does not flush: every acknowledged record was already flushed to disk when it was

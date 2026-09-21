@@ -648,7 +648,11 @@ public sealed class InMemoryFileSystemTests
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Unexpected grant store failure.");
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+        }
     }
 
     [Fact]
@@ -1291,6 +1295,10 @@ public sealed class InMemoryFileSystemTests
             return ValueTask.FromResult(new GrantConsumptionResult(denied ? GrantConsumptionStatus.Unknown : GrantConsumptionStatus.Consumed, 0, denied ? "Denied by test store." : "Consumed by test store.", denied ? null : new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement, intent.RequiredFence, SecurityEnforcementBinding.Fingerprint(enforcement, intent), DateTimeOffset.UnixEpoch)));
         }
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+        }
     }
 }

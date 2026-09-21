@@ -26,6 +26,9 @@ internal sealed class LegacyOnlySecurityGrantStore: ISecurityGrantStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(false);
+    public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+    }
 }

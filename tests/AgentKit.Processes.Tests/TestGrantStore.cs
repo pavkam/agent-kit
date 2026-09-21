@@ -58,10 +58,6 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             receipt));
     }
 
-    public ValueTask<bool> RevokeAsync(
-        GrantId grantId,
-        CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
-
     internal static SecurityGrant Grant() => new(
         new GrantId(Guid.NewGuid()),
         new SecurityRequestId(Guid.NewGuid()),
@@ -83,6 +79,8 @@ internal sealed class TestGrantStore: ISecurityGrantStore
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.MaxValue,
         1);
+    public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
 }
 
 internal sealed class SequenceSecurityEnforcementIntentIdGenerator(params Guid[] values)

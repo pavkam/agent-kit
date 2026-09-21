@@ -38,7 +38,8 @@ internal sealed class DefaultHistoryPipeline: IHistoryPipeline
             return Task.FromResult<HistoryPreparationResult>(new RejectedHistory(structuralFailure));
         }
 
-        var view = new HistoryView(request.SourceCursor, repairedMessages, repairs);
+        var alignedMessages = HistoryMessageCoordinateAlignment.Align(repairedMessages, request.SourceCursor);
+        var view = new HistoryView(request.SourceCursor, alignedMessages, repairs);
         return Task.FromResult<HistoryPreparationResult>(new PreparedHistory(view));
     }
 

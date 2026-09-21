@@ -40,4 +40,71 @@ internal static class PermissionServiceRegistration
         _ = services.RemoveAll<ISecurityPolicySelector>();
         return services.AddSingleton<ISecurityPolicySelector, TSelector>();
     }
+
+    internal static IServiceCollection AddApprovalHandler<THandler>(IServiceCollection services)
+        where THandler : class, IApprovalHandler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        return services.AddSingleton<IApprovalHandler, THandler>();
+    }
+
+    internal static IServiceCollection ReplaceApprovalHandlerDispatcher<TDispatcher>(IServiceCollection services)
+        where TDispatcher : class, IApprovalHandlerDispatcher
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
+        _ = services.RemoveAll<IApprovalHandlerDispatcher>();
+        return services.AddSingleton<IApprovalHandlerDispatcher, TDispatcher>();
+    }
+
+    internal static IServiceCollection ReplaceApprovalBroker<TBroker>(IServiceCollection services)
+        where TBroker : class, IApprovalBroker
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
+        _ = services.RemoveAll<IApprovalBroker>();
+        return services.AddSingleton<IApprovalBroker, TBroker>();
+    }
+
+    internal static IServiceCollection ReplaceApprovalStore<TStore>(IServiceCollection services)
+        where TStore : class, IApprovalStore
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.RemoveAll<IApprovalStore>();
+        return services.AddSingleton<IApprovalStore, TStore>();
+    }
+
+    internal static IServiceCollection ReplaceSecurityGrantStore<TStore>(IServiceCollection services)
+        where TStore : class, ISecurityGrantStore
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.RemoveAll<ISecurityGrantStore>();
+        return services.AddSingleton<ISecurityGrantStore, TStore>();
+    }
+
+    internal static IServiceCollection ReplaceSecurityDecisionStore<TStore>(IServiceCollection services)
+        where TStore : class, ISecurityDecisionStore
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.RemoveAll<ISecurityDecisionStore>();
+        return services.AddSingleton<ISecurityDecisionStore, TStore>();
+    }
+
+    internal static IServiceCollection ReplaceSecurityGrantIssuer<TIssuer>(IServiceCollection services)
+        where TIssuer : class, ISecurityGrantIssuer
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
+        _ = services.RemoveAll<ISecurityGrantIssuer>();
+        return services.AddSingleton<ISecurityGrantIssuer, TIssuer>();
+    }
+
+    internal static IServiceCollection ReplaceSecurityAuditDispatcher<TDispatcher>(IServiceCollection services)
+        where TDispatcher : class, ISecurityAuditDispatcher
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _ = services.AddAgentPermissions(configure: null);
+        _ = services.RemoveAll<ISecurityAuditDispatcher>();
+        return services.AddSingleton<ISecurityAuditDispatcher, TDispatcher>();
+    }
 }

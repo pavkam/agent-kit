@@ -309,7 +309,10 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
             grant, enforcement, intent, TestContext.Current.CancellationToken);
         if (revoke)
         {
-            _ = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+            _ = await store.RevokeAsync(
+                grant.Id,
+                new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked."),
+                TestContext.Current.CancellationToken);
         }
         else
         {
@@ -352,11 +355,14 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
 
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
-        var revoked = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+        var revoked = await store.RevokeAsync(
+            grant.Id,
+            new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked."),
+            TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         legacy.LegacyConsumptionCalls.ShouldBe(1);
-        revoked.ShouldBeFalse();
+        _ = revoked.ShouldBeOfType<GrantRevocationNotFound>();
     }
 
     /// <summary>Verifies revocation is idempotent and prevents every later grant consumption.</summary>
@@ -368,8 +374,9 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         var grant = CreateGrant(fixture.TimeProvider.GetUtcNow());
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
 
-        (await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken)).ShouldBeTrue();
-        (await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken)).ShouldBeTrue();
+        var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Revoked.");
+        _ = (await store.RevokeAsync(grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
+        _ = (await store.RevokeAsync(grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantAlreadyRevoked>();
         var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(GrantConsumptionStatus.Revoked);
@@ -386,11 +393,11 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var reason = new RevocationReason(SecurityRevocationTrigger.Explicit, "Explicit revoke.");
 
-        (await store.RevokeAsync(
+        _ = (await store.RevokeAsync(
             grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
-        (await store.RevokeAsync(
+        _ = (await store.RevokeAsync(
             grant.Id, reason, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantAlreadyRevoked>();
-        (await store.RevokeAsync(
+        _ = (await store.RevokeAsync(
             new GrantId(Guid.Parse("99999999-9999-9999-9999-999999999999")),
             reason,
             TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevocationNotFound>();
@@ -527,7 +534,10 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
                 GrantConsumptionStatus.Consumed, 0, "Legacy consumption was invoked."));
         }
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(false);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+        }
     }
 }

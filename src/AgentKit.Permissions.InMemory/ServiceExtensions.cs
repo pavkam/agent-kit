@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.InMemory;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Registers deterministic process-local security-grant storage.</summary>
 public static class ServiceExtensions
 {
@@ -36,7 +38,13 @@ public static class ServiceExtensions
                     && descriptor.Lifetime == ServiceLifetime.Singleton
                     && descriptor.ImplementationType == typeof(InMemorySecurityGrantStore)))
             {
-                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore, InMemorySecurityGrantStore>());
+                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore>(static provider =>
+                    new InMemorySecurityGrantStore(
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetService<ILogger<InMemorySecurityGrantStore>>(),
+                        provider.GetService<ISecurityAuditDispatcher>(),
+                        provider.GetService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                        provider.GetService<IOptions<AgentPermissionOptions>>())));
             }
 
             services.TryAddSingleton<ISecurityRevocationGeneration, InMemorySecurityRevocationGeneration>();

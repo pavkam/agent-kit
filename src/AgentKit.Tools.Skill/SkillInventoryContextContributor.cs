@@ -40,7 +40,7 @@ public sealed class SkillInventoryContextContributor: IContextContributor
             ContextFreshness.Pinned,
             ContextEvaluationFrequency.OncePerRun,
             mandatory: false,
-            [new TextPart(inventory)],
+            [new TextPart(inventory, TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
         return ValueTask.FromResult(new ContextContribution([candidate], []));
     }

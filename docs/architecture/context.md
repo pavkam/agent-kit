@@ -434,6 +434,26 @@ optional-source failure policies, but retrieved/tool/model-generated content can
 never become host instruction or security authority. Hooks may tighten or omit
 candidates within their typed boundary and are revalidated after each mutation.
 
+## Workspace project instruction discovery
+
+`AgentKit.Context.Project` discovers bounded workspace instruction files through
+the protected `IFileSystem` boundary. Discovery is deterministic and loss-aware:
+
+- Search roots are relative paths configured on
+  `ProjectInstructionOptions.SearchRoots`; the default scans the workspace root
+  (`"."`).
+- Filenames are matched exactly against
+  `ProjectInstructionOptions.InstructionFilenames`; the default set includes
+  `AGENTS.md` and `CLAUDE.md`.
+- Each `(root, filename)` pair is attempted in configuration order. Missing
+  files are skipped without failing optional discovery.
+- Reads require a fresh `SecurityGrant` issued for the exact path; the
+  contributor never bypasses authorization or reads outside the file-system
+  boundary.
+- Each accepted file contributes one instruction-trusted candidate tagged with
+  `ContextTrust.Workspace`, capped by
+  `ProjectInstructionOptions.MaxBytesPerFile`.
+
 ## DI, options, and replacement
 
 ```csharp

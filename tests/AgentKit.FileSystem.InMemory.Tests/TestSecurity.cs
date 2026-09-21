@@ -120,7 +120,11 @@ internal static class TestSecurity
                 receipt));
         }
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+        }
     }
 
     private sealed class AlwaysConsumeGrantStore: ISecurityGrantStore
@@ -151,7 +155,11 @@ internal static class TestSecurity
                     SecurityEnforcementBinding.Fingerprint(enforcement, intent),
                     DateTimeOffset.UnixEpoch)));
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+        }
     }
 }
 

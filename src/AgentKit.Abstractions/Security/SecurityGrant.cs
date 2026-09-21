@@ -150,6 +150,10 @@ public sealed record SecurityGrant
     }
     /// <summary>Gets the captured authorization context evaluated for this grant.</summary><value>The immutable captured selection, or null only for grants issued through the legacy unpinned path.</value>
     public SecurityAuthorizationContext? Authorization { get; }
+
+    /// <summary>Gets the terminal approval response identity when human approval bound this grant.</summary>
+    /// <value>Null when the grant was issued without approval or the approver was not recorded on the grant.</value>
+    public ApprovalResponseId? Approval { get; init; }
     /// <summary>Gets the sole consuming component.</summary>
     /// <exception cref="ArgumentException">The initialized value's <see cref="ComponentId.Value"/> is blank.</exception>
     public ComponentId Audience
@@ -275,7 +279,8 @@ public sealed record SecurityGrant
         && RevocationVersion == other.RevocationVersion
         && NotBefore == other.NotBefore
         && ExpiresAt == other.ExpiresAt
-        && AllowedUses == other.AllowedUses;
+        && AllowedUses == other.AllowedUses
+        && Approval == other.Approval;
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -300,6 +305,7 @@ public sealed record SecurityGrant
         hash.Add(NotBefore);
         hash.Add(ExpiresAt);
         hash.Add(AllowedUses);
+        hash.Add(Approval);
         return hash.ToHashCode();
     }
 }

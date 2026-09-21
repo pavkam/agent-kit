@@ -3,44 +3,51 @@
 
 namespace AgentKit.Permissions;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Coordinates trusted inline approval with exact binding, authorization, storage, and audit checks.</summary>
 public sealed class DefaultApprovalBroker: IApprovalBroker
 {
     private readonly IApprovalStore _store;
-    private readonly IApprovalHandler _handler;
+    private readonly IApprovalHandlerDispatcher _handlerDispatcher;
     private readonly IApprovalResponderAuthorizer _responderAuthorizer;
     private readonly ISecurityAuditDispatcher _auditDispatcher;
     private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
     private readonly TimeProvider _timeProvider;
+    private readonly HeadlessApprovalBehavior _headlessApprovalBehavior;
 
     /// <summary>Initializes the first-party approval coordinator.</summary>
     /// <param name="store">The authoritative approval state store.</param>
-    /// <param name="handler">The trusted host approval channel.</param>
+    /// <param name="handlerDispatcher">The deterministic inline handler dispatcher.</param>
     /// <param name="responderAuthorizer">The mandatory responder authority evaluator.</param>
     /// <param name="auditDispatcher">The required security-audit dispatcher.</param>
     /// <param name="auditRecordIds">The audit-record identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
+    /// <param name="options">The validated permission options.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public DefaultApprovalBroker(
         IApprovalStore store,
-        IApprovalHandler handler,
+        IApprovalHandlerDispatcher handlerDispatcher,
         IApprovalResponderAuthorizer responderAuthorizer,
         ISecurityAuditDispatcher auditDispatcher,
         IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IOptions<AgentPermissionOptions> options)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(handlerDispatcher);
         ArgumentNullException.ThrowIfNull(responderAuthorizer);
         ArgumentNullException.ThrowIfNull(auditDispatcher);
         ArgumentNullException.ThrowIfNull(auditRecordIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
         _store = store;
-        _handler = handler;
+        _handlerDispatcher = handlerDispatcher;
         _responderAuthorizer = responderAuthorizer;
         _auditDispatcher = auditDispatcher;
         _auditRecordIds = auditRecordIds;
         _timeProvider = timeProvider;
+        _headlessApprovalBehavior = options.Value.HeadlessApprovalBehavior;
     }
 
     /// <inheritdoc/>
@@ -96,18 +103,13 @@ public sealed class DefaultApprovalBroker: IApprovalBroker
             return new ApprovalBrokerExpired();
         }
 
-        ApprovalHandlerResult handlerResult;
-        // The handler wait must not outlive request.Binding.ExpiresAt: honouring an approval past
-        // that instant would be incorrect regardless of how long the handler is willing to wait
-        // (the expected production shape is "wait for a human"), and every path below that consumed
-        // the answer past expiry already discards it as ApprovalBrokerExpired. Bounding the wait
-        // itself turns that into a liveness guarantee instead of only a correctness check.
         var remaining = request.Binding.ExpiresAt - _timeProvider.GetUtcNow();
         using var deadline = new CancellationTokenSource(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, _timeProvider);
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        ApprovalHandlerResult handlerResult;
         try
         {
-            handlerResult = await _handler.TryResolveAsync(request, bounded.Token).ConfigureAwait(false);
+            handlerResult = await _handlerDispatcher.TryResolveAsync(request, bounded.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -122,12 +124,60 @@ public sealed class DefaultApprovalBroker: IApprovalBroker
             return new ApprovalBrokerUnavailable("The approval channel failed.");
         }
 
-        if (handlerResult is not ApprovalHandlerResponded responded)
+        return handlerResult switch
         {
-            return new ApprovalBrokerUnavailable("No approval channel resolved the request.");
+            ApprovalHandlerResponded responded =>
+                await CommitResponseAsync(request, responded.Response, cancellationToken).ConfigureAwait(false),
+            _ => _headlessApprovalBehavior == HeadlessApprovalBehavior.Defer && _store.Capabilities.IsDurable
+                ? new ApprovalBrokerDeferred(request)
+                : new ApprovalBrokerUnavailable("No approval channel resolved the request."),
+        };
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<ApprovalResolutionResult> ResolveAsync(
+        ApprovalResponse response,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_store.Capabilities.ProvidesTrustedControlPlane)
+        {
+            return new ApprovalResolutionUnavailable("Approval storage does not provide trusted control-plane access.");
         }
 
-        var response = responded.Response;
+        var retained = await ReadAsync(response.RequestId, cancellationToken).ConfigureAwait(false);
+        if (retained?.Request is not { } request)
+        {
+            return new ApprovalResolutionUnavailable("Approval storage is unavailable.");
+        }
+        if (retained.Response is { } terminal)
+        {
+            return terminal == response
+                ? new ApprovalAlreadyResolved(terminal)
+                : new ApprovalResolutionConflict("The approval request is already resolved with different evidence.");
+        }
+        if (IsExpired(request))
+        {
+            return new ApprovalResolutionExpired();
+        }
+
+        var brokerResult = await CommitResponseAsync(request, response, cancellationToken).ConfigureAwait(false);
+        return brokerResult switch
+        {
+            ApprovalBrokerApproved approved => new ApprovalResolved(approved.Response),
+            ApprovalBrokerDenied denied => new ApprovalResolved(denied.Response),
+            ApprovalBrokerExpired => new ApprovalResolutionExpired(),
+            ApprovalBrokerUnavailable unavailable => new ApprovalResolutionUnavailable(unavailable.SafeReason),
+            _ => new ApprovalResolutionUnavailable("The approval response could not be committed."),
+        };
+    }
+
+    private async ValueTask<ApprovalBrokerResult> CommitResponseAsync(
+        ApprovalRequest request,
+        ApprovalResponse response,
+        CancellationToken cancellationToken)
+    {
         if (IsExpired(request) || response.RespondedAt >= request.Binding.ExpiresAt)
         {
             return new ApprovalBrokerExpired();
@@ -179,7 +229,7 @@ public sealed class DefaultApprovalBroker: IApprovalBroker
             return new ApprovalBrokerUnavailable("The approval response could not be committed.");
         }
 
-        retained = await ReadAsync(request.Id, cancellationToken).ConfigureAwait(false);
+        var retained = await ReadAsync(request.Id, cancellationToken).ConfigureAwait(false);
         return retained?.Response is { } terminal
             ? await AuditAndReturnTerminalAsync(request, terminal, cancellationToken).ConfigureAwait(false)
             : new ApprovalBrokerUnavailable("The retained terminal approval could not be read.");

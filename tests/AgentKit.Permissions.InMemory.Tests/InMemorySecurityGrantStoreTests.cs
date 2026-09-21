@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging;
 public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConformanceTests<InMemorySecurityGrantStoreConformanceFixture>
 {
     private static readonly DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
+    private static readonly RevocationReason _revocation =
+        new(SecurityRevocationTrigger.Explicit, "Revoked.");
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenEvidenceMatches_ConsumesOneUse()
     {
@@ -155,7 +157,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var intent = CreateIntent();
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var consumed = await store.ValidateAndConsumeAsync(grant, enforcement, intent, TestContext.Current.CancellationToken);
-        _ = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+        _ = await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken);
         var replay = await store.ValidateAndConsumeAsync(grant, enforcement, intent, TestContext.Current.CancellationToken);
         var freshIntent = await store.ValidateAndConsumeAsync(grant, enforcement, CreateIntent(2), TestContext.Current.CancellationToken);
         replay.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
@@ -531,13 +533,14 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
     }
 
     [Fact]
-    public async Task RevokeAsync_WhenGrantWasNeverRegistered_ReturnsFalse()
+    public async Task RevokeAsync_WhenGrantWasNeverRegistered_ReturnsNotFound()
     {
         var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
 
-        var revoked = await store.RevokeAsync(new GrantId(Guid.Parse("50000000-0000-0000-0000-00000000000f")), TestContext.Current.CancellationToken);
-
-        revoked.ShouldBeFalse();
+        _ = (await store.RevokeAsync(
+            new GrantId(Guid.Parse("50000000-0000-0000-0000-00000000000f")),
+            _revocation,
+            TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevocationNotFound>();
     }
 
     [Fact]
@@ -546,9 +549,8 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
         var grant = CreateGrant();
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        var revoked = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+        _ = (await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
         var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
-        revoked.ShouldBeTrue();
         result.Status.ShouldBe(GrantConsumptionStatus.Revoked);
     }
 
@@ -558,7 +560,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
         var grant = CreateGrant();
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        _ = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+        _ = await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken);
         var results = await ConsumeConcurrentlyAsync(store, grant, CreateEnforcement(grant));
         results.ShouldAllBe(static result => result.Status == GrantConsumptionStatus.Revoked);
         results.ShouldAllBe(static result => result.RemainingUses == 1);
@@ -647,7 +649,11 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
             return ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Legacy consumption was invoked."));
         }
 
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
+        }
     }
 
     /// <summary>Creates isolated composition for each inherited contract case.</summary>

@@ -31,6 +31,7 @@
     <Project Path="src/AgentKit.Simple/AgentKit.Simple.csproj"/>
     <Project Path="src/AgentKit.Context/AgentKit.Context.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
+    <Project Path="src/AgentKit.Context.Project/AgentKit.Context.Project.csproj"/>
     <Project Path="src/AgentKit.Loop/AgentKit.Loop.csproj"/>
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
     <Project Path="src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
@@ -110,6 +111,7 @@
     <Project Path="tests/AgentKit.Simple.Tests/AgentKit.Simple.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Tests/AgentKit.Context.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Context.Project.Tests/AgentKit.Context.Project.Tests.csproj"/>
     <Project Path="tests/AgentKit.Loop.Tests/AgentKit.Loop.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.InMemory.Tests/AgentKit.Budgets.InMemory.Tests.csproj"/>

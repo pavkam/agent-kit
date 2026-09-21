@@ -15,7 +15,11 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
     internal Action? OnConsume { get; set; }
 
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+    public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+    }
 
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,

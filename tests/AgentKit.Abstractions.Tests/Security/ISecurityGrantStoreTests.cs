@@ -49,6 +49,6 @@ public sealed class ISecurityGrantStoreTests
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }
