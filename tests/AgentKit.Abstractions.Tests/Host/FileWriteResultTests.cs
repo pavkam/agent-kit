@@ -9,7 +9,8 @@ using AgentKit;
 public sealed class LegacyFileWriteResultTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void FileWriteResult_Hierarchy_EveryLeafDerivesFromFileWriteResult()
     {
         LegacyFileWriteResult written = new LegacyFileWritten(1);

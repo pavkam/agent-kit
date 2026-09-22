@@ -9,7 +9,8 @@ using Microsoft.Extensions.Options;
 public sealed class ProjectInstructionContributorTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ContributeAsync_WhenAgentsFileExists_ReturnsInstructionCandidate()
     {
         var fileSystem = new StubFileSystem();

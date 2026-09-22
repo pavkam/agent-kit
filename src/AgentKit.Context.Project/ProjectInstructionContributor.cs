@@ -56,7 +56,8 @@ public sealed class ProjectInstructionContributor: IContextContributor
     }
 
     /// <inheritdoc/>
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async ValueTask<ContextContribution> ContributeAsync(
         ContextContributionRequest request,
         CancellationToken cancellationToken = default)

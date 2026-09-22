@@ -63,5 +63,14 @@ public static class ServiceExtensions
             services.TryAddSingleton<IWorkspacePatchApplier>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
             return services;
         }
+
+        /// <summary>Registers keyed in-memory host capabilities under <paramref name="key"/>.</summary>
+        /// <param name="key">The profile key for the virtual volume.</param>
+        /// <param name="configure">Optional configuration for the profile options.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        public IServiceCollection AddInMemoryFileSystem(
+            FileSystemProfileKey key,
+            Action<InMemoryFileSystemOptions>? configure = null) =>
+            InMemoryFileSystemRegistration.Add(services, key, configure);
     }
 }

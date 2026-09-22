@@ -9,7 +9,8 @@ using AgentKit;
 public sealed class LegacyFileReadRequestTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Constructor_RoundTripsPath()
     {
         var path = new FileSystemPath("a.txt");
@@ -18,7 +19,8 @@ public sealed class LegacyFileReadRequestTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Equality_WhenSamePath_InstancesAreEqual()
     {
         var path = new FileSystemPath("a.txt");
@@ -26,7 +28,8 @@ public sealed class LegacyFileReadRequestTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void With_WhenApplied_ProducesEqualCopy()
     {
         var original = new LegacyFileReadRequest(new FileSystemPath("a.txt"), SecurityTestData.Grant());

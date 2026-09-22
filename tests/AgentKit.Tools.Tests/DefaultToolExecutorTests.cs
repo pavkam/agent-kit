@@ -9,6 +9,7 @@ using System.Text.Json;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Verifies <see cref="DefaultToolExecutor"/> sequential pipeline behavior.</summary>
 public sealed class DefaultToolExecutorTests
@@ -106,13 +107,21 @@ public sealed class DefaultToolExecutorTests
             TimeProvider.System,
             NullLogger<BoundedToolSchemaEngine>.Instance,
             NullLogger<CompiledToolSchema>.Instance);
+        var runtimeOptions = Options.Create(new ToolRuntimeOptions());
+        var normalizer = new ToolResultNormalizer();
+        var scheduler = new BarrierSegmentToolScheduler(
+            normalizer,
+            runtimeOptions,
+            TimeProvider.System,
+            NullLogger<BarrierSegmentToolScheduler>.Instance);
         return new DefaultToolExecutor(
             new ToolCallResolver(TimeProvider.System, NullLogger<ToolCallResolver>.Instance),
             new ToolArgumentValidator(schemaEngine, TimeProvider.System),
             new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
-            new ToolResultNormalizer(),
+            scheduler,
             limits,
+            runtimeOptions,
             TimeProvider.System,
             NullLogger<DefaultToolExecutor>.Instance);
     }

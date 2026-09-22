@@ -6,13 +6,16 @@ namespace AgentKit.Tools;
 using System.Collections.Immutable;
 using System.Diagnostics;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>
-/// Runs the spec-shaped sequential tool pipeline: resolve, validate, authorize, invoke, normalize, and record one
+/// Runs the spec-shaped tool pipeline: resolve, validate, authorize, schedule, invoke with retries, and normalize one
 /// terminal <see cref="ToolCallResult"/> per call.
 /// </summary>
 /// <remarks>
-/// Scheduling, retries, durable recording, hooks, and oversized-result spill belong to later workstream chunks; this
-/// executor executes calls sequentially and does not invoke <see cref="IToolResultProjector"/>.
+/// Durable recording, result projection, hooks, and artifact spill for oversized results belong to later workstream
+/// chunks; this executor preflights every call, executes prepared entries through <see cref="IToolScheduler"/>, and
+/// does not invoke <see cref="IToolResultProjector"/>.
 /// </remarks>
 public sealed class DefaultToolExecutor: IToolExecutor
 {
@@ -20,8 +23,9 @@ public sealed class DefaultToolExecutor: IToolExecutor
     private readonly IToolArgumentValidator _argumentValidator;
     private readonly ISecurityAuthoritySelector _securityAuthorities;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
-    private readonly IToolResultNormalizer _resultNormalizer;
+    private readonly IToolScheduler _scheduler;
     private readonly ToolSchemaLimits _argumentValidationLimits;
+    private readonly ToolRuntimeOptions _runtimeOptions;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<DefaultToolExecutor> _logger;
 
@@ -30,8 +34,9 @@ public sealed class DefaultToolExecutor: IToolExecutor
     /// <param name="argumentValidator">The argument validator applied after resolution.</param>
     /// <param name="securityAuthorities">The selector that activates the security authority for each call.</param>
     /// <param name="securityRequestIds">The identifier generator for invocation authorization requests.</param>
-    /// <param name="resultNormalizer">The normalizer that maps raw invocation evidence into terminal content.</param>
+    /// <param name="scheduler">The scheduler that invokes prepared entries under barrier-segment policy.</param>
     /// <param name="argumentValidationLimits">The bounds applied to argument validation for each call.</param>
+    /// <param name="runtimeOptions">The configured tool runtime limits and scheduling defaults.</param>
     /// <param name="timeProvider">The replaceable clock used for timestamps.</param>
     /// <param name="logger">The type-specific structured logger.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
@@ -40,8 +45,9 @@ public sealed class DefaultToolExecutor: IToolExecutor
         IToolArgumentValidator argumentValidator,
         ISecurityAuthoritySelector securityAuthorities,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
-        IToolResultNormalizer resultNormalizer,
+        IToolScheduler scheduler,
         ToolSchemaLimits argumentValidationLimits,
+        IOptions<ToolRuntimeOptions> runtimeOptions,
         TimeProvider timeProvider,
         ILogger<DefaultToolExecutor> logger)
     {
@@ -49,16 +55,18 @@ public sealed class DefaultToolExecutor: IToolExecutor
         ArgumentNullException.ThrowIfNull(argumentValidator);
         ArgumentNullException.ThrowIfNull(securityAuthorities);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
-        ArgumentNullException.ThrowIfNull(resultNormalizer);
+        ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(argumentValidationLimits);
+        ArgumentNullException.ThrowIfNull(runtimeOptions);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         _resolver = resolver;
         _argumentValidator = argumentValidator;
         _securityAuthorities = securityAuthorities;
         _securityRequestIds = securityRequestIds;
-        _resultNormalizer = resultNormalizer;
+        _scheduler = scheduler;
         _argumentValidationLimits = argumentValidationLimits;
+        _runtimeOptions = runtimeOptions.Value;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -79,18 +87,65 @@ public sealed class DefaultToolExecutor: IToolExecutor
             return new ToolBatchResult([]);
         }
 
-        var results = ImmutableArray.CreateBuilder<ToolCallResult>(calls.Length);
-        foreach (var call in calls)
+        var orderedResults = new ToolCallResult?[calls.Length];
+        var batchEntries = ImmutableArray.CreateBuilder<ToolBatchEntry>(calls.Length);
+        var resultIndexByCallId = new Dictionary<ToolCallId, int>(calls.Length);
+
+        for (var index = 0; index < calls.Length; index++)
         {
-            ArgumentNullException.ThrowIfNull(call);
+            var request = calls[index];
+            ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
-            results.Add(await ExecuteSingleAsync(capture, call, cancellationToken).ConfigureAwait(false));
+
+            var preflight = await PreflightAsync(capture, request, cancellationToken).ConfigureAwait(false);
+            if (preflight.EarlyResult is { } early)
+            {
+                orderedResults[index] = early;
+                continue;
+            }
+
+            batchEntries.Add(preflight.Entry!);
+            resultIndexByCallId[preflight.Entry!.Invocation.CallId] = index;
         }
 
-        return new ToolBatchResult(results.ToImmutable());
+        if (batchEntries.Count > 0)
+        {
+            var anchor = calls[0]!;
+            var deadline = _timeProvider.GetUtcNow().Add(_runtimeOptions.InvocationTimeout);
+            var batch = new ToolBatch(
+                anchor.AgentId,
+                anchor.SessionId,
+                anchor.RunId,
+                batchEntries.ToImmutable(),
+                _runtimeOptions.BatchFailureMode,
+                _runtimeOptions.UnknownSchedulingMode,
+                deadline);
+
+            var scheduled = await _scheduler.ExecuteAsync(batch, cancellationToken).ConfigureAwait(false);
+            foreach (var result in scheduled.Results)
+            {
+                if (resultIndexByCallId.TryGetValue(result.CallId, out var resultIndex))
+                {
+                    orderedResults[resultIndex] = result;
+                }
+            }
+        }
+
+        var builder = ImmutableArray.CreateBuilder<ToolCallResult>(calls.Length);
+        for (var index = 0; index < orderedResults.Length; index++)
+        {
+            if (orderedResults[index] is not { } result)
+            {
+                throw new InvalidOperationException("Every tool call must produce exactly one terminal result.");
+            }
+
+            builder.Add(result);
+        }
+
+        return new ToolBatchResult(builder.ToImmutable());
     }
 
-    private async Task<ToolCallResult> ExecuteSingleAsync(
+    private async Task<PreflightOutcome> PreflightAsync(
         IToolCatalogCapture capture,
         ToolCallRequest request,
         CancellationToken cancellationToken)
@@ -99,24 +154,28 @@ public sealed class DefaultToolExecutor: IToolExecutor
         var resolution = await _resolver.ResolveAsync(capture, request, cancellationToken).ConfigureAwait(false);
         if (resolution is ToolCallUnresolved unresolved)
         {
-            return ToolCallResultComposer.PreInvocation(
-                request,
-                unresolved.Status,
-                unresolved.SafeReason,
-                toolId: null,
-                toolVersion: null,
-                effects: null,
-                ToolRuntimeNormalizationDefaults.RejectionSnapshot,
-                completedAt);
+            return new PreflightOutcome(
+                ToolCallResultComposer.PreInvocation(
+                    request,
+                    unresolved.Status,
+                    unresolved.SafeReason,
+                    toolId: null,
+                    toolVersion: null,
+                    effects: null,
+                    ToolRuntimeNormalizationDefaults.RejectionSnapshot,
+                    completedAt),
+                null);
         }
 
         var resolved = (ToolCallResolved) resolution;
-        await using var lease = resolved.Lease;
-        var validation = await _argumentValidator.ValidateAsync(resolved.Call, _argumentValidationLimits, cancellationToken)
+        var lease = resolved.Lease;
+        var validation = await _argumentValidator
+            .ValidateAsync(resolved.Call, _argumentValidationLimits, cancellationToken)
             .ConfigureAwait(false);
         if (validation is ToolCallValidationFailed failed)
         {
-            return ToolCallResultComposer.FromValidationFailure(failed, _timeProvider.GetUtcNow());
+            await lease.DisposeAsync().ConfigureAwait(false);
+            return new PreflightOutcome(ToolCallResultComposer.FromValidationFailure(failed, _timeProvider.GetUtcNow()), null);
         }
 
         var validated = ((ToolCallValidated) validation).Call;
@@ -132,32 +191,38 @@ public sealed class DefaultToolExecutor: IToolExecutor
         catch (Exception exception)
         {
             ToolLog.Failed(_logger, request.CallId, validated.Tool.Id, exception.GetType().Name);
-            return ToolCallResultComposer.PreInvocation(
-                request,
-                ToolTerminalStatus.InvocationFailed,
-                "The tool could not be authorized.",
-                validated.Tool.Id,
-                validated.ToolVersion,
-                validated.Tool.Effects,
-                ToolRuntimeNormalizationDefaults.ForResolvedTool(validated.ExecutionPolicy),
-                _timeProvider.GetUtcNow());
+            await lease.DisposeAsync().ConfigureAwait(false);
+            return new PreflightOutcome(
+                ToolCallResultComposer.PreInvocation(
+                    request,
+                    ToolTerminalStatus.InvocationFailed,
+                    "The tool could not be authorized.",
+                    validated.Tool.Id,
+                    validated.ToolVersion,
+                    validated.Tool.Effects,
+                    ToolRuntimeNormalizationDefaults.ForResolvedTool(validated.ExecutionPolicy),
+                    _timeProvider.GetUtcNow()),
+                null);
         }
 
         if (invocationGrant is null)
         {
-            return ToolCallResultComposer.PreInvocation(
-                request,
-                ToolTerminalStatus.Denied,
-                "The tool invocation was denied.",
-                validated.Tool.Id,
-                validated.ToolVersion,
-                validated.Tool.Effects,
-                ToolRuntimeNormalizationDefaults.ForResolvedTool(validated.ExecutionPolicy),
-                _timeProvider.GetUtcNow());
+            await lease.DisposeAsync().ConfigureAwait(false);
+            return new PreflightOutcome(
+                ToolCallResultComposer.PreInvocation(
+                    request,
+                    ToolTerminalStatus.Denied,
+                    "The tool invocation was denied.",
+                    validated.Tool.Id,
+                    validated.ToolVersion,
+                    validated.Tool.Effects,
+                    ToolRuntimeNormalizationDefaults.ForResolvedTool(validated.ExecutionPolicy),
+                    _timeProvider.GetUtcNow()),
+                null);
         }
 
         var invocationStartedAt = _timeProvider.GetUtcNow();
-        var deadline = invocationStartedAt.AddMinutes(1);
+        var deadline = invocationStartedAt.Add(_runtimeOptions.InvocationTimeout);
         var context = new ToolInvocationContext(
             validated.AgentId,
             validated.SessionId,
@@ -175,41 +240,13 @@ public sealed class DefaultToolExecutor: IToolExecutor
             deadline,
             NoopToolProgressReporter.Instance);
 
-        ToolInvocationResult invocation;
-        try
-        {
-            invocation = await lease.Invoker.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            ToolLog.Failed(_logger, request.CallId, validated.Tool.Id, exception.GetType().Name);
-            invocation = new ToolInvocationResult(
-                new ToolCallOutcome(
-                    ToolCallOutcomeKind.Failed,
-                    ToolTerminalStatus.InvocationFailed,
-                    SideEffectCertainty.DefinitelyNotPerformed,
-                    retryable: false,
-                    "The tool invoker faulted before producing a result.",
-                    ExtensionData.Empty),
-                []);
-        }
+        var entry = new ToolBatchEntry(
+            context,
+            lease,
+            validated.Tool.ExecutionHints,
+            validated.SourceOrdinal);
 
-        var snapshot = ToolRuntimeNormalizationDefaults.ForResolvedTool(validated.ExecutionPolicy);
-        var normalization = await _resultNormalizer
-            .NormalizeAsync(validated, invocation, snapshot, cancellationToken)
-            .ConfigureAwait(false);
-        return ToolCallResultComposer.FromInvocation(
-            request,
-            validated,
-            invocation,
-            normalization,
-            invocationGrant,
-            invocationStartedAt,
-            _timeProvider.GetUtcNow());
+        return new PreflightOutcome(null, entry);
     }
 
     private async Task<SecurityGrant?> AuthorizeInvocationAsync(ValidatedToolCall call, CancellationToken cancellationToken)
@@ -232,7 +269,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
             effect: ToolInvocationSecurityBinding.ToSecurityEffect(effect),
             resources: [ToolInvocationSecurityBinding.Resource(call.Tool.Id, call.ToolVersion)],
             inputFingerprint: ToolInvocationSecurityBinding.InvocationFingerprint(call.CallId, call.InputFingerprint),
-            deadline: _timeProvider.GetUtcNow().AddMinutes(1));
+            deadline: _timeProvider.GetUtcNow().Add(_runtimeOptions.InvocationTimeout));
 
         var decision = await selected.Authority.AuthorizeAsync(request, cancellationToken).ConfigureAwait(false);
         return decision switch
@@ -265,4 +302,6 @@ public sealed class DefaultToolExecutor: IToolExecutor
                 grant.ExpiresAt,
                 grant.AllowedUses);
     }
+
+    private sealed record PreflightOutcome(ToolCallResult? EarlyResult, ToolBatchEntry? Entry);
 }

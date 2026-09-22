@@ -19,8 +19,8 @@ Owning documents: [Tools](../architecture/tools.md),
 - [x] WS4-C3 catalog capture coordinator
 - [x] WS4-C4 spec-shaped `IToolInvoker` with `ITool` bridge
 - [x] WS4-C5a `DefaultToolExecutor` single-call pipeline
-- [ ] WS4-C5b scheduler
-- [ ] WS4-C5c retry policy
+- [x] WS4-C5b scheduler
+- [x] WS4-C5c retry policy
 - [ ] WS4-C5d oversized result spill
 - [ ] WS4-C6 hooks move into the executor; `IToolResultHook`
 - [ ] WS4-C7a `AgentDefinition.Toolsets` and executor key

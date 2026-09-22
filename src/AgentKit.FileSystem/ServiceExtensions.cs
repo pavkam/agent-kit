@@ -83,5 +83,18 @@ public static class ServiceExtensions
                 provider.GetRequiredService<SandboxedFileSystem>());
             return services;
         }
+
+        /// <summary>
+        /// Registers operating-system file capabilities under <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The profile key selecting this virtual file system.</param>
+        /// <param name="configure">Configures roots, bounds, and policies for the profile.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="configure"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Configuration does not register any roots.</exception>
+        public IServiceCollection AddOperatingSystemFileSystem(
+            FileSystemProfileKey key,
+            Action<OperatingSystemFileSystemOptions> configure) =>
+            OperatingSystemFileSystemRegistration.Add(services, key, configure);
     }
 }

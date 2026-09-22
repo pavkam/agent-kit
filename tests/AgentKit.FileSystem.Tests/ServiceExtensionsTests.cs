@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public sealed class ServiceExtensionsTests
 {
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     private static readonly Type[] _narrowCapabilityTypes =
     [
         typeof(ILegacyDirectoryReader),
@@ -19,7 +19,6 @@ public sealed class ServiceExtensionsTests
     ];
 
     /// <summary>Gets every narrow capability in both registration orders.</summary>
-    [Obsolete]
     public static TheoryData<Type, bool> NarrowCapabilityReplacementCases { get; } = new()
     {
         { typeof(ILegacyDirectoryReader), false },
@@ -37,7 +36,7 @@ public sealed class ServiceExtensionsTests
     };
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenCalled_RegistersFileSystemWithConfiguredRoot()
     {
         var services = new ServiceCollection();
@@ -58,7 +57,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenCalledTwice_KeepsFirstServiceRegistration()
     {
         var services = new ServiceCollection();
@@ -73,7 +72,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public async Task AddSandboxedFileSystem_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
     {
         var root = Path.Combine(Path.GetTempPath(), "agentkit-fs-di-" + Guid.NewGuid().ToString("N"));
@@ -106,7 +105,7 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenFileSystemIsReplaced_PreservesReplacementAndDefaultNarrowCapabilities(
         bool replaceAfterRegistration)
     {
@@ -139,8 +138,7 @@ public sealed class ServiceExtensionsTests
 
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
-    [Obsolete]
-    [Obsolete]
+    [Obsolete("Legacy AddSandboxedFileSystem narrow-capability replacement.")]
     public void AddSandboxedFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)
@@ -172,7 +170,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenRootDirectoryBlank_ThrowsArgumentException()
     {
         var services = new ServiceCollection();
@@ -182,7 +180,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenConfigureProvided_AppliesOptions()
     {
         var services = new ServiceCollection();
@@ -196,7 +194,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenMaximumReadBytesIsNotPositive_FailsValidationOnAccess()
     {
         var services = new ServiceCollection();
@@ -210,7 +208,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenSearchDurationIsNotPositive_FailsValidationOnAccess()
     {
         var services = new ServiceCollection();
@@ -226,7 +224,7 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    [Obsolete]
+    [Obsolete("Legacy IFileSystem surface.")]
     public void AddSandboxedFileSystem_WhenPatchBoundaryIsNotPositive_FailsValidationOnAccess(bool entryBoundary)
     {
         var services = new ServiceCollection();

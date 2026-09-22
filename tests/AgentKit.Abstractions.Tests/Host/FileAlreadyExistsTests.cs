@@ -9,7 +9,8 @@ using AgentKit;
 public sealed class FileAlreadyExistsTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void FileAlreadyExists_Constructor_RoundTripsPath()
     {
         var path = new FileSystemPath("a.txt");
@@ -18,7 +19,8 @@ public sealed class FileAlreadyExistsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void FileAlreadyExists_With_WhenApplied_ProducesEqualCopy()
     {
         var original = new LegacyFileAlreadyExists(new FileSystemPath("a.txt"));

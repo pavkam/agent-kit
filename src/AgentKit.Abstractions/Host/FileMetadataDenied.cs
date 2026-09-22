@@ -4,4 +4,19 @@
 namespace AgentKit;
 
 /// <summary>Metadata observation was denied before host access.</summary>
-public sealed record FileMetadataDenied: FileMetadataResult;
+public sealed record FileMetadataDenied: FileMetadataResult
+{
+    /// <summary>Initializes a new instance of the <see cref="FileMetadataDenied"/> record.</summary>
+    /// <param name="safeMessage">A human-readable, non-sensitive explanation.</param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="safeMessage"/> is null, empty, or consists only of whitespace.
+    /// </exception>
+    public FileMetadataDenied(string safeMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeMessage);
+        SafeMessage = safeMessage;
+    }
+
+    /// <summary>Gets a human-readable, non-sensitive explanation.</summary>
+    public string SafeMessage { get; init; }
+}

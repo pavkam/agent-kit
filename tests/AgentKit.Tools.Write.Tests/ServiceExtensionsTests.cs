@@ -16,7 +16,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddWriteTool_WhenCalled_RegistersWriteFileTool()
     {
         var services = new ServiceCollection();
@@ -30,7 +31,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddWriteTool_WhenCalledTwice_RegistersWriteFileToolOnce()
     {
         var services = new ServiceCollection();
@@ -45,7 +47,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddWriteTool_WhenAnotherToolIsRegistered_PreservesBothRegistrations()
     {
         var services = new ServiceCollection();
@@ -62,7 +65,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddWriteTool_WhenComposedWithAgentTools_ResolvesThroughCatalog()
     {
         var services = new ServiceCollection();

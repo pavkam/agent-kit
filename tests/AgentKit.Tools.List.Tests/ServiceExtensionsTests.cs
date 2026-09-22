@@ -8,7 +8,8 @@ using AgentKit.TestSupport;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddListTool_WhenCalledTwice_RegistersOneTool()
     {
         var services = new ServiceCollection();

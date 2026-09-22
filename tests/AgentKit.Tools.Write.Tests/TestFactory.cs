@@ -8,7 +8,8 @@ using AgentKit.TestSupport;
 /// <summary>Provides construction helpers for write-file tool tests.</summary>
 internal static class TestFactory
 {
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public static WriteFileTool Tool(IFileSystem? fileSystem = null, ISecurityAuthority? authority = null) => new(
         fileSystem ?? new FakeFileSystem(),
         new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),

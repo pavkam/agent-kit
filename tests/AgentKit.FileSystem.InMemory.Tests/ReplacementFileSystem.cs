@@ -4,19 +4,22 @@
 namespace AgentKit.FileSystem.InMemory.Tests;
 
 /// <summary>Provides a distinguishable replacement for registration-order tests without performing host effects.</summary>
-[Obsolete]
+[Obsolete("Legacy host surface.")]
+
 internal sealed class ReplacementFileSystem: IFileSystem
 {
     /// <inheritdoc/>
     public ComponentId SecurityAudience { get; } = new("replacement-file-system");
 
     /// <inheritdoc/>
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     /// <inheritdoc/>
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

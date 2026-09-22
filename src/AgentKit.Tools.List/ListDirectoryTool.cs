@@ -84,7 +84,8 @@ public sealed class ListDirectoryTool: ITool
         ExtensionData.Empty);
 
     /// <inheritdoc/>
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)

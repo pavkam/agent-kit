@@ -4,7 +4,8 @@
 namespace AgentKit.FileSystem.Tests;
 
 /// <summary>Provides distinguishable replacements for each narrow filesystem capability without performing host effects.</summary>
-[Obsolete]
+[Obsolete("Legacy host surface.")]
+
 internal sealed class ReplacementFileCapabilities:
     ILegacyDirectoryReader,
     IFileGlobber,

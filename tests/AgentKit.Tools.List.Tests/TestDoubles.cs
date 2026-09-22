@@ -3,7 +3,8 @@
 
 namespace AgentKit.Tools.List.Tests;
 
-[Obsolete]
+[Obsolete("Legacy host surface.")]
+
 internal sealed class FakeDirectoryReader: ILegacyDirectoryReader
 {
     public ComponentId SecurityAudience { get; } = new("test.directory");

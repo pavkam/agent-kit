@@ -323,7 +323,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task AddAgent_WhenBuilt_HostsBothAgentsAndDrivesEachThroughItsOwnSessions()
     {
         var handler = new StubOpenAIHandler("reply");
@@ -539,7 +540,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task Build_WhenServicesRegisterATool_AdvertisesItToTheModelAndInTheDefinition()
     {
         var handler = new StubOpenAIHandler("done");
@@ -557,7 +559,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task Build_WhenTheAllowListExcludesARegisteredTool_DoesNotAdvertiseItToTheModelOrTheDefinition()
     {
         var handler = new StubOpenAIHandler("done");
@@ -582,7 +585,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task Build_WhenABeforeToolInvocationHookVetoesACall_TheModelSeesARejectedResultAndTheToolNeverRuns()
     {
         var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"secret.txt\"}", "understood");
@@ -682,7 +686,8 @@ public sealed class AgentEngineBuilderExtensionsTests
         Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithBudget(static o => o.MaxCostUsd = 0m)).ParamName.ShouldBe("configure");
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WithBudget_WhenTheToolCallBudgetIsExhausted_TheTurnFailsNamingTheDimensionAndTheToolIsNotInvoked()
     {
         var handler = new StubOpenAIHandler(
@@ -713,7 +718,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WithBudget_WhenTheTurnBudgetIsExhausted_AskAsyncThrowsNamingTheDimension()
     {
         var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"a.txt\"}", "done");
@@ -836,10 +842,14 @@ public sealed class AgentEngineBuilderExtensionsTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("relative/dir")]
+    [Obsolete("Legacy host surface.")]
+
     public void UseWorkspace_WhenRootIsBlankOrRelative_ThrowsArgumentException(string? root) =>
         Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseWorkspace(root!)).ParamName.ShouldBe("rootDirectory");
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
+
     public async Task UseWorkspace_WhenTheModelReadsAFile_ReturnsItsContentThroughTheSandboxedTool()
     {
         using var directory = new TempDirectory();
@@ -864,6 +874,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
+
     public async Task UseWorkspace_WhenTheModelReadsOutsideTheRoot_TheSandboxRefuses()
     {
         using var directory = new TempDirectory();
@@ -882,6 +894,8 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
+
     public async Task Build_WhenAnAdditionalPolicyDeniesWrites_DenyWinsOverTheLocalAllowAllPolicy()
     {
         // The permissions guide's read-only policy: deny overrides allow, so the write is refused before any effect.

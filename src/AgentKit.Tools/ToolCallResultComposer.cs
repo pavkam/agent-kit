@@ -8,6 +8,124 @@ using System.Collections.Immutable;
 /// <summary>Constructs authoritative <see cref="ToolCallResult"/> records for the spec-shaped executor pipeline.</summary>
 internal static class ToolCallResultComposer
 {
+    private static readonly ToolExecutionPolicyReference _scheduledExecutionPolicy = new(
+        new ToolExecutionPolicyKey("agentkit.tools.scheduled"),
+        new ToolExecutionPolicyVersion(1));
+
+    private static readonly ToolCatalogVersion _scheduledCatalogVersion = new("agentkit.tools.scheduled");
+
+    /// <summary>Builds a terminal record for one prepared batch entry after scheduling and invocation.</summary>
+    /// <param name="entry">The prepared batch entry that was invoked.</param>
+    /// <param name="invocation">The raw invoker evidence.</param>
+    /// <param name="normalization">The normalized terminal content decision.</param>
+    /// <param name="completedAt">The terminal timestamp.</param>
+    /// <returns>The authoritative terminal record.</returns>
+    internal static ToolCallResult FromScheduledInvocation(
+        ToolBatchEntry entry,
+        ToolInvocationResult invocation,
+        ToolResultNormalizationResult normalization,
+        DateTimeOffset completedAt)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(invocation);
+        ArgumentNullException.ThrowIfNull(normalization);
+        var context = entry.Invocation;
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Scheduled invocations require authorization evidence on the grant.");
+        var call = new ValidatedToolCall(
+            context.AgentId,
+            context.SessionId,
+            context.RunId,
+            context.TurnId,
+            context.OperationId,
+            context.CallId,
+            authorization,
+            _scheduledCatalogVersion,
+            new ToolAlias(context.Tool.Name),
+            context.Tool,
+            context.ToolVersion,
+            _scheduledExecutionPolicy,
+            entry.SourceOrdinal,
+            context.Arguments,
+            ToolInvocationSecurityBinding.ValidatedArgumentsFingerprint(context.Arguments),
+            context.RequestedAt,
+            context.InvocationStartedAt);
+        var request = ToScheduledRequest(context, entry.SourceOrdinal, authorization);
+        return FromInvocation(
+            request,
+            call,
+            invocation,
+            normalization,
+            context.InvocationGrant,
+            context.InvocationStartedAt,
+            completedAt);
+    }
+
+    /// <summary>Builds a pre-invocation rejection for one prepared entry rejected during scheduling.</summary>
+    internal static ToolCallResult ScheduledPreInvocation(
+        ToolBatchEntry entry,
+        ToolTerminalStatus status,
+        string safeReason,
+        DateTimeOffset completedAt)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var context = entry.Invocation;
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Scheduled invocations require authorization evidence on the grant.");
+        var request = ToScheduledRequest(context, entry.SourceOrdinal, authorization);
+        return PreInvocation(
+            request,
+            status,
+            safeReason,
+            context.Tool.Id,
+            context.ToolVersion,
+            context.Tool.Effects,
+            ToolRuntimeNormalizationDefaults.ForResolvedTool(_scheduledExecutionPolicy),
+            completedAt);
+    }
+
+    /// <summary>Builds an interrupted terminal record for one prepared entry that never settled after cancellation.</summary>
+    internal static ToolCallResult ScheduledInterrupted(ToolBatchEntry entry, DateTimeOffset completedAt)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var invocation = new ToolInvocationResult(
+            new ToolCallOutcome(
+                ToolCallOutcomeKind.Cancelled,
+                ToolTerminalStatus.Interrupted,
+                SideEffectCertainty.Unknown,
+                retryable: false,
+                "The tool invocation was interrupted.",
+                ExtensionData.Empty),
+            []);
+        return FromScheduledInvocation(
+            entry,
+            invocation,
+            new ToolResultNormalized([], new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty)),
+            completedAt);
+    }
+
+    private static ToolCallRequest ToScheduledRequest(
+        ToolInvocationContext context,
+        int sourceOrdinal,
+        SecurityAuthorizationContext authorization)
+    {
+        var rawText = context.Arguments.GetRawText();
+        var rawBytes = System.Text.Encoding.UTF8.GetBytes(rawText);
+        return new ToolCallRequest(
+            context.AgentId,
+            context.SessionId,
+            context.RunId,
+            context.TurnId,
+            context.OperationId,
+            context.CallId,
+            authorization,
+            _scheduledCatalogVersion,
+            sourceOrdinal,
+            new ToolAlias(context.Tool.Name),
+            [.. rawBytes],
+            context.RequestedAt);
+    }
+
     internal static ToolCallResult PreInvocation(
         ToolCallRequest request,
         ToolTerminalStatus status,

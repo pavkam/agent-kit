@@ -1,0 +1,22 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit;
+
+/// <summary>Reports that lexical normalization rejected the supplied path text.</summary>
+public sealed record FilePathNormalizationFailed: FilePathNormalizationResult
+{
+    /// <summary>Initializes a new instance of the <see cref="FilePathNormalizationFailed"/> record.</summary>
+    /// <param name="safeMessage">A human-readable, non-sensitive explanation.</param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="safeMessage"/> is null, empty, or consists only of whitespace.
+    /// </exception>
+    public FilePathNormalizationFailed(string safeMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeMessage);
+        SafeMessage = safeMessage;
+    }
+
+    /// <summary>Gets a human-readable, non-sensitive explanation.</summary>
+    public string SafeMessage { get; init; }
+}

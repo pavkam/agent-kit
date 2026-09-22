@@ -7,7 +7,8 @@ namespace AgentKit.FileSystem.InMemory.Tests;
 public sealed class InMemoryFileSystemTests
 {
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
@@ -16,7 +17,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(
@@ -25,12 +27,14 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Constructor_WhenLoggerArgumentIsNull_UsesNullLogger() =>
         _ = new InMemoryFileSystem(Options.Create(new InMemoryFileSystemOptions()), TestSecurity.GrantStore(), TimeProvider.System, null);
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var fs = CreateFileSystem();
@@ -39,7 +43,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var fs = CreateFileSystem();
@@ -48,7 +53,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenFileDoesNotExist_CreatesFileAndReturnsWritten()
     {
         var fs = CreateFileSystem();
@@ -61,7 +67,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenParentDirectoryMissing_DoesNotCreateParentDirectory()
     {
         var fs = CreateFileSystem();
@@ -73,7 +80,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheTarget()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -88,7 +96,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheTarget()
     {
         using var cancellation = new CancellationTokenSource();
@@ -104,7 +113,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         const string text = "captured";
@@ -120,7 +130,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenFileExists_ReturnsContent()
     {
         var fs = CreateFileSystem();
@@ -132,7 +143,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenFileDoesNotExist_ReturnsFileNotFound()
     {
         var fs = CreateFileSystem();
@@ -143,7 +155,8 @@ public sealed class InMemoryFileSystemTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenGrantDenied_LeaksNoTargetExistenceAndUsesExactBinding(bool createTarget)
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -164,7 +177,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenConsumedReceiptIsMissing_DoesNotReadTheTarget()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -178,7 +192,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenReceiptReferencesAnotherIntent_DoesNotReadTheTarget()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -192,7 +207,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         const string path = "captured-read.txt";
@@ -207,7 +223,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeCreateNewAndFileExists_ReturnsFileAlreadyExists()
     {
         var fs = CreateFileSystem();
@@ -219,7 +236,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenConcurrentCreateNewTargetsSamePath_CreatesExactlyOnce()
     {
         var fs = CreateFileSystem();
@@ -233,7 +251,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenRequestWasMutatedToUndefinedMode_ThrowsBeforeEffects()
     {
         var fs = CreateFileSystem();
@@ -247,7 +266,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeAppendAndTargetIsMissing_DoesNotCreateTheFile()
     {
         // file-system-access-and-bounds.md write-disposition table: Append + missing target => "Not found, no mutation".
@@ -260,7 +280,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeAppend_AppendsToExistingContent()
     {
         var fs = CreateFileSystem();
@@ -272,7 +293,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeCreateOrOverwrite_ReplacesExistingContent()
     {
         var fs = CreateFileSystem();
@@ -284,7 +306,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeReplaceExistingAndFileExists_ReplacesExactContent()
     {
         var fs = CreateFileSystem();
@@ -300,7 +323,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenModeReplaceExistingAndFileMissing_DoesNotCreateTarget()
     {
         var fs = CreateFileSystem();
@@ -314,7 +338,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
@@ -324,7 +349,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsLegacyFileWriteDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 4);
@@ -334,7 +360,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenGrantDenied_DoesNotMutateAndUsesExactDispositionBinding()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -353,7 +380,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Seed_WhenParentMissing_ThrowsInvalidOperationException()
     {
         var fs = CreateFileSystem();
@@ -361,7 +389,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Seed_WhenPathIsDirectory_ThrowsInvalidOperationException()
     {
         var fs = CreateFileSystem();
@@ -370,7 +399,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void CreateDirectory_WhenFileOccupiesAncestor_ThrowsInvalidOperationException()
     {
         var fs = CreateFileSystem();
@@ -379,7 +409,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task CreateDirectory_CreatesEveryMissingAncestor()
     {
         var fs = CreateFileSystem();
@@ -389,7 +420,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void TryReadAllBytes_WhenAbsent_ReturnsFalse()
     {
         var fs = CreateFileSystem();
@@ -397,7 +429,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenRootContainsEntries_ReturnsOrdinalPagesWithStableCursor()
     {
         var fs = CreateFileSystem();
@@ -416,7 +449,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenDirectoryChangesBetweenPages_ReturnsSnapshotChanged()
     {
         var fs = CreateFileSystem();
@@ -430,7 +464,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenSnapshotExceedsConfiguredBound_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem(options => options.MaximumDirectorySnapshotEntries = 2);
@@ -442,7 +477,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -453,7 +489,8 @@ public sealed class InMemoryFileSystemTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenGrantDenied_LeaksNoDirectoryExistenceAndUsesExactBinding(bool createDirectory)
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -477,7 +514,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenRecursivePatternMatches_ReturnsDeterministicCompleteResults()
     {
         var fs = CreateFileSystem();
@@ -493,7 +531,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenBasePathIsSet_MatchesPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
     {
         var fs = CreateFileSystem();
@@ -510,7 +549,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenHiddenExcluded_DoesNotVisitDotPrefixedSubtrees()
     {
         var fs = CreateFileSystem();
@@ -524,7 +564,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenSubtreeExcluded_PrunesItBeforeVisitBoundIsConsumed()
     {
         var fs = CreateFileSystem();
@@ -548,7 +589,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenNoNameMatches_ReturnsDistinctNoMatchesOutcome()
     {
         var fs = CreateFileSystem();
@@ -560,7 +602,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenVisitBoundExceeded_ReturnsPartialIncompleteLimitOutcome()
     {
         var fs = CreateFileSystem();
@@ -574,7 +617,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenBaseDirectoryMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -583,7 +627,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenGrantDenied_DoesNotObserveAndUsesExactBinding()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -600,7 +645,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
     {
         var fs = CreateFileSystem();
@@ -610,7 +656,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenRetainedResultLimitReached_ReturnsLimitExceededDuringMatchRetention()
     {
         var fs = CreateFileSystem();
@@ -623,7 +670,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task GlobAsync_WhenLimitIsReachedDeepInTraversal_PropagatesTerminalStatusToAncestor()
     {
         var fs = CreateFileSystem();
@@ -638,7 +686,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
     {
         using var cancellation = new CancellationTokenSource();
@@ -652,7 +701,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_LogsFailureAndRethrows()
     {
         var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
@@ -660,7 +710,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task WriteAsync_WhenLoggerIsEnabledAndWriteSucceeds_EmitsCompletedStructuredEvent()
     {
         var logger = new RecordingLogger<InMemoryFileSystem>();
@@ -677,7 +728,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
     {
         var logger = new RecordingLogger<InMemoryFileSystem>();
@@ -708,7 +760,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
     {
         const string protectedPath = "content-must-not-enter-diagnostics.txt";
@@ -735,7 +788,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenLiteralMatches_ReturnsDeterministicVersionedByteLocations()
     {
         var fs = CreateFileSystem();
@@ -755,7 +809,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenRegexAndPathFilterProvided_UsesPinnedEngines()
     {
         var fs = CreateFileSystem();
@@ -767,7 +822,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenSubtreeExcluded_PrunesItBeforeCandidateFileBoundIsConsumed()
     {
         var fs = CreateFileSystem();
@@ -802,7 +858,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenBasePathIsSet_MatchesPathPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
     {
         var fs = CreateFileSystem();
@@ -818,7 +875,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenFilesAreHiddenBinaryOrInvalidUtf8_ExcludesThemWithoutDecoding()
     {
         var fs = CreateFileSystem();
@@ -832,7 +890,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenMatchLimitReached_ReturnsTypedPartialResult()
     {
         var fs = CreateFileSystem();
@@ -844,7 +903,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenRetainedMatchesExactlyEqualLimit_RemainsComplete()
     {
         var fs = CreateFileSystem();
@@ -856,7 +916,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenMatchingLineIsLong_RetainsBoundedContextContainingMatch()
     {
         var fs = CreateFileSystem();
@@ -871,7 +932,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenProjectionWindowWouldSplitAMultiByteCharacter_AdjustsBothEdgesToValidUtf8()
     {
         // "é" is 2 UTF-8 bytes (0xC3 0xA9); with MaximumLineBytes=29 the naive half-context math lands the
@@ -888,7 +950,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -899,7 +962,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
     {
         var fs = CreateFileSystem();
@@ -910,7 +974,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenRequestExceedsHostCeiling_DeniesBeforeTraversal()
     {
         var fs = CreateFileSystem(o => o.MaximumSearchMatches = 1);
@@ -922,7 +987,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenGrantDenied_DoesNotCheckBaseExistence()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
@@ -941,7 +1007,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenDurationElapses_ReturnsTypedTimeout()
     {
         var fs = CreateFileSystem(timeProvider: new AdvancingTimeProvider());
@@ -952,7 +1019,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenLaterSiblingFollowsATerminatedSubtree_SkipsItWithoutOpening()
     {
         var fs = CreateFileSystem();
@@ -970,7 +1038,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task SearchAsync_WhenCandidateExceedsRemainingByteBudget_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem();
@@ -982,7 +1051,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadSnapshotAsync_WhenSuccessful_ReturnsExactBytesHashAndEnforcement()
     {
         byte[] bytes = [0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a];
@@ -1002,7 +1072,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadSnapshotAsync_WhenGrantDenied_DoesNotRevealMissingTarget()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
@@ -1016,7 +1087,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadSnapshotAsync_WhenRequestMaximumBytesExceedsConfiguredBound_ReturnsDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 10);
@@ -1027,7 +1099,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadSnapshotAsync_WhenTargetIsMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -1036,7 +1109,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReadSnapshotAsync_WhenFileExceedsRequestByteBound_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem();
@@ -1046,7 +1120,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenContentExceedsMaximumWriteBytes_ReturnsDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2);
@@ -1060,7 +1135,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenTargetIsMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -1069,7 +1145,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenExpectedVersionMatches_CommitsAtomically()
     {
         var fs = CreateFileSystem();
@@ -1093,7 +1170,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenExpectedVersionChanged_ReturnsConflictWithoutMutation()
     {
         var fs = CreateFileSystem();
@@ -1106,7 +1184,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenGrantDenied_DoesNotMutate()
     {
         var fs = CreateFileSystem();
@@ -1125,7 +1204,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ReplaceAsync_WhenTwoPlansRace_OnlyOneExpectedVersionCommits()
     {
         var fs = CreateFileSystem();
@@ -1143,7 +1223,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenCreateIsValid_CommitsAtomicallyWithExactSecurityBinding()
     {
         var store = new RecordingGrantStore();
@@ -1162,7 +1243,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenMixedPlanIsValid_CommitsInSourceOrderWithHonestVisibilityStatus()
     {
         var store = new RecordingGrantStore();
@@ -1196,7 +1278,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenLaterPreconditionIsStale_RejectsWholePlanBeforeEffects()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1212,7 +1295,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenLaterGrantIsDenied_ObservesAndMutatesNothing()
     {
         var store = new RecordingGrantStore(deniedIndex: 1);
@@ -1227,7 +1311,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenPathsOverlap_RejectsBeforeGrantConsumption()
     {
         var store = new RecordingGrantStore();
@@ -1244,7 +1329,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenCreateTargetExists_DoesNotReplaceIt()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1257,7 +1343,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenEntryCountExceedsConfiguredBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumPatchEntries = 1, grantStore: new RecordingGrantStore());
@@ -1270,7 +1357,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenEntryKindDoesNotMatchItsConcreteContract_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1283,7 +1371,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenTwoEntriesShareTheSameMutationIdentity_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1297,7 +1386,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenSingleEntryContentExceedsWriteBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2, grantStore: new RecordingGrantStore());
@@ -1308,7 +1398,8 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task ApplyPatchAsync_WhenAggregateContentExceedsPatchByteBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumPatchBytes = 5, grantStore: new RecordingGrantStore());
@@ -1320,7 +1411,8 @@ public sealed class InMemoryFileSystemTests
         result.SafeMessage.ShouldNotBeNull().ShouldContain("aggregate byte boundary");
     }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     private static InMemoryFileSystem CreateFileSystem(
         Action<InMemoryFileSystemOptions>? configure = null,
         ISecurityGrantStore? grantStore = null,
@@ -1360,7 +1452,8 @@ public sealed class InMemoryFileSystemTests
 
     private static WorkspaceMutationId PatchMutationId(int suffix) => new(Guid.Parse($"20000000-0000-0000-0000-{suffix:D12}"));
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     private static ContentHash Fingerprint(InMemoryFileSystem fs, string path)
     {
         fs.TryReadAllBytes(new FileSystemPath(path), out var bytes).ShouldBeTrue();

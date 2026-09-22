@@ -6,7 +6,8 @@ namespace AgentKit.Context.Project.Tests;
 using System.Text;
 
 /// <summary>Minimal file-system stub for project instruction tests.</summary>
-[Obsolete]
+[Obsolete("Legacy host surface.")]
+
 internal sealed class StubFileSystem: IFileSystem
 {
     private readonly Dictionary<string, string> _files = new(StringComparer.Ordinal);
@@ -15,7 +16,8 @@ internal sealed class StubFileSystem: IFileSystem
 
     internal void Seed(string path, string content) => _files[path] = content;
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -26,7 +28,8 @@ internal sealed class StubFileSystem: IFileSystem
             : new FileNotFound(request.Path));
     }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

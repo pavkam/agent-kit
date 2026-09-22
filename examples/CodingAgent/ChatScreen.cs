@@ -1376,6 +1376,8 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
+
     private OwnedConversationSession CreateConversation()
     {
         _status.Content = "Starting AgentKit runtime...";

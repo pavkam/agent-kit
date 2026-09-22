@@ -12,11 +12,80 @@ public static class FileSecurityBinding
     public static ProtectedResource Resource(FileSystemPath path) =>
         new(ProtectedResourceKind.File, path.Value);
 
+    /// <summary>Creates the canonical protected resource for one logical file target.</summary>
+    /// <param name="target">The logical target bound to a root and normalized path.</param>
+    /// <returns>The exact file resource used by policy, grants, and enforcement.</returns>
+    public static ProtectedResource Resource(FileTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return new(ProtectedResourceKind.File, $"{target.RootId.Value}/{target.Path.Value}");
+    }
+
+    /// <summary>Creates the canonical protected resource for one resolved file target.</summary>
+    /// <param name="target">The resolved target bound by authorization.</param>
+    /// <returns>The exact file resource used by policy, grants, and enforcement.</returns>
+    public static ProtectedResource Resource(ResolvedFileTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return new(ProtectedResourceKind.File, $"{target.RootId.Value}/{target.RelativePath.Value}");
+    }
+
     /// <summary>Computes the exact normalized input fingerprint for a file read.</summary>
     /// <param name="path">The path whose content or metadata may be observed.</param>
     /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
     public static InputFingerprint ReadFingerprint(FileSystemPath path) => Hash(
         JsonSerializer.SerializeToUtf8Bytes(new { operation = "read", path = path.Value }));
+
+    /// <summary>Computes the exact normalized input fingerprint for a spec file read.</summary>
+    /// <param name="request">The capability-scoped read request.</param>
+    /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
+    public static InputFingerprint ReadFingerprint(FileReadRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Hash(
+            JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                operation = "read",
+                root = request.Target.RootId.Value,
+                path = request.Target.Path.Value,
+                maxBytes = request.Bounds.MaxBytes,
+            }));
+    }
+
+    /// <summary>Maps a spec write disposition to the exact security effect it requires.</summary>
+    /// <param name="disposition">The explicit write disposition.</param>
+    /// <returns>The corresponding create, replace, create-or-replace, or append effect.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="disposition"/> is undefined.</exception>
+    public static SecurityEffect WriteEffect(FileWriteDisposition disposition) => disposition switch
+    {
+        FileWriteDisposition.CreateOnly => SecurityEffect.Create,
+        FileWriteDisposition.ReplaceExisting => SecurityEffect.Replace,
+        FileWriteDisposition.CreateOrReplace => SecurityEffect.CreateOrReplace,
+        FileWriteDisposition.Append => SecurityEffect.Append,
+        _ => throw new ArgumentOutOfRangeException(nameof(disposition), disposition, "Undefined file write disposition."),
+    };
+
+    /// <summary>Computes exact mutation evidence for one authorized spec file write.</summary>
+    /// <param name="operation">The authorized write evidence.</param>
+    /// <param name="payloadFingerprint">The fingerprint of the payload bytes to commit.</param>
+    /// <returns>An algorithm-qualified input fingerprint.</returns>
+    public static InputFingerprint WriteFingerprint(AuthorizedFileWrite operation, ContentHash payloadFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return Hash(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            operation = "write",
+            root = operation.ResolvedTarget.RootId.Value,
+            path = operation.ResolvedTarget.RelativePath.Value,
+            disposition = operation.Disposition.ToString(),
+            expectedTargetFingerprint = operation.ExpectedTargetFingerprint?.Value,
+            declaredContentLength = operation.DeclaredContentLength,
+            declaredContentFingerprint = operation.DeclaredContentFingerprint.Value,
+            payloadFingerprint = payloadFingerprint.Value,
+            atomicityMode = operation.AtomicityMode.ToString(),
+            effectClass = operation.EffectClass.ToString(),
+        }));
+    }
 
     /// <summary>Computes exact observation evidence for a complete bounded byte snapshot.</summary>
     /// <param name="path">The observed path.</param>

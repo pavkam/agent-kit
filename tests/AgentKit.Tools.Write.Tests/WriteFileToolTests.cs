@@ -8,7 +8,8 @@ public sealed class WriteFileToolTests
     [Theory]
     [InlineData("")]
     [InlineData(" \n\t")]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
     {
         var fileSystem = new FakeFileSystem { OnWrite = static request => new LegacyFileWritten(request.Content.Length) };
@@ -23,7 +24,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new WriteFileTool(
@@ -33,7 +35,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void Descriptor_WhenAccessed_DeclaresAuthoredWriteContractAndOpenInputSchema()
     {
         var descriptor = TestFactory.Tool().Descriptor;
@@ -52,7 +55,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var tool = TestFactory.Tool();
@@ -64,7 +68,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -78,7 +83,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenContentMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -92,7 +98,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -106,7 +113,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -121,7 +129,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenModeInvalid_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -136,7 +145,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -151,7 +161,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
@@ -168,7 +179,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
@@ -187,7 +199,8 @@ public sealed class WriteFileToolTests
     [InlineData("create_only", FileWriteMode.CreateNew)]
     [InlineData("replace_existing", FileWriteMode.ReplaceExisting)]
     [InlineData("append", FileWriteMode.Append)]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteMode expected)
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
@@ -200,7 +213,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenWriteSucceeds_ReturnsSuccessWithByteCount()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(42) };
@@ -216,7 +230,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenFileAlreadyExists_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileAlreadyExists(r.Path) };
@@ -232,7 +247,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteFailed("disk error") };
@@ -248,7 +264,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteDenied("too large") };
@@ -264,7 +281,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotMutateFileSystem()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(2) };
@@ -283,7 +301,8 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public async Task InvokeAsync_WhenUsingRealSandboxedFileSystem_WritesFileEndToEnd()
     {
         var root = Path.Combine(Path.GetTempPath(), "agentkit-writetool-" + Guid.NewGuid().ToString("N"));

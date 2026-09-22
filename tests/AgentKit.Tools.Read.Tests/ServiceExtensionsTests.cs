@@ -16,7 +16,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenConfigureProvided_AppliesOptions()
     {
         var services = new ServiceCollection();
@@ -37,7 +38,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenOptionsInvalid_FailsValidation()
     {
         var services = new ServiceCollection();
@@ -51,7 +53,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenCalled_RegistersReadFileTool()
     {
         var services = new ServiceCollection();
@@ -65,7 +68,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenCalledTwice_RegistersReadFileToolOnce()
     {
         var services = new ServiceCollection();
@@ -80,7 +84,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenAnotherToolIsRegistered_PreservesBothRegistrations()
     {
         var services = new ServiceCollection();
@@ -97,7 +102,8 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public void AddReadTool_WhenComposedWithAgentTools_ResolvesThroughCatalog()
     {
         var services = new ServiceCollection();

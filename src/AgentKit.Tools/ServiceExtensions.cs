@@ -53,6 +53,26 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Explicitly replaces the process-level <see cref="IToolScheduler"/> registration.</summary>
+        /// <typeparam name="TScheduler">A scheduler that executes prepared batches under deterministic ordering guarantees.</typeparam>
+        /// <returns>The same service collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Removes every unkeyed scheduler descriptor without activation. Keyed schedulers and retained batches remain unchanged.</remarks>
+        public IServiceCollection ReplaceToolScheduler<TScheduler>() where TScheduler : class, IToolScheduler
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddOptions<ToolRuntimeOptions>();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolScheduler)).ToArray())
+            {
+                _ = services.Remove(descriptor);
+            }
+
+            _ = services.AddSingleton<IToolScheduler, TScheduler>();
+            return services;
+        }
+
         /// <summary>Registers the replaceable materialized catalog of explicitly published toolsets and source providers.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
@@ -321,6 +341,11 @@ public static class ServiceExtensions
             {
                 _ = optionsBuilder.Configure(configure);
             }
+
+            _ = services.AddOptions<ToolRuntimeOptions>();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
+            services.TryAddSingleton<IToolScheduler, BarrierSegmentToolScheduler>();
 
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
             services.TryAddSingleton<IToolResolver, ToolCallResolver>();

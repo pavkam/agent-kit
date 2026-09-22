@@ -4,30 +4,36 @@
 namespace AgentKit.Tools.Read.Tests;
 
 /// <summary>A scripted <see cref="IFileSystem"/> test double for exercising read outcomes.</summary>
-[Obsolete]
+[Obsolete("Legacy host surface.")]
+
 internal sealed class FakeFileSystem: IFileSystem
 {
     public ComponentId SecurityAudience { get; } = new("test.filesystem");
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Func<LegacyFileReadRequest, FileReadResult>? OnRead { get; set; }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Func<FileWriteRequest, LegacyFileWriteResult>? OnWrite { get; set; }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public List<LegacyFileReadRequest> ReceivedReads { get; } = [];
 
     public List<FileWriteRequest> ReceivedWrites { get; } = [];
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ReceivedReads.Add(request);
         return Task.FromResult(OnRead?.Invoke(request) ?? new FileReadFailed("not configured"));
     }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
+
     public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
     {
         ReceivedWrites.Add(request);

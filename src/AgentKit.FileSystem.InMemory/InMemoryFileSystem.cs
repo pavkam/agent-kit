@@ -44,7 +44,11 @@ public sealed partial class InMemoryFileSystem:
     IFileContentSearcher,
     IFileSnapshotReader,
     IAtomicFileReplacer,
-    IWorkspacePatchApplier
+    IWorkspacePatchApplier,
+    IFileReader,
+    IFileWriter,
+    IFileMetadataReader,
+    IDirectoryCreator
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, ImmutableArray<byte>> _files = new(StringComparer.Ordinal);
@@ -65,9 +69,11 @@ public sealed partial class InMemoryFileSystem:
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ILogger<InMemoryFileSystem> _logger;
+    private readonly ISecurityAuditDispatcher? _hostAuditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId>? _hostAuditRecordIds;
 
     /// <inheritdoc/>
-    public ComponentId SecurityAudience { get; } = new("agentkit.filesystem.inmemory");
+    public ComponentId SecurityAudience { get; }
 
     /// <summary>Initializes a new instance of the <see cref="InMemoryFileSystem"/> class.</summary>
     /// <param name="options">The validated bound configuration.</param>
@@ -97,11 +103,39 @@ public sealed partial class InMemoryFileSystem:
         TimeProvider timeProvider,
         ILogger<InMemoryFileSystem>? logger,
         IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
+        : this(options, grantStore, timeProvider, logger, intentIds, hostAuditDispatcher: null, hostAuditRecordIds: null, hostProfileKey: null)
+    {
+    }
+
+    /// <summary>Initializes an in-memory volume that may expose spec host capability contracts.</summary>
+    /// <param name="options">The validated bound configuration.</param>
+    /// <param name="grantStore">The authoritative grant store.</param>
+    /// <param name="timeProvider">The monotonic clock.</param>
+    /// <param name="logger">The optional logger.</param>
+    /// <param name="intentIds">The enforcement-intent identity generator.</param>
+    /// <param name="hostAuditDispatcher">The audit dispatcher required for host capabilities.</param>
+    /// <param name="hostAuditRecordIds">The audit record identity generator.</param>
+    /// <param name="hostProfileKey">The profile key when registered as a keyed host volume.</param>
+    public InMemoryFileSystem(
+        IOptions<InMemoryFileSystemOptions> options,
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        ILogger<InMemoryFileSystem>? logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        ISecurityAuditDispatcher? hostAuditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId>? hostAuditRecordIds,
+        FileSystemProfileKey? hostProfileKey)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(intentIds);
+
+        SecurityAudience = hostProfileKey is { } profileKey
+            ? new ComponentId($"agentkit.filesystem.inmemory.{profileKey.Value}")
+            : new ComponentId("agentkit.filesystem.inmemory");
+        _hostAuditDispatcher = hostAuditDispatcher;
+        _hostAuditRecordIds = hostAuditRecordIds;
 
         _maximumReadBytes = options.Value.MaximumReadBytes;
         _maximumWriteBytes = options.Value.MaximumWriteBytes;
