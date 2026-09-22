@@ -73,6 +73,94 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Explicitly replaces the process-level unkeyed <see cref="IToolExecutor"/> registration.</summary>
+        /// <typeparam name="TExecutor">The spec-shaped executor implementation to register.</typeparam>
+        /// <returns>The same service collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Removes every unkeyed executor descriptor without activation. Keyed executors and in-flight runs remain
+        /// unchanged. Call after <see cref="AddAgentTools"/> to opt into the new runtime while legacy types remain
+        /// registered for bridge scenarios. Spec-shaped executors require <see cref="ISecurityAuthoritySelector"/>
+        /// from the permissions stack; <see cref="AddAgentTools"/> does not register security authority.
+        /// </remarks>
+        public IServiceCollection ReplaceToolExecutor<TExecutor>() where TExecutor : class, IToolExecutor
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolExecutor)).ToArray())
+            {
+                _ = services.Remove(descriptor);
+            }
+
+            _ = services.AddSingleton<IToolExecutor, TExecutor>();
+            return services;
+        }
+
+        /// <summary>Explicitly replaces one keyed <see cref="IToolExecutor"/> registration.</summary>
+        /// <typeparam name="TExecutor">The executor implementation bound to <paramref name="executorKey"/>.</typeparam>
+        /// <param name="executorKey">The nondefault executor component key.</param>
+        /// <returns>The same service collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> is default.</exception>
+        public IServiceCollection ReplaceToolExecutor<TExecutor>(ComponentKey<IToolExecutor> executorKey)
+            where TExecutor : class, IToolExecutor
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
+            _ = services.AddAgentTools();
+            foreach (var descriptor in services.Where(descriptor =>
+                         descriptor.IsKeyedService
+                         && descriptor.ServiceType == typeof(IToolExecutor)
+                         && executorKey.Value.Equals(descriptor.ServiceKey as string, StringComparison.Ordinal))
+                     .ToArray())
+            {
+                _ = services.Remove(descriptor);
+            }
+
+            _ = services.AddKeyedSingleton<IToolExecutor, TExecutor>(executorKey.Value);
+            return services;
+        }
+
+        /// <summary>Adds one application-scoped tool invoker under the shared application tool source.</summary>
+        /// <typeparam name="TInvoker">The invoker implementation registered for one descriptor identity.</typeparam>
+        /// <param name="descriptor">The complete immutable descriptor published for discovery and merge.</param>
+        /// <param name="lifetime">The service lifetime for <typeparamref name="TInvoker"/>.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The descriptor identity or version is default.</exception>
+        /// <remarks>
+        /// Registers a keyed <see cref="IToolInvoker"/> for the descriptor identity, records composition metadata for
+        /// <see cref="ApplicationToolProvider"/>, and ensures that provider is registered once. Repeated registration
+        /// for the same identity rejects before mutation.
+        /// </remarks>
+        public IServiceCollection AddToolInvoker<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+            where TInvoker : class, IToolInvoker
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            ArgumentOutOfRangeException.ThrowIfEqual(descriptor.Id, default);
+            ArgumentOutOfRangeException.ThrowIfEqual(descriptor.Version, default);
+            var identity = new ToolIdentity(descriptor.Id, descriptor.Version);
+            var duplicate = services.Any(descriptorEntry =>
+                !descriptorEntry.IsKeyedService
+                && descriptorEntry.ServiceType == typeof(RegisteredToolInvoker)
+                && descriptorEntry.ImplementationInstance is RegisteredToolInvoker marker
+                && marker.Identity == identity);
+            ArgumentException.ThrowIfNotEqual(duplicate, false, nameof(descriptor));
+            _ = lifetime switch
+            {
+                ServiceLifetime.Singleton => services.AddSingleton<TInvoker>(),
+                ServiceLifetime.Scoped => services.AddScoped<TInvoker>(),
+                ServiceLifetime.Transient => services.AddTransient<TInvoker>(),
+                _ => throw new ArgumentOutOfRangeException(nameof(lifetime), lifetime, "Only Singleton, Scoped, and Transient are supported."),
+            };
+            _ = services.AddKeyedSingleton<IToolInvoker>(
+                identity,
+                (provider, _) => provider.GetRequiredService<TInvoker>());
+            _ = services.AddSingleton(new RegisteredToolInvoker(descriptor));
+            return ToolServiceRegistration.EnsureApplicationToolProvider(services);
+        }
+
         /// <summary>Registers the replaceable materialized catalog of explicitly published toolsets and source providers.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
@@ -344,7 +432,6 @@ public static class ServiceExtensions
 
             _ = services.AddOptions<ToolRuntimeOptions>();
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
             services.TryAddSingleton<IToolScheduler, BarrierSegmentToolScheduler>();
 
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
@@ -352,7 +439,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IToolArgumentValidator, ToolArgumentValidator>();
             services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
             services.TryAddSingleton<IToolResultProjector, ToolResultProjector>();
-            services.TryAddSingleton<DefaultToolExecutor>();
+            services.TryAddSingleton(static provider =>
+                provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits);
             services.TryAddSingleton<IToolAuthorizer, AllowListToolAuthorizer>();
             services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalog(provider.GetServices<ITool>()));
             services.TryAddSingleton<ILegacyToolCallOrchestrator>(static provider => new DefaultToolInvoker(

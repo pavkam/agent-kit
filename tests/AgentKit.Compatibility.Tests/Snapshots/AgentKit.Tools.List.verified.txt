@@ -9,6 +9,7 @@ namespace AgentKit.Tools.List
         [System.Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
         public ListDirectoryTool(AgentKit.ILegacyDirectoryReader directoryReader, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.List.ListDirectoryToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
+        [System.Obsolete("Legacy host surface.")]
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ListDirectoryToolOptions

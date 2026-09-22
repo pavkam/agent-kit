@@ -14,6 +14,7 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder UseOpenRouter(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenRouter.OpenRouterProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseAzureOpenAI(System.Uri resourceEndpoint, string apiKey, string deploymentId, string modelId, System.Action<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
+            [System.Obsolete("Legacy host surface.")]
             public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseModel(AgentKit.ModelAlias alias) { }
             public AgentKit.AgentEngineBuilder WithInstructions(string text) { }

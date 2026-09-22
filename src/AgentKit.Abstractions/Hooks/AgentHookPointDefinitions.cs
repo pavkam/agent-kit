@@ -69,4 +69,20 @@ public static class AgentHookPointDefinitions
         typeof(BeforeToolInvocationEventArgs),
         HookPointKind.ShortCircuiting,
         HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.ToolResult"/>.</summary>
+    public static HookPointDefinition<IToolResultHook, ToolResultHookEventArgs> ToolResult { get; } = new(
+        AgentHookPoints.ToolResult,
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<ToolResultHookEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.ToolResult"/>.</summary>
+    public static HookPointDefinitionRegistration ToolResultRegistration { get; } = new(
+        AgentHookPoints.ToolResult,
+        typeof(IToolResultHook),
+        typeof(ToolResultHookEventArgs),
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation);
 }

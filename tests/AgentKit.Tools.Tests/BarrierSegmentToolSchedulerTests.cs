@@ -164,7 +164,7 @@ public sealed class BarrierSegmentToolSchedulerTests
         int maxParallel,
         UnknownSchedulingMode unknownSchedulingMode = UnknownSchedulingMode.Sequential) =>
         new(
-            new ToolResultNormalizer(),
+            new ToolResultNormalizer(Options.Create(new ToolRuntimeOptions())),
             Options.Create(new ToolRuntimeOptions
             {
                 MaximumParallelInvocations = maxParallel,

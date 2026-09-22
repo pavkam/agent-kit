@@ -121,7 +121,7 @@ public sealed class OperatingSystemFileWriterTests
     private static IFileWriter CreateWriter(string root, ISecurityAuditDispatcher? audit = null)
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<ISecurityGrantStore>(TestSecurity.GrantStore());
+        _ = services.AddSingleton(TestSecurity.GrantStore());
         _ = services.AddSingleton(audit ?? new AcceptingAuditDispatcher());
         _ = services.AddOperatingSystemFileSystem(
             new FileSystemProfileKey("test"),

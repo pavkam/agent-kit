@@ -329,6 +329,22 @@ internal static class AgentCompositionValidator
             RequireKeyedOrUnkeyed<ISessionCoordinator>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IContextAssembler>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<IToolExecutor>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            if (definition.Toolsets.Length > 0 && definition.OptionalCapabilities.ToolExecutor is null)
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.definition.toolsets.executor-missing",
+                    $"Agent '{definition.Id}' selects toolsets but does not name a keyed {nameof(IToolExecutor)} in optional capabilities."));
+            }
+
+            if (definition.OptionalCapabilities.ToolExecutor is { } toolExecutorKey)
+            {
+                RequireKeyedOrUnkeyed<IToolExecutor>(
+                    componentRegistrations,
+                    toolExecutorKey.Value,
+                    definition.Id,
+                    diagnostics);
+            }
+
             RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);
 

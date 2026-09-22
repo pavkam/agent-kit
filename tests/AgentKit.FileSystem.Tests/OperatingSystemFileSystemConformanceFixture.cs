@@ -138,7 +138,7 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
     {
         _provider?.Dispose();
         var services = new ServiceCollection();
-        _ = services.AddSingleton<ISecurityGrantStore>(TestSecurity.GrantStore());
+        _ = services.AddSingleton(TestSecurity.GrantStore());
         _ = services.AddSingleton(_audit);
         _ = services.AddOperatingSystemFileSystem(
             new FileSystemProfileKey("conformance"),

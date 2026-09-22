@@ -32,4 +32,10 @@ public static class AgentHookPoints
     /// call with a typed reason; a failure fails the turn.
     /// </summary>
     public static HookPointId BeforeToolInvocation { get; } = new("agentkit.tool.invocation.before");
+
+    /// <summary>
+    /// Dispatched after one tool call reaches a terminal result and before bounded history projection. Hooks may
+    /// replace normalized content only; a failure fails the turn.
+    /// </summary>
+    public static HookPointId ToolResult { get; } = new("agentkit.tool.result");
 }

@@ -406,6 +406,27 @@ public sealed record AgentDefinition
         }
     }
 
+    /// <summary>Gets the authored toolset selections resolved through the registration catalog at run time.</summary>
+    /// <value>
+    /// An initialized sequence of toolset references; empty while the definition still advertises tools through
+    /// <see cref="Tools"/> alone.
+    /// </value>
+    /// <exception cref="ArgumentException">An initializer supplies an uninitialized array or a null entry.</exception>
+    public ImmutableArray<ToolsetReference> Toolsets
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(Toolsets));
+            ArgumentException.ThrowIfContainsNull(value, nameof(Toolsets));
+            field = value;
+        }
+    } = [];
+
+    /// <summary>Gets optional capability selections such as the keyed tool executor for toolset-driven agents.</summary>
+    /// <value><see cref="AgentOptionalCapabilitySelection.None"/> when no optional capability is enabled.</value>
+    public AgentOptionalCapabilitySelection OptionalCapabilities { get; init; } = AgentOptionalCapabilitySelection.None;
+
     /// <summary>Gets the effective sampling and output settings.</summary>
     /// <exception cref="ArgumentNullException">
     /// An initializer attempts to set <see langword="null"/>.
@@ -480,6 +501,8 @@ public sealed record AgentDefinition
         && Instructions.SequenceEqual(other.Instructions)
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
+        && Toolsets.SequenceEqual(other.Toolsets)
+        && OptionalCapabilities.Equals(other.OptionalCapabilities)
         && Settings.Equals(other.Settings)
         && RunDefaults.Equals(other.RunDefaults)
         && Extensions.Equals(other.Extensions);
@@ -526,6 +549,12 @@ public sealed record AgentDefinition
         }
 
         hash.Add(ToolChoice);
+        foreach (var toolset in Toolsets)
+        {
+            hash.Add(toolset);
+        }
+
+        hash.Add(OptionalCapabilities);
         hash.Add(Settings);
         hash.Add(RunDefaults);
         hash.Add(Extensions);

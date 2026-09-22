@@ -608,6 +608,21 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void ReplaceToolExecutor_WhenCalledAfterAddAgentTools_RegistersSpecShapedExecutor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddLogging();
+        _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
+            new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
+        _ = services.AddAgentTools();
+        services.ReplaceToolExecutor<DefaultToolExecutor>().ShouldBeSameAs(services);
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IToolExecutor>().ShouldBeOfType<DefaultToolExecutor>();
+        provider.GetServices<IToolExecutor>().Count().ShouldBe(1);
+    }
+
+    [Fact]
     public void AddTool_WhenCalledForMultipleTools_RegistersEachAdditively()
     {
         var services = new ServiceCollection();
@@ -854,5 +869,11 @@ public sealed class ServiceExtensionsTests
 
         public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class ReplaceToolExecutorTestAuthority: ISecurityAuthority
+    {
+        public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Only required for executor construction in this test.");
     }
 }

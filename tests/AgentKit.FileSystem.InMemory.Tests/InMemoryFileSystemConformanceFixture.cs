@@ -4,12 +4,14 @@
 namespace AgentKit.FileSystem.InMemory.Tests;
 
 using AgentKit.Conformance;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>Conformance fixture for the in-memory file-system profile.</summary>
 public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformanceFixture
 {
     private ISecurityAuditDispatcher _audit = new AcceptingAuditDispatcher();
+    [Obsolete]
     private InMemoryFileSystem _fileSystem;
 
     /// <summary>Initializes a fresh in-memory volume with host capabilities.</summary>
@@ -110,6 +112,7 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
     /// <inheritdoc/>
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
+    [Obsolete]
     private InMemoryFileSystem CreateFileSystem() => new(
         Options.Create(new InMemoryFileSystemOptions()),
         GrantStore,

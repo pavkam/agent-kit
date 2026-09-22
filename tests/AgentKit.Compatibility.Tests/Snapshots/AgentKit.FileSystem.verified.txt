@@ -3,6 +3,38 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.FileSystem
 {
+    public sealed class FileRootRegistration : System.IEquatable<AgentKit.FileSystem.FileRootRegistration>
+    {
+        public FileRootRegistration(AgentKit.FileRootId rootId, string hostRootPath) { }
+        public string HostRootPath { get; init; }
+        public AgentKit.FileRootId RootId { get; init; }
+    }
+    public sealed class FileSystemBounds : System.IEquatable<AgentKit.FileSystem.FileSystemBounds>
+    {
+        public FileSystemBounds(long maximumReadBytes, long maximumWriteBytes) { }
+        public long MaximumReadBytes { get; init; }
+        public long MaximumWriteBytes { get; init; }
+    }
+    public sealed class FileWatchPolicy : System.IEquatable<AgentKit.FileSystem.FileWatchPolicy>
+    {
+        public FileWatchPolicy(bool enabled = false) { }
+        public bool Enabled { get; init; }
+    }
+    public sealed class FileWritePolicy : System.IEquatable<AgentKit.FileSystem.FileWritePolicy>
+    {
+        public FileWritePolicy(bool requiresAtomicAppend = false) { }
+        public bool RequiresAtomicAppend { get; init; }
+    }
+    public sealed class OperatingSystemFileSystemOptions
+    {
+        public OperatingSystemFileSystemOptions() { }
+        public AgentKit.FileSystem.FileSystemBounds Bounds { get; set; }
+        public AgentKit.FilePathPolicy PathPolicy { get; set; }
+        public AgentKit.FileSystemProfileVersion ProfileVersion { get; set; }
+        public System.Collections.Generic.IList<AgentKit.FileSystem.FileRootRegistration> Roots { get; }
+        public AgentKit.FileSystem.FileWatchPolicy WatchPolicy { get; set; }
+        public AgentKit.FileSystem.FileWritePolicy WritePolicy { get; set; }
+    }
     [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
         ".")]
     public sealed class SandboxedFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.ILegacyDirectoryReader, AgentKit.IWorkspacePatchApplier
@@ -46,6 +78,7 @@ namespace AgentKit.FileSystem
             [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
                 ".")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSandboxedFileSystem(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOperatingSystemFileSystem(AgentKit.FileSystemProfileKey key, System.Action<AgentKit.FileSystem.OperatingSystemFileSystemOptions> configure) { }
         }
     }
 }

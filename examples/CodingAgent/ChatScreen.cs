@@ -1049,6 +1049,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private void RefreshResponsiveLayout(int width) =>
         _sidebar.Visibility = width >= 96 ? Visibility.Visible : Visibility.Collapsed;
 
+    [Obsolete]
     private async Task SubmitPromptAsync()
     {
         if (_busy)
@@ -1125,6 +1126,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete]
     private async Task ShowSessionsAsync()
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)
@@ -1165,6 +1167,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete]
     private async Task ResumeSessionAsync(string commandLine)
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)

@@ -113,10 +113,10 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
             definition.Definition,
             snapshot.Version,
             loop,
-            CompileServices(_provider, loopKey),
+            CompileServices(_provider, loopKey, definition.Definition.OptionalCapabilities),
             capability,
             authorization,
-            AgentOptionalCapabilitySelection.None));
+            definition.Definition.OptionalCapabilities));
     }
 
     /// <summary>Resolves a collaborator keyed to the run's exact loop selection, falling back to the unkeyed registration.</summary>
@@ -216,14 +216,18 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
                 "Fresh authorization did not match the pinned security publication."));
     }
 
-    private static AgentRunServices CompileServices(IServiceProvider provider, ComponentKey<IAgentLoop> loopKey)
+    private static AgentRunServices CompileServices(
+        IServiceProvider provider,
+        ComponentKey<IAgentLoop> loopKey,
+        AgentOptionalCapabilitySelection optionalCapabilities)
     {
         var key = loopKey.Value;
+        var toolExecutorKey = optionalCapabilities.ToolExecutor?.Value ?? key;
         return new AgentRunServices(
             ResolveKeyedOrShared<ISessionCoordinator>(provider, key),
             ResolveKeyedOrShared<ISecurityProfileSelector>(provider, key),
             ResolveKeyedOrShared<IContextAssembler>(provider, key),
-            ResolveKeyedOrShared<IToolExecutor>(provider, key),
+            ResolveKeyedOrShared<IToolExecutor>(provider, toolExecutorKey),
             provider.GetService<IToolRunCatalogCaptureFactory>(),
             provider.GetRequiredService<IModelCatalog>(),
             ResolveKeyedOrShared<IModelSelector>(provider, key),

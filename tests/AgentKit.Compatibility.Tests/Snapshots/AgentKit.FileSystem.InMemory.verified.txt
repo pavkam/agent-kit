@@ -5,15 +5,19 @@ namespace AgentKit.FileSystem.InMemory
 {
     [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
         ".")]
-    public sealed class InMemoryFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.ILegacyDirectoryReader, AgentKit.IWorkspacePatchApplier
+    public sealed class InMemoryFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryCreator, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileMetadataReader, AgentKit.IFileReader, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.IFileWriter, AgentKit.ILegacyDirectoryReader, AgentKit.IWorkspacePatchApplier
     {
         public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger = null) { }
         public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
+        public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, AgentKit.ISecurityAuditDispatcher? hostAuditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId>? hostAuditRecordIds, AgentKit.FileSystemProfileKey? hostProfileKey) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DirectoryCreateResult> CreateAsync(AgentKit.AuthorizedDirectoryCreate operation, System.Threading.CancellationToken cancellationToken = default) { }
         public void CreateDirectory(AgentKit.FileSystemPath path) { }
         public System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileMetadataResult> GetMetadataAsync(AgentKit.AuthorizedFileMetadataRead operation, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileReadOpenResult> OpenReadAsync(AgentKit.AuthorizedFileRead operation, System.Threading.CancellationToken cancellationToken = default) { }
         [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
             ".")]
         public System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.LegacyFileReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
@@ -26,6 +30,7 @@ namespace AgentKit.FileSystem.InMemory
         [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
             ".")]
         public System.Threading.Tasks.Task<AgentKit.LegacyFileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileWriteResult> WriteAsync(AgentKit.AuthorizedFileWrite operation, AgentKit.FileWriteContent content, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class InMemoryFileSystemOptions
     {
@@ -49,6 +54,7 @@ namespace AgentKit.FileSystem.InMemory
             [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
                 ".")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryFileSystem(System.Action<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryFileSystem(AgentKit.FileSystemProfileKey key, System.Action<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions>? configure = null) { }
         }
     }
 }

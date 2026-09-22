@@ -125,4 +125,27 @@ internal static class ToolServiceRegistration
         }
         return new ToolRegistrationCatalog(toolsets.ToImmutable(), bindings.ToImmutable(), provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger<ToolRegistrationCatalog>>());
     }
+
+    /// <summary>Ensures the application-local tool provider is registered exactly once under its stable source id.</summary>
+    /// <param name="services">The nonnull mutable collection.</param>
+    /// <returns>The same collection with the application provider registered when absent.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+    internal static IServiceCollection EnsureApplicationToolProvider(IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        var sourceId = ApplicationToolSourceIds.Default;
+        var existing = services.Any(descriptor =>
+            descriptor.IsKeyedService
+            && descriptor.ServiceType == typeof(IToolProvider)
+            && descriptor.ServiceKey is ToolSourceId key
+            && key == sourceId);
+        if (existing)
+        {
+            return services.AddToolRegistrationCatalog();
+        }
+
+        _ = services.AddKeyedSingleton<IToolProvider, ApplicationToolProvider>(sourceId);
+        _ = services.AddSingleton(new ToolProviderRegistration(sourceId));
+        return services.AddToolRegistrationCatalog();
+    }
 }

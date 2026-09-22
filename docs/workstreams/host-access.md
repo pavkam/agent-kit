@@ -18,9 +18,9 @@ concept specifications for access bounds, egress, and sandboxing.
 - [x] WS5-C2 file-system value types
 - [x] WS5-C3 file-system capability contracts
 - [x] WS5-C4a `OperatingSystemFileReader`
-- [ ] WS5-C4b `OperatingSystemFileWriter`
-- [ ] WS5-C5 InMemory reader/writer/metadata/directory-create
-- [ ] WS5-C6 file-system conformance suite
+- [x] WS5-C4b `OperatingSystemFileWriter`
+- [x] WS5-C5 InMemory reader/writer/metadata/directory-create
+- [x] WS5-C6 file-system conformance suite
 - [ ] WS5-C7 Read/Write tools migrate
 - [ ] WS5-C8 List/Glob/Search/Edit/Patch onto keyed profiles
 - [ ] WS5-C9 network contract additions

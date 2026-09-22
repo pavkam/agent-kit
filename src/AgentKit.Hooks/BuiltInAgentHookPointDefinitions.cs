@@ -21,6 +21,10 @@ internal static class BuiltInAgentHookPointDefinitions
     internal static HookPointDefinition<IBeforeToolInvocationHook, BeforeToolInvocationEventArgs> BeforeToolInvocation =>
         AgentHookPointDefinitions.BeforeToolInvocation;
 
+    /// <inheritdoc cref="AgentHookPointDefinitions.ToolResult"/>
+    internal static HookPointDefinition<IToolResultHook, ToolResultHookEventArgs> ToolResult =>
+        AgentHookPointDefinitions.ToolResult;
+
     /// <inheritdoc cref="AgentHookPointDefinitions.RunStartedRegistration"/>
     internal static HookPointDefinitionRegistration RunStartedRegistration => AgentHookPointDefinitions.RunStartedRegistration;
 
@@ -35,4 +39,8 @@ internal static class BuiltInAgentHookPointDefinitions
     /// <inheritdoc cref="AgentHookPointDefinitions.BeforeToolInvocationRegistration"/>
     internal static HookPointDefinitionRegistration BeforeToolInvocationRegistration =>
         AgentHookPointDefinitions.BeforeToolInvocationRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.ToolResultRegistration"/>
+    internal static HookPointDefinitionRegistration ToolResultRegistration =>
+        AgentHookPointDefinitions.ToolResultRegistration;
 }

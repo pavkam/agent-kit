@@ -108,7 +108,7 @@ public sealed class DefaultToolExecutorTests
             NullLogger<BoundedToolSchemaEngine>.Instance,
             NullLogger<CompiledToolSchema>.Instance);
         var runtimeOptions = Options.Create(new ToolRuntimeOptions());
-        var normalizer = new ToolResultNormalizer();
+        var normalizer = new ToolResultNormalizer(runtimeOptions);
         var scheduler = new BarrierSegmentToolScheduler(
             normalizer,
             runtimeOptions,

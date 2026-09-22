@@ -244,20 +244,22 @@ internal static class OperatingSystemFileWriteOperations
 
         try
         {
-            await using var stream = new FileStream(
+            long finalBytesOnDisk;
+            await using (var stream = new FileStream(
                 hostPath,
                 FileMode.Open,
                 FileAccess.Write,
                 FileShare.None,
                 bufferSize: 81920,
-                FileOptions.Asynchronous);
-            _ = stream.Seek(0, SeekOrigin.End);
-            await stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            var finalBytesOnDisk = stream.Length;
-            var allBytes = new byte[finalBytesOnDisk];
-            _ = stream.Seek(0, SeekOrigin.Begin);
-            _ = await stream.ReadAsync(allBytes, cancellationToken).ConfigureAwait(false);
+                FileOptions.Asynchronous))
+            {
+                _ = stream.Seek(0, SeekOrigin.End);
+                await stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                finalBytesOnDisk = stream.Length;
+            }
+
+            var allBytes = await File.ReadAllBytesAsync(hostPath, cancellationToken).ConfigureAwait(false);
             var finalFingerprint = FileSecurityBinding.ContentFingerprint(allBytes);
             return new FileWriteSuccess(
                 FileWriteOutcomeKind.Appended,

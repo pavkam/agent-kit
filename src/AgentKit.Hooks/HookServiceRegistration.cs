@@ -167,17 +167,20 @@ internal static class HookServiceRegistration
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.ContextAssembled);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeModelRequest);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeToolInvocation);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.ToolResult);
         services.TryAddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
         [
             BuiltInAgentHookPointDefinitions.RunStartedRegistration,
             BuiltInAgentHookPointDefinitions.ContextAssembledRegistration,
             BuiltInAgentHookPointDefinitions.BeforeModelRequestRegistration,
             BuiltInAgentHookPointDefinitions.BeforeToolInvocationRegistration,
+            BuiltInAgentHookPointDefinitions.ToolResultRegistration,
         ]);
         services.TryAddSingleton<IHookMutationValidator<RunStartedEventArgs>, DefaultAgentHookMutationValidator<RunStartedEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<ContextAssembledEventArgs>, DefaultAgentHookMutationValidator<ContextAssembledEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<BeforeModelRequestEventArgs>, DefaultAgentHookMutationValidator<BeforeModelRequestEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<BeforeToolInvocationEventArgs>, DefaultAgentHookMutationValidator<BeforeToolInvocationEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<ToolResultHookEventArgs>, DefaultAgentHookMutationValidator<ToolResultHookEventArgs>>();
     }
 
     private static void AddBinding<THook>(
