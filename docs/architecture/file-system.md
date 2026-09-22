@@ -234,6 +234,43 @@ public sealed record FileWriteSuccess(
     ContentHash FinalFingerprint) : FileWriteResult;
 ```
 
+Supporting value types referenced by the capability contracts:
+
+```csharp
+namespace AgentKit;
+
+public readonly record struct NormalizedRelativePath(string Value);
+
+public sealed record ResolvedFileTarget(
+    FileRootId RootId,
+    NormalizedRelativePath RelativePath,
+    string HostTargetPath,
+    FilePathComparisonKind ComparisonKind,
+    ContentHash LinkResolutionEvidence,
+    ContentHash TargetFingerprint);
+
+public readonly record struct FileReadBounds(long MaxBytes);
+
+public sealed record FileMetadata(
+    long LengthBytes,
+    DateTimeOffset? LastModifiedUtc,
+    ContentHash? ContentFingerprint);
+
+public sealed record FileWriteContent(
+    ReadOnlyMemory<byte> Payload,
+    ContentHash PayloadFingerprint);
+
+public sealed record AuthorizedFileWrite(
+    ResolvedFileTarget ResolvedTarget,
+    FileWriteDisposition Disposition,
+    ContentHash? ExpectedTargetFingerprint,
+    long DeclaredContentLength,
+    ContentHash DeclaredContentFingerprint,
+    FileWriteAtomicityMode AtomicityMode,
+    FileWriteEffectClass EffectClass,
+    SecurityGrant Grant);
+```
+
 `FileOperationId`, `FileRootId`, and the shared causal IDs are validated
 readonly values with canonical serialization. Callers create new operation IDs
 through `IIdentifierGenerator<FileOperationId>`. `FileTarget` cannot contain an

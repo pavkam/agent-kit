@@ -5,19 +5,19 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-/// <summary>Verifies FileWriteResult behavior and contracts.</summary>
-public sealed class FileWriteResultTests
+/// <summary>Verifies LegacyFileWriteResult behavior and contracts.</summary>
+public sealed class LegacyFileWriteResultTests
 {
     [Fact]
     public void FileWriteResult_Hierarchy_EveryLeafDerivesFromFileWriteResult()
     {
-        FileWriteResult written = new FileWritten(1);
-        FileWriteResult alreadyExists = new FileAlreadyExists(new FileSystemPath("a.txt"));
-        FileWriteResult denied = new FileWriteDenied("no");
-        FileWriteResult failed = new FileWriteFailed("no");
-        _ = written.ShouldBeOfType<FileWritten>();
-        _ = alreadyExists.ShouldBeOfType<FileAlreadyExists>();
-        _ = denied.ShouldBeOfType<FileWriteDenied>();
-        _ = failed.ShouldBeOfType<FileWriteFailed>();
+        LegacyFileWriteResult written = new LegacyFileWritten(1);
+        LegacyFileWriteResult alreadyExists = new LegacyFileAlreadyExists(new FileSystemPath("a.txt"));
+        LegacyFileWriteResult denied = new LegacyFileWriteDenied("no");
+        LegacyFileWriteResult failed = new LegacyFileWriteFailed("no");
+        _ = written.ShouldBeOfType<LegacyFileWritten>();
+        _ = alreadyExists.ShouldBeOfType<LegacyFileAlreadyExists>();
+        _ = denied.ShouldBeOfType<LegacyFileWriteDenied>();
+        _ = failed.ShouldBeOfType<LegacyFileWriteFailed>();
     }
 }

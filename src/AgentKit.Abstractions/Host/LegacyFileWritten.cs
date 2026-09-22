@@ -3,17 +3,18 @@
 
 namespace AgentKit;
 
-/// <summary>The file was written successfully.</summary>
+/// <summary>The file was written successfully through legacy <see cref="IFileSystem"/>.</summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
 /// fields, safe to share across threads without synchronization.
 /// </remarks>
-public sealed record FileWritten: FileWriteResult
+[Obsolete("Use FileWriteSuccess from the spec IFileWriter contract instead.")]
+public sealed record LegacyFileWritten: LegacyFileWriteResult
 {
-    /// <summary>Initializes a new instance of the <see cref="FileWritten"/> record.</summary>
+    /// <summary>Initializes a new instance of the <see cref="LegacyFileWritten"/> record.</summary>
     /// <param name="bytesWritten">The number of bytes written.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bytesWritten"/> is negative.</exception>
-    public FileWritten(long bytesWritten)
+    public LegacyFileWritten(long bytesWritten)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytesWritten);
         BytesWritten = bytesWritten;

@@ -10,10 +10,10 @@ internal sealed class ReplacementFileSystem: IFileSystem
     public ComponentId SecurityAudience { get; } = new("replacement-file-system");
 
     /// <inheritdoc/>
-    public Task<FileReadResult> ReadAsync(FileReadRequest request, CancellationToken cancellationToken = default) =>
+    public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     /// <inheritdoc/>
-    public Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
+    public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

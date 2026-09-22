@@ -107,7 +107,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
             return null;
         }
 
-        var readResult = await _fileSystem.ReadAsync(new FileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
+        var readResult = await _fileSystem.ReadAsync(new LegacyFileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
         if (readResult is not FileRead read || read.Bytes > _options.MaxBytesPerFile)
         {
             return null;

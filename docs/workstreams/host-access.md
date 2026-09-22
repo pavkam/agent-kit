@@ -15,7 +15,7 @@ concept specifications for access bounds, egress, and sandboxing.
 ## Progress
 
 - [x] WS5-C1 arm64 Linux `O_NOFOLLOW`/`O_DIRECTORY`
-- [ ] WS5-C2 file-system value types
+- [x] WS5-C2 file-system value types
 - [ ] WS5-C3 file-system capability contracts
 - [ ] WS5-C4a `OperatingSystemFileReader`
 - [ ] WS5-C4b `OperatingSystemFileWriter`

@@ -18,7 +18,7 @@ using Microsoft.Win32.SafeHandles;
 /// This class re-resolves and re-validates the path on every call; it never
 /// trusts that a caller already checked containment. A path that resolves
 /// outside the configured root is refused with <see cref="FileReadDenied"/>
-/// or <see cref="FileWriteDenied"/> regardless of any higher-level
+/// or <see cref="LegacyFileWriteDenied"/> regardless of any higher-level
 /// authorization decision that already ran, which is the low-level
 /// boundary re-enforcing the same effect a higher-level allow cannot widen.
 /// </remarks>
@@ -127,7 +127,7 @@ public sealed partial class SandboxedFileSystem:
     }
 
     /// <inheritdoc/>
-    private async Task<FileReadResult> ReadCoreAsync(FileReadRequest request, CancellationToken cancellationToken)
+    private async Task<FileReadResult> ReadCoreAsync(LegacyFileReadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -227,7 +227,7 @@ public sealed partial class SandboxedFileSystem:
     }
 
     /// <inheritdoc/>
-    private async Task<FileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
+    private async Task<LegacyFileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentOutOfRangeException.ThrowIfUndefined(request.Mode);
@@ -235,13 +235,13 @@ public sealed partial class SandboxedFileSystem:
 
         if (!IsSecureTraversalSupported)
         {
-            return new FileWriteDenied("Secure no-follow file traversal is unavailable on this platform.");
+            return new LegacyFileWriteDenied("Secure no-follow file traversal is unavailable on this platform.");
         }
 
         var contentBytes = Encoding.UTF8.GetByteCount(request.Content);
         if (contentBytes > _maximumWriteBytes)
         {
-            return new FileWriteDenied(
+            return new LegacyFileWriteDenied(
                 $"Content is {contentBytes} bytes, exceeding the configured maximum of {_maximumWriteBytes}.");
         }
 
@@ -258,7 +258,7 @@ public sealed partial class SandboxedFileSystem:
         cancellationToken.ThrowIfCancellationRequested();
         if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return new FileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
+            return new LegacyFileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         try
@@ -309,7 +309,7 @@ public sealed partial class SandboxedFileSystem:
                     out var openError))
                 {
                     return request.Mode == FileWriteMode.CreateNew && openError == _errorAlreadyExists
-                        ? new FileAlreadyExists(request.Path)
+                        ? new LegacyFileAlreadyExists(request.Path)
                         : BoundaryWriteFailure(request.Path, openError);
                 }
 
@@ -326,7 +326,7 @@ public sealed partial class SandboxedFileSystem:
                     // CreateNew's O_CREAT | O_EXCL can never collide with one) carries O_NONBLOCK
                     // precisely so opening a FIFO cannot hang; a non-seekable stream is this adapter's
                     // established signal for "not a regular file" (see ReadSnapshotFromHandleAsync).
-                    return new FileWriteFailed("The target is not a regular seekable file.");
+                    return new LegacyFileWriteFailed("The target is not a regular seekable file.");
                 }
 
                 if (request.Mode == FileWriteMode.Append)
@@ -339,15 +339,15 @@ public sealed partial class SandboxedFileSystem:
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            return new FileWritten(contentBytes);
+            return new LegacyFileWritten(contentBytes);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new FileWriteFailed("The file could not be written.");
+            return new LegacyFileWriteFailed("The file could not be written.");
         }
     }
 
-    private static async ValueTask<FileWriteResult> ReplaceExistingWriteAsync(
+    private static async ValueTask<LegacyFileWriteResult> ReplaceExistingWriteAsync(
         SafeFileHandle parent,
         string fileName,
         FileSystemPath path,
@@ -368,16 +368,16 @@ public sealed partial class SandboxedFileSystem:
             var openError = Marshal.GetLastPInvokeError();
             if (openError == _errorNotFound)
             {
-                return new FileWriteFailed(_replacementTargetVanishedMessage);
+                return new LegacyFileWriteFailed(_replacementTargetVanishedMessage);
             }
 
-            // FileWriteMode.ReplaceExisting reports every open failure as a generic FileWriteFailed
+            // FileWriteMode.ReplaceExisting reports every open failure as a generic LegacyFileWriteFailed
             // (its documented contract makes no boundary/denial distinction); CreateOrReplaceWriteAsync
             // delegates here for FileWriteMode.CreateOrOverwrite's existing-target case and needs the
             // same FileWriteDenied a boundary violation produces everywhere else in this class.
             return reportBoundaryViolationsAsDenied
                 ? BoundaryWriteFailure(path, openError)
-                : new FileWriteFailed("The replacement target could not be opened.");
+                : new LegacyFileWriteFailed("The replacement target could not be opened.");
         }
 
         int mode;
@@ -385,7 +385,7 @@ public sealed partial class SandboxedFileSystem:
         {
             if (!TryGetFileMode(currentDescriptor, out mode))
             {
-                return new FileWriteFailed("The target mode could not be observed.");
+                return new LegacyFileWriteFailed("The target mode could not be observed.");
             }
         }
 
@@ -398,7 +398,7 @@ public sealed partial class SandboxedFileSystem:
             _ownerReadWritePermissions);
         if (stagingDescriptor < 0)
         {
-            return new FileWriteFailed("The replacement could not be staged.");
+            return new LegacyFileWriteFailed("The replacement could not be staged.");
         }
 
         var stagingExists = true;
@@ -410,7 +410,7 @@ public sealed partial class SandboxedFileSystem:
             {
                 if (ChangeMode(stagingDescriptor, mode & 0x0FFF) < 0)
                 {
-                    return new FileWriteFailed("The target mode could not be preserved.");
+                    return new LegacyFileWriteFailed("The target mode could not be preserved.");
                 }
 
                 var bytes = Encoding.UTF8.GetBytes(content);
@@ -426,7 +426,7 @@ public sealed partial class SandboxedFileSystem:
                 0);
             if (stillExists < 0)
             {
-                return new FileWriteFailed("The replacement target no longer exists.");
+                return new LegacyFileWriteFailed("The replacement target no longer exists.");
             }
             using (var current = new SafeFileHandle(new IntPtr(stillExists), ownsHandle: true))
             {
@@ -434,15 +434,15 @@ public sealed partial class SandboxedFileSystem:
 
             if (RenameAt(parentDescriptor, stagingName, parentDescriptor, fileName) < 0)
             {
-                return new FileWriteFailed("The staged replacement could not be committed.");
+                return new LegacyFileWriteFailed("The staged replacement could not be committed.");
             }
 
             stagingExists = false;
-            return new FileWritten(contentBytes);
+            return new LegacyFileWritten(contentBytes);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return new FileWriteFailed("The replacement could not be staged.");
+            return new LegacyFileWriteFailed("The replacement could not be staged.");
         }
         finally
         {
@@ -474,7 +474,7 @@ public sealed partial class SandboxedFileSystem:
     /// exists" and the replace attempt's own open, the replace fails with a "does not exist" outcome and this
     /// method retries the whole create-or-replace attempt rather than surfacing a transient race as a failure.
     /// </remarks>
-    private static async ValueTask<FileWriteResult> CreateOrReplaceWriteAsync(
+    private static async ValueTask<LegacyFileWriteResult> CreateOrReplaceWriteAsync(
         SafeFileHandle parent,
         string fileName,
         FileSystemPath path,
@@ -505,10 +505,10 @@ public sealed partial class SandboxedFileSystem:
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    return new FileWriteFailed("The file could not be written.");
+                    return new LegacyFileWriteFailed("The file could not be written.");
                 }
 
-                return new FileWritten(contentBytes);
+                return new LegacyFileWritten(contentBytes);
             }
 
             var error = Marshal.GetLastPInvokeError();
@@ -520,13 +520,13 @@ public sealed partial class SandboxedFileSystem:
             var replaced = await ReplaceExistingWriteAsync(
                 parent, fileName, path, content, contentBytes, intentId, reportBoundaryViolationsAsDenied: true, cancellationToken)
                 .ConfigureAwait(false);
-            if (replaced is not FileWriteFailed { SafeMessage: _replacementTargetVanishedMessage })
+            if (replaced is not LegacyFileWriteFailed { SafeMessage: _replacementTargetVanishedMessage })
             {
                 return replaced;
             }
         }
 
-        return new FileWriteFailed("The file could not be created or replaced after repeated concurrent modification.");
+        return new LegacyFileWriteFailed("The file could not be created or replaced after repeated concurrent modification.");
     }
 
     /// <inheritdoc/>
@@ -1009,10 +1009,10 @@ public sealed partial class SandboxedFileSystem:
             ? new FileReadDenied($"Path '{path}' crosses a symbolic link or an inaccessible boundary.")
             : new FileReadFailed("The file could not be read.");
 
-    private static FileWriteResult BoundaryWriteFailure(FileSystemPath path, int error) =>
+    private static LegacyFileWriteResult BoundaryWriteFailure(FileSystemPath path, int error) =>
         IsBoundaryViolation(error)
-            ? new FileWriteDenied($"Path '{path}' crosses a symbolic link or an inaccessible boundary.")
-            : new FileWriteFailed("The file could not be written.");
+            ? new LegacyFileWriteDenied($"Path '{path}' crosses a symbolic link or an inaccessible boundary.")
+            : new LegacyFileWriteFailed("The file could not be written.");
 
     private bool TryOpenParentDirectory(
         FileSystemPath path,

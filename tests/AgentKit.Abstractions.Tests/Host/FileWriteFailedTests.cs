@@ -5,32 +5,32 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-/// <summary>Verifies FileWriteFailed behavior and contracts.</summary>
-public sealed class FileWriteFailedTests: Conformance.SingleMessageLeafConformanceTests<FileWriteFailed>
+/// <summary>Verifies LegacyFileWriteFailed behavior and contracts.</summary>
+public sealed class FileWriteFailedTests: Conformance.SingleMessageLeafConformanceTests<LegacyFileWriteFailed>
 {
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void FileWriteFailed_Constructor_WhenSafeMessageInvalid_Throws(string? safeMessage) => _ = Should.Throw<ArgumentException>(() => new FileWriteFailed(safeMessage!));
+    public void FileWriteFailed_Constructor_WhenSafeMessageInvalid_Throws(string? safeMessage) => _ = Should.Throw<ArgumentException>(() => new LegacyFileWriteFailed(safeMessage!));
     [Fact]
     public void FileWriteFailed_Constructor_WhenValid_RoundTripsSafeMessage()
     {
-        var failed = new FileWriteFailed("disk error");
+        var failed = new LegacyFileWriteFailed("disk error");
         failed.SafeMessage.ShouldBe("disk error");
     }
 
     [Fact]
     public void FileWriteFailed_With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new FileWriteFailed("disk error");
+        var original = new LegacyFileWriteFailed("disk error");
         var copy = original with { };
         copy.ShouldBe(original);
     }
 
     /// <inheritdoc/>
-    protected override FileWriteFailed Create(string message) => new(message);
+    protected override LegacyFileWriteFailed Create(string message) => new(message);
 
     /// <inheritdoc/>
-    protected override string GetValue(FileWriteFailed subject) => subject.SafeMessage;
+    protected override string GetValue(LegacyFileWriteFailed subject) => subject.SafeMessage;
 }

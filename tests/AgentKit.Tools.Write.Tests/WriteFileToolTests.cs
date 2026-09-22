@@ -10,7 +10,7 @@ public sealed class WriteFileToolTests
     [InlineData(" \n\t")]
     public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static request => new FileWritten(request.Content.Length) };
+        var fileSystem = new FakeFileSystem { OnWrite = static request => new LegacyFileWritten(request.Content.Length) };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
@@ -143,7 +143,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };
+        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
@@ -159,7 +159,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };
+        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
@@ -177,7 +177,7 @@ public sealed class WriteFileToolTests
     [InlineData("append", FileWriteMode.Append)]
     public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteMode expected)
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };
+        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
         var tool = TestFactory.Tool(fileSystem);
 
         _ = await tool.InvokeAsync(
@@ -189,7 +189,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenWriteSucceeds_ReturnsSuccessWithByteCount()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWritten(42) };
+        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(42) };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
@@ -204,7 +204,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenFileAlreadyExists_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new FileAlreadyExists(r.Path) };
+        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileAlreadyExists(r.Path) };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
@@ -219,7 +219,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWriteFailed("disk error") };
+        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteFailed("disk error") };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
@@ -234,7 +234,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWriteDenied("too large") };
+        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteDenied("too large") };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
@@ -249,7 +249,7 @@ public sealed class WriteFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotMutateFileSystem()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWritten(2) };
+        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(2) };
         var tool = TestFactory.Tool(fileSystem, TestFactory.DenyingAuthority());
 
         var result = await tool.InvokeAsync(

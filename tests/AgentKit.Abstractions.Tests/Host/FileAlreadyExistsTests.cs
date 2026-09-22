@@ -5,21 +5,21 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-/// <summary>Verifies FileAlreadyExists behavior and contracts.</summary>
+/// <summary>Verifies LegacyFileAlreadyExists behavior and contracts.</summary>
 public sealed class FileAlreadyExistsTests
 {
     [Fact]
     public void FileAlreadyExists_Constructor_RoundTripsPath()
     {
         var path = new FileSystemPath("a.txt");
-        var result = new FileAlreadyExists(path);
+        var result = new LegacyFileAlreadyExists(path);
         result.Path.ShouldBe(path);
     }
 
     [Fact]
     public void FileAlreadyExists_With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new FileAlreadyExists(new FileSystemPath("a.txt"));
+        var original = new LegacyFileAlreadyExists(new FileSystemPath("a.txt"));
         var copy = original with { };
         copy.ShouldBe(original);
     }

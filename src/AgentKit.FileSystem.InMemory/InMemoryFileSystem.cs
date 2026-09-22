@@ -192,7 +192,7 @@ public sealed partial class InMemoryFileSystem:
     }
 
     /// <inheritdoc/>
-    private async Task<FileReadResult> ReadCoreAsync(FileReadRequest request, CancellationToken cancellationToken)
+    private async Task<FileReadResult> ReadCoreAsync(LegacyFileReadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -228,7 +228,7 @@ public sealed partial class InMemoryFileSystem:
     }
 
     /// <inheritdoc/>
-    private async Task<FileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
+    private async Task<LegacyFileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentOutOfRangeException.ThrowIfUndefined(request.Mode);
@@ -237,7 +237,7 @@ public sealed partial class InMemoryFileSystem:
         var contentBytes = Encoding.UTF8.GetByteCount(request.Content);
         if (contentBytes > _maximumWriteBytes)
         {
-            return new FileWriteDenied(
+            return new LegacyFileWriteDenied(
                 $"Content is {contentBytes} bytes, exceeding the configured maximum of {_maximumWriteBytes}.");
         }
 
@@ -254,7 +254,7 @@ public sealed partial class InMemoryFileSystem:
         cancellationToken.ThrowIfCancellationRequested();
         if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, intent))
         {
-            return new FileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
+            return new LegacyFileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         lock (_gate)
@@ -263,26 +263,26 @@ public sealed partial class InMemoryFileSystem:
             var parent = ParentDirectory(path);
             if ((parent is not null && !_directories.Contains(parent)) || _directories.Contains(path))
             {
-                return new FileWriteFailed("The file could not be written.");
+                return new LegacyFileWriteFailed("The file could not be written.");
             }
 
             var exists = _files.TryGetValue(path, out var existing);
             if (request.Mode == FileWriteMode.CreateNew && exists)
             {
-                return new FileAlreadyExists(request.Path);
+                return new LegacyFileAlreadyExists(request.Path);
             }
             if (request.Mode == FileWriteMode.ReplaceExisting && !exists)
             {
-                return new FileWriteFailed("The replacement target does not exist.");
+                return new LegacyFileWriteFailed("The replacement target does not exist.");
             }
             if (request.Mode == FileWriteMode.Append && !exists)
             {
-                return new FileWriteFailed("The append target does not exist.");
+                return new LegacyFileWriteFailed("The append target does not exist.");
             }
 
             var bytes = Encoding.UTF8.GetBytes(request.Content);
             _files[path] = request.Mode == FileWriteMode.Append && exists ? existing.AddRange(bytes) : [.. bytes];
-            return new FileWritten(contentBytes);
+            return new LegacyFileWritten(contentBytes);
         }
     }
 

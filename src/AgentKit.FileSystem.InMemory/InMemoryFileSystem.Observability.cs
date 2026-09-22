@@ -6,7 +6,7 @@ namespace AgentKit.FileSystem.InMemory;
 public sealed partial class InMemoryFileSystem
 {
     /// <inheritdoc/>
-    public Task<FileReadResult> ReadAsync(FileReadRequest request, CancellationToken cancellationToken = default)
+    public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return ObserveTaskAsync(
@@ -15,12 +15,12 @@ public sealed partial class InMemoryFileSystem
     }
 
     /// <inheritdoc/>
-    public Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
+    public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return ObserveTaskAsync(
             "write", request.Grant.RequestId, token => WriteCoreAsync(request, token),
-            static result => result is FileWritten ? "written" : result.GetType().Name, cancellationToken);
+            static result => result is LegacyFileWritten ? "written" : result.GetType().Name, cancellationToken);
     }
 
     /// <inheritdoc/>

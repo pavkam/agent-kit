@@ -87,7 +87,7 @@ public sealed class ServiceExtensionsTests
             using var provider = services.BuildServiceProvider();
 
             _ = await provider.GetRequiredService<IFileSystem>().ReadAsync(
-                new FileReadRequest(new FileSystemPath("source.txt"), TestSecurity.Grant()),
+                new LegacyFileReadRequest(new FileSystemPath("source.txt"), TestSecurity.Grant()),
                 TestContext.Current.CancellationToken);
 
             store.LastIntent.ShouldNotBeNull().Id.ShouldBe(expectedId);

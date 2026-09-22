@@ -8,23 +8,23 @@ internal sealed class FakeFileSystem: IFileSystem
 {
     public ComponentId SecurityAudience { get; } = new("test.filesystem");
 
-    public Func<FileReadRequest, FileReadResult>? OnRead { get; set; }
+    public Func<LegacyFileReadRequest, FileReadResult>? OnRead { get; set; }
 
-    public Func<FileWriteRequest, FileWriteResult>? OnWrite { get; set; }
+    public Func<FileWriteRequest, LegacyFileWriteResult>? OnWrite { get; set; }
 
-    public List<FileReadRequest> ReceivedReads { get; } = [];
+    public List<LegacyFileReadRequest> ReceivedReads { get; } = [];
 
     public List<FileWriteRequest> ReceivedWrites { get; } = [];
 
-    public Task<FileReadResult> ReadAsync(FileReadRequest request, CancellationToken cancellationToken = default)
+    public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ReceivedReads.Add(request);
         return Task.FromResult(OnRead?.Invoke(request) ?? new FileReadFailed("not configured"));
     }
 
-    public Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
+    public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
     {
         ReceivedWrites.Add(request);
-        return Task.FromResult(OnWrite?.Invoke(request) ?? new FileWriteFailed("not configured"));
+        return Task.FromResult(OnWrite?.Invoke(request) ?? new LegacyFileWriteFailed("not configured"));
     }
 }

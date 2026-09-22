@@ -80,7 +80,7 @@ public sealed class ServiceExtensionsTests
         fileSystem.Seed(new FileSystemPath("source.txt"), "source");
 
         _ = await provider.GetRequiredService<IFileSystem>().ReadAsync(
-            new FileReadRequest(new FileSystemPath("source.txt"), TestSecurity.Grant()),
+            new LegacyFileReadRequest(new FileSystemPath("source.txt"), TestSecurity.Grant()),
             TestContext.Current.CancellationToken);
 
         store.LastIntent.ShouldNotBeNull().Id.ShouldBe(expectedId);

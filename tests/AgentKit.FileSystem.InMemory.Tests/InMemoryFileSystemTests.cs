@@ -48,7 +48,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem();
         var request = new FileWriteRequest(new FileSystemPath("notes.txt"), "hello world", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant());
         var result = await fs.WriteAsync(request, TestContext.Current.CancellationToken);
-        var written = result.ShouldBeOfType<FileWritten>();
+        var written = result.ShouldBeOfType<LegacyFileWritten>();
         written.BytesWritten.ShouldBe(11L);
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("hello world");
@@ -60,7 +60,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem();
         var request = new FileWriteRequest(new FileSystemPath("sub/dir/notes.txt"), "nested", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant());
         var result = await fs.WriteAsync(request, TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteFailed>();
+        _ = result.ShouldBeOfType<LegacyFileWriteFailed>();
         var enumeration = await fs.EnumerateAsync(new DirectoryEnumerationRequest(new FileSystemPath("sub"), 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
         enumeration.Status.ShouldBe(DirectoryEnumerationStatus.NotFound);
     }
@@ -104,7 +104,7 @@ public sealed class InMemoryFileSystemTests
         var grant = TestSecurity.CapturedGrant(fs.SecurityAudience, SecurityOperationKind.FileWrite, FileSecurityBinding.WriteEffect(FileWriteMode.CreateOrOverwrite), [FileSecurityBinding.Resource(path)], FileSecurityBinding.WriteFingerprint(path, text, FileWriteMode.CreateOrOverwrite));
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var result = await fs.WriteAsync(new FileWriteRequest(path, text, FileWriteMode.CreateOrOverwrite, grant), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWritten>();
+        _ = result.ShouldBeOfType<LegacyFileWritten>();
         fs.TryReadAllBytes(path, out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe(text);
     }
@@ -114,7 +114,7 @@ public sealed class InMemoryFileSystemTests
     {
         var fs = CreateFileSystem();
         fs.Seed(new FileSystemPath("notes.txt"), "existing content");
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         var read = result.ShouldBeOfType<FileRead>();
         read.Content.ShouldBe("existing content");
         read.Bytes.ShouldBe(16L);
@@ -124,7 +124,7 @@ public sealed class InMemoryFileSystemTests
     public async Task ReadAsync_WhenFileDoesNotExist_ReturnsFileNotFound()
     {
         var fs = CreateFileSystem();
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<FileNotFound>();
     }
 
@@ -143,7 +143,7 @@ public sealed class InMemoryFileSystemTests
             fs.Seed(new FileSystemPath("possibly-secret.txt"), "secret");
         }
 
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("possibly-secret.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("possibly-secret.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldBe("Grant does not match.");
         var enforcement = store.LastEnforcement.ShouldNotBeNull();
         enforcement.Resources.ShouldBe([FileSecurityBinding.Resource(new FileSystemPath("possibly-secret.txt"))]);
@@ -159,7 +159,7 @@ public sealed class InMemoryFileSystemTests
         };
         var fs = CreateFileSystem(grantStore: store);
         fs.Seed(new FileSystemPath("receipt-missing.txt"), "protected");
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("receipt-missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("receipt-missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
     }
 
@@ -172,7 +172,7 @@ public sealed class InMemoryFileSystemTests
         };
         var fs = CreateFileSystem(grantStore: store);
         fs.Seed(new FileSystemPath("receipt-mismatch.txt"), "protected");
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("receipt-mismatch.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("receipt-mismatch.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
     }
 
@@ -186,7 +186,7 @@ public sealed class InMemoryFileSystemTests
         var filePath = new FileSystemPath(path);
         var grant = TestSecurity.CapturedGrant(fs.SecurityAudience, SecurityOperationKind.FileRead, SecurityEffect.Observe, [FileSecurityBinding.Resource(filePath)], FileSecurityBinding.ReadFingerprint(filePath));
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        var result = await fs.ReadAsync(new FileReadRequest(filePath, grant), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(filePath, grant), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<FileRead>().Content.ShouldBe("captured");
     }
 
@@ -196,7 +196,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem();
         fs.Seed(new FileSystemPath("notes.txt"), "already here");
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "new content", FileWriteMode.CreateNew, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileAlreadyExists>();
+        _ = result.ShouldBeOfType<LegacyFileAlreadyExists>();
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("already here");
     }
@@ -208,8 +208,8 @@ public sealed class InMemoryFileSystemTests
         var first = new FileWriteRequest(new FileSystemPath("notes.txt"), "first", FileWriteMode.CreateNew, TestSecurity.Grant());
         var second = new FileWriteRequest(new FileSystemPath("notes.txt"), "second", FileWriteMode.CreateNew, TestSecurity.Grant());
         var results = await Task.WhenAll(fs.WriteAsync(first, TestContext.Current.CancellationToken), fs.WriteAsync(second, TestContext.Current.CancellationToken));
-        results.Count(static result => result is FileWritten).ShouldBe(1);
-        results.Count(static result => result is FileAlreadyExists).ShouldBe(1);
+        results.Count(static result => result is LegacyFileWritten).ShouldBe(1);
+        results.Count(static result => result is LegacyFileAlreadyExists).ShouldBe(1);
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBeOneOf("first", "second");
     }
@@ -235,7 +235,7 @@ public sealed class InMemoryFileSystemTests
 
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("absent.log"), "line", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
 
-        _ = result.ShouldBeOfType<FileWriteFailed>();
+        _ = result.ShouldBeOfType<LegacyFileWriteFailed>();
         fs.TryReadAllBytes(new FileSystemPath("absent.log"), out _).ShouldBeFalse();
     }
 
@@ -245,7 +245,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem();
         fs.Seed(new FileSystemPath("notes.txt"), "first-");
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "second", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWritten>();
+        _ = result.ShouldBeOfType<LegacyFileWritten>();
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("first-second");
     }
@@ -256,7 +256,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem();
         fs.Seed(new FileSystemPath("notes.txt"), "old content that is longer");
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "new", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWritten>();
+        _ = result.ShouldBeOfType<LegacyFileWritten>();
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("new");
     }
@@ -271,7 +271,7 @@ public sealed class InMemoryFileSystemTests
             new FileSystemPath("notes.txt"), " \t", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
             TestContext.Current.CancellationToken);
 
-        _ = result.ShouldBeOfType<FileWritten>();
+        _ = result.ShouldBeOfType<LegacyFileWritten>();
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe(" \t");
     }
@@ -285,7 +285,7 @@ public sealed class InMemoryFileSystemTests
             new FileSystemPath("notes.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
             TestContext.Current.CancellationToken);
 
-        result.ShouldBeOfType<FileWriteFailed>().SafeMessage.ShouldContain("does not exist");
+        result.ShouldBeOfType<LegacyFileWriteFailed>().SafeMessage.ShouldContain("does not exist");
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
     }
 
@@ -294,7 +294,7 @@ public sealed class InMemoryFileSystemTests
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
         fs.Seed(new FileSystemPath("notes.txt"), "this is too long");
-        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<FileReadFailed>();
     }
 
@@ -616,7 +616,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem(logger: logger);
         var grant = TestSecurity.Grant();
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "hello", FileWriteMode.CreateOrOverwrite, grant), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWritten>();
+        _ = result.ShouldBeOfType<LegacyFileWritten>();
         var completed = logger.Snapshot().ShouldHaveSingleItem();
         completed.EventId.Id.ShouldBe(11100);
         completed.State["Operation"].ShouldBe("write");
@@ -659,7 +659,7 @@ public sealed class InMemoryFileSystemTests
     public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
     {
         const string protectedPath = "content-must-not-enter-diagnostics.txt";
-        var request = new FileReadRequest(new FileSystemPath(protectedPath), TestSecurity.Grant());
+        var request = new LegacyFileReadRequest(new FileSystemPath(protectedPath), TestSecurity.Grant());
         Activity? stopped = null;
         using var listener = new ActivityListener
         {

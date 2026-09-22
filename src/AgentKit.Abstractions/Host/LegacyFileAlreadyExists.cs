@@ -5,17 +5,19 @@ namespace AgentKit;
 
 /// <summary>
 /// A file already exists at the requested path and
-/// <see cref="FileWriteMode.CreateNew"/> was requested.
+/// <see cref="FileWriteMode.CreateNew"/> was requested through legacy
+/// <see cref="IFileSystem"/>.
 /// </summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
 /// fields, safe to share across threads without synchronization.
 /// </remarks>
-public sealed record FileAlreadyExists: FileWriteResult
+[Obsolete("Use FileWriteConflict from the spec IFileWriter contract instead.")]
+public sealed record LegacyFileAlreadyExists: LegacyFileWriteResult
 {
-    /// <summary>Initializes a new instance of the <see cref="FileAlreadyExists"/> record.</summary>
+    /// <summary>Initializes a new instance of the <see cref="LegacyFileAlreadyExists"/> record.</summary>
     /// <param name="path">The requested path.</param>
-    public FileAlreadyExists(FileSystemPath path) => Path = path;
+    public LegacyFileAlreadyExists(FileSystemPath path) => Path = path;
 
     /// <summary>Gets the requested path.</summary>
     public FileSystemPath Path { get; init; }

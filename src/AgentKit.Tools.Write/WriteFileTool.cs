@@ -147,10 +147,10 @@ public sealed class WriteFileTool: ITool
 
         return result switch
         {
-            FileWritten written => Success($"Wrote {written.BytesWritten} byte(s) to '{pathText}'."),
-            FileAlreadyExists => Failed($"A file already exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
-            FileWriteDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
-            FileWriteFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+            LegacyFileWritten written => Success($"Wrote {written.BytesWritten} byte(s) to '{pathText}'."),
+            LegacyFileAlreadyExists => Failed($"A file already exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            LegacyFileWriteDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+            LegacyFileWriteFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
             _ => Failed("The file system returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
         };
     }

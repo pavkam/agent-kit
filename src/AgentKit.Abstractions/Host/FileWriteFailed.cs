@@ -3,18 +3,13 @@
 
 namespace AgentKit;
 
-/// <summary>The write could not complete because of an unexpected I/O failure.</summary>
-/// <remarks>
-/// This type is an immutable value object with structural equality over its
-/// fields, safe to share across threads without synchronization.
-/// </remarks>
+/// <summary>The write failed because of an unexpected typed I/O failure at the host boundary.</summary>
 public sealed record FileWriteFailed: FileWriteResult
 {
     /// <summary>Initializes a new instance of the <see cref="FileWriteFailed"/> record.</summary>
     /// <param name="safeMessage">A human-readable, non-sensitive description of the failure.</param>
     /// <exception cref="ArgumentException">
-    /// <paramref name="safeMessage"/> is null, empty, or consists only of
-    /// whitespace.
+    /// <paramref name="safeMessage"/> is null, empty, or consists only of whitespace.
     /// </exception>
     public FileWriteFailed(string safeMessage)
     {

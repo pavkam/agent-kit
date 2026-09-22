@@ -14,7 +14,7 @@ internal sealed class StubFileSystem: IFileSystem
 
     internal void Seed(string path, string content) => _files[path] = content;
 
-    public Task<FileReadResult> ReadAsync(FileReadRequest request, CancellationToken cancellationToken = default)
+    public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -24,6 +24,6 @@ internal sealed class StubFileSystem: IFileSystem
             : new FileNotFound(request.Path));
     }
 
-    public Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
+    public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

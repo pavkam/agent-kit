@@ -5,27 +5,27 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-/// <summary>Verifies FileWritten behavior and contracts.</summary>
+/// <summary>Verifies LegacyFileWritten behavior and contracts.</summary>
 public sealed class FileWrittenTests
 {
     [Fact]
     public void FileWritten_Constructor_WhenBytesWrittenNegative_ThrowsArgumentOutOfRangeException()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new FileWritten(-1));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LegacyFileWritten(-1));
         exception.ParamName.ShouldBe("bytesWritten");
     }
 
     [Fact]
     public void FileWritten_Constructor_WhenValid_RoundTripsBytesWritten()
     {
-        var written = new FileWritten(42);
+        var written = new LegacyFileWritten(42);
         written.BytesWritten.ShouldBe(42);
     }
 
     [Fact]
     public void FileWritten_With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new FileWritten(42);
+        var original = new LegacyFileWritten(42);
         var copy = original with { };
         copy.ShouldBe(original);
     }

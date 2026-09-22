@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// The immutable base for the terminal outcome of one
-/// <see cref="FileReadRequest"/>.
+/// <see cref="LegacyFileReadRequest"/>.
 /// </summary>
 /// <remarks>
 /// This is a closed discriminated hierarchy. The concrete kinds are

@@ -179,7 +179,7 @@ public sealed class ReadFileTool: ITool
             return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await _fileSystem.ReadAsync(new FileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
+        var result = await _fileSystem.ReadAsync(new LegacyFileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
 
         return result switch
         {
