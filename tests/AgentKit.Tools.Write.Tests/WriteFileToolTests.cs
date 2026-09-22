@@ -8,34 +8,30 @@ public sealed class WriteFileToolTests
     [Theory]
     [InlineData("")]
     [InlineData(" \n\t")]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static request => new LegacyFileWritten(request.Content.Length) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(JsonSerializer.Serialize(new { path = "a.txt", content, mode = "create_or_replace" })),
             TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-        fileSystem.ReceivedWrites.ShouldHaveSingleItem().Content.ShouldBe(content);
+        writer.LastWrittenText.ShouldBe(content);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new WriteFileTool(
-            null!, null!, null!, null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new WriteFileTool(null!, null!, null!, null!, null!, null!));
 
-        exception.ParamName.ShouldBe("fileSystem");
+        exception.ParamName.ShouldBe("fileSystemSelector");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Descriptor_WhenAccessed_DeclaresAuthoredWriteContractAndOpenInputSchema()
     {
@@ -55,7 +51,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
@@ -68,7 +63,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
@@ -83,7 +77,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenContentMissing_ReturnsRejected()
     {
@@ -98,7 +91,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
@@ -113,7 +105,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
@@ -129,7 +120,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenModeInvalid_ReturnsRejected()
     {
@@ -145,7 +135,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
@@ -161,12 +150,11 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "../escape.txt", "content": "hi", "mode": "create_or_replace"}"""),
@@ -174,51 +162,48 @@ public sealed class WriteFileToolTests
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
-        result.Outcome.FailureReason.ShouldStartWith("Invalid path:");
-        fileSystem.ReceivedWrites.ShouldBeEmpty();
+        result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("traversal");
+        writer.ReceivedWrites.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
-        fileSystem.ReceivedWrites.ShouldBeEmpty();
+        writer.ReceivedWrites.ShouldBeEmpty();
     }
 
     [Theory]
-    [InlineData("overwrite", FileWriteMode.CreateOrOverwrite)]
-    [InlineData("create_or_replace", FileWriteMode.CreateOrOverwrite)]
-    [InlineData("create_new", FileWriteMode.CreateNew)]
-    [InlineData("create_only", FileWriteMode.CreateNew)]
-    [InlineData("replace_existing", FileWriteMode.ReplaceExisting)]
-    [InlineData("append", FileWriteMode.Append)]
-    [Obsolete("Legacy host surface.")]
+    [InlineData("overwrite", FileWriteDisposition.CreateOrReplace)]
+    [InlineData("create_or_replace", FileWriteDisposition.CreateOrReplace)]
+    [InlineData("create_new", FileWriteDisposition.CreateOnly)]
+    [InlineData("create_only", FileWriteDisposition.CreateOnly)]
+    [InlineData("replace_existing", FileWriteDisposition.ReplaceExisting)]
+    [InlineData("append", FileWriteDisposition.Append)]
 
-    public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteMode expected)
+    public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteDisposition expected)
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileWritten(r.Content.Length) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer);
 
         _ = await tool.InvokeAsync(
             TestFactory.Request($$"""{"path": "a.txt", "content": "hi", "mode": "{{mode}}"}"""), TestContext.Current.CancellationToken);
 
-        fileSystem.ReceivedWrites.ShouldHaveSingleItem().Mode.ShouldBe(expected);
+        writer.ReceivedWrites.ShouldHaveSingleItem().Operation.Disposition.ShouldBe(expected);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenWriteSucceeds_ReturnsSuccessWithByteCount()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(42) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
 
@@ -226,16 +211,15 @@ public sealed class WriteFileToolTests
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Succeeded);
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
         result.Outcome.Retryable.ShouldBeFalse();
-        TestFactory.ReadText(result).ShouldContain("42");
+        TestFactory.ReadText(result).ShouldContain("2");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileAlreadyExists_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static r => new LegacyFileAlreadyExists(r.Path) };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteConflict(new ResolvedFileTarget(new FileRootId("w"), new NormalizedRelativePath("a.txt"), "x", FilePathComparisonKind.Ordinal, FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("t"u8)), "exists") };
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_new"}"""), TestContext.Current.CancellationToken);
@@ -247,12 +231,11 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteFailed("disk error") };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteFailed("disk error") };
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
@@ -264,12 +247,11 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWriteDenied("too large") };
-        var tool = TestFactory.Tool(fileSystem);
+        var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteDenied("too large") };
+        var tool = TestFactory.Tool(writer);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
 
@@ -281,12 +263,11 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotMutateFileSystem()
     {
-        var fileSystem = new FakeFileSystem { OnWrite = static _ => new LegacyFileWritten(2) };
-        var tool = TestFactory.Tool(fileSystem, TestFactory.DenyingAuthority());
+        var writer = new FakeFileWriter().WithSuccess();
+        var tool = TestFactory.Tool(writer, TestFactory.DenyingAuthority());
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""),
@@ -297,37 +278,7 @@ public sealed class WriteFileToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Denied by test policy.");
-        fileSystem.ReceivedWrites.ShouldBeEmpty();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task InvokeAsync_WhenUsingRealSandboxedFileSystem_WritesFileEndToEnd()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "agentkit-writetool-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            _ = Directory.CreateDirectory(root);
-            var fileSystem = new SandboxedFileSystem(
-                Options.Create(new SandboxedFileSystemOptions { RootDirectory = root }),
-                TestFactory.GrantStore(),
-                TimeProvider.System);
-            var tool = TestFactory.Tool(fileSystem);
-
-            var result = await tool.InvokeAsync(
-                TestFactory.Request(/*lang=json,strict*/ """{"path": "doc.txt", "content": "hello", "mode": "create_only"}"""), TestContext.Current.CancellationToken);
-
-            result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-            File.ReadAllText(Path.Combine(root, "doc.txt")).ShouldBe("hello");
-        }
-        finally
-        {
-            if (Directory.Exists(root))
-            {
-                Directory.Delete(root, recursive: true);
-            }
-        }
+        writer.ReceivedWrites.ShouldBeEmpty();
     }
 
 }

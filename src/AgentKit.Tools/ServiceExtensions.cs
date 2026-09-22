@@ -131,7 +131,7 @@ public static class ServiceExtensions
         /// <remarks>
         /// Registers a keyed <see cref="IToolInvoker"/> for the descriptor identity, records composition metadata for
         /// <see cref="ApplicationToolProvider"/>, and ensures that provider is registered once. Repeated registration
-        /// for the same identity rejects before mutation.
+        /// for the same identity is ignored without mutation.
         /// </remarks>
         public IServiceCollection AddToolInvoker<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
             where TInvoker : class, IToolInvoker
@@ -146,7 +146,11 @@ public static class ServiceExtensions
                 && descriptorEntry.ServiceType == typeof(RegisteredToolInvoker)
                 && descriptorEntry.ImplementationInstance is RegisteredToolInvoker marker
                 && marker.Identity == identity);
-            ArgumentException.ThrowIfNotEqual(duplicate, false, nameof(descriptor));
+            if (duplicate)
+            {
+                return ToolServiceRegistration.EnsureApplicationToolProvider(services);
+            }
+
             _ = lifetime switch
             {
                 ServiceLifetime.Singleton => services.AddSingleton<TInvoker>(),

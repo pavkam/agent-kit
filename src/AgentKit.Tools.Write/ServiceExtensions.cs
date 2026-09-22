@@ -21,9 +21,19 @@ public static class ServiceExtensions
         /// <see cref="IFileSystem"/> or grant authority to write files; applications
         /// must provide both independently.
         /// </remarks>
-        public IServiceCollection AddWriteTool()
+        public IServiceCollection AddWriteTool(Action<WriteFileToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            var options = services.AddOptions<WriteFileToolOptions>()
+                .Validate(
+                    static value => !string.IsNullOrWhiteSpace(value.HostRootPath),
+                    "HostRootPath must be configured.")
+                .ValidateOnStart();
+            if (configure is not null)
+            {
+                _ = options.Configure(configure);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WriteFileTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, WriteFileToolPresentationFormatter>());
             return services;

@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Discovers application-registered <see cref="IToolInvoker"/> instances from composition markers and keyed
-/// registrations under <see cref="ApplicationToolSourceIds.Default"/>.
+/// registrations under <see cref="ApplicationToolSources.Default"/>.
 /// </summary>
 internal sealed class ApplicationToolProvider: IToolProvider
 {
@@ -38,7 +38,7 @@ internal sealed class ApplicationToolProvider: IToolProvider
     }
 
     /// <inheritdoc/>
-    public ToolSourceId SourceId => ApplicationToolSourceIds.Default;
+    public ToolSourceId SourceId => ApplicationToolSources.Default;
 
     /// <inheritdoc/>
     public ValueTask<IToolProviderCapture> DiscoverAsync(ToolDiscoveryRequest request, CancellationToken cancellationToken = default)
@@ -50,7 +50,7 @@ internal sealed class ApplicationToolProvider: IToolProvider
         if (registrations.Length == 0)
         {
             var emptySnapshot = new ToolProviderSnapshot(
-                ApplicationToolSourceIds.Default,
+                ApplicationToolSources.Default,
                 DefaultSourceVersion,
                 []);
             var emptyBindings = ImmutableDictionary<ToolIdentity, IToolInvoker>.Empty;
@@ -71,7 +71,7 @@ internal sealed class ApplicationToolProvider: IToolProvider
         }
 
         var snapshot = new ToolProviderSnapshot(
-            ApplicationToolSourceIds.Default,
+            ApplicationToolSources.Default,
             DefaultSourceVersion,
             descriptors.ToImmutable());
         var bindings = new ToolProviderBindings(snapshot, invokers.ToImmutable());
@@ -80,9 +80,3 @@ internal sealed class ApplicationToolProvider: IToolProvider
     }
 }
 
-/// <summary>Stable source identities for first-party application tool providers.</summary>
-internal static class ApplicationToolSourceIds
-{
-    /// <summary>Gets the default application-local tool source used by <see cref="ApplicationToolProvider"/>.</summary>
-    internal static ToolSourceId Default { get; } = new("agentkit.tools.application");
-}

@@ -8,17 +8,21 @@ using AgentKit.TestSupport;
 /// <summary>Provides construction helpers for read-file tool tests.</summary>
 internal static class TestFactory
 {
-    [Obsolete("Legacy host surface.")]
+    private static readonly string _hostRoot = Path.Combine(Path.GetTempPath(), "agentkit-read-tool-tests");
 
     public static ReadFileTool Tool(
-        IFileSystem? fileSystem = null,
+        IFileReader? reader = null,
         ISecurityAuthority? authority = null,
         ReadFileToolOptions? options = null) => new(
-        fileSystem ?? new FakeFileSystem(),
+        new TestFileSystemSelector(reader ?? new FakeFileReader().WithText(string.Empty)),
+        new TestPathNormalizer(),
         new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),
         new SecurityRequestIdGenerator(),
+        new FileOperationIdGenerator(),
         TimeProvider.System,
-        Options.Create(options ?? new ReadFileToolOptions()));
+        Options.Create(options ?? DefaultOptions()));
+
+    public static ReadFileToolOptions DefaultOptions() => new() { HostRootPath = _hostRoot };
 
     public static bool ReadComplete(ToolInvocationResult result) =>
         JsonSerializer.Deserialize<bool>(result.Outcome.Extensions.Values[ReadFileTool.CompleteExtensionKey].CanonicalJson.AsSpan());
@@ -28,6 +32,8 @@ internal static class TestFactory
     public static ISecurityAuthority DenyingAuthority() => new DenyingSecurityAuthority();
 
     public static IIdentifierGenerator<SecurityRequestId> RequestIds() => new SecurityRequestIdGenerator();
+
+    public static IIdentifierGenerator<FileOperationId> FileOperationIds() => new FileOperationIdGenerator();
 
     public static ExecutionIdentity Identity() =>
         TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
@@ -76,6 +82,12 @@ internal static class TestFactory
         .AddSingleton<IIdentifierGenerator<SecurityRequestId>, SecurityRequestIdGenerator>()
         .AddSingleton(TimeProvider.System);
 
+    public static IServiceCollection AddToolDependencies(IServiceCollection services) => AddSecurityDependencies(services)
+        .AddSingleton<IFileReader, FakeFileReader>()
+        .AddSingleton<IFileSystemSelector>(sp => new TestFileSystemSelector(sp.GetRequiredService<IFileReader>()))
+        .AddSingleton<IFilePathNormalizer, TestPathNormalizer>()
+        .AddSingleton<IIdentifierGenerator<FileOperationId>, FileOperationIdGenerator>();
+
     private sealed class AllowingSecurityAuthority: ISecurityAuthority
     {
         public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default)
@@ -108,6 +120,11 @@ internal static class TestFactory
     private sealed class SecurityRequestIdGenerator: IIdentifierGenerator<SecurityRequestId>
     {
         public SecurityRequestId Create() => new(Guid.NewGuid());
+    }
+
+    private sealed class FileOperationIdGenerator: IIdentifierGenerator<FileOperationId>
+    {
+        public FileOperationId Create() => new(Guid.NewGuid());
     }
 
     private sealed class DenyingSecurityAuthority: ISecurityAuthority

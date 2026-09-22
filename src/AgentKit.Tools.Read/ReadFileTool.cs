@@ -3,36 +3,15 @@
 
 namespace AgentKit.Tools.Read;
 
-/// <summary>
-/// A tool that reads a text file through an injected <see cref="IFileSystem"/>,
-/// with optional 1-indexed line-range selection.
-/// </summary>
-/// <remarks>
-/// <para>
-/// This tool never touches the host file system directly: every read goes
-/// through the injected <see cref="IFileSystem"/>, which re-validates the
-/// requested path against its own configured boundary regardless of
-/// whatever authorization already let the call reach this point.
-/// </para>
-/// <para>
-/// The returned window is always finite. An omitted <c>limit</c> uses
-/// <see cref="ReadFileToolOptions.DefaultMaximumLines"/>, and an explicit
-/// <c>limit</c> above <see cref="ReadFileToolOptions.MaximumLines"/> is
-/// rejected before authorization. A successful outcome records whether the
-/// window reached the last logical line under the
-/// <see cref="CompleteExtensionKey"/> extension so callers can tell a
-/// clipped read from a complete one without parsing the text.
-/// </para>
-/// </remarks>
+using System.Text;
+
+/// <summary>Reads a text file through a keyed <see cref="IFileReader"/> with optional line-range selection.</summary>
 public sealed class ReadFileTool: ITool
 {
     /// <summary>The stable identity this tool registers under.</summary>
     public static readonly ToolId Id = new("read_file");
 
-    /// <summary>
-    /// The outcome extension key whose canonical JSON boolean reports whether the returned
-    /// window reached the end of the file (<c>true</c>) or more lines remain (<c>false</c>).
-    /// </summary>
+    /// <summary>Outcome extension key reporting whether the window reached the end of the file.</summary>
     public const string CompleteExtensionKey = "agentkit.read.complete";
 
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
@@ -50,50 +29,57 @@ public sealed class ReadFileTool: ITool
 
     private static readonly ExtensionData _completeExtensions = CompleteExtensions(true);
     private static readonly ExtensionData _incompleteExtensions = CompleteExtensions(false);
-    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
-    private readonly IFileSystem _fileSystem;
+    private readonly IFileSystemSelector _fileSystemSelector;
+    private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
+    private readonly IIdentifierGenerator<FileOperationId> _fileOperationIds;
     private readonly TimeProvider _timeProvider;
     private readonly ReadFileToolOptions _options;
 
     /// <summary>Initializes a new instance of the <see cref="ReadFileTool"/> class.</summary>
-    /// <param name="fileSystem">The file system this tool reads through.</param>
-    /// <param name="authoritySelector">The security authority selector used after path and argument normalization.</param>
+    /// <param name="fileSystemSelector">Selects the keyed reader profile.</param>
+    /// <param name="pathNormalizer">Normalizes model-supplied paths before authorization.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
+    /// <param name="fileOperationIds">The file-operation identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
-    /// <param name="options">The validated line-window options; the value is captured once at construction.</param>
+    /// <param name="options">The validated options captured at construction.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// A configured line bound is not positive or <see cref="ReadFileToolOptions.DefaultMaximumLines"/>
-    /// exceeds <see cref="ReadFileToolOptions.MaximumLines"/>.
-    /// </exception>
-    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
+    /// <exception cref="ArgumentException"><see cref="ReadFileToolOptions.HostRootPath"/> is not configured.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A configured line bound is invalid.</exception>
     public ReadFileTool(
-        IFileSystem fileSystem,
+        IFileSystemSelector fileSystemSelector,
+        IFilePathNormalizer pathNormalizer,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
+        IIdentifierGenerator<FileOperationId> fileOperationIds,
         TimeProvider timeProvider,
         IOptions<ReadFileToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(fileSystemSelector);
+        ArgumentNullException.ThrowIfNull(pathNormalizer);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
+        ArgumentNullException.ThrowIfNull(fileOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.DefaultMaximumLines);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumLines);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             options.Value.DefaultMaximumLines, options.Value.MaximumLines);
-        _fileSystem = fileSystem;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumReadBytes);
+        _fileSystemSelector = fileSystemSelector;
+        _pathNormalizer = pathNormalizer;
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
+        _fileOperationIds = fileOperationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
     }
 
     /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
     internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
@@ -110,7 +96,6 @@ public sealed class ReadFileTool: ITool
     public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
-    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
     public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -118,16 +103,6 @@ public sealed class ReadFileTool: ITool
         if (!ToolArguments.TryGetRequiredString(request.Arguments, "path", out var pathText, out var pathError))
         {
             return Failed(pathError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        FileSystemPath path;
-        try
-        {
-            path = new FileSystemPath(pathText);
-        }
-        catch (ArgumentException ex)
-        {
-            return Failed($"Invalid path: {ex.Message}", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!ToolArguments.TryGetOptionalInt(request.Arguments, "offset", out var offset, out var offsetError))
@@ -150,6 +125,18 @@ public sealed class ReadFileTool: ITool
             return Failed($"Property 'limit' must be between 1 and {_options.MaximumLines}.", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
+        var normalized = _pathNormalizer.Normalize(new FilePathInput(_options.RootId, pathText), _options.PathPolicy);
+        if (normalized is not FilePathNormalizationSuccess normalizedPath)
+        {
+            var message = normalized is FilePathNormalizationFailed failed
+                ? failed.SafeMessage
+                : "The path could not be normalized.";
+            return Failed(message, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var target = FileHostTargetBinding.Target(_options.RootId, normalizedPath.Path);
+        var resolved = FileHostTargetBinding.Resolve(_options.RootId, normalizedPath.Path, _options.HostRootPath);
+
         var context = request.Context;
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
@@ -158,17 +145,28 @@ public sealed class ReadFileTool: ITool
             return Failed("The captured security authority is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
+        var runId = context.Authorization.Scope.Correlation is InRunOperationCorrelation inRun
+            ? (RunId?) inRun.RunId
+            : null;
+        var readRequest = new FileReadRequest(
+            _fileOperationIds.Create(),
+            context.Authorization.Scope.Correlation.OperationId,
+            context.AgentId,
+            runId,
+            target,
+            new FileReadBounds(_options.MaximumReadBytes));
+
         var securityRequest = new SecurityRequest(
             _requestIds.Create(),
             authorization.Scope,
             context.ToolCallId,
             authorization.Identity,
             authorization,
-            _fileSystem.SecurityAudience,
+            _options.SecurityAudience,
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
-            [FileSecurityBinding.Resource(path)],
-            FileSecurityBinding.ReadFingerprint(path),
+            [FileSecurityBinding.Resource(target)],
+            FileSecurityBinding.ReadFingerprint(readRequest),
             _timeProvider.GetUtcNow().AddMinutes(1));
         var decision = await selected.Authority.AuthorizeAsync(securityRequest, hooks: null, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
@@ -181,16 +179,48 @@ public sealed class ReadFileTool: ITool
             return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await _fileSystem.ReadAsync(new LegacyFileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
-
-        return result switch
+        var selection = await _fileSystemSelector.SelectAsync(
+            _options.ProfileKey,
+            FileSystemCapability.Read,
+            cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemReaderSelected readerSelected)
         {
-            FileRead read => Success(ApplyRange(read.Content, offset, limit ?? _options.DefaultMaximumLines)),
-            FileNotFound => Failed($"No file exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
-            FileReadDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
-            FileReadFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
-            _ => Failed("The file system returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
+            return Failed("The configured file-system reader profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var operation = new AuthorizedFileRead(readRequest, resolved, allowed.Grant);
+        var openResult = await readerSelected.Reader.OpenReadAsync(operation, cancellationToken).ConfigureAwait(false);
+        return openResult switch
+        {
+            FileReadHandleOpened opened => await ReadHandleAsync(opened, pathText, offset, limit ?? _options.DefaultMaximumLines, cancellationToken).ConfigureAwait(false),
+            FileReadOpenNotFound => Failed($"No file exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileReadOpenDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+            FileReadOpenFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+            FileReadOpenCancelled => Failed("The read was cancelled.", ToolTerminalStatus.Cancelled, SideEffectCertainty.DefinitelyNotPerformed),
+            _ => Failed("The file reader returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
         };
+    }
+
+    private static async Task<ToolInvocationResult> ReadHandleAsync(
+        FileReadHandleOpened opened,
+        string pathText,
+        int? offset,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        await using var handle = opened.Handle;
+        string content;
+        try
+        {
+            using var reader = new StreamReader(handle.Content, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+            content = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Failed($"The file at '{pathText}' is not valid UTF-8 text.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        return Success(ApplyRange(content, offset, limit));
     }
 
     private static (string Text, bool Complete) ApplyRange(string content, int? offset, int limit)
@@ -202,10 +232,6 @@ public sealed class ReadFileTool: ITool
         var lines = normalized.Split('\n');
         if (normalized.Length > 0 && normalized[^1] == '\n')
         {
-            // Split on '\n' turns a trailing line terminator into one extra, phantom empty final element (e.g.
-            // "l1\nl2\n" splits into ["l1", "l2", ""]): that element is not a real logical line, and counting it
-            // makes a read that already reached the file's true end report complete: false, so the caller keeps
-            // requesting a follow-up window that returns nothing.
             lines = lines[..^1];
         }
 

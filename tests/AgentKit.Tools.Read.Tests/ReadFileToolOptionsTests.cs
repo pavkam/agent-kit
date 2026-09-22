@@ -22,9 +22,9 @@ public sealed class ReadFileToolOptionsTests
     }
 
     [Fact]
-    public void Defaults_WhenUnconfigured_SatisfyRegistrationValidation()
+    public void Defaults_WhenUnconfigured_SatisfyLineBoundValidation()
     {
-        var options = new ReadFileToolOptions();
+        var options = new ReadFileToolOptions { HostRootPath = Path.GetTempPath() };
 
         options.DefaultMaximumLines.ShouldBeLessThanOrEqualTo(options.MaximumLines);
     }

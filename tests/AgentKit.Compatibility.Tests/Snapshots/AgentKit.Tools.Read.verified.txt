@@ -7,17 +7,21 @@ namespace AgentKit.Tools.Read
     {
         public const string CompleteExtensionKey = "agentkit.read.complete";
         public static readonly AgentKit.ToolId Id;
-        [System.Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
-        public ReadFileTool(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Read.ReadFileToolOptions> options) { }
+        public ReadFileTool(AgentKit.IFileSystemSelector fileSystemSelector, AgentKit.IFilePathNormalizer pathNormalizer, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.FileOperationId> fileOperationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Read.ReadFileToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
-        [System.Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ReadFileToolOptions
     {
         public ReadFileToolOptions() { }
         public int DefaultMaximumLines { get; set; }
+        public string HostRootPath { get; set; }
         public int MaximumLines { get; set; }
+        public long MaximumReadBytes { get; set; }
+        public AgentKit.FilePathPolicy PathPolicy { get; set; }
+        public AgentKit.FileSystemProfileKey ProfileKey { get; set; }
+        public AgentKit.FileRootId RootId { get; set; }
+        public AgentKit.ComponentId SecurityAudience { get; set; }
     }
     public sealed class ReadFileToolPresentationFormatter : AgentKit.IToolPresentationFormatter
     {

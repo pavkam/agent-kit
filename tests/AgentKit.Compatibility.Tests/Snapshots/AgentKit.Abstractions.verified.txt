@@ -3541,6 +3541,11 @@ namespace AgentKit
         Renamed = 3,
         Overflow = 4,
     }
+    public static class FileHostTargetBinding
+    {
+        public static AgentKit.ResolvedFileTarget Resolve(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath relativePath, string hostRootPath) { }
+        public static AgentKit.FileTarget Target(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath relativePath) { }
+    }
     public sealed class FileMetadata : System.IEquatable<AgentKit.FileMetadata>
     {
         public FileMetadata(long lengthBytes, System.DateTimeOffset? lastModifiedUtc, AgentKit.ContentHash? contentFingerprint) { }
@@ -3764,6 +3769,7 @@ namespace AgentKit
         public static AgentKit.SecurityEffect WriteEffect(AgentKit.FileWriteMode mode) { }
         public static AgentKit.InputFingerprint WriteFingerprint(AgentKit.AuthorizedFileWrite operation, AgentKit.ContentHash payloadFingerprint) { }
         public static AgentKit.InputFingerprint WriteFingerprint(AgentKit.FileSystemPath path, string content, AgentKit.FileWriteMode mode) { }
+        public static AgentKit.InputFingerprint WriteFingerprint(AgentKit.FileTarget target, AgentKit.FileWriteDisposition disposition, AgentKit.ContentHash? expectedTargetFingerprint, long declaredContentLength, AgentKit.ContentHash declaredContentFingerprint, AgentKit.FileWriteAtomicityMode atomicityMode, AgentKit.FileWriteEffectClass effectClass, AgentKit.ContentHash payloadFingerprint) { }
     }
     public sealed class FileSnapshotRequest : System.IEquatable<AgentKit.FileSnapshotRequest>
     {

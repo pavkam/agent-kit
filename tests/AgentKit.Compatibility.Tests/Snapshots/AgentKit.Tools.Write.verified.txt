@@ -7,17 +7,24 @@ namespace AgentKit.Tools.Write
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWriteTool() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWriteTool(System.Action<AgentKit.Tools.Write.WriteFileToolOptions>? configure = null) { }
         }
     }
     public sealed class WriteFileTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        [System.Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
-        public WriteFileTool(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider) { }
+        public WriteFileTool(AgentKit.IFileSystemSelector fileSystemSelector, AgentKit.IFilePathNormalizer pathNormalizer, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Write.WriteFileToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
-        [System.Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class WriteFileToolOptions
+    {
+        public WriteFileToolOptions() { }
+        public string HostRootPath { get; set; }
+        public AgentKit.FilePathPolicy PathPolicy { get; set; }
+        public AgentKit.FileSystemProfileKey ProfileKey { get; set; }
+        public AgentKit.FileRootId RootId { get; set; }
+        public AgentKit.ComponentId SecurityAudience { get; set; }
     }
     public sealed class WriteFileToolPresentationFormatter : AgentKit.IToolPresentationFormatter
     {

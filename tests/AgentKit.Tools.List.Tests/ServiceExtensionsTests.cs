@@ -5,17 +5,18 @@ namespace AgentKit.Tools.List.Tests;
 
 using AgentKit.TestSupport;
 
+using AgentKit.Tools;
+
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void AddListTool_WhenCalledTwice_RegistersOneTool()
+    public void AddListTool_WhenCalledTwice_RegistersOneInvokerAndOneLegacyTool()
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<ILegacyDirectoryReader, FakeDirectoryReader>();
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
-        _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
+            new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, StubSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
 
@@ -24,6 +25,14 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ListDirectoryTool>();
+        var identity = new ToolIdentity(ListDirectoryTool.Id, ListDirectoryTool.Descriptor.Version);
+        _ = provider.GetKeyedService<IToolInvoker>(identity).ShouldBeOfType<ListDirectoryTool>();
+        services.Count(static descriptor =>
+                descriptor.IsKeyedService
+                && descriptor.ServiceType == typeof(IToolProvider)
+                && descriptor.ServiceKey is ToolSourceId sourceId
+                && sourceId == ApplicationToolSources.Default)
+            .ShouldBe(1);
     }
 
     [Fact]

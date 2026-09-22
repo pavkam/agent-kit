@@ -20,7 +20,6 @@ public sealed class ServiceExtensionsTests
     ];
 
     /// <summary>Gets every narrow capability in both registration orders.</summary>
-    [Obsolete]
     public static TheoryData<Type, bool> NarrowCapabilityReplacementCases { get; } = new()
     {
         { typeof(ILegacyDirectoryReader), false },
@@ -132,7 +131,6 @@ public sealed class ServiceExtensionsTests
 
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
-    [Obsolete("Legacy IFileSystem surface.")]
     public void AddInMemoryFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)

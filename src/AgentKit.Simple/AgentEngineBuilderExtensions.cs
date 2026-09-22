@@ -366,8 +366,6 @@ public static class AgentEngineBuilderExtensions
         /// that policy allows everything, so the agent can write anywhere under the root; register your own
         /// <see cref="ISecurityPolicy"/> to narrow that, and an approval handler to put a human in the loop.
         /// </remarks>
-        [Obsolete("Legacy host surface.")]
-
         public AgentEngineBuilder UseWorkspace(string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -378,9 +376,24 @@ public static class AgentEngineBuilderExtensions
             }
 
             _ = Plan(builder);
-            _ = builder.Services.AddSandboxedFileSystem(Path.GetFullPath(rootDirectory), configure);
-            _ = builder.Services.AddReadTool();
-            _ = builder.Services.AddWriteTool();
+            var workspaceRoot = Path.GetFullPath(rootDirectory);
+            var workspaceProfile = new FileSystemProfileKey("workspace");
+            var workspaceFileRoot = new FileRootId("workspace");
+            _ = builder.Services.AddSandboxedFileSystem(workspaceRoot, configure);
+            _ = builder.Services.AddOperatingSystemFileSystem(workspaceProfile, o =>
+                o.Roots.Add(new FileRootRegistration(workspaceFileRoot, workspaceRoot)));
+            _ = builder.Services.AddReadTool(o =>
+            {
+                o.ProfileKey = workspaceProfile;
+                o.RootId = workspaceFileRoot;
+                o.HostRootPath = workspaceRoot;
+            });
+            _ = builder.Services.AddWriteTool(o =>
+            {
+                o.ProfileKey = workspaceProfile;
+                o.RootId = workspaceFileRoot;
+                o.HostRootPath = workspaceRoot;
+            });
             _ = builder.Services.AddEditTool();
             _ = builder.Services.AddGlobTool();
             _ = builder.Services.AddSearchTool();

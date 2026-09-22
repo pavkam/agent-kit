@@ -3,16 +3,9 @@
 
 namespace AgentKit.Tools.Write;
 
-/// <summary>
-/// A tool that writes a text file through an injected <see cref="IFileSystem"/>.
-/// </summary>
-/// <remarks>
-/// This tool never touches the host file system directly: every write goes
-/// through the injected <see cref="IFileSystem"/>, which re-validates the
-/// requested path and content size against its own configured boundary
-/// regardless of whatever authorization already let the call reach this
-/// point.
-/// </remarks>
+using System.Text;
+
+/// <summary>Writes a text file through a keyed <see cref="IFileWriter"/> with explicit dispositions.</summary>
 public sealed class WriteFileTool: ITool
 {
     /// <summary>The stable identity this tool registers under.</summary>
@@ -34,37 +27,47 @@ public sealed class WriteFileTool: ITool
           "required": ["path", "content", "mode"]
         }
         """).RootElement;
-    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
-    private readonly IFileSystem _fileSystem;
+
+    private readonly IFileSystemSelector _fileSystemSelector;
+    private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
+    private readonly WriteFileToolOptions _options;
 
     /// <summary>Initializes a new instance of the <see cref="WriteFileTool"/> class.</summary>
-    /// <param name="fileSystem">The file system this tool writes through.</param>
-    /// <param name="authoritySelector">The security authority selector used after path, content, and disposition normalization.</param>
+    /// <param name="fileSystemSelector">Selects the keyed writer profile.</param>
+    /// <param name="pathNormalizer">Normalizes model-supplied paths before authorization.</param>
+    /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
+    /// <param name="options">The validated options captured at construction.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
-    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
+    /// <exception cref="ArgumentException"><see cref="WriteFileToolOptions.HostRootPath"/> is not configured.</exception>
     public WriteFileTool(
-        IFileSystem fileSystem,
+        IFileSystemSelector fileSystemSelector,
+        IFilePathNormalizer pathNormalizer,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IOptions<WriteFileToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(fileSystemSelector);
+        ArgumentNullException.ThrowIfNull(pathNormalizer);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        _fileSystem = fileSystem;
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
+        _fileSystemSelector = fileSystemSelector;
+        _pathNormalizer = pathNormalizer;
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
+        _options = options.Value;
     }
 
     /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
     internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
@@ -81,7 +84,6 @@ public sealed class WriteFileTool: ITool
     public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
-    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
     public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -96,22 +98,27 @@ public sealed class WriteFileTool: ITool
         {
             return Failed("A string property 'content' is required.", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
+
         var content = contentProperty.GetString()!;
 
-        if (!TryParseMode(request.Arguments, out var mode, out var modeError))
+        if (!TryParseDisposition(request.Arguments, out var disposition, out var modeError))
         {
             return Failed(modeError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        FileSystemPath path;
-        try
+        var normalized = _pathNormalizer.Normalize(new FilePathInput(_options.RootId, pathText), _options.PathPolicy);
+        if (normalized is not FilePathNormalizationSuccess normalizedPath)
         {
-            path = new FileSystemPath(pathText);
+            var message = normalized is FilePathNormalizationFailed failed
+                ? failed.SafeMessage
+                : "The path could not be normalized.";
+            return Failed(message, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
-        catch (ArgumentException ex)
-        {
-            return Failed($"Invalid path: {ex.Message}", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
-        }
+
+        var target = FileHostTargetBinding.Target(_options.RootId, normalizedPath.Path);
+        var resolved = FileHostTargetBinding.Resolve(_options.RootId, normalizedPath.Path, _options.HostRootPath);
+        var payload = Encoding.UTF8.GetBytes(content);
+        var payloadFingerprint = FileSecurityBinding.ContentFingerprint(payload);
 
         var context = request.Context;
         var authorization = context.Authorization;
@@ -127,11 +134,19 @@ public sealed class WriteFileTool: ITool
             context.ToolCallId,
             authorization.Identity,
             authorization,
-            _fileSystem.SecurityAudience,
+            _options.SecurityAudience,
             SecurityOperationKind.FileWrite,
-            FileSecurityBinding.WriteEffect(mode),
-            [FileSecurityBinding.Resource(path)],
-            FileSecurityBinding.WriteFingerprint(path, content, mode),
+            FileSecurityBinding.WriteEffect(disposition),
+            [FileSecurityBinding.Resource(target)],
+            FileSecurityBinding.WriteFingerprint(
+                target,
+                disposition,
+                expectedTargetFingerprint: null,
+                payload.Length,
+                payloadFingerprint,
+                FileWriteAtomicityMode.Required,
+                FileWriteEffectClass.WorkspaceBytes,
+                payloadFingerprint),
             _timeProvider.GetUtcNow().AddMinutes(1));
         var decision = await selected.Authority.AuthorizeAsync(securityRequest, hooks: null, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
@@ -144,24 +159,49 @@ public sealed class WriteFileTool: ITool
             return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await _fileSystem.WriteAsync(
-            new FileWriteRequest(path, content, mode, allowed.Grant), cancellationToken).ConfigureAwait(false);
+        var selection = await _fileSystemSelector.SelectAsync(
+            _options.ProfileKey,
+            FileSystemCapability.Write,
+            cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemWriterSelected writerSelected)
+        {
+            return Failed("The configured file-system writer profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var operation = new AuthorizedFileWrite(
+            resolved,
+            disposition,
+            expectedTargetFingerprint: null,
+            payload.Length,
+            payloadFingerprint,
+            FileWriteAtomicityMode.Required,
+            FileWriteEffectClass.WorkspaceBytes,
+            allowed.Grant);
+        var writeContent = new FileWriteContent(payload, payloadFingerprint);
+        var result = await writerSelected.Writer.WriteAsync(operation, writeContent, cancellationToken).ConfigureAwait(false);
 
         return result switch
         {
-            LegacyFileWritten written => Success($"Wrote {written.BytesWritten} byte(s) to '{pathText}'."),
-            LegacyFileAlreadyExists => Failed($"A file already exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
-            LegacyFileWriteDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
-            LegacyFileWriteFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
-            _ => Failed("The file system returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
+            FileWriteSuccess success => Success($"Wrote {success.PayloadBytes} byte(s) to '{pathText}'."),
+            FileWriteConflict => Failed($"A file already exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteNotFound => Failed($"No file exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+            FileWriteLimitExceeded => Failed("The write exceeded configured bounds.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteCancelled => Failed("The write was cancelled.", ToolTerminalStatus.Cancelled, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteUnsupported => Failed("The configured writer does not support this disposition.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed),
+            _ => Failed("The file writer returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
         };
     }
 
-    private static bool TryParseMode(JsonElement arguments, out FileWriteMode mode, [System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out string? error)
+    private static bool TryParseDisposition(
+        JsonElement arguments,
+        out FileWriteDisposition disposition,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out string? error)
     {
         if (!ToolArguments.TryGetRequiredString(arguments, "mode", out var text, out error))
         {
-            mode = default;
+            disposition = default;
             return false;
         }
 
@@ -169,24 +209,24 @@ public sealed class WriteFileTool: ITool
         {
             case "create_or_replace":
             case "overwrite":
-                mode = FileWriteMode.CreateOrOverwrite;
+                disposition = FileWriteDisposition.CreateOrReplace;
                 error = null;
                 return true;
             case "create_only":
             case "create_new":
-                mode = FileWriteMode.CreateNew;
+                disposition = FileWriteDisposition.CreateOnly;
                 error = null;
                 return true;
             case "replace_existing":
-                mode = FileWriteMode.ReplaceExisting;
+                disposition = FileWriteDisposition.ReplaceExisting;
                 error = null;
                 return true;
             case "append":
-                mode = FileWriteMode.Append;
+                disposition = FileWriteDisposition.Append;
                 error = null;
                 return true;
             default:
-                mode = default;
+                disposition = default;
                 error = $"'mode' must be one of 'create_or_replace', 'create_only', 'replace_existing', or 'append'; got '{text}'.";
                 return false;
         }

@@ -133,7 +133,7 @@ internal static class ToolServiceRegistration
     internal static IServiceCollection EnsureApplicationToolProvider(IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        var sourceId = ApplicationToolSourceIds.Default;
+        var sourceId = ApplicationToolSources.Default;
         var existing = services.Any(descriptor =>
             descriptor.IsKeyedService
             && descriptor.ServiceType == typeof(IToolProvider)

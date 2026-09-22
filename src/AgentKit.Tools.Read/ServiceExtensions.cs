@@ -42,6 +42,9 @@ public static class ServiceExtensions
                 .Validate(
                     static value => value.DefaultMaximumLines <= value.MaximumLines,
                     "DefaultMaximumLines must not exceed MaximumLines.")
+                .Validate(
+                    static value => !string.IsNullOrWhiteSpace(value.HostRootPath),
+                    "HostRootPath must be configured.")
                 .ValidateOnStart();
             if (configure is not null)
             {

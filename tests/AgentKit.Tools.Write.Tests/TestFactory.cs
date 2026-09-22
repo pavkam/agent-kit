@@ -8,13 +8,15 @@ using AgentKit.TestSupport;
 /// <summary>Provides construction helpers for write-file tool tests.</summary>
 internal static class TestFactory
 {
-    [Obsolete("Legacy host surface.")]
+    private static readonly string _hostRoot = Path.Combine(Path.GetTempPath(), "agentkit-write-tool-tests");
 
-    public static WriteFileTool Tool(IFileSystem? fileSystem = null, ISecurityAuthority? authority = null) => new(
-        fileSystem ?? new FakeFileSystem(),
+    public static WriteFileTool Tool(IFileWriter? writer = null, ISecurityAuthority? authority = null) => new(
+        new TestFileSystemSelector(writer ?? new FakeFileWriter().WithSuccess()),
+        new TestPathNormalizer(),
         new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),
         new SecurityRequestIdGenerator(),
-        TimeProvider.System);
+        TimeProvider.System,
+        Options.Create(new WriteFileToolOptions { HostRootPath = _hostRoot }));
 
     public static ISecurityGrantStore GrantStore() => new AlwaysConsumeGrantStore();
 
@@ -66,6 +68,11 @@ internal static class TestFactory
         .AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()))
         .AddSingleton<IIdentifierGenerator<SecurityRequestId>, SecurityRequestIdGenerator>()
         .AddSingleton(TimeProvider.System);
+
+    public static IServiceCollection AddToolDependencies(IServiceCollection services) => AddSecurityDependencies(services)
+        .AddSingleton<IFileWriter, FakeFileWriter>()
+        .AddSingleton<IFileSystemSelector>(sp => new TestFileSystemSelector(sp.GetRequiredService<IFileWriter>()))
+        .AddSingleton<IFilePathNormalizer, TestPathNormalizer>();
 
     private sealed class AllowingSecurityAuthority: ISecurityAuthority
     {

@@ -72,20 +72,74 @@ public static class FileSecurityBinding
     public static InputFingerprint WriteFingerprint(AuthorizedFileWrite operation, ContentHash payloadFingerprint)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        return Hash(JsonSerializer.SerializeToUtf8Bytes(new
+        return WriteFingerprint(
+            operation.ResolvedTarget.RootId,
+            operation.ResolvedTarget.RelativePath,
+            operation.Disposition,
+            operation.ExpectedTargetFingerprint,
+            operation.DeclaredContentLength,
+            operation.DeclaredContentFingerprint,
+            operation.AtomicityMode,
+            operation.EffectClass,
+            payloadFingerprint);
+    }
+
+    /// <summary>Computes exact mutation evidence for one logical file write before grant binding.</summary>
+    /// <param name="target">The logical write target.</param>
+    /// <param name="disposition">The explicit write disposition.</param>
+    /// <param name="expectedTargetFingerprint">The expected target fingerprint when required.</param>
+    /// <param name="declaredContentLength">The declared payload length in bytes.</param>
+    /// <param name="declaredContentFingerprint">The declared payload fingerprint.</param>
+    /// <param name="atomicityMode">The required atomicity mode.</param>
+    /// <param name="effectClass">The declared effect class.</param>
+    /// <param name="payloadFingerprint">The fingerprint of the payload bytes to commit.</param>
+    /// <returns>An algorithm-qualified input fingerprint.</returns>
+    public static InputFingerprint WriteFingerprint(
+        FileTarget target,
+        FileWriteDisposition disposition,
+        ContentHash? expectedTargetFingerprint,
+        long declaredContentLength,
+        ContentHash declaredContentFingerprint,
+        FileWriteAtomicityMode atomicityMode,
+        FileWriteEffectClass effectClass,
+        ContentHash payloadFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return WriteFingerprint(
+            target.RootId,
+            target.Path,
+            disposition,
+            expectedTargetFingerprint,
+            declaredContentLength,
+            declaredContentFingerprint,
+            atomicityMode,
+            effectClass,
+            payloadFingerprint);
+    }
+
+    private static InputFingerprint WriteFingerprint(
+        FileRootId rootId,
+        NormalizedRelativePath relativePath,
+        FileWriteDisposition disposition,
+        ContentHash? expectedTargetFingerprint,
+        long declaredContentLength,
+        ContentHash declaredContentFingerprint,
+        FileWriteAtomicityMode atomicityMode,
+        FileWriteEffectClass effectClass,
+        ContentHash payloadFingerprint) =>
+        Hash(JsonSerializer.SerializeToUtf8Bytes(new
         {
             operation = "write",
-            root = operation.ResolvedTarget.RootId.Value,
-            path = operation.ResolvedTarget.RelativePath.Value,
-            disposition = operation.Disposition.ToString(),
-            expectedTargetFingerprint = operation.ExpectedTargetFingerprint?.Value,
-            declaredContentLength = operation.DeclaredContentLength,
-            declaredContentFingerprint = operation.DeclaredContentFingerprint.Value,
+            root = rootId.Value,
+            path = relativePath.Value,
+            disposition = disposition.ToString(),
+            expectedTargetFingerprint = expectedTargetFingerprint?.Value,
+            declaredContentLength,
+            declaredContentFingerprint = declaredContentFingerprint.Value,
             payloadFingerprint = payloadFingerprint.Value,
-            atomicityMode = operation.AtomicityMode.ToString(),
-            effectClass = operation.EffectClass.ToString(),
+            atomicityMode = atomicityMode.ToString(),
+            effectClass = effectClass.ToString(),
         }));
-    }
 
     /// <summary>Computes exact observation evidence for a complete bounded byte snapshot.</summary>
     /// <param name="path">The observed path.</param>

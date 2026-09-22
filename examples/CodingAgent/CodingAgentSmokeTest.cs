@@ -6,7 +6,6 @@ namespace CodingAgent;
 /// <summary>A headless entry point that exercises <see cref="AgentRuntime"/> without the SharpVision UI.</summary>
 internal static class CodingAgentSmokeTest
 {
-    [Obsolete("Legacy host surface.")]
 
     public static async Task<int> RunAsync(string[] args)
     {

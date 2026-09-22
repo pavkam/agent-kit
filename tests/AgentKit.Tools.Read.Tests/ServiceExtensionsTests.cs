@@ -16,16 +16,14 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void AddReadTool_WhenConfigureProvided_AppliesOptions()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
 
         _ = services.AddReadTool(static options =>
         {
+            options.HostRootPath = Path.GetTempPath();
             options.DefaultMaximumLines = 500;
             options.MaximumLines = 5_000;
         });
@@ -38,62 +36,65 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void AddReadTool_WhenOptionsInvalid_FailsValidation()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
 
-        _ = services.AddReadTool(static options => options.DefaultMaximumLines = options.MaximumLines + 1);
+        _ = services.AddReadTool(static options =>
+        {
+            options.HostRootPath = Path.GetTempPath();
+            options.DefaultMaximumLines = options.MaximumLines + 1;
+        });
         using var provider = services.BuildServiceProvider();
 
         _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ReadFileToolOptions>>().Value);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
+    public void AddReadTool_WhenHostRootMissing_FailsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = TestFactory.AddToolDependencies(services);
+        _ = services.AddReadTool();
+        using var provider = services.BuildServiceProvider();
 
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ReadFileToolOptions>>().Value);
+    }
+
+    [Fact]
     public void AddReadTool_WhenCalled_RegistersReadFileTool()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
 
-        _ = services.AddReadTool();
+        _ = services.AddReadTool(static options => options.HostRootPath = Path.GetTempPath());
         using var provider = services.BuildServiceProvider();
 
         _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ReadFileTool>();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void AddReadTool_WhenCalledTwice_RegistersReadFileToolOnce()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
 
-        _ = services.AddReadTool();
-        _ = services.AddReadTool();
+        _ = services.AddReadTool(static options => options.HostRootPath = Path.GetTempPath());
+        _ = services.AddReadTool(static options => options.HostRootPath = Path.GetTempPath());
         using var provider = services.BuildServiceProvider();
 
         _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ReadFileTool>();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void AddReadTool_WhenAnotherToolIsRegistered_PreservesBothRegistrations()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
         _ = services.AddSingleton<ITool, StubTool>();
 
-        _ = services.AddReadTool();
+        _ = services.AddReadTool(static options => options.HostRootPath = Path.GetTempPath());
         using var provider = services.BuildServiceProvider();
 
         provider.GetServices<ITool>()
@@ -102,15 +103,12 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void AddReadTool_WhenComposedWithAgentTools_ResolvesThroughCatalog()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
-        _ = TestFactory.AddSecurityDependencies(services);
+        _ = TestFactory.AddToolDependencies(services);
         _ = services.AddAgentTools(o => _ = o.AllowedToolIds.Add(ReadFileTool.Id));
-        _ = services.AddReadTool();
+        _ = services.AddReadTool(static options => options.HostRootPath = Path.GetTempPath());
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<IToolCatalog>().TryResolve(ReadFileTool.Id, out _).ShouldBeTrue();

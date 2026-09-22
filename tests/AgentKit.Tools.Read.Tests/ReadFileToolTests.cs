@@ -8,25 +8,24 @@ using AgentKit.TestSupport;
 public sealed class ReadFileToolTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
-            null!, null!, null!, null!, null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(null!, null!, null!, null!, null!, null!, null!));
 
-        exception.ParamName.ShouldBe("fileSystem");
+        exception.ParamName.ShouldBe("fileSystemSelector");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
-            new FakeFileSystem(),
+            new TestFileSystemSelector(new FakeFileReader()),
+            new TestPathNormalizer(),
             new FixedSecurityAuthoritySelector(TestFactory.DenyingAuthority()),
             TestFactory.RequestIds(),
+            TestFactory.FileOperationIds(),
             TimeProvider.System,
             null!));
 
@@ -39,21 +38,19 @@ public sealed class ReadFileToolTests
     [InlineData(10, 0)]
     [InlineData(10, -1)]
     [InlineData(11, 10)]
-    [Obsolete("Legacy host surface.")]
 
     public void Constructor_WhenOptionsInvalid_ThrowsArgumentOutOfRangeException(int defaultMaximumLines, int maximumLines)
     {
-        var options = new ReadFileToolOptions { DefaultMaximumLines = defaultMaximumLines, MaximumLines = maximumLines };
+        var options = new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = defaultMaximumLines, MaximumLines = maximumLines };
 
         _ = Should.Throw<ArgumentOutOfRangeException>(() => TestFactory.Tool(options: options));
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Constructor_WhenDefaultEqualsMaximum_Succeeds()
     {
-        var options = new ReadFileToolOptions { DefaultMaximumLines = 10, MaximumLines = 10 };
+        var options = new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 10, MaximumLines = 10 };
 
         var tool = TestFactory.Tool(options: options);
 
@@ -61,7 +58,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public void Descriptor_WhenAccessed_DeclaresAuthoredReadContractAndOpenInputSchema()
     {
@@ -75,7 +71,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
@@ -88,7 +83,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
@@ -103,7 +97,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
@@ -118,7 +111,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
@@ -133,12 +125,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenOffsetExplicitlyNull_ReadsFullContent()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2", 5) };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader().WithText("l1\nl2");
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": null}"""), TestContext.Current.CancellationToken);
@@ -148,7 +139,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
@@ -163,7 +153,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsRejected()
     {
@@ -179,7 +168,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsRejected()
     {
@@ -194,7 +182,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsRejected()
     {
@@ -209,12 +196,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileFound_ReturnsFullContent()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("line1\nline2\nline3", 17) };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader().WithText("line1\nline2\nline3");
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -226,12 +212,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenOffsetAndLimitProvided_ReturnsRequestedLineRange()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 2, "limit": 2}"""), TestContext.Current.CancellationToken);
@@ -240,12 +225,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitExceedsAvailableLines_ReturnsRemainingLines()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3");
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 2, "limit": 10}"""), TestContext.Current.CancellationToken);
@@ -255,12 +239,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitOmitted_UsesConfiguredDefaultWindow()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 10 });
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -270,12 +253,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitOmittedAndOffsetProvided_UsesConfiguredDefaultWindowFromOffset()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 10 });
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 3}"""), TestContext.Current.CancellationToken);
@@ -285,12 +267,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitOmittedAndFileFitsWindow_ReturnsFullContentMarkedComplete()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\r\nl2", 6) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+        var reader = new FakeFileReader().WithText("l1\r\nl2");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 10 });
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -299,7 +280,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndFitsWindow_ReturnsFullContentMarkedComplete()
     {
@@ -307,8 +287,8 @@ public sealed class ReadFileToolTests
         // splits into ["l1", "l2", ""]). Counting that element as a real logical line made a read that already
         // reached the file's true end report complete: false, so a follow-up read at the next offset would
         // return nothing instead of the caller ever observing a complete: true window.
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\n", 6) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+        var reader = new FakeFileReader().WithText("l1\nl2\n");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 10 });
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -317,12 +297,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndAnExplicitRangeReachesTheEnd_MarksComplete()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\n", 9) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3\n");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 10 });
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 3, "limit": 5}"""), TestContext.Current.CancellationToken);
@@ -332,12 +311,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
-        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
+        var tool = TestFactory.Tool(reader, options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 4 });
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": 4}"""), TestContext.Current.CancellationToken);
@@ -348,15 +326,14 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenLimitExceedsMaximum_ReturnsInvalidArguments()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
+        var reader = new FakeFileReader().WithText("l1\nl2\nl3");
         var tool = TestFactory.Tool(
-            fileSystem,
+            reader,
             new UninvokedSecurityAuthority(),
-            options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
+            options: new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 2, MaximumLines = 4 });
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": 5}"""), TestContext.Current.CancellationToken);
@@ -366,16 +343,15 @@ public sealed class ReadFileToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Property 'limit' must be between 1 and 4.");
-        fileSystem.ReceivedReads.ShouldBeEmpty();
+        reader.ReceivedReads.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileNotFound_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static r => new FileNotFound(r.Path) };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenNotFound() };
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "missing.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -386,12 +362,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadDenied("outside sandbox") };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenDenied("outside sandbox") };
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -403,12 +378,11 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotObserveFileSystem()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("secret", 6) };
-        var tool = TestFactory.Tool(fileSystem, TestFactory.DenyingAuthority());
+        var reader = new FakeFileReader().WithText("secret");
+        var tool = TestFactory.Tool(reader, TestFactory.DenyingAuthority());
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "missing-or-secret.txt"}"""),
@@ -419,16 +393,15 @@ public sealed class ReadFileToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Denied by test policy.");
-        fileSystem.ReceivedReads.ShouldBeEmpty();
+        reader.ReceivedReads.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
 
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
-        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadFailed("disk error") };
-        var tool = TestFactory.Tool(fileSystem);
+        var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenFailed("disk error") };
+        var tool = TestFactory.Tool(reader);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -438,30 +411,4 @@ public sealed class ReadFileToolTests
         result.Outcome.Retryable.ShouldBeFalse();
     }
 
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task InvokeAsync_WhenUsingRealSandboxedFileSystem_ReadsFileEndToEnd()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "agentkit-readtool-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(root);
-        try
-        {
-            File.WriteAllText(Path.Combine(root, "doc.txt"), "real content");
-            var fileSystem = new SandboxedFileSystem(
-                Options.Create(new SandboxedFileSystemOptions { RootDirectory = root }),
-                TestFactory.GrantStore(),
-                TimeProvider.System);
-            var tool = TestFactory.Tool(fileSystem);
-
-            var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "doc.txt"}"""), TestContext.Current.CancellationToken);
-
-            result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-            TestFactory.ReadText(result).ShouldBe("real content");
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
 }

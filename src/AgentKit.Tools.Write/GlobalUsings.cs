@@ -3,3 +3,7 @@
 
 global using System.Collections.Immutable;
 global using System.Text.Json;
+
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.DependencyInjection.Extensions;
+global using Microsoft.Extensions.Options;

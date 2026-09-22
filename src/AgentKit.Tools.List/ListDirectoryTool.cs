@@ -6,7 +6,7 @@ namespace AgentKit.Tools.List;
 #pragma warning disable CS0612 // Legacy ILegacyDirectoryReader until WS5-C8 migrates list_directory onto spec IDirectoryReader.
 
 /// <summary>Lists one deterministic, snapshot-bound page of child paths from an authorized directory.</summary>
-public sealed class ListDirectoryTool: ITool
+public sealed class ListDirectoryTool: IToolInvoker, ITool
 {
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("list_directory");
@@ -31,6 +31,30 @@ public sealed class ListDirectoryTool: ITool
           "additionalProperties": false
         }
         """).RootElement;
+
+    /// <summary>Gets the immutable descriptor shared by registration and discovery.</summary>
+    /// <value>The complete publication used by <see cref="ServiceExtensions.AddListTool"/>.</value>
+    public static ToolDescriptor Descriptor { get; } = new(
+        Id,
+        new ToolVersion("1.0"),
+        "list_directory",
+        "Lists a deterministic page of child paths without following entries. Continuations fail if the directory changes.",
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.list"),
+        ExtensionData.Empty);
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    /// <value>An immutable publication hosts add through <see cref="Tools.ServiceExtensions.AddToolset"/>.</value>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.list"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("list_directory"), new ToolIdentity(Id, Descriptor.Version))]);
+
     [Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
     private readonly ILegacyDirectoryReader _directoryReader;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -71,33 +95,46 @@ public sealed class ListDirectoryTool: ITool
     }
 
     /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
-        Id,
-        new ToolVersion("1.0"),
-        "list_directory",
-        "Lists a deterministic page of child paths without following entries. Continuations fail if the directory changes.",
-        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
-        outputSchema: null,
-        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
-        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
-        new ToolSourceId("agentkit.tools.list"),
-        ExtensionData.Empty);
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
+    }
 
     /// <inheritdoc/>
     [Obsolete("Legacy host surface.")]
 
-    public async Task<ToolInvocationResult> InvokeAsync(
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryParse(request.Arguments, out var path, out var maximumEntries, out var cursor, out var error))
+        return InvokeCoreAsync(
+            request.Context.Authorization,
+            request.Context.ToolCallId,
+            request.Arguments,
+            cancellationToken).AsTask();
+    }
+
+    [Obsolete]
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        SecurityAuthorizationContext authorization,
+        ToolCallId callId,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParse(arguments, out var path, out var maximumEntries, out var cursor, out var error))
         {
             return Failed(error!, "invalid_arguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var context = request.Context;
-        var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
@@ -108,7 +145,7 @@ public sealed class ListDirectoryTool: ITool
             new SecurityRequest(
                 _requestIds.Create(),
                 authorization.Scope,
-                context.ToolCallId,
+                callId,
                 authorization.Identity,
                 authorization,
                 _directoryReader.SecurityAudience,

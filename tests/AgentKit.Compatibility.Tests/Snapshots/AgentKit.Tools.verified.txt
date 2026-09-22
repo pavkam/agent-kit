@@ -15,6 +15,10 @@ namespace AgentKit.Tools
         public AllowListToolAuthorizer(Microsoft.Extensions.Options.IOptions<AgentKit.Tools.AgentToolsOptions> options) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolAuthorizationDecision> AuthorizeAsync(AgentKit.ToolAuthorizationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public static class ApplicationToolSources
+    {
+        public static AgentKit.ToolSourceId Default { get; }
+    }
     public sealed class BarrierSegmentToolScheduler : AgentKit.IToolScheduler
     {
         public BarrierSegmentToolScheduler(AgentKit.IToolResultNormalizer resultNormalizer, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.BarrierSegmentToolScheduler> logger) { }

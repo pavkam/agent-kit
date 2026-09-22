@@ -25,8 +25,15 @@ described in the [composition guide](../../docs/guides/composition.md).
   paths using deterministic in-process globbing.
 
 Direct project references:
-[AgentKit.Abstractions](../AgentKit.Abstractions/README.md). Other related
-projects above are composition collaborators, not necessarily dependencies.
+[AgentKit.Abstractions](../AgentKit.Abstractions/README.md),
+[AgentKit.Tools](../AgentKit.Tools/README.md). Other related projects above are
+composition collaborators, not necessarily dependencies.
+
+`AddListTool` registers a spec-shaped `IToolInvoker`, publishes
+`ListDirectoryTool.DefaultToolset`, and retains legacy `ITool` registration
+until workstream 4 chunk C10. Opt into the new executor with
+`ReplaceToolExecutor<DefaultToolExecutor>()` and register
+`ISecurityAuthoritySelector` from the permissions stack.
 
 ## Tests and reference
 

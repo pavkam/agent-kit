@@ -113,8 +113,22 @@ internal static class AgentRuntime
         _ = services.AddAgentOutput();
         _ = services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
 
-        _ = services.AddReadTool();
-        _ = services.AddWriteTool();
+        var workspaceFileProfile = new FileSystemProfileKey("workspace");
+        var workspaceFileRoot = new FileRootId("workspace");
+        _ = services.AddOperatingSystemFileSystem(workspaceFileProfile, o =>
+            o.Roots.Add(new FileRootRegistration(workspaceFileRoot, workspaceRoot)));
+        _ = services.AddReadTool(o =>
+        {
+            o.ProfileKey = workspaceFileProfile;
+            o.RootId = workspaceFileRoot;
+            o.HostRootPath = workspaceRoot;
+        });
+        _ = services.AddWriteTool(o =>
+        {
+            o.ProfileKey = workspaceFileProfile;
+            o.RootId = workspaceFileRoot;
+            o.HostRootPath = workspaceRoot;
+        });
         _ = services.AddEditTool();
         _ = services.AddGlobTool();
         _ = services.AddSearchTool();
