@@ -182,7 +182,7 @@ public sealed class EditToolTests
     {
         var tool = CreateTool(new FakeSnapshotReader(), new FakeAtomicFileReplacer(), new SequencedSecurityAuthority());
 
-        tool.Descriptor.ShouldBeSameAs(EditTool.PresentationDescriptor);
+        ((ITool) tool).Descriptor.ShouldBeSameAs(EditTool.PresentationDescriptor);
     }
 
     [Fact]

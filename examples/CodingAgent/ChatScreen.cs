@@ -1376,7 +1376,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-
     private OwnedConversationSession CreateConversation()
     {
         _status.Content = "Starting AgentKit runtime...";

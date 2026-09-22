@@ -54,7 +54,7 @@ public sealed class SearchToolTests
     {
         var tool = CreateTool(new FakeFileContentSearcher(), new RecordingSecurityAuthority());
 
-        tool.Descriptor.ShouldBeSameAs(SearchTool.PresentationDescriptor);
+        ((ITool) tool).Descriptor.ShouldBeSameAs(SearchTool.PresentationDescriptor);
     }
 
     [Fact]

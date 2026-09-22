@@ -12,6 +12,7 @@ public sealed class PatchToolTests
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"no envelope\"}")]
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"*** Begin Patch\\n*** End Patch\"}")]
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"*** Begin Patch\\n*** Add File: ../x\\n+y\\n*** End Patch\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPatchIsInvalid_PerformsNoAuthorizationOrHostAccess(string json)
     {
         var snapshot = new FakeSnapshotReader();
@@ -30,6 +31,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddIsValid_ObservesAbsenceThenAuthorizesExactCreate()
     {
         var snapshot = new FakeSnapshotReader();
@@ -64,6 +66,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateTargetsBomCrlfUnicode_PreservesExactTextPolicyAndBindsBytes()
     {
         byte[] original = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("α old\r\nlast")];
@@ -100,6 +103,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHunkContextIsAmbiguous_DoesNotRequestMutationAuthority()
     {
         var snapshot = new FakeSnapshotReader();
@@ -125,6 +129,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMutationAuthorizationIsDenied_DoesNotInvokeHostApplier()
     {
         var snapshot = new FakeSnapshotReader();
@@ -149,6 +154,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveIsValid_BindsBothPathsAndUnchangedSourceVersion()
     {
         var snapshot = new FakeSnapshotReader();
@@ -179,6 +185,7 @@ public sealed class PatchToolTests
     [Theory]
     [InlineData(WorkspacePatchEntryStatus.Unchanged, SideEffectCertainty.PartiallyPerformed)]
     [InlineData(WorkspacePatchEntryStatus.Uncertain, SideEffectCertainty.Unknown)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostReportsPartial_ReturnsFailureWithPerEntrySettlementContent(WorkspacePatchEntryStatus secondStatus, SideEffectCertainty certainty)
     {
         var snapshot = new FakeSnapshotReader();
@@ -233,11 +240,13 @@ public sealed class PatchToolTests
     {
         var tool = CreateTool(new FakeSnapshotReader(), new FakePatchApplier(), new SequencedSecurityAuthority());
 
-        tool.Descriptor.Id.ShouldBe(PatchTool.Id);
-        tool.Descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
+        var descriptor = ((ITool) tool).Descriptor;
+        descriptor.Id.ShouldBe(PatchTool.Id);
+        descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPatchExceedsByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -259,6 +268,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenObservationAuthorizationIsDenied_ReturnsFailureWithoutPlanningFurther()
     {
         var snapshot = new FakeSnapshotReader();
@@ -280,6 +290,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddTargetAlreadyExists_RejectsWithConflict()
     {
         var snapshot = new FakeSnapshotReader();
@@ -302,6 +313,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddedFileExceedsFileByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -323,6 +335,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateTargetIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -347,6 +360,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdatedFileExceedsFileByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -371,6 +385,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateHunkProducesNoByteChange_RejectsWithNoChange()
     {
         var snapshot = new FakeSnapshotReader();
@@ -395,6 +410,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDeleteTargetIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -415,6 +431,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDeleteIsValid_AuthorizesAndAppliesDeleteEntry()
     {
         var snapshot = new FakeSnapshotReader();
@@ -438,6 +455,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveSourceIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -459,6 +477,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveDestinationObservationIsDenied_ReturnsFailureWithoutApplying()
     {
         var snapshot = new FakeSnapshotReader();
@@ -481,6 +500,7 @@ public sealed class PatchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveDestinationAlreadyExists_RejectsWithConflict()
     {
         var snapshot = new FakeSnapshotReader();

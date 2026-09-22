@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Patch;
 
+using AgentKit.Tools;
+
 /// <summary>Parses, plans, authorizes, and applies exact source-ordered workspace patch batches.</summary>
-public sealed class PatchTool: ITool
+public sealed class PatchTool: IToolInvoker, ITool
 {
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("patch");
@@ -69,8 +71,8 @@ public sealed class PatchTool: ITool
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "patch",
@@ -82,13 +84,55 @@ public sealed class PatchTool: ITool
         new ToolSourceId("agentkit.tools.patch"),
         ExtensionData.Empty);
 
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.patch"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("patch"), new ToolIdentity(Id, Descriptor.Version))]);
+
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryGetPatchText(request.Arguments, out var patchText, out var argumentError))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetPatchText(arguments, out var patchText, out var argumentError))
         {
             return Failure(argumentError!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -120,7 +164,7 @@ public sealed class PatchTool: ITool
         var planned = ImmutableArray.CreateBuilder<PlannedPatchEntry>(parsed!.Entries.Length);
         foreach (var entry in parsed.Entries)
         {
-            var source = await ObserveAsync(request.Context, entry.Path, cancellationToken).ConfigureAwait(false);
+            var source = await ObserveAsync(executionContext, entry.Path, cancellationToken).ConfigureAwait(false);
             if (source.Error is not null)
             {
                 return Failure(source.Error, source.Status, source.TerminalStatus, SideEffectCertainty.DefinitelyNotPerformed);
@@ -193,7 +237,7 @@ public sealed class PatchTool: ITool
                     }
 
                     var destination = await ObserveAsync(
-                        request.Context, entry.DestinationPath!.Value, cancellationToken).ConfigureAwait(false);
+                        executionContext, entry.DestinationPath!.Value, cancellationToken).ConfigureAwait(false);
                     if (destination.Error is not null)
                     {
                         return Failure(destination.Error, destination.Status, destination.TerminalStatus, SideEffectCertainty.DefinitelyNotPerformed);
@@ -215,7 +259,7 @@ public sealed class PatchTool: ITool
         foreach (var entry in planned)
         {
             var decision = await AuthorizeMutationAsync(
-                request.Context, entry, cancellationToken).ConfigureAwait(false);
+                executionContext, entry, cancellationToken).ConfigureAwait(false);
             if (decision is SecurityDenied denied)
             {
                 return Failure(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);

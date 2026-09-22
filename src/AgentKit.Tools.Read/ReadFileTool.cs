@@ -5,8 +5,10 @@ namespace AgentKit.Tools.Read;
 
 using System.Text;
 
+using AgentKit.Tools;
+
 /// <summary>Reads a text file through a keyed <see cref="IFileReader"/> with optional line-range selection.</summary>
-public sealed class ReadFileTool: ITool
+public sealed class ReadFileTool: IToolInvoker, ITool
 {
     /// <summary>The stable identity this tool registers under.</summary>
     public static readonly ToolId Id = new("read_file");
@@ -79,8 +81,8 @@ public sealed class ReadFileTool: ITool
         _options = options.Value;
     }
 
-    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "read_file",
@@ -92,25 +94,63 @@ public sealed class ReadFileTool: ITool
         new ToolSourceId("agentkit.tools.read"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.read"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("read_file"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return InvokeCoreAsync(authorization, context.AgentId, context.CallId, context.Arguments, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return InvokeCoreAsync(
+            request.Context.Authorization,
+            request.Context.AgentId,
+            request.Context.ToolCallId,
+            request.Arguments,
+            cancellationToken).AsTask();
+    }
 
-        if (!ToolArguments.TryGetRequiredString(request.Arguments, "path", out var pathText, out var pathError))
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        SecurityAuthorizationContext authorization,
+        AgentId agentId,
+        ToolCallId callId,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!ToolArguments.TryGetRequiredString(arguments, "path", out var pathText, out var pathError))
         {
             return Failed(pathError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        if (!ToolArguments.TryGetOptionalInt(request.Arguments, "offset", out var offset, out var offsetError))
+        if (!ToolArguments.TryGetOptionalInt(arguments, "offset", out var offset, out var offsetError))
         {
             return Failed(offsetError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        if (!ToolArguments.TryGetOptionalInt(request.Arguments, "limit", out var limit, out var limitError))
+        if (!ToolArguments.TryGetOptionalInt(arguments, "limit", out var limit, out var limitError))
         {
             return Failed(limitError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -137,21 +177,19 @@ public sealed class ReadFileTool: ITool
         var target = FileHostTargetBinding.Target(_options.RootId, normalizedPath.Path);
         var resolved = FileHostTargetBinding.Resolve(_options.RootId, normalizedPath.Path, _options.HostRootPath);
 
-        var context = request.Context;
-        var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
             return Failed("The captured security authority is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var runId = context.Authorization.Scope.Correlation is InRunOperationCorrelation inRun
+        var runId = authorization.Scope.Correlation is InRunOperationCorrelation inRun
             ? (RunId?) inRun.RunId
             : null;
         var readRequest = new FileReadRequest(
             _fileOperationIds.Create(),
-            context.Authorization.Scope.Correlation.OperationId,
-            context.AgentId,
+            authorization.Scope.Correlation.OperationId,
+            agentId,
             runId,
             target,
             new FileReadBounds(_options.MaximumReadBytes));
@@ -159,7 +197,7 @@ public sealed class ReadFileTool: ITool
         var securityRequest = new SecurityRequest(
             _requestIds.Create(),
             authorization.Scope,
-            context.ToolCallId,
+            callId,
             authorization.Identity,
             authorization,
             _options.SecurityAudience,

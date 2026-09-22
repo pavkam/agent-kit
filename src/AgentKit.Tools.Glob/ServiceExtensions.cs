@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Glob;
 
+using AgentKit.Tools;
+
 /// <summary>Registers the glob tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -39,6 +41,16 @@ public static class ServiceExtensions
             if (configure is not null)
             {
                 _ = options.Configure(configure);
+            }
+
+            _ = services.AddToolInvoker<GlobTool>(GlobTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == GlobTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(GlobTool.DefaultToolset);
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, GlobTool>());

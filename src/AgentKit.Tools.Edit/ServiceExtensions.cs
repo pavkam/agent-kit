@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Edit;
 
+using AgentKit.Tools;
+
 /// <summary>Registers the exact text-editing tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -27,6 +29,16 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton<IIdentifierGenerator<WorkspaceMutationId>, GuidWorkspaceMutationIdGenerator>();
+            _ = services.AddToolInvoker<EditTool>(EditTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == EditTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(EditTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, EditTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, EditToolPresentationFormatter>());
             return services;

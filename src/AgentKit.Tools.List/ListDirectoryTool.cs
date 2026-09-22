@@ -123,7 +123,6 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
             cancellationToken).AsTask();
     }
 
-    [Obsolete]
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
         SecurityAuthorizationContext authorization,
         ToolCallId callId,

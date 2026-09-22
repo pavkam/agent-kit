@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Glob;
 
+using AgentKit.Tools;
+
 /// <summary>Matches paths using AgentKit simple-glob v1 through an authorized no-follow host traversal.</summary>
-public sealed class GlobTool: ITool
+public sealed class GlobTool: IToolInvoker, ITool
 {
     private const int _maximumExcludedPathPatterns = 100;
     /// <summary>The stable identity under which the tool is registered.</summary>
@@ -63,9 +65,8 @@ public sealed class GlobTool: ITool
         _options = options.Value;
     }
 
-    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "glob",
@@ -77,22 +78,56 @@ public sealed class GlobTool: ITool
         new ToolSourceId("agentkit.tools.glob"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.glob"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("glob"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryParse(request.Arguments, out var parsed, out var error))
+        return InvokeCoreAsync(
+            request.Context.Authorization,
+            request.Context.ToolCallId,
+            request.Arguments,
+            cancellationToken).AsTask();
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        SecurityAuthorizationContext authorization,
+        ToolCallId callId,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParse(arguments, out var parsed, out var error))
         {
             return ProjectFailure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var context = request.Context;
-        var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
@@ -103,7 +138,7 @@ public sealed class GlobTool: ITool
             new SecurityRequest(
                 _requestIds.Create(),
                 authorization.Scope,
-                context.ToolCallId,
+                callId,
                 authorization.Identity,
                 authorization,
                 _globber.SecurityAudience,

@@ -53,7 +53,7 @@ public sealed class GlobToolTests
     {
         var tool = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
 
-        tool.Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
+        ((ITool) tool).Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
     }
 
     [Fact]

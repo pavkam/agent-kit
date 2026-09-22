@@ -8,7 +8,6 @@ public sealed class WriteFileToolTests
     [Theory]
     [InlineData("")]
     [InlineData(" \n\t")]
-
     public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -35,7 +34,7 @@ public sealed class WriteFileToolTests
 
     public void Descriptor_WhenAccessed_DeclaresAuthoredWriteContractAndOpenInputSchema()
     {
-        var descriptor = TestFactory.Tool().Descriptor;
+        var descriptor = WriteFileTool.Descriptor;
 
         descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
         descriptor.Version.ShouldBe(new ToolVersion("1.0"));
@@ -51,19 +50,17 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var tool = TestFactory.Tool();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
+            () => tool.InvokeAsync((ToolInvocationRequest) null!, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("request");
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -77,7 +74,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenContentMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -91,7 +87,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -105,7 +100,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -120,7 +114,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenModeInvalid_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -135,7 +128,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -150,7 +142,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -167,7 +158,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -186,7 +176,6 @@ public sealed class WriteFileToolTests
     [InlineData("create_only", FileWriteDisposition.CreateOnly)]
     [InlineData("replace_existing", FileWriteDisposition.ReplaceExisting)]
     [InlineData("append", FileWriteDisposition.Append)]
-
     public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteDisposition expected)
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -199,7 +188,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenWriteSucceeds_ReturnsSuccessWithByteCount()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -215,7 +203,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileAlreadyExists_ReturnsFailed()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteConflict(new ResolvedFileTarget(new FileRootId("w"), new NormalizedRelativePath("a.txt"), "x", FilePathComparisonKind.Ordinal, FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("t"u8)), "exists") };
@@ -231,7 +218,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteFailed("disk error") };
@@ -247,7 +233,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteDenied("too large") };
@@ -263,7 +248,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotMutateFileSystem()
     {
         var writer = new FakeFileWriter().WithSuccess();

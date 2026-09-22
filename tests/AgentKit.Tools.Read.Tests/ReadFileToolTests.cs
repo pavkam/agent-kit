@@ -51,17 +51,16 @@ public sealed class ReadFileToolTests
     public void Constructor_WhenDefaultEqualsMaximum_Succeeds()
     {
         var options = new ReadFileToolOptions { HostRootPath = TestFactory.DefaultOptions().HostRootPath, DefaultMaximumLines = 10, MaximumLines = 10 };
+        _ = TestFactory.Tool(options: options);
 
-        var tool = TestFactory.Tool(options: options);
-
-        tool.Descriptor.Id.ShouldBe(ReadFileTool.Id);
+        ReadFileTool.Descriptor.Id.ShouldBe(ReadFileTool.Id);
     }
 
     [Fact]
 
     public void Descriptor_WhenAccessed_DeclaresAuthoredReadContractAndOpenInputSchema()
     {
-        var descriptor = TestFactory.Tool().Descriptor;
+        var descriptor = ReadFileTool.Descriptor;
 
         descriptor.Effects.Effect.ShouldBe(ToolEffect.ReadOnly);
         descriptor.Version.ShouldBe(new ToolVersion("1.0"));
@@ -77,13 +76,12 @@ public sealed class ReadFileToolTests
         var tool = TestFactory.Tool();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
+            () => ((ITool) tool).InvokeAsync(null!, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("request");
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -97,7 +95,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -111,7 +108,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -125,7 +121,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenOffsetExplicitlyNull_ReadsFullContent()
     {
         var reader = new FakeFileReader().WithText("l1\nl2");
@@ -139,7 +134,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -153,7 +147,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -168,7 +161,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -182,7 +174,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -196,7 +187,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileFound_ReturnsFullContent()
     {
         var reader = new FakeFileReader().WithText("line1\nline2\nline3");
@@ -212,7 +202,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenOffsetAndLimitProvided_ReturnsRequestedLineRange()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -225,7 +214,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitExceedsAvailableLines_ReturnsRemainingLines()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3");
@@ -239,7 +227,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitOmitted_UsesConfiguredDefaultWindow()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -253,7 +240,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitOmittedAndOffsetProvided_UsesConfiguredDefaultWindowFromOffset()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -267,7 +253,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitOmittedAndFileFitsWindow_ReturnsFullContentMarkedComplete()
     {
         var reader = new FakeFileReader().WithText("l1\r\nl2");
@@ -280,7 +265,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndFitsWindow_ReturnsFullContentMarkedComplete()
     {
         // Split('\n') turns a trailing line terminator into one extra, phantom empty final element ("l1\nl2\n"
@@ -297,7 +281,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndAnExplicitRangeReachesTheEnd_MarksComplete()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\n");
@@ -311,7 +294,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -326,7 +308,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenLimitExceedsMaximum_ReturnsInvalidArguments()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3");
@@ -347,7 +328,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileNotFound_ReturnsFailed()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenNotFound() };
@@ -362,7 +342,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenDenied("outside sandbox") };
@@ -378,7 +357,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotObserveFileSystem()
     {
         var reader = new FakeFileReader().WithText("secret");
@@ -397,7 +375,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenFailed("disk error") };

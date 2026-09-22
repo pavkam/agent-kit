@@ -366,6 +366,7 @@ public static class AgentEngineBuilderExtensions
         /// that policy allows everything, so the agent can write anywhere under the root; register your own
         /// <see cref="ISecurityPolicy"/> to narrow that, and an approval handler to put a human in the loop.
         /// </remarks>
+        [Obsolete("Prefer keyed AddOperatingSystemFileSystem and tool options HostRootPath.")]
         public AgentEngineBuilder UseWorkspace(string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);

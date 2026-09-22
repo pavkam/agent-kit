@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Patch;
 
+using AgentKit.Tools;
+
 /// <summary>Registers the parsed workspace-patch tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -28,6 +30,16 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton<IIdentifierGenerator<WorkspaceMutationId>, GuidWorkspaceMutationIdGenerator>();
+            _ = services.AddToolInvoker<PatchTool>(PatchTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == PatchTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(PatchTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, PatchTool>());
             return services;
         }

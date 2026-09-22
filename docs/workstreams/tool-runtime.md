@@ -30,7 +30,9 @@ Owning documents: [Tools](../architecture/tools.md),
 - [ ] WS4-C8 spec registration surface (`ReplaceToolExecutor`, `AddToolInvoker`,
       `ApplicationToolProvider` landed; keyed `AddAgentTools` and full replace
       surface open)
-- [ ] WS4-C9a/b/c migrate 16 tool packages (List migrated)
+- [x] WS4-C9a migrate workspace file tools (List, Read, Write, Edit, Patch,
+      Glob, Search)
+- [ ] WS4-C9b/c migrate remaining tool packages
 - [ ] WS4-C10a delete legacy authorizer, catalog, invoker
 - [ ] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
 - [ ] WS4-C11 Simple over toolsets

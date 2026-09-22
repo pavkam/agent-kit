@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Read;
 
+using AgentKit.Tools;
+
 /// <summary>Provides dependency-injection registration for the read-file tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -16,22 +18,8 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
-        /// <para>
-        /// Registration uses <c>TryAddEnumerable</c>: other <see cref="ITool"/>
-        /// implementations are preserved, while repeated calls register exactly one
-        /// <see cref="ReadFileTool"/> implementation. Each call adds its
-        /// <paramref name="configure"/> delegate to the options pipeline, so repeated calls
-        /// compose configuration in registration order. This method does not register
-        /// <see cref="IFileSystem"/> or grant authority to read files; applications
-        /// must provide both independently.
-        /// </para>
-        /// <para>
-        /// Options validation requires both line bounds to be positive and
-        /// <see cref="ReadFileToolOptions.DefaultMaximumLines"/> to be no greater than
-        /// <see cref="ReadFileToolOptions.MaximumLines"/>. Validation runs on host start and
-        /// again whenever the options value is first resolved, surfacing an
-        /// <see cref="OptionsValidationException"/> at the composition boundary.
-        /// </para>
+        /// Registers the spec-shaped <see cref="IToolInvoker"/>, publishes <see cref="ReadFileTool.DefaultToolset"/>,
+        /// and retains legacy <see cref="ITool"/> registration until workstream 4 chunk C10.
         /// </remarks>
         public IServiceCollection AddReadTool(Action<ReadFileToolOptions>? configure = null)
         {
@@ -49,6 +37,18 @@ public static class ServiceExtensions
             if (configure is not null)
             {
                 _ = options.Configure(configure);
+            }
+
+            services.TryAddSingleton<IIdentifierGenerator<FileOperationId>, GuidFileOperationIdGenerator>();
+            services.TryAddSingleton<IFilePathNormalizer, ReadToolPathNormalizer>();
+            _ = services.AddToolInvoker<ReadFileTool>(ReadFileTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == ReadFileTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(ReadFileTool.DefaultToolset);
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, ReadFileTool>());

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Write;
 
+using AgentKit.Tools;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -15,11 +17,8 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
-        /// Registration uses <c>TryAddEnumerable</c>: other <see cref="ITool"/>
-        /// implementations are preserved, while repeated calls register exactly one
-        /// <see cref="WriteFileTool"/> implementation. This method does not register
-        /// <see cref="IFileSystem"/> or grant authority to write files; applications
-        /// must provide both independently.
+        /// Registers the spec-shaped <see cref="IToolInvoker"/>, publishes <see cref="WriteFileTool.DefaultToolset"/>,
+        /// and retains legacy <see cref="ITool"/> registration until workstream 4 chunk C10.
         /// </remarks>
         public IServiceCollection AddWriteTool(Action<WriteFileToolOptions>? configure = null)
         {
@@ -32,6 +31,17 @@ public static class ServiceExtensions
             if (configure is not null)
             {
                 _ = options.Configure(configure);
+            }
+
+            services.TryAddSingleton<IFilePathNormalizer, WriteToolPathNormalizer>();
+            _ = services.AddToolInvoker<WriteFileTool>(WriteFileTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == WriteFileTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(WriteFileTool.DefaultToolset);
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WriteFileTool>());
