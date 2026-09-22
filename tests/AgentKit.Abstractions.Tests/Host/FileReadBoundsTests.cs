@@ -16,8 +16,6 @@ public sealed class FileReadBoundsTests
     }
 
     [Fact]
-    public void Constructor_WhenMaxBytesZero_AllowsZero()
-    {
+    public void Constructor_WhenMaxBytesZero_AllowsZero() =>
         new FileReadBounds(0).MaxBytes.ShouldBe(0);
-    }
 }

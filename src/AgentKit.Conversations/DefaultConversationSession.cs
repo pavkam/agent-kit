@@ -457,7 +457,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 RunOutcomeKind(loopResult.Outcome));
         }
 
-        async Task<(ConversationTurnResult Result, string Outcome)> MapTypedResult<TOutput>(
+        Task<(ConversationTurnResult Result, string Outcome)> MapTypedResult<TOutput>(
             AgentRunResult<TOutput> result,
             IConversationEventObserver? liveObserver,
             CancellationToken token)
@@ -465,9 +465,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             if (result is AgentRunRejected<TOutput> rejected)
             {
                 ConversationLog.TurnAdmissionFailed(_logger, _agentId);
-                return (
+                return Task.FromResult((
                     Finish(false, [new ConversationAssistantTextEvent(rejected.Failure.SafeMessage)], loopResult: null),
-                    "admission_failed");
+                    "admission_failed"));
             }
 
             var finished = (AgentRunFinished<TOutput>) result;
@@ -483,7 +483,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                 finished.Output is ValidatedOutput validated ? validated : null,
                 finished.Usage,
                 finished.Settlement);
-            return MapLoopResult(loopShaped, liveObserver, token);
+            return Task.FromResult(MapLoopResult(loopShaped, liveObserver, token));
         }
 
         ConversationTurnResult Finish(

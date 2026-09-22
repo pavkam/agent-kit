@@ -229,7 +229,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var fs = CreateFileSystem(grantStore: store);
         var path = new FileSystemPath("reconciled.txt");
         var result = await fs.WriteAsync(new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         File.Exists(Path.Combine(_root, path.Value)).ShouldBeFalse();
     }
 
@@ -381,7 +381,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
-    public async Task WriteAsync_WhenPathTraversesDirectorySymbolicLink_ReturnsFileWriteDeniedWithoutOutsideEffect()
+    public async Task WriteAsync_WhenPathTraversesDirectorySymbolicLink_ReturnsLegacyFileWriteDeniedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
         {
@@ -392,12 +392,12 @@ public sealed class SandboxedFileSystemTests: IDisposable
         _ = Directory.CreateDirectory(_outsideRoot);
         _ = Directory.CreateSymbolicLink(Path.Combine(_root, "outside-link"), _outsideRoot);
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("outside-link/created.txt"), "must stay inside", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         File.Exists(Path.Combine(_outsideRoot, "created.txt")).ShouldBeFalse();
     }
 
     [Fact]
-    public async Task WriteAsync_WhenTargetIsSymbolicLinkOutsideRoot_ReturnsFileWriteDeniedWithoutOutsideEffect()
+    public async Task WriteAsync_WhenTargetIsSymbolicLinkOutsideRoot_ReturnsLegacyFileWriteDeniedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
         {
@@ -410,7 +410,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         File.WriteAllText(outsidePath, "outside");
         _ = File.CreateSymbolicLink(Path.Combine(_root, "secret-link.txt"), outsidePath);
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("secret-link.txt"), "must stay inside", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         File.ReadAllText(outsidePath).ShouldBe("outside");
     }
 
@@ -561,11 +561,11 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
-    public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsFileWriteDenied()
+    public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsLegacyFileWriteDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 4);
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "this is too long", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         File.Exists(Path.Combine(_root, "notes.txt")).ShouldBeFalse();
     }
 
@@ -579,7 +579,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var fs = CreateFileSystem(grantStore: store);
         File.WriteAllText(Path.Combine(_root, "notes.txt"), "original");
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "replacement", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileWriteDenied>().SafeMessage.ShouldBe("Grant is revoked.");
+        result.ShouldBeOfType<LegacyFileWriteDenied>().SafeMessage.ShouldBe("Grant is revoked.");
         File.ReadAllText(Path.Combine(_root, "notes.txt")).ShouldBe("original");
         var enforcement = store.LastEnforcement.ShouldNotBeNull();
         enforcement.Effect.ShouldBe(SecurityEffect.CreateOrReplace);

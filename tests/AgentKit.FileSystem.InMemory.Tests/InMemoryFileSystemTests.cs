@@ -75,7 +75,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem(grantStore: store);
         var path = new FileSystemPath("reconciled.txt");
         var result = await fs.WriteAsync(new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         fs.TryReadAllBytes(path, out _).ShouldBeFalse();
     }
 
@@ -299,11 +299,11 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsFileWriteDenied()
+    public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsLegacyFileWriteDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 4);
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "this is too long", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileWriteDenied>();
+        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
     }
 
@@ -317,7 +317,7 @@ public sealed class InMemoryFileSystemTests
         var fs = CreateFileSystem(grantStore: store);
         fs.Seed(new FileSystemPath("notes.txt"), "original");
         var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "replacement", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileWriteDenied>().SafeMessage.ShouldBe("Grant is revoked.");
+        result.ShouldBeOfType<LegacyFileWriteDenied>().SafeMessage.ShouldBe("Grant is revoked.");
         fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("original");
         var enforcement = store.LastEnforcement.ShouldNotBeNull();
