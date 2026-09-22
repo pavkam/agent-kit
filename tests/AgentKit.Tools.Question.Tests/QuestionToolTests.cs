@@ -27,6 +27,7 @@ public sealed class QuestionToolTests
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"timeout_seconds\":0}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":123,\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}]}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"allow_free_text\":\"yes\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrPublication(string json)
     {
         var broker = new RecordingQuestionBroker();
@@ -46,10 +47,11 @@ public sealed class QuestionToolTests
     {
         var tool = Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority());
 
-        tool.Descriptor.Id.ShouldBe(QuestionTool.Id);
+        ((ITool) tool).Descriptor.Id.ShouldBe(QuestionTool.Id);
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_BindsAndReenforcesExactQuestionEvidence()
     {
         var broker = new RecordingQuestionBroker();
@@ -68,6 +70,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutPublication()
     {
         var broker = new RecordingQuestionBroker();
@@ -78,6 +81,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAnswered_ProjectsChoiceAsNonAuthoritativeData()
     {
         var result = await Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
@@ -89,6 +93,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFreeTextAllowed_ProjectsBoundedSupplementaryText()
     {
         var broker = new RecordingQuestionBroker
@@ -102,6 +107,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsDisallowedFreeText_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -115,6 +121,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsUnknownOption_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -127,6 +134,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsDifferentQuestion_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -138,6 +146,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenQuestionTimesOut_ReturnsTerminalFailure()
     {
         var broker = new RecordingQuestionBroker
@@ -150,6 +159,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenChannelUnavailable_PreservesSafeFailure()
     {
         var broker = new RecordingQuestionBroker
@@ -161,6 +171,7 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTimeoutRequested_UsesRequestedBoundAndOneMinuteGrantDeadline()
     {
         var broker = new RecordingQuestionBroker();

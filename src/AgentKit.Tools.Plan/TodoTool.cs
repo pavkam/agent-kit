@@ -3,12 +3,14 @@
 
 namespace AgentKit.Tools.Plan;
 
+using AgentKit.Tools;
+
 /// <summary>Provides a todo-named compatibility surface over the canonical session work plan.</summary>
 /// <remarks>
 /// This tool deliberately delegates to <see cref="PlanTool"/> so a harness exposing both names does not create
 /// two competing mutable task lists. IDs, revisions, security evidence, and durable entries remain identical.
 /// </remarks>
-public sealed class TodoTool: ITool
+public sealed class TodoTool: IToolInvoker, ITool
 {
     private readonly PlanTool _planTool;
 
@@ -38,8 +40,8 @@ public sealed class TodoTool: ITool
         _planTool = new PlanTool(store, authoritySelector, requestIds, timeProvider, options);
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "todo",
@@ -51,7 +53,26 @@ public sealed class TodoTool: ITool
         new ToolSourceId("agentkit.tools.plan"),
         ExtensionData.Empty);
 
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.todo"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("todo"), new ToolIdentity(Id, Descriptor.Version))]);
+
     /// <inheritdoc/>
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        _planTool.InvokeAsync(context, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
     public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)

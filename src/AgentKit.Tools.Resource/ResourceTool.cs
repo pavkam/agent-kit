@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Resource;
 
+using AgentKit.Tools;
+
 /// <summary>Lists host-approved resource metadata and reads exact protected file snapshots by stable identity.</summary>
-public sealed class ResourceTool: ITool
+public sealed class ResourceTool: IToolInvoker, ITool
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -76,9 +78,8 @@ public sealed class ResourceTool: ITool
         _catalogVersion = CatalogVersion(resources);
     }
 
-    /// <summary>Gets the exact immutable descriptor shared by invocation and application presentation.</summary>
-    /// <value>The feature-owned resource descriptor.</value>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "resource",
@@ -90,16 +91,57 @@ public sealed class ResourceTool: ITool
         new ToolSourceId("agentkit.tools.resource"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.resource"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("resource"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryArguments(request.Arguments, out var action, out var id, out var error))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(arguments, out var action, out var id, out var error))
         {
             return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -115,7 +157,7 @@ public sealed class ResourceTool: ITool
             return Failure("No configured resource has that identity.", "NotFound", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var context = request.Context;
+        var context = executionContext;
         var fingerprint = FileSecurityBinding.SnapshotFingerprint(resource.Path, _maximumBytes);
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);

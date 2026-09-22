@@ -6,6 +6,9 @@ namespace AgentKit.Tools.Search;
 /// <summary>Configures default and absolute bounds for the content-search tool.</summary>
 public sealed class SearchToolOptions
 {
+    /// <summary>Gets or sets the keyed profile used to select <see cref="IFileContentSearcher"/>.</summary>
+    public FileSystemProfileKey ProfileKey { get; set; } = new("workspace");
+
     /// <summary>Gets or sets the default traversal depth.</summary>
     public int DefaultMaximumDepth { get; set; } = 25;
     /// <summary>Gets or sets the traversal-depth ceiling.</summary>

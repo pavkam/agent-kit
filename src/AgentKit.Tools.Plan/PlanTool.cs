@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Plan;
 
+using AgentKit.Tools;
+
 /// <summary>Reads and optimistically updates one typed session-backed work plan.</summary>
-public sealed class PlanTool: ITool
+public sealed class PlanTool: IToolInvoker, ITool
 {
     /// <summary>Gets the shared planning schema used by compatibility surfaces.</summary>
     internal static JsonElement InputSchema { get; } = JsonDocument.Parse(
@@ -79,9 +81,8 @@ public sealed class PlanTool: ITool
         _maximumItems = options.Value.MaximumItems;
     }
 
-    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "plan",
@@ -93,27 +94,68 @@ public sealed class PlanTool: ITool
         new ToolSourceId("agentkit.tools.plan"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.plan"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("plan"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Context.SessionId is not { } sessionId)
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (executionContext.SessionId is not { } sessionId)
         {
             return Failure("The plan tool requires a session.", "SessionRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        if (request.Context.SessionProfile is not { } sessionProfile)
+        if (executionContext.SessionProfile is not { } sessionProfile)
         {
             return Failure("The plan tool requires a captured session profile.", "SessionProfileRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!TryParse(
-                request.Arguments,
+                arguments,
                 out var action,
                 out var title,
                 out var items,
@@ -125,7 +167,7 @@ public sealed class PlanTool: ITool
             return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var context = request.Context;
+        var context = executionContext;
         var operationContext = new SessionOperationContext(
             context.AgentId,
             sessionId,

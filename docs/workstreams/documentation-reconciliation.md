@@ -101,9 +101,11 @@ workstreams.
 
 ### WS20-C8: Source-remark sweep
 
-- Depends on: all. Size: S.
+- Depends on: all, including WS21. Size: S.
 - Deliverables: triage list of the remaining `stand-in`/`not yet` hits; remove
-  or reword each that no longer describes reality.
+  or reword each that no longer describes reality. `Legacy*` types, `[Obsolete]`
+  members, and compatibility branches are deleted by
+  [WS21](obsolete-code-removal.md), not reworded here.
 
 ## Totals
 

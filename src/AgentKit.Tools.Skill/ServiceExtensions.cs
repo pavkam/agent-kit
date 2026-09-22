@@ -4,6 +4,7 @@
 namespace AgentKit.Tools.Skill;
 
 using AgentKit.Context;
+using AgentKit.Tools;
 
 /// <summary>Registers skill discovery and activation over one shared immutable catalog.</summary>
 public static class ServiceExtensions
@@ -33,6 +34,16 @@ public static class ServiceExtensions
             services.TryAddSingleton<ConfiguredSkillCatalog>();
             services.TryAddSingleton<ISkillCatalog>(static provider => provider.GetRequiredService<ConfiguredSkillCatalog>());
             services.TryAddSingleton<ISkillCatalogContextSource>(static provider => provider.GetRequiredService<ConfiguredSkillCatalog>());
+            _ = services.AddToolInvoker<SkillTool>(SkillTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == SkillTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(SkillTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, SkillTool>());
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IToolPresentationFormatter, SkillToolPresentationFormatter>());

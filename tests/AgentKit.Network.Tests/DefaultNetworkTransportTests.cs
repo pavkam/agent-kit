@@ -88,7 +88,7 @@ public sealed class DefaultNetworkTransportTests
         await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         var clock = new FixedTimeProvider();
         var store = new InMemorySecurityGrantStore(clock);
-        using var transport = new DefaultNetworkTransport(store, clock, Options.Create(OptionsForNetwork()));
+        using var transport = new DefaultNetworkTransport(store, new AcceptingAuditDispatcher(), clock, Options.Create(OptionsForNetwork()));
         var request = Request(Destination(server.Port));
         var grant = TestSecurity.CapturedGrant(transport.SecurityAudience, NetworkSecurityBinding.RequestResources(request), NetworkSecurityBinding.RequestFingerprint(request));
         request = new NetworkRequest(request.Id, request.Method, request.Destination, request.Headers, request.Content, request.Bounds, request.ResolvedAddresses, request.Classification, grant);
@@ -187,7 +187,7 @@ public sealed class DefaultNetworkTransportTests
             DestinationPolicy = new NetworkDestinationPolicy(["https"], null, allowPrivateAddresses: true),
             AddressResolutionLifetime = TimeSpan.FromMinutes(1),
         };
-        using var transport = new DefaultNetworkTransport(store, new FixedTimeProvider(), Options.Create(options));
+        using var transport = new DefaultNetworkTransport(store, new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(options));
         var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<NetworkDenied>().SafeMessage.ShouldContain("excluded by the configured network policy");
         server.AcceptedConnections.ShouldBe(0);
@@ -207,14 +207,11 @@ public sealed class DefaultNetworkTransportTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenSecondSendReusesAKeepAliveEligiblePooledConnection_OpensAFreshConnectionInstead()
+    public async Task SendAsync_WhenSecondSendSharesPartition_ReusesPooledConnection()
     {
-        // A response without "Connection: close" is keep-alive eligible under HTTP/1.1, so
-        // SocketsHttpHandler's default pool would normally return this connection for reuse by a
-        // later, unrelated send to the same (scheme, host, port). Each send here carries its own
-        // pinned resolved address and must be independently verified via ConnectCallback, which is
-        // only invoked for a genuinely new connection - so if the fix holds, both sends open their
-        // own connection instead of the second one silently reusing the first's.
+        // Keep-alive eligible responses reuse connections only within the same route partition and
+        // pinned peer address. Two sends with identical destination, resolved loopback address, and
+        // profile policy should share one TCP connection.
         await using var server = LoopbackServer.StartKeepAlive("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", maxConnections: 2);
         using var transport = Transport(new TestGrantStore());
         var request = Request(Destination(server.Port));
@@ -226,7 +223,7 @@ public sealed class DefaultNetworkTransportTests
         var secondReceived = second.ShouldBeOfType<NetworkResponseReceived>();
         await secondReceived.Response.DisposeAsync();
 
-        server.AcceptedConnections.ShouldBe(2, "a pooled connection reused across independently authorized sends would bypass per-send address verification");
+        server.AcceptedConnections.ShouldBe(1);
     }
 
     [Theory]
@@ -359,7 +356,7 @@ public sealed class DefaultNetworkTransportTests
         failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
     }
 
-    private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null, ILogger<DefaultNetworkTransport>? logger = null) => new(store, timeProvider ?? new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
+    private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null, ILogger<DefaultNetworkTransport>? logger = null) => new(store, new AcceptingAuditDispatcher(), timeProvider ?? new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
     private static AgentNetworkOptions OptionsForNetwork() => new()
     {
         DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: true),
@@ -373,13 +370,25 @@ public sealed class DefaultNetworkTransportTests
     public void Constructors_WhenIntentIdsNull_ThrowWithExactParameterName()
     {
         var store = new TestGrantStore();
-        var transport = Should.Throw<ArgumentNullException>(() => new DefaultNetworkTransport(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, null!));
+        var transport = Should.Throw<ArgumentNullException>(() => new DefaultNetworkTransport(
+            store,
+            new AcceptingAuditDispatcher(),
+            new FixedTimeProvider(),
+            Options.Create(OptionsForNetwork()),
+            null,
+            null!,
+            new TestAuditRecordIdGenerator()));
         transport.ParamName.ShouldBe("intentIds");
     }
 
     [Fact]
     public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility()
     {
-        using var transport = new DefaultNetworkTransport(new TestGrantStore(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
+        using var transport = new DefaultNetworkTransport(
+            new TestGrantStore(),
+            new AcceptingAuditDispatcher(),
+            new FixedTimeProvider(),
+            Options.Create(OptionsForNetwork()),
+            null);
     }
 }

@@ -20,30 +20,34 @@ Dependencies are on other workstreams as a whole unless a chunk names a specific
 chunk. Sizes count chunks after splitting: S under one hour, M one to three
 hours, L three to six hours.
 
-| #   | Workstream                                                            | Depends on | Chunks | Done                         |
-| --- | --------------------------------------------------------------------- | ---------- | ------ | ---------------------------- |
-| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –          | 14     | C1–C14                       |
-| 2   | [Hook kernel](hook-kernel.md)                                         | –          | 13     | C1–C13                       |
-| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2          | 15     | C1–C13                       |
-| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3       | 18     | C1–C5d, C7a; C8 partial; C9a |
-| 5   | [Host access](host-access.md)                                         | 3          | 18     | C1–C7                        |
-| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5       | 13     | C1a                          |
-| 7   | [Provider runtime](provider-runtime.md)                               | 2          | 15     | C1                           |
-| 8   | [Structured output](structured-output.md)                             | 2, 7       | 12     | –                            |
-| 9   | [Context assembly](context-assembly.md)                               | 2          | 8      | C1–C8                        |
-| 10  | [Context compaction](context-compaction.md)                           | 7, 9       | 8      | –                            |
-| 11  | [Budgets](budgets.md)                                                 | 8, 10      | 6      | –                            |
-| 12  | [Durable execution](durable-execution.md)                             | 1, 3       | 14     | –                            |
-| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12      | 12     | –                            |
-| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9       | 15     | –                            |
-| 15  | [Artifacts](artifacts.md)                                             | 4, 12      | 9      | –                            |
-| 16  | [Identity ingress](identity-ingress.md)                               | 1          | 5      | C1–C5                        |
-| 17  | [Observability](observability.md)                                     | 1          | 9      | –                            |
-| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17       | 11     | –                            |
-| 19  | [Evaluation](evaluation.md)                                           | 1, 18      | 8      | –                            |
-| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19       | 8      | –                            |
+| #   | Workstream                                                            | Depends on  | Chunks | Done                         |
+| --- | --------------------------------------------------------------------- | ----------- | ------ | ---------------------------- |
+| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –           | 14     | C1–C14                       |
+| 2   | [Hook kernel](hook-kernel.md)                                         | –           | 13     | C1–C13                       |
+| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2           | 15     | C1–C13                       |
+| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3        | 18     | C1–C5d, C7a; C8 partial; C9a |
+| 5   | [Host access](host-access.md)                                         | 3           | 18     | C1–C7                        |
+| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13     | C1a                          |
+| 7   | [Provider runtime](provider-runtime.md)                               | 2           | 15     | C1                           |
+| 8   | [Structured output](structured-output.md)                             | 2, 7        | 12     | –                            |
+| 9   | [Context assembly](context-assembly.md)                               | 2           | 8      | C1–C8                        |
+| 10  | [Context compaction](context-compaction.md)                           | 7, 9        | 8      | –                            |
+| 11  | [Budgets](budgets.md)                                                 | 8, 10       | 6      | –                            |
+| 12  | [Durable execution](durable-execution.md)                             | 1, 3        | 14     | –                            |
+| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12       | 12     | –                            |
+| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9        | 15     | –                            |
+| 15  | [Artifacts](artifacts.md)                                             | 4, 12       | 9      | –                            |
+| 16  | [Identity ingress](identity-ingress.md)                               | 1           | 5      | C1–C5                        |
+| 17  | [Observability](observability.md)                                     | 1           | 9      | –                            |
+| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17        | 11     | –                            |
+| 19  | [Evaluation](evaluation.md)                                           | 1, 18       | 8      | –                            |
+| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19, 21    | 8      | –                            |
+| 21  | [Obsolete and compatibility code removal](obsolete-code-removal.md)   | 3, 4, 5, 18 | 10     | –                            |
 
-Approximately 230 chunks in total. WS18-C1 to C3 (`AgentComponentSelection` and
+Approximately 240 chunks in total. WS21 runs before WS20 so that the
+documentation sweep reconciles prose against code with no legacy paths left;
+WS21-C1 (the shrink-only obsolete-surface guard) has no dependencies and can
+land immediately. WS18-C1 to C3 (`AgentComponentSelection` and
 `AgentOptionalCapabilitySelection` as additive records) should be pulled forward
 and landed before WS2 so that later workstreams add keys to the final shape
 rather than to interim flat properties.
@@ -83,9 +87,13 @@ returns zero matches.
 - Every workstream adds the matching `AgentKit.Simple` `With*` sugar. Missing
   today for already-shipped capabilities: tools, hooks, MCP, artifacts,
   observability, permissions policy.
-- Breaking changes toward the documented shape are sanctioned when the interim
-  type carries a "deliberately reduced stand-in" remark or the documentation
-  itself calls the surface interim. Each break is listed in the commit message.
+- AgentKit has no consumers, so there is no backwards compatibility to keep.
+  Breaking changes toward the documented shape are always sanctioned. A chunk
+  that supersedes a surface replaces it in place and updates every caller; it
+  never adds `[Obsolete]`, a `Legacy*` rename, a forwarder, an adapter over the
+  old shape, or a nullable fallback for old callers. Persisted formats change
+  without migrations or readers for earlier layouts. Each break is listed in the
+  commit message.
 - A contract that has a `HookDispatchContext? hooks` parameter in the
   specification ships without that parameter until WS2-C2 lands, and the
   deviation is recorded in the owning architecture document. WS2 then adds the

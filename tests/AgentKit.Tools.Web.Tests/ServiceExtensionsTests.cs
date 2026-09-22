@@ -75,7 +75,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         var tool = provider.GetServices<ITool>().OfType<WebFetchTool>().ShouldHaveSingleItem();
-        tool.Descriptor.Id.ShouldBe(WebFetchTool.Id);
+        ((ITool) tool).Descriptor.Id.ShouldBe(WebFetchTool.Id);
     }
 
     private static void Apply(WebFetchToolOptions options, string property, int value)

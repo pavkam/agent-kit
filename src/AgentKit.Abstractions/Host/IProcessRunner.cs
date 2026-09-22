@@ -4,6 +4,7 @@
 namespace AgentKit;
 
 /// <summary>Runs one resolved non-interactive process while owning termination, reaping, and bounded output capture.</summary>
+[Obsolete("Use IProcessExecutor and IProcessHandle for handle-based process execution.")]
 public interface IProcessRunner
 {
     /// <summary>Gets the sole component audience permitted to consume process-run grants.</summary>

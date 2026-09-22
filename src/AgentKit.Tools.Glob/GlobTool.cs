@@ -5,6 +5,8 @@ namespace AgentKit.Tools.Glob;
 
 using AgentKit.Tools;
 
+using Microsoft.Extensions.DependencyInjection;
+
 /// <summary>Matches paths using AgentKit simple-glob v1 through an authorized no-follow host traversal.</summary>
 public sealed class GlobTool: IToolInvoker, ITool
 {
@@ -38,7 +40,7 @@ public sealed class GlobTool: IToolInvoker, ITool
     private readonly GlobToolOptions _options;
 
     /// <summary>Initializes a glob tool.</summary>
-    /// <param name="globber">The narrow host glob capability.</param>
+    /// <param name="serviceProvider">Resolves the keyed host glob capability.</param>
     /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
@@ -46,19 +48,19 @@ public sealed class GlobTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Any configured bound is invalid.</exception>
     public GlobTool(
-        IFileGlobber globber,
+        IServiceProvider serviceProvider,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<GlobToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(globber);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
-        _globber = globber;
+        _globber = serviceProvider.GetRequiredKeyedService<IFileGlobber>(options.Value.ProfileKey.Value);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;

@@ -846,6 +846,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete]
     private void OnPromptPreviewKey(object? sender, KeyEventArgs e)
     {
         _ = sender;
@@ -1049,6 +1050,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private void RefreshResponsiveLayout(int width) =>
         _sidebar.Visibility = width >= 96 ? Visibility.Visible : Visibility.Collapsed;
 
+    [Obsolete("Legacy host surface.")]
     private async Task SubmitPromptAsync()
     {
         if (_busy)
@@ -1125,6 +1127,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
     private async Task ShowSessionsAsync()
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)
@@ -1165,6 +1168,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
     private async Task ResumeSessionAsync(string commandLine)
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)
@@ -1308,6 +1312,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         return entries.ToImmutable();
     }
 
+    [Obsolete]
     private void ExecuteSlashCommand(string commandLine)
     {
         var name = commandLine.Split(' ', 2)[0];
@@ -1376,6 +1381,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
     private OwnedConversationSession CreateConversation()
     {
         _status.Content = "Starting AgentKit runtime...";

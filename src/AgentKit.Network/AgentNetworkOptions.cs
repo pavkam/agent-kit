@@ -14,4 +14,13 @@ public sealed class AgentNetworkOptions
 
     /// <summary>Gets or sets the maximum aggregate HTTP response-header size in kibibytes.</summary>
     public int MaximumResponseHeaderKilobytes { get; set; } = 64;
+
+    /// <summary>Gets or sets the explicit proxy route for this profile.</summary>
+    public NetworkProxyDescriptor Proxy { get; set; } = new();
+
+    /// <summary>Gets or sets TLS validation behavior for this profile.</summary>
+    public NetworkTlsPolicy TlsPolicy { get; set; } = NetworkTlsPolicy.PlatformDefault;
+
+    /// <summary>Gets or sets automatic response decompression behavior.</summary>
+    public NetworkDecompressionPolicy DecompressionPolicy { get; set; } = NetworkDecompressionPolicy.DenyAutomatic;
 }

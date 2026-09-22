@@ -6,6 +6,9 @@ namespace AgentKit.Tools.Edit;
 /// <summary>Configures complete-file byte bounds for exact text replacement.</summary>
 public sealed class EditToolOptions
 {
+    /// <summary>Gets or sets the keyed profile used to select host edit capabilities.</summary>
+    public FileSystemProfileKey ProfileKey { get; set; } = new("workspace");
+
     /// <summary>Gets or sets the default maximum complete input and final byte count.</summary>
     public long DefaultMaximumBytes { get; set; } = 1024 * 1024;
 

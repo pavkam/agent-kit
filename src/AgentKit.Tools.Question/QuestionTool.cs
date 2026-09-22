@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Question;
 
+using AgentKit.Tools;
+
 /// <summary>Asks one bounded multiple-choice question through an application-owned human interaction broker.</summary>
-public sealed class QuestionTool: ITool
+public sealed class QuestionTool: IToolInvoker, ITool
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -87,8 +89,8 @@ public sealed class QuestionTool: ITool
         _maximumAnswerCharacters = options.Value.MaximumAnswerCharacters;
     }
 
-    /// <inheritdoc/>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "question",
@@ -100,16 +102,57 @@ public sealed class QuestionTool: ITool
         new ToolSourceId("agentkit.tools.question"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.question"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("question"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryParse(request.Arguments, out var parsed, out var error))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParse(arguments, out var parsed, out var error))
         {
             return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -123,7 +166,7 @@ public sealed class QuestionTool: ITool
             parsed.Options,
             parsed.AllowsFreeText,
             responseDeadline);
-        var context = request.Context;
+        var context = executionContext;
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)

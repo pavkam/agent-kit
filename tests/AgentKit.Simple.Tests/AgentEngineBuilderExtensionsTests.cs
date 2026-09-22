@@ -991,6 +991,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         }
     }
 
+    [Obsolete]
     private static void RegisterInMemoryReadTool(IServiceCollection services)
     {
         var workspaceProfile = new FileSystemProfileKey("workspace");

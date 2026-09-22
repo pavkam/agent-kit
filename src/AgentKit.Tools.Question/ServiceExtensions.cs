@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Question;
 
+using AgentKit.Tools;
+
 /// <summary>Registers the human-question tool as an independent coding-harness feature.</summary>
 public static class ServiceExtensions
 {
@@ -29,6 +31,16 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton<IIdentifierGenerator<QuestionId>, GuidQuestionIdGenerator>();
+            _ = services.AddToolInvoker<QuestionTool>(QuestionTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == QuestionTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(QuestionTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, QuestionTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, QuestionToolPresentationFormatter>());
             return services;

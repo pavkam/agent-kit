@@ -18,6 +18,7 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualListResult_RendersOnlyPublicMetadataWithoutFingerprintsOrPaths()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -25,7 +26,7 @@ public sealed class ResourceToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"list"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         var text = presentation.Parts.ShouldHaveSingleItem().Text;
         text.ShouldContain("Configured resources");
@@ -37,6 +38,7 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualReadResult_RendersMetadataAndLiteralContentWithoutFingerprintOrPath()
     {
         var reader = new RecordingSnapshotReader
@@ -48,7 +50,7 @@ public sealed class ResourceToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"read","id":"docs"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.Length.ShouldBe(2);
         presentation.Parts[0].Text.ShouldContain("Resource docs — Documentation / Workspace / text/markdown");
@@ -61,6 +63,7 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualFailureOccurs_PreservesOnlySafeFailureReason()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -68,7 +71,7 @@ public sealed class ResourceToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"read","id":"missing"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
             "Resource failed: No configured resource has that identity.");
@@ -88,7 +91,6 @@ public sealed class ResourceToolPresentationFormatterTests
             [new TextPart(/*lang=json,strict*/ "{\"secret\":\"do not echo\"}", TextSemantics.Code, ExtensionData.Empty)]);
 
         var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()),
             invocation,
             new ToolPresentationBounds(maximumOutputCharacters: 32));
 
@@ -158,8 +160,7 @@ public sealed class ResourceToolPresentationFormatterTests
     {
         var invocation = SuccessResult( /*lang=json,strict*/ """{"resources":[]}""");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
     }
@@ -170,8 +171,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var invocation = SuccessResult(
             /*lang=json,strict*/ """{"catalog_version":"v1","resources":[{"id":"a"}]}""");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
     }
@@ -182,8 +182,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var invocation = SuccessResult(
             /*lang=json,strict*/ """{"catalog_version":"v1","resources":[{"id":"a","kind":"Documentation","trust":"Workspace","description":"Desc","media_type":"text/plain","integrity_pinned":true}]}""");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldContain("integrity pinned");
     }
@@ -194,8 +193,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
         var invocation = new ToolInvocationResult(outcome, []);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
     }
@@ -205,13 +203,13 @@ public sealed class ResourceToolPresentationFormatterTests
     {
         var invocation = SuccessResult("not json at all");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenOutputExceedsMaximumParts_OmitsRemainingPartsAndReportsTruncation()
     {
         var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("body text") };
@@ -220,7 +218,7 @@ public sealed class ResourceToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"read","id":"docs"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation, new ToolPresentationBounds(1024, 1024, 1));
+        var presentation = await FormatResultAsync(invocation, new ToolPresentationBounds(1024, 1024, 1));
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
         presentation.Parts.Length.ShouldBe(1);
@@ -233,8 +231,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var invocation = SuccessResult(
             /*lang=json,strict*/ """{"id":"a","kind":"Documentation","trust":"Workspace","media_type":"text/plain","bytes":5,"truncated":false,"content":"hello"}""");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
     }
@@ -251,8 +248,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var invocation = SuccessResult(
             $$"""{"id":"a","kind":"Documentation","trust":"Workspace","media_type":"{{mediaType}}","bytes":5,"instruction_authority":false,"truncated":false,"content":"hello"}""");
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts[1].Language.ShouldBe(expectedLanguage);
     }
@@ -282,16 +278,15 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     private static async ValueTask<ToolPresentation> FormatResultAsync(
-        ResourceTool tool,
         ToolInvocationResult invocation,
         ToolPresentationBounds? bounds = null)
     {
         var formatter = new ResourceToolPresentationFormatter();
-        formatter.Descriptor.ShouldBe(tool.Descriptor);
-        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("resource"), ResourceTool.Id, tool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+        formatter.Descriptor.ShouldBe(ResourceTool.Descriptor);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("resource"), ResourceTool.Id, ResourceTool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return (await formatter.FormatAsync(
             new ToolPresentationRequest(
-                tool.Descriptor,
+                ResourceTool.Descriptor,
                 new ToolResultPresentationSource(result),
                 bounds ?? new ToolPresentationBounds()),
             TestContext.Current.CancellationToken)).ShouldNotBeNull();

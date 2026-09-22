@@ -17,6 +17,9 @@ public interface INetworkResponse: IAsyncDisposable
     /// <summary>Gets the status code, headers, and declared content length of this response.</summary>
     public NetworkResponseMetadata Metadata { get; }
 
+    /// <summary>Gets evidence of bytes actually sent for the paired request, when available.</summary>
+    public NetworkEgressEvidence? EgressEvidence { get; }
+
     /// <summary>Gets the bounded, readable response body stream.</summary>
     /// <remarks>
     /// Reads throw <see cref="NetworkResponseTooLargeException"/> when actual bytes exceed the configured limit and

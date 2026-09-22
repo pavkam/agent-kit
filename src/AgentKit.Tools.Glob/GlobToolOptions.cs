@@ -6,6 +6,9 @@ namespace AgentKit.Tools.Glob;
 /// <summary>Configures default and absolute traversal bounds for the glob tool.</summary>
 public sealed class GlobToolOptions
 {
+    /// <summary>Gets or sets the keyed profile used to select <see cref="IFileGlobber"/>.</summary>
+    public FileSystemProfileKey ProfileKey { get; set; } = new("workspace");
+
     /// <summary>Gets or sets the default recursive depth.</summary>
     public int DefaultMaximumDepth { get; set; } = 25;
     /// <summary>Gets or sets the host-configured depth ceiling.</summary>

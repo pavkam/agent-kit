@@ -3,7 +3,9 @@
 
 namespace AgentKit.Tools.List;
 
-#pragma warning disable CS0612 // Legacy ILegacyDirectoryReader until WS5-C8 migrates list_directory onto spec IDirectoryReader.
+using AgentKit.Tools;
+
+using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>Lists one deterministic, snapshot-bound page of child paths from an authorized directory.</summary>
 public sealed class ListDirectoryTool: IToolInvoker, ITool
@@ -55,39 +57,49 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
         [new ToolsetSourceSelection(ApplicationToolSources.Default)],
         [new ToolAliasAssignment(new ToolAlias("list_directory"), new ToolIdentity(Id, Descriptor.Version))]);
 
-    [Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
-    private readonly ILegacyDirectoryReader _directoryReader;
+    private readonly IFileSystemSelector _fileSystemSelector;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ListDirectoryToolOptions _options;
 
     /// <summary>Initializes a directory-listing tool.</summary>
-    /// <param name="directoryReader">The narrow host enumeration capability.</param>
+    /// <param name="fileSystemSelector">Selects the keyed directory-enumeration profile.</param>
+    /// <param name="serviceProvider">Resolves keyed legacy paging on the selected profile.</param>
+    /// <param name="pathNormalizer">Normalizes model-supplied paths before authorization.</param>
     /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
-    /// <param name="options">The validated page options.</param>
+    /// <param name="options">The validated page and profile options.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    /// <exception cref="ArgumentException"><see cref="ListDirectoryToolOptions.HostRootPath"/> is not configured.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured page bound is not positive or the default exceeds the maximum.</exception>
-    [Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
     public ListDirectoryTool(
-        ILegacyDirectoryReader directoryReader,
+        IFileSystemSelector fileSystemSelector,
+        IServiceProvider serviceProvider,
+        IFilePathNormalizer pathNormalizer,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<ListDirectoryToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(directoryReader);
+        ArgumentNullException.ThrowIfNull(fileSystemSelector);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+        ArgumentNullException.ThrowIfNull(pathNormalizer);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.DefaultPageEntries);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumPageEntries);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             options.Value.DefaultPageEntries, options.Value.MaximumPageEntries);
-        _directoryReader = directoryReader;
+        _fileSystemSelector = fileSystemSelector;
+        _serviceProvider = serviceProvider;
+        _pathNormalizer = pathNormalizer;
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
@@ -98,9 +110,10 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
     ToolDescriptor ITool.Descriptor => Descriptor;
 
     /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
     public ValueTask<ToolInvocationResult> InvokeAsync(
-        ToolInvocationContext context,
-        CancellationToken cancellationToken = default)
+            ToolInvocationContext context,
+            CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         var authorization = context.InvocationGrant.Authorization
@@ -110,7 +123,6 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
 
     /// <inheritdoc/>
     [Obsolete("Legacy host surface.")]
-
     public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
@@ -123,16 +135,56 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
             cancellationToken).AsTask();
     }
 
+    [Obsolete("Legacy host surface.")]
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
-        SecurityAuthorizationContext authorization,
-        ToolCallId callId,
-        JsonElement arguments,
-        CancellationToken cancellationToken)
+            SecurityAuthorizationContext authorization,
+            ToolCallId callId,
+            JsonElement arguments,
+            CancellationToken cancellationToken)
     {
-        if (!TryParse(arguments, out var path, out var maximumEntries, out var cursor, out var error))
+        if (!TryParse(arguments, out var pathText, out var maximumEntries, out var cursor, out var error))
         {
             return Failed(error!, "invalid_arguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
+
+        var normalized = _pathNormalizer.Normalize(
+            new FilePathInput(_options.RootId, pathText ?? string.Empty),
+            _options.PathPolicy);
+        if (normalized is not FilePathNormalizationSuccess normalizedPath)
+        {
+            var message = normalized is FilePathNormalizationFailed failed
+                ? failed.SafeMessage
+                : "The path could not be normalized.";
+            return Failed(message, "invalid_arguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var selection = await _fileSystemSelector
+            .SelectAsync(_options.ProfileKey, FileSystemCapability.Enumerate, cancellationToken)
+            .ConfigureAwait(false);
+        if (selection is FileSystemProfileMissing)
+        {
+            return Failed("The configured file-system profile is not registered.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (selection is FileSystemCapabilityUnsupported unsupported)
+        {
+            return Failed(
+                $"The file-system profile does not support directory enumeration ({unsupported.RequiredCapability}).",
+                "denied",
+                ToolTerminalStatus.Denied,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (selection is not FileSystemDirectoryReaderSelected)
+        {
+            return Failed("The file-system profile could not resolve directory enumeration.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var directoryReader = _serviceProvider.GetRequiredKeyedService<ILegacyDirectoryReader>(_options.ProfileKey.Value);
+
+        FileSystemPath? legacyPath = string.IsNullOrEmpty(normalizedPath.Path.Value)
+            ? null
+            : new FileSystemPath(normalizedPath.Path.Value);
 
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
@@ -147,11 +199,11 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
                 callId,
                 authorization.Identity,
                 authorization,
-                _directoryReader.SecurityAudience,
+                directoryReader.SecurityAudience,
                 SecurityOperationKind.DirectoryRead,
                 SecurityEffect.Observe,
-                [DirectorySecurityBinding.Resource(path)],
-                DirectorySecurityBinding.Fingerprint(path, maximumEntries, cursor),
+                [DirectorySecurityBinding.Resource(legacyPath)],
+                DirectorySecurityBinding.Fingerprint(legacyPath, maximumEntries, cursor),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
             hooks: null,
             cancellationToken).ConfigureAwait(false);
@@ -165,8 +217,8 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
             return Failed("The security authority returned an unsupported decision.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await _directoryReader.EnumerateAsync(
-            new DirectoryEnumerationRequest(path, maximumEntries, cursor, allowed.Grant),
+        var result = await directoryReader.EnumerateAsync(
+            new DirectoryEnumerationRequest(legacyPath, maximumEntries, cursor, allowed.Grant),
             cancellationToken).ConfigureAwait(false);
         if (result.Status != DirectoryEnumerationStatus.Success)
         {
@@ -192,12 +244,12 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
 
     private bool TryParse(
         JsonElement arguments,
-        out FileSystemPath? path,
+        out string? pathText,
         out int maximumEntries,
         out DirectoryEnumerationCursor? cursor,
         out string? error)
     {
-        path = null;
+        pathText = null;
         maximumEntries = _options.DefaultPageEntries;
         cursor = null;
         error = null;
@@ -215,15 +267,7 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
                 return false;
             }
 
-            try
-            {
-                path = new FileSystemPath(pathProperty.GetString()!);
-            }
-            catch (ArgumentException exception)
-            {
-                error = $"Invalid path: {exception.Message}";
-                return false;
-            }
+            pathText = pathProperty.GetString();
         }
 
         if (arguments.TryGetProperty("maximum_entries", out var maximumProperty))
@@ -274,5 +318,3 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
                 new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])))),
         []);
 }
-
-#pragma warning restore CS0612

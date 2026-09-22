@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Command;
 
+using AgentKit.Tools;
+
 /// <summary>Runs one explicitly declared shell command through exact authorization and a required sandbox.</summary>
-public sealed class CommandTool: ITool
+public sealed class CommandTool: IToolInvoker, ITool
 {
     private static readonly UTF8Encoding _strictUtf8 = new(false, true);
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
@@ -24,6 +26,7 @@ public sealed class CommandTool: ITool
         """).RootElement;
 
     private readonly IProcessIntentResolver _resolver;
+    [Obsolete]
     private readonly IProcessRunner _runner;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
@@ -54,6 +57,7 @@ public sealed class CommandTool: ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+    [Obsolete]
     public CommandTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,
@@ -91,9 +95,8 @@ public sealed class CommandTool: ITool
         _maximumCommandBytes = options.Value.MaximumCommandBytes;
     }
 
-    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
-    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "command",
@@ -105,25 +108,66 @@ public sealed class CommandTool: ITool
         new ToolSourceId("agentkit.tools.command"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.command"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("command"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryParse(request.Arguments, out var parsed, out var error))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParse(arguments, out var parsed, out var error))
         {
             return Failure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var arguments = _shellArguments.Add(parsed.Command);
+        var shellArguments = _shellArguments.Add(parsed.Command);
         var unresolved = new ProcessResolveRequest(
             _processOperationIds.Create(),
             _shellExecutable,
-            arguments,
+            shellArguments,
             parsed.WorkingDirectory,
             _environment,
             [],
@@ -151,7 +195,7 @@ public sealed class CommandTool: ITool
         }
 
         var intent = resolution.Intent;
-        var context = request.Context;
+        var context = executionContext;
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)

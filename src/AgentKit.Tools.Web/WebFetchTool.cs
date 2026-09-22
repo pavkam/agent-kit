@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Web;
 
+using AgentKit.Tools;
+
 /// <summary>Fetches bounded untrusted textual web content through separately authorized resolution and send phases.</summary>
-public sealed class WebFetchTool: ITool
+public sealed class WebFetchTool: IToolInvoker, ITool
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -67,8 +69,8 @@ public sealed class WebFetchTool: ITool
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "web_fetch",
@@ -80,13 +82,55 @@ public sealed class WebFetchTool: ITool
         new ToolSourceId("agentkit.tools.web"),
         ExtensionData.Empty);
 
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.web"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("web_fetch"), new ToolIdentity(Id, Descriptor.Version))]);
+
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryParse(request.Arguments, out var parsed, out var error))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParse(arguments, out var parsed, out var error))
         {
             return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -110,7 +154,7 @@ public sealed class WebFetchTool: ITool
                 _options.MaximumRedirects);
             var operationId = _operationIds.Create();
             var resolutionGrant = await AuthorizeAsync(
-                request,
+                executionContext,
                 _resolver.SecurityAudience,
                 [NetworkSecurityBinding.ResolutionResource(destination)],
                 NetworkSecurityBinding.ResolutionFingerprint(operationId, destination, bounds),
@@ -142,7 +186,7 @@ public sealed class WebFetchTool: ITool
                 resolved.Addresses,
                 NetworkDataClassification.Public);
             var sendGrant = await AuthorizeAsync(
-                request,
+                executionContext,
                 _transport.SecurityAudience,
                 resources,
                 fingerprint,
@@ -201,14 +245,13 @@ public sealed class WebFetchTool: ITool
     }
 
     private async ValueTask<SecurityGrant?> AuthorizeAsync(
-        ToolInvocationRequest request,
+        ToolExecutionContext context,
         ComponentId audience,
         ImmutableArray<ProtectedResource> resources,
         InputFingerprint fingerprint,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
-        var context = request.Context;
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)

@@ -31,6 +31,7 @@ global using AgentKit.Tools;
 global using AgentKit.Tools.Edit;
 global using AgentKit.Tools.Glob;
 global using AgentKit.Tools.List;
+global using AgentKit.Tools.Patch;
 global using AgentKit.Tools.Read;
 global using AgentKit.Tools.Search;
 global using AgentKit.Tools.Task;

@@ -25,6 +25,7 @@ internal sealed class RecordingProcessResolver: IProcessIntentResolver
     }
 }
 
+[Obsolete("Legacy host surface.")]
 internal sealed class RecordingProcessRunner: IProcessRunner
 {
     internal List<ProcessRunRequest> Requests { get; } = [];

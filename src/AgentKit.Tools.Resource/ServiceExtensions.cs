@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Resource;
 
+using AgentKit.Tools;
+
 /// <summary>Registers configured resource loading as an independent tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -29,6 +31,16 @@ public static class ServiceExtensions
             if (configure is not null)
             {
                 _ = options.Configure(configure);
+            }
+
+            _ = services.AddToolInvoker<ResourceTool>(ResourceTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == ResourceTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(ResourceTool.DefaultToolset);
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, ResourceTool>());

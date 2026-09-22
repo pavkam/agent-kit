@@ -14,12 +14,14 @@ internal sealed class RealNetworkResponse: INetworkResponse
     /// <param name="content">The already bounded body stream.</param>
     /// <param name="metadata">The immutable response metadata.</param>
     /// <param name="responseDeadline">The live transport-owned response deadline.</param>
+    /// <param name="egressEvidence">Evidence of bytes sent for the paired request.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     internal RealNetworkResponse(
         HttpResponseMessage response,
         Stream content,
         NetworkResponseMetadata metadata,
-        CancellationTokenSource responseDeadline)
+        CancellationTokenSource responseDeadline,
+        NetworkEgressEvidence? egressEvidence)
     {
         ArgumentNullException.ThrowIfNull(response);
         ArgumentNullException.ThrowIfNull(content);
@@ -29,10 +31,14 @@ internal sealed class RealNetworkResponse: INetworkResponse
         _responseDeadline = responseDeadline;
         Content = content;
         Metadata = metadata;
+        EgressEvidence = egressEvidence;
     }
 
     /// <inheritdoc/>
     public NetworkResponseMetadata Metadata { get; }
+
+    /// <inheritdoc/>
+    public NetworkEgressEvidence? EgressEvidence { get; }
 
     /// <inheritdoc/>
     public Stream Content { get; }

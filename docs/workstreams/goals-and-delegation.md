@@ -151,8 +151,9 @@ lines); none break if `TaskDelegation*` is retained.
 - Deliverables: `LocalDelegationDispatcher` commits child-admission intent;
   `AgentKit.Goals.Hosting` with `GoalDelegationWorker : BackgroundService`
   draining intents through the public agent surface with idempotent replay;
-  `EngineDelegationChannel` moves to the hosting leaf with an obsolete forwarder
-  in the facade; worker drain and process-loss tests.
+  `EngineDelegationChannel` moves to the hosting leaf and every caller is
+  updated, with no forwarder left in the facade; worker drain and process-loss
+  tests.
 - Done when: a child never runs inline in the parent call; a one-worker host
   parks the parent.
 

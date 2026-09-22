@@ -128,9 +128,22 @@ internal static class TestSecurity
         1);
 }
 
+internal sealed class AcceptingAuditDispatcher: ISecurityAuditDispatcher
+{
+    public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+        SecurityAuditRecord record,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
+}
+
 internal sealed class FixedTimeProvider: TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+}
+
+internal sealed class TestAuditRecordIdGenerator: IIdentifierGenerator<SecurityAuditRecordId>
+{
+    public SecurityAuditRecordId Create() => new(Guid.NewGuid());
 }
 
 internal sealed class SequenceSecurityEnforcementIntentIdGenerator(params Guid[] values)

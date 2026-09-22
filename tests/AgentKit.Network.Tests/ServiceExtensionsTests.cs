@@ -15,6 +15,7 @@ public sealed class ServiceExtensionsTests
         var expectedId = new SecurityEnforcementIntentId(Guid.Parse("81000000-0000-0000-0000-000000000008"));
         var services = new ServiceCollection();
         _ = services.AddSingleton<ISecurityGrantStore>(store);
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(new AcceptingAuditDispatcher());
         _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
         _ = services.AddAgentNetwork(value => value.DestinationPolicy = new NetworkDestinationPolicy(["http"], null, allowPrivateAddresses: true));
         using var provider = services.BuildServiceProvider();
@@ -28,6 +29,7 @@ public sealed class ServiceExtensionsTests
         var store = new TestGrantStore();
         var services = new ServiceCollection();
         _ = services.AddSingleton<ISecurityGrantStore>(store);
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(new AcceptingAuditDispatcher());
         _ = services.AddAgentNetwork(value => value.DestinationPolicy = new NetworkDestinationPolicy(["http"], null, allowPrivateAddresses: true));
         using var provider = services.BuildServiceProvider();
         var transport = provider.GetRequiredService<INetworkTransport>();

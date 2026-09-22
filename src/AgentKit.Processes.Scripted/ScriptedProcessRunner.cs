@@ -4,6 +4,7 @@
 namespace AgentKit.Processes.Scripted;
 
 /// <summary>Consumes exact process grants and returns declared results without creating operating-system processes.</summary>
+[Obsolete("Legacy host surface.")]
 public sealed partial class ScriptedProcessRunner: IProcessRunner
 {
     private readonly IProcessIntentResolver _resolver;

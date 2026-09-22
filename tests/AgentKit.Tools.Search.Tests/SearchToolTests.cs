@@ -22,6 +22,7 @@ public sealed class SearchToolTests
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":-1}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":999999999}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":\"soon\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var searcher = new FakeFileContentSearcher();
@@ -35,6 +36,7 @@ public sealed class SearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExcludePatternsExceedsMaximumCount_ReturnsInvalidArguments()
     {
         var searcher = new FakeFileContentSearcher();
@@ -58,6 +60,7 @@ public sealed class SearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveFiles()
     {
         var searcher = new FakeFileContentSearcher();
@@ -67,6 +70,7 @@ public sealed class SearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsMatchAndExactSecurityEvidence()
     {
         var searcher = new FakeFileContentSearcher
@@ -93,6 +97,7 @@ public sealed class SearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenNoMatches_ReturnsSuccessfulTypedEmptyResult()
     {
         var result = await CreateTool(new FakeFileContentSearcher(), new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"""{"pattern":"missing","regex":false}"""), TestContext.Current.CancellationToken);
@@ -101,6 +106,7 @@ public sealed class SearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostTimesOut_PreservesTypedPartialFailure()
     {
         var searcher = new FakeFileContentSearcher
@@ -115,7 +121,8 @@ public sealed class SearchToolTests
     }
 
     private static string Status(ToolInvocationResult result) => Encoding.UTF8.GetString(result.Outcome.Extensions.Values["agentkit.search.status"].CanonicalJson.AsSpan());
-    private static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority) => new(searcher, new FixedSecurityAuthoritySelector(authority), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new SearchToolOptions()));
+    private static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority) =>
+        TestSearchComposition.CreateTool(searcher, authority);
     private static ToolInvocationRequest Request(string json) => new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new InRunOperationCorrelation(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
     [Fact]
     public void SearchTool_WhenDirectOptionsInvalid_ThrowsExactConstraint()
@@ -124,7 +131,19 @@ public sealed class SearchToolTests
         {
             MaximumFiles = 0
         };
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(new FakeFileContentSearcher(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
+        var services = new ServiceCollection();
+        _ = services.AddKeyedSingleton<IFileContentSearcher>("test", new FakeFileContentSearcher());
+        var provider = services.BuildServiceProvider();
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(
+            provider,
+            new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()),
+            new StubSecurityRequestIdGenerator(),
+            new FixedTimeProvider(),
+            Options.Create(new SearchToolOptions
+            {
+                ProfileKey = new FileSystemProfileKey("test"),
+                MaximumFiles = options.MaximumFiles,
+            })));
         exception.ParamName.ShouldBe("MaximumFiles");
     }
 

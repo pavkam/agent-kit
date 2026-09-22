@@ -527,13 +527,8 @@ public sealed class PatchToolTests
         IFileSnapshotReader snapshotReader,
         IWorkspacePatchApplier applier,
         ISecurityAuthority authority,
-        PatchToolOptions? options = null) => new(
-            snapshotReader,
-            applier, new FixedSecurityAuthoritySelector(authority),
-            new SequenceSecurityRequestIdGenerator(),
-            new SequenceMutationIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(options ?? new PatchToolOptions()));
+        PatchToolOptions? options = null) =>
+        TestPatchComposition.CreateTool(snapshotReader, applier, authority, options);
 
     private static string PatchArguments(string patch) => JsonSerializer.Serialize(new { patch });
 

@@ -26,6 +26,7 @@ public sealed class PlanToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[]}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[{\"id\":\"x\",\"text\":\"X\",\"status\":\"in_progress\"},{\"id\":\"y\",\"text\":\"Y\",\"status\":\"in_progress\"}]}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"x\",\"status\":\"completed\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrStateAccess(string json)
     {
         var store = new RecordingPlanStateStore();
@@ -43,6 +44,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSessionMissing_PerformsNoAuthorizationOrStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -58,11 +60,12 @@ public sealed class PlanToolTests
     {
         var tool = Tool(new RecordingPlanStateStore(), new RecordingSecurityAuthority());
 
-        tool.Descriptor.Id.ShouldBe(PlanTool.Id);
-        tool.Descriptor.ShouldBeSameAs(PlanTool.PresentationDescriptor);
+        ((ITool) tool).Descriptor.Id.ShouldBe(PlanTool.Id);
+        ((ITool) tool).Descriptor.ShouldBeSameAs(PlanTool.PresentationDescriptor);
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSessionProfileMissing_PerformsNoAuthorizationOrStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -86,6 +89,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExpectedRevisionHasWrongType_RejectsWithSafeMessage()
     {
         var store = new RecordingPlanStateStore();
@@ -101,6 +105,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenItemMissingRequiredField_RejectsWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -116,6 +121,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSetStatusMissingItemId_RejectsWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -131,6 +137,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSetStatusMissingStatus_RejectsWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -146,6 +153,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSetStatusUsesBlockedStatus_BindsBlockedStatus()
     {
         var store = new RecordingPlanStateStore
@@ -162,6 +170,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSetStatusUsesUnsupportedStatusValue_RejectsWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -177,6 +186,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenStoreReturnsFailed_ReturnsFailedWithSafeMessage()
     {
         var store = new RecordingPlanStateStore
@@ -190,6 +200,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenGetFindsNoPlan_ReturnsSuccessWithNullPlan()
     {
         // "get" observes state and truthfully performs nothing either way, so an absent plan is a successful,
@@ -208,6 +219,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSetStatusFindsNoPlan_ReturnsFailedInsteadOfASuccessfulNoOpMutation()
     {
         // SessionPlanStateStore.SetStatusAsync returns PlanStateMissing when no plan exists. Project mapped
@@ -232,6 +244,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFoundPlanHasEveryItemStatus_ProjectsEachStatusText()
     {
         var plan = new WorkPlan(
@@ -262,6 +275,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenReading_BindsExactObserveGrantAndProjectsMissingAsSuccess()
     {
         var store = new RecordingPlanStateStore();
@@ -278,6 +292,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenReplacing_BindsFullMutationAndProjectsVersionedPlan()
     {
         var plan = TestData.Plan();
@@ -300,6 +315,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSettingStatus_RequiresAndBindsExpectedRevision()
     {
         var store = new RecordingPlanStateStore
@@ -315,6 +331,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
@@ -324,6 +341,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenStoreRejectsGrant_ReturnsRejected()
     {
         var store = new RecordingPlanStateStore
@@ -336,6 +354,7 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenRevisionConflicts_ReturnsCurrentRevisionWithoutContent()
     {
         var store = new RecordingPlanStateStore

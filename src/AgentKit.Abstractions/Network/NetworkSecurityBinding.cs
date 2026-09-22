@@ -74,10 +74,10 @@ public static class NetworkSecurityBinding
         ArgumentNullException.ThrowIfNull(bounds);
         return Hash(new
         {
-            operation = "network-resolve-v1",
+            operation = "network-resolve-v2",
             operationId = id.ToString(),
             destination = destination.ToString(),
-            connectTimeoutTicks = bounds.ConnectTimeout.Ticks,
+            resolutionTimeoutTicks = bounds.Resolution.ResolutionTimeout.Ticks,
         });
     }
 
@@ -119,7 +119,7 @@ public static class NetworkSecurityBinding
         NetworkMethod method,
         NetworkDestination destination,
         NetworkHeaderSet headers,
-        NetworkRequestContent? content,
+        INetworkRequestContent? content,
         NetworkBounds bounds,
         ImmutableArray<NetworkAddress> resolvedAddresses,
         NetworkDataClassification classification)
@@ -131,7 +131,7 @@ public static class NetworkSecurityBinding
         ArgumentOutOfRangeException.ThrowIfUndefined(classification);
         return Hash(new
         {
-            operation = "network-send-v1",
+            operation = "network-send-v2",
             operationId = id.ToString(),
             method = method.Value,
             destination = destination.ToString(),
@@ -141,9 +141,7 @@ public static class NetworkSecurityBinding
                 valueFingerprint = ProcessSecurityBinding.FingerprintText(header.Value),
             }),
             contentType = content?.ContentType,
-            contentFingerprint = content is null
-                ? null
-                : ProcessSecurityBinding.FingerprintBytes(content.Body.Span).Value,
+            contentFingerprint = content?.BodyFingerprint.Value,
             addresses = resolvedAddresses.Select(static address => new
             {
                 value = address.Address.ToString(),
@@ -151,10 +149,11 @@ public static class NetworkSecurityBinding
                 address.ExpiresAt,
             }),
             classification,
-            connectTimeoutTicks = bounds.ConnectTimeout.Ticks,
-            responseTimeoutTicks = bounds.ResponseTimeout.Ticks,
-            bounds.MaximumResponseBytes,
-            bounds.MaximumRedirects,
+            connectTimeoutTicks = bounds.Request.ConnectTimeout.Ticks,
+            maximumRequestBytes = bounds.Request.MaximumRequestBytes,
+            responseTimeoutTicks = bounds.Response.ResponseTimeout.Ticks,
+            bounds.Response.MaximumResponseBytes,
+            bounds.Response.MaximumRedirects,
         });
     }
 

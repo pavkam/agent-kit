@@ -12,6 +12,7 @@ public static class ServiceExtensions
         /// <param name="configure">The required executable mappings and operation scenarios.</param>
         /// <returns>The same service collection.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
+        [Obsolete("Legacy host surface.")]
         public IServiceCollection AddScriptedProcesses(Action<ScriptedProcessOptions> configure)
         {
             ArgumentNullException.ThrowIfNull(services);

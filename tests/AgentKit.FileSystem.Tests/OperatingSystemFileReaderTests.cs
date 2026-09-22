@@ -98,6 +98,7 @@ public sealed class OperatingSystemFileReaderTests
         return root;
     }
 
+    [Obsolete]
     private static IFileReader CreateReader(string root, ISecurityAuditDispatcher? audit = null)
     {
         var services = new ServiceCollection();

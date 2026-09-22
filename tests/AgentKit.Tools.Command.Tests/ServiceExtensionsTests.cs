@@ -8,6 +8,7 @@ using AgentKit.TestSupport;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    [Obsolete]
     public void AddCommandTool_WhenCalledTwice_RegistersOneTool()
     {
         var services = Dependencies();
@@ -19,6 +20,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddCommandTool_WhenOptionsInvalid_FailsValidation()
     {
         var services = Dependencies();
@@ -30,6 +32,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddCommandTool_WhenDefaultOptionsWithValidEnvironmentVariable_PassesValidation()
     {
         var services = Dependencies();
@@ -43,6 +46,7 @@ public sealed class ServiceExtensionsTests
     [InlineData("", "value")]
     [InlineData("KEY=BAD", "value")]
     [InlineData("KEY\0BAD", "value")]
+    [Obsolete]
     public void AddCommandTool_WhenEnvironmentVariableKeyIsInvalid_FailsValidation(string key, string value)
     {
         var services = Dependencies();
@@ -54,6 +58,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddCommandTool_WhenEnvironmentVariableValueContainsNul_FailsValidation()
     {
         var services = Dependencies();
@@ -64,6 +69,7 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IOptions<CommandToolOptions>>().Value);
     }
 
+    [Obsolete("Legacy host surface.")]
     private static ServiceCollection Dependencies()
     {
         var services = new ServiceCollection();

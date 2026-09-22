@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Keyed dependency-injection registration for operating-system file capabilities.</summary>
 internal static class OperatingSystemFileSystemRegistration
 {
+    [Obsolete]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,
@@ -44,10 +45,30 @@ internal static class OperatingSystemFileSystemRegistration
             CreateReader(provider, serviceKey!));
         _ = services.AddKeyedSingleton<IFileWriter>(key.Value, static (provider, serviceKey) =>
             CreateWriter(provider, serviceKey!));
+        _ = services.AddKeyedSingleton(key.Value, static (provider, serviceKey) =>
+            CreateLegacyHost(provider, serviceKey!));
+        _ = services.AddKeyedSingleton<IDirectoryReader>(key.Value, static (provider, serviceKey) =>
+            new OperatingSystemDirectoryReader(
+                provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!)));
+        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileGlobber>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileContentSearcher>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileSnapshotReader>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+        _ = services.AddKeyedSingleton<IAtomicFileReplacer>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+        _ = services.AddKeyedSingleton<IWorkspacePatchApplier>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
         _ = services.AddSingleton(new FileSystemProfileRegistration(
             key,
             new FileSystemCapabilities(
-                FileSystemCapability.Read | FileSystemCapability.Write | FileSystemCapability.Metadata)));
+                FileSystemCapability.Read
+                | FileSystemCapability.Write
+                | FileSystemCapability.Metadata
+                | FileSystemCapability.Enumerate)));
         services.TryAddSingleton<IFileSystemSelector>(static provider =>
             new DefaultFileSystemSelector(provider, provider.GetServices<FileSystemProfileRegistration>()));
 
@@ -67,6 +88,15 @@ internal static class OperatingSystemFileSystemRegistration
             provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
             provider.GetRequiredService<TimeProvider>(),
             profile);
+    }
+
+    private static OperatingSystemFileSystemLegacyHost CreateLegacyHost(IServiceProvider provider, object serviceKey)
+    {
+        var profileKey = new FileSystemProfileKey((string) serviceKey);
+        var profile = provider.GetRequiredKeyedService<OperatingSystemFileSystemOptionsSnapshot>(serviceKey);
+        return profile.ProfileKey != profileKey
+            ? throw new InvalidOperationException("The keyed file-system snapshot does not match the registration key.")
+            : new OperatingSystemFileSystemLegacyHost(provider, profile);
     }
 
     private static OperatingSystemFileWriter CreateWriter(IServiceProvider provider, object serviceKey)

@@ -15,4 +15,18 @@ public interface IToolRunCatalogCaptureFactory
     /// <returns>An owned capture whose snapshot reflects the registered legacy catalog.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public IToolCatalogCapture Create(RunToolCatalogCaptureRequest request);
+
+    /// <summary>Asynchronously captures immutable catalog evidence for one run.</summary>
+    /// <param name="request">The nonnull run binding and authorization evidence.</param>
+    /// <param name="cancellationToken">Cancels capture before ownership transfers.</param>
+    /// <returns>An owned capture for the requested tool surface.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public ValueTask<IToolCatalogCapture> CreateAsync(
+        RunToolCatalogCaptureRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(Create(request));
+    }
 }

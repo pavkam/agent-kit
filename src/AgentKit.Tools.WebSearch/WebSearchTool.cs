@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.WebSearch;
 
+using AgentKit.Tools;
+
 /// <summary>Executes one bounded query through an explicitly selected provider-backed search operation.</summary>
-public sealed class WebSearchTool: ITool
+public sealed class WebSearchTool: IToolInvoker, ITool
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -80,8 +82,8 @@ public sealed class WebSearchTool: ITool
         _maximumSnippetCharacters = options.Value.MaximumSnippetCharacters;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "web_search",
@@ -93,14 +95,56 @@ public sealed class WebSearchTool: ITool
         new ToolSourceId("agentkit.tools.websearch"),
         ExtensionData.Empty);
 
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.websearch"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("web_search"), new ToolIdentity(Id, Descriptor.Version))]);
+
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
         if (!TryParse(
-                request.Arguments,
+                arguments,
                 out var query,
                 out var domains,
                 out var freshness,
@@ -123,7 +167,7 @@ public sealed class WebSearchTool: ITool
             freshness,
             maximumResults,
             deadline);
-        var context = request.Context;
+        var context = executionContext;
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)

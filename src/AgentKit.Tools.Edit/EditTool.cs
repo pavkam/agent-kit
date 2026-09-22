@@ -5,6 +5,8 @@ namespace AgentKit.Tools.Edit;
 
 using AgentKit.Tools;
 
+using Microsoft.Extensions.DependencyInjection;
+
 /// <summary>Performs exact, version-conditional UTF-8 text replacement with atomic target visibility.</summary>
 public sealed class EditTool: IToolInvoker, ITool
 {
@@ -37,8 +39,7 @@ public sealed class EditTool: IToolInvoker, ITool
     private readonly EditToolOptions _options;
 
     /// <summary>Initializes an exact text-editing tool.</summary>
-    /// <param name="snapshotReader">The exact byte-snapshot capability.</param>
-    /// <param name="replacer">The conditional atomic replacement capability.</param>
+    /// <param name="serviceProvider">Resolves keyed host snapshot and replace capabilities.</param>
     /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="mutationIds">The mutation identity generator.</param>
@@ -47,16 +48,14 @@ public sealed class EditTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured byte bound is invalid.</exception>
     public EditTool(
-        IFileSnapshotReader snapshotReader,
-        IAtomicFileReplacer replacer,
+        IServiceProvider serviceProvider,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
         IOptions<EditToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(snapshotReader);
-        ArgumentNullException.ThrowIfNull(replacer);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(mutationIds);
@@ -70,8 +69,9 @@ public sealed class EditTool: IToolInvoker, ITool
             options.Value.DefaultMaximumBytes,
             options.Value.MaximumBytes,
             nameof(options.Value.DefaultMaximumBytes));
-        _snapshotReader = snapshotReader;
-        _replacer = replacer;
+        var profileKey = options.Value.ProfileKey.Value;
+        _snapshotReader = serviceProvider.GetRequiredKeyedService<IFileSnapshotReader>(profileKey);
+        _replacer = serviceProvider.GetRequiredKeyedService<IAtomicFileReplacer>(profileKey);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _mutationIds = mutationIds;

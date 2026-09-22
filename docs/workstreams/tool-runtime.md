@@ -235,8 +235,8 @@ plus conformance fixture; new-runtime contracts one callback fake each in
   `AddAgentTools(ComponentKey<IToolExecutor>, Action<ToolRuntimeOptions>?)`,
   `AddTool<TInvoker>(ToolDescriptor, ServiceLifetime)`, `ReplaceTool<TInvoker>`,
   `ReplaceToolExecutor<T>(key)`, `ReplaceToolScheduler<T>`;
-  `ToolRuntimeOptions.cs`, `ApplicationToolProvider.cs`; old `AddAgentTools`
-  marked obsolete. Snapshot: Tools.
+  `ToolRuntimeOptions.cs`, `ApplicationToolProvider.cs`; the old `AddAgentTools`
+  stays unmarked until C10a deletes it. Snapshot: Tools.
 - Open: scope ownership per invocation for scoped lifetimes.
 
 ### WS4-C9a/b/c: Migrate 16 tool packages

@@ -3,8 +3,10 @@
 
 namespace AgentKit.Tools.Skill;
 
+using AgentKit.Tools;
+
 /// <summary>Lists a captured skill catalog or activates one skill through an exact protected file snapshot.</summary>
-public sealed class SkillTool: ITool
+public sealed class SkillTool: IToolInvoker, ITool
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -64,9 +66,8 @@ public sealed class SkillTool: ITool
         _maximumCharacters = options.Value.MaximumCharacters;
     }
 
-    /// <summary>Gets the exact immutable descriptor shared by invocation and application presentation.</summary>
-    /// <value>The feature-owned skill descriptor.</value>
-    internal static ToolDescriptor PresentationDescriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "skill",
@@ -78,14 +79,55 @@ public sealed class SkillTool: ITool
         new ToolSourceId("agentkit.tools.skill"),
         ExtensionData.Empty);
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor => PresentationDescriptor;
+    internal static ToolDescriptor PresentationDescriptor => Descriptor;
+
+    /// <summary>Gets the default toolset publication selecting this tool from the application tool source.</summary>
+    public static ToolsetPublication DefaultToolset { get; } = new(
+        new ToolsetKey("agentkit.tools.skill"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("skill"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
+    ToolDescriptor ITool.Descriptor => Descriptor;
+
+    /// <inheritdoc/>
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+
+    /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
+
+    public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!TryArguments(request.Arguments, out var action, out var id))
+        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
+    }
+
+    private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var authorization = context.InvocationGrant.Authorization
+            ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
+        return new ToolExecutionContext(
+            context.AgentId,
+            context.SessionId,
+            context.CallId,
+            context.InvocationGrant.Scope.Correlation,
+            context.InvocationGrant.Identity,
+            authorization,
+            sessionProfile: null);
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
+        ToolExecutionContext executionContext,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(arguments, out var action, out var id))
         {
             return Failure("'action' must be list without an ID or activate with one stable ID.", "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
@@ -101,7 +143,7 @@ public sealed class SkillTool: ITool
             return Failure("No captured skill has that identity.", "NotFound", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var context = request.Context;
+        var context = executionContext;
         var fingerprint = FileSecurityBinding.SnapshotFingerprint(skill.Path, _maximumBytes);
         var authorization = context.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);

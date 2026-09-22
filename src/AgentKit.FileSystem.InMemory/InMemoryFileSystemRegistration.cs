@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 /// <summary>Keyed registration for in-memory host file capabilities.</summary>
 internal static class InMemoryFileSystemRegistration
 {
+    [Obsolete]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,
@@ -53,13 +54,28 @@ internal static class InMemoryFileSystemRegistration
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IDirectoryCreator>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IDirectoryReader>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileGlobber>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileContentSearcher>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileSnapshotReader>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IAtomicFileReplacer>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IWorkspacePatchApplier>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddSingleton(new FileSystemProfileRegistration(
             key,
             new FileSystemCapabilities(
                 FileSystemCapability.Read
                 | FileSystemCapability.Write
                 | FileSystemCapability.Metadata
-                | FileSystemCapability.CreateDirectory)));
+                | FileSystemCapability.CreateDirectory
+                | FileSystemCapability.Enumerate)));
         services.TryAddSingleton<IFileSystemSelector>(static provider =>
             new DefaultFileSystemSelector(provider, provider.GetServices<FileSystemProfileRegistration>()));
 

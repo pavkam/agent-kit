@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Task;
 
+using AgentKit.Tools;
+
 /// <summary>Registers task delegation as an independent coding-harness feature.</summary>
 public static class ServiceExtensions
 {
@@ -28,6 +30,16 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton<IIdentifierGenerator<DelegationId>, GuidDelegationIdGenerator>();
+            _ = services.AddToolInvoker<TaskTool>(TaskTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == TaskTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(TaskTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, TaskTool>());
             return services;
         }

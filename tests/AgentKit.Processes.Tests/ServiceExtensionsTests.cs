@@ -6,6 +6,7 @@ namespace AgentKit.Processes.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public void AddOperatingSystemProcesses_WhenRegistered_ProvidesResolverSandboxAndOperationIds()
     {
         var services = new ServiceCollection();
@@ -27,6 +28,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddOperatingSystemProcesses_WhenForcedTerminationWaitInvalid_FailsOptionsValidation()
     {
         var services = new ServiceCollection();
@@ -42,6 +44,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddOperatingSystemProcesses_WhenReadOnlyToolchainRootPathIsRelative_FailsOptionsValidation()
     {
         var services = new ServiceCollection();

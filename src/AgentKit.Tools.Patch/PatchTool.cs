@@ -5,6 +5,8 @@ namespace AgentKit.Tools.Patch;
 
 using AgentKit.Tools;
 
+using Microsoft.Extensions.DependencyInjection;
+
 /// <summary>Parses, plans, authorizes, and applies exact source-ordered workspace patch batches.</summary>
 public sealed class PatchTool: IToolInvoker, ITool
 {
@@ -34,8 +36,7 @@ public sealed class PatchTool: IToolInvoker, ITool
     private readonly PatchToolOptions _options;
 
     /// <summary>Initializes a side-effect-free parsed and separately authorized patch tool.</summary>
-    /// <param name="snapshotReader">The exact bounded source and absence observation capability.</param>
-    /// <param name="applier">The transactional host patch capability.</param>
+    /// <param name="serviceProvider">Resolves keyed host snapshot and patch capabilities.</param>
     /// <param name="authoritySelector">The security authority selector for every observation and mutation entry.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="mutationIds">The per-entry mutation identity generator.</param>
@@ -44,16 +45,14 @@ public sealed class PatchTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is not positive.</exception>
     public PatchTool(
-        IFileSnapshotReader snapshotReader,
-        IWorkspacePatchApplier applier,
+        IServiceProvider serviceProvider,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
         IOptions<PatchToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(snapshotReader);
-        ArgumentNullException.ThrowIfNull(applier);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(mutationIds);
@@ -62,8 +61,9 @@ public sealed class PatchTool: IToolInvoker, ITool
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumPatchBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumEntries);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumFileBytes);
-        _snapshotReader = snapshotReader;
-        _applier = applier;
+        var profileKey = options.Value.ProfileKey.Value;
+        _snapshotReader = serviceProvider.GetRequiredKeyedService<IFileSnapshotReader>(profileKey);
+        _applier = serviceProvider.GetRequiredKeyedService<IWorkspacePatchApplier>(profileKey);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _mutationIds = mutationIds;

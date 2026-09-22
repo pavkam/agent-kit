@@ -16,6 +16,7 @@ public sealed class SkillToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"activate\"}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"list\",\"id\":\"docs\"}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"activate\",\"id\":\"\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrRead(string json)
     {
         var reader = new RecordingSnapshotReader();
@@ -29,6 +30,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenListing_ReturnsOnlyApprovedMetadataWithoutAuthorizationOrPath()
     {
         var reader = new RecordingSnapshotReader();
@@ -44,6 +46,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenIdentityUnknown_PerformsNoAuthorizationOrRead()
     {
         var reader = new RecordingSnapshotReader();
@@ -55,6 +58,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_PerformsNoSnapshotRead()
     {
         var reader = new RecordingSnapshotReader();
@@ -68,6 +72,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_UsesExactSnapshotEvidenceAndMarksContentNonAuthoritative()
     {
         var reader = new RecordingSnapshotReader
@@ -90,6 +95,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCharacterBoundaryReached_ReportsExplicitTruncation()
     {
         var options = OptionsForTool();
@@ -105,6 +111,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
     {
         // content[..maximumCharacters] sliced on UTF-16 code units. "ab\U0001F600" is ['a','b',HighSurrogate,
@@ -125,6 +132,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenIntegrityPinDiffers_ReturnsFailureWithoutContent()
     {
         var options = OptionsForTool(expectedHash: new ContentHash("sha256:wrong"));
@@ -139,6 +147,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotReadFailsAfterAuthorization_ReturnsTypedFailure()
     {
         var reader = new RecordingSnapshotReader
@@ -154,6 +163,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotHasUtf8Bom_StripsBomBeforeProjectingContent()
     {
         byte[] withBom = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("hello")];
@@ -173,6 +183,7 @@ public sealed class SkillToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotIsInvalidUtf8_ReturnsTypedFailure()
     {
         var reader = new RecordingSnapshotReader

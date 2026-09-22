@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Web;
 
+using AgentKit.Tools;
+
 /// <summary>Registers the bounded web-fetch tool feature.</summary>
 public static class ServiceExtensions
 {
@@ -30,6 +32,16 @@ public static class ServiceExtensions
             if (configure is not null)
             {
                 _ = options.Configure(configure);
+            }
+
+            _ = services.AddToolInvoker<WebFetchTool>(WebFetchTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == WebFetchTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(WebFetchTool.DefaultToolset);
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WebFetchTool>());

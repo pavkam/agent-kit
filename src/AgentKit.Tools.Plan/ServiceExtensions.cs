@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.Plan;
 
+using AgentKit.Tools;
+
 /// <summary>Registers session-backed plan state and its coding-harness tool.</summary>
 public static class ServiceExtensions
 {
@@ -31,6 +33,26 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>,
                 GuidSecurityEnforcementIntentIdGenerator>();
             services.TryAddSingleton<IPlanStateStore, SessionPlanStateStore>();
+            _ = services.AddToolInvoker<PlanTool>(PlanTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == PlanTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(PlanTool.DefaultToolset);
+            }
+
+            _ = services.AddToolInvoker<TodoTool>(TodoTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == TodoTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(TodoTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, PlanTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, PlanToolPresentationFormatter>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, TodoTool>());

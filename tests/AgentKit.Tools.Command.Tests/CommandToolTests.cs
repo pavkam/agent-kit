@@ -22,6 +22,7 @@ public sealed class CommandToolTests
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"working_directory\":\"../escape\"}")]
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"workspace_access\":\"surprise\"}")]
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"timeout_ms\":600001}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoResolutionAuthorizationOrExecution(string json)
     {
         var resolver = new RecordingProcessResolver();
@@ -40,6 +41,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCommandContainsNul_RejectsWithoutResolution()
     {
         var resolver = new RecordingProcessResolver();
@@ -54,6 +56,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCommandExceedsMaximumBytes_RejectsWithoutResolution()
     {
         var resolver = new RecordingProcessResolver();
@@ -70,6 +73,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionFails_DoesNotRequestAuthorityOrExecute()
     {
         var resolver = new RecordingProcessResolver
@@ -92,6 +96,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_DoesNotExecuteResolvedProcess()
     {
         var resolver = new RecordingProcessResolver();
@@ -107,6 +112,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_UsesExplicitShellAndExactResolvedSecurityEvidence()
     {
         var resolver = new RecordingProcessResolver();
@@ -160,6 +166,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExitCodeNonzero_ReturnsFailedOutcomeWithTypedOutput()
     {
         var runner = new RecordingProcessRunner
@@ -190,6 +197,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOutputIsNotUtf8_PreservesExactBase64WithoutLossyText()
     {
         var runner = new RecordingProcessRunner
@@ -219,6 +227,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOutputSpilled_ProjectsPortableArtifactIdentity()
     {
         var reference = ArtifactReference();
@@ -276,6 +285,7 @@ public sealed class CommandToolTests
     [InlineData(ProcessRunStatus.TimedOut, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
     [InlineData(ProcessRunStatus.Cancelled, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
     [InlineData(ProcessRunStatus.Failed, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostSettles_PreservesStageAndEffectEvidence(ProcessRunStatus status, ProcessSideEffectCertainty hostCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
     {
         // Arrange
@@ -300,6 +310,7 @@ public sealed class CommandToolTests
     [InlineData(ProcessResolutionStatus.WorkingDirectoryRejected, ToolTerminalStatus.Unsupported)]
     [InlineData(ProcessResolutionStatus.InvalidIntent, ToolTerminalStatus.InvalidArguments)]
     [InlineData(ProcessResolutionStatus.Failed, ToolTerminalStatus.InvocationFailed)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionDoesNotProduceIntent_PreservesStageWithoutStartingProcess(ProcessResolutionStatus status, ToolTerminalStatus expectedStatus)
     {
         var resolver = new RecordingProcessResolver { Result = new ProcessResolutionResult(status, null, "Unavailable.") };
@@ -314,24 +325,26 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
         var tool = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());
 
-        tool.Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
+        ((ITool) tool).Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
     }
 
+    [Obsolete("Legacy host surface.")]
     private static CommandTool CreateTool(
-        IProcessIntentResolver resolver,
-        IProcessRunner runner,
-        ISecurityAuthority authority,
-        CommandToolOptions? options = null) => new(
-            resolver,
-            runner, new FixedSecurityAuthoritySelector(authority),
-            new FixedSecurityRequestIdGenerator(),
-            new FixedProcessOperationIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(options ?? OptionsForTool()));
+            IProcessIntentResolver resolver,
+            IProcessRunner runner,
+            ISecurityAuthority authority,
+            CommandToolOptions? options = null) => new(
+                resolver,
+                runner, new FixedSecurityAuthoritySelector(authority),
+                new FixedSecurityRequestIdGenerator(),
+                new FixedProcessOperationIdGenerator(),
+                new FixedTimeProvider(),
+                Options.Create(options ?? OptionsForTool()));
 
     private static CommandToolOptions OptionsForTool()
     {

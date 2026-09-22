@@ -4,6 +4,7 @@
 namespace AgentKit.Processes;
 
 /// <summary>Runs bounded sandboxed processes with exact grant consumption, output tails, and tree teardown.</summary>
+[Obsolete]
 public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDisposable
 {
     private const int _signalTerminate = 15;

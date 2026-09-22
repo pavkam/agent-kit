@@ -10,16 +10,13 @@ namespace AgentKit;
 /// fields, safe to share across threads without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller streaming request
-/// body the full network architecture describes; this reduced contract
-/// bounds request bodies to what comfortably fits in memory and does not
-/// yet support a caller-provided upload stream. Response bodies are not
-/// affected by this reduction: <see cref="INetworkResponse"/> always
-/// exposes a real, boundedly read stream regardless of how the request
+/// One-pass upload streams use <see cref="NetworkStagedRequestContent"/> with a
+/// separately authorized spool. Response bodies are not affected: <see cref="INetworkResponse"/>
+/// always exposes a real, boundedly read stream regardless of how the request
 /// body was supplied.
 /// </para>
 /// </remarks>
-public sealed record NetworkRequestContent
+public sealed record NetworkRequestContent: INetworkRequestContent
 {
     /// <summary>Initializes a new instance of the <see cref="NetworkRequestContent"/> record.</summary>
     /// <param name="contentType">The media type of <paramref name="body"/>.</param>
@@ -30,16 +27,19 @@ public sealed record NetworkRequestContent
     public NetworkRequestContent(string contentType, ReadOnlyMemory<byte> body)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
-
         ContentType = contentType;
         Body = body;
+        BodyFingerprint = ProcessSecurityBinding.FingerprintBytes(body.Span);
     }
 
-    /// <summary>Gets the media type of <see cref="Body"/>.</summary>
+    /// <inheritdoc/>
     public string ContentType { get; init; }
 
     /// <summary>Gets the request body bytes.</summary>
     public ReadOnlyMemory<byte> Body { get; init; }
+
+    /// <inheritdoc/>
+    public ContentHash BodyFingerprint { get; init; }
 
     /// <inheritdoc/>
     public bool Equals(NetworkRequestContent? other) =>

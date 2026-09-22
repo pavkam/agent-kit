@@ -92,9 +92,10 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="configure"/> is null.</exception>
         /// <exception cref="InvalidOperationException">Configuration does not register any roots.</exception>
+        [Obsolete("Legacy host surface.")]
         public IServiceCollection AddOperatingSystemFileSystem(
-            FileSystemProfileKey key,
-            Action<OperatingSystemFileSystemOptions> configure) =>
-            OperatingSystemFileSystemRegistration.Add(services, key, configure);
+                    FileSystemProfileKey key,
+                    Action<OperatingSystemFileSystemOptions> configure) =>
+                    OperatingSystemFileSystemRegistration.Add(services, key, configure);
     }
 }

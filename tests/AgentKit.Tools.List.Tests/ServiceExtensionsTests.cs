@@ -10,17 +10,26 @@ using AgentKit.Tools;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public void AddListTool_WhenCalledTwice_RegistersOneInvokerAndOneLegacyTool()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<ILegacyDirectoryReader, FakeDirectoryReader>();
+        var reader = new FakeDirectoryReader();
+        var profileKey = new FileSystemProfileKey("test");
+        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(profileKey.Value, reader);
+        _ = services.AddSingleton(TestListComposition.CreateSelector(profileKey));
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
         _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
             new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, StubSecurityRequestIdGenerator>();
         _ = services.AddSingleton<TimeProvider, FixedTimeProvider>();
 
-        _ = services.AddListTool();
+        _ = services.AddListTool(o =>
+        {
+            o.ProfileKey = profileKey;
+            o.HostRootPath = "/tmp";
+            o.RootId = new FileRootId("test");
+        });
         _ = services.AddListTool();
         using var provider = services.BuildServiceProvider();
 
@@ -39,7 +48,11 @@ public sealed class ServiceExtensionsTests
     public void AddListTool_WhenConfigureProvided_AppliesConfiguredBounds()
     {
         var services = new ServiceCollection();
-        _ = services.AddListTool(static options => options.DefaultPageEntries = 5);
+        _ = services.AddListTool(static options =>
+        {
+            options.DefaultPageEntries = 5;
+            options.HostRootPath = "/tmp";
+        });
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<IOptions<ListDirectoryToolOptions>>().Value.DefaultPageEntries.ShouldBe(5);

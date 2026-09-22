@@ -17,13 +17,18 @@ public sealed record ToolExecutionCapability
     /// <summary>Initializes an immutable tool-execution capability.</summary>
     /// <param name="session">The nonnull invocation-only session execution capability.</param>
     /// <param name="budget">The nonnull invocation-only budget execution capability.</param>
+    /// <param name="hooks">Optional hook binding for before-invocation and result points; null when hooks are inactive.</param>
     /// <exception cref="ArgumentNullException"><paramref name="session"/> or <paramref name="budget"/> is null.</exception>
-    public ToolExecutionCapability(SessionExecutionCapability session, BudgetExecutionCapability budget)
+    public ToolExecutionCapability(
+        SessionExecutionCapability session,
+        BudgetExecutionCapability budget,
+        ToolExecutionHookBinding? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(budget);
         Session = session;
         Budget = budget;
+        Hooks = hooks;
     }
 
     /// <summary>Gets the invocation-only session execution capability.</summary>
@@ -33,4 +38,8 @@ public sealed record ToolExecutionCapability
     /// <summary>Gets the invocation-only budget execution capability.</summary>
     /// <value>The selected budget profile and borrowed live scope for this batch.</value>
     public BudgetExecutionCapability Budget { get; }
+
+    /// <summary>Gets the optional hook binding for tool lifecycle points handled by the executor.</summary>
+    /// <value>Null when no hook scope is active for this batch.</value>
+    public ToolExecutionHookBinding? Hooks { get; }
 }

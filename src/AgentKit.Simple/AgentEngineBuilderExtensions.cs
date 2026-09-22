@@ -395,10 +395,16 @@ public static class AgentEngineBuilderExtensions
                 o.RootId = workspaceFileRoot;
                 o.HostRootPath = workspaceRoot;
             });
-            _ = builder.Services.AddEditTool();
-            _ = builder.Services.AddGlobTool();
-            _ = builder.Services.AddSearchTool();
-            _ = builder.Services.AddListTool();
+            _ = builder.Services.AddListTool(o =>
+            {
+                o.ProfileKey = workspaceProfile;
+                o.RootId = workspaceFileRoot;
+                o.HostRootPath = workspaceRoot;
+            });
+            _ = builder.Services.AddGlobTool(o => o.ProfileKey = workspaceProfile);
+            _ = builder.Services.AddSearchTool(o => o.ProfileKey = workspaceProfile);
+            _ = builder.Services.AddEditTool(o => o.ProfileKey = workspaceProfile);
+            _ = builder.Services.AddPatchTool(o => o.ProfileKey = workspaceProfile);
             return builder;
         }
 

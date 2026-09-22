@@ -18,6 +18,7 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualListResult_RendersInventoryWithoutFingerprintsOrPaths()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -25,7 +26,7 @@ public sealed class SkillToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"list"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         var text = presentation.Parts.ShouldHaveSingleItem().Text;
         text.ShouldContain("Available skills");
@@ -38,6 +39,7 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualActivationResult_RendersLiteralNonAuthoritativeContentWithoutFingerprints()
     {
         var reader = new RecordingSnapshotReader
@@ -49,7 +51,7 @@ public sealed class SkillToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"activate","id":"docs"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.Length.ShouldBe(2);
         presentation.Parts[0].Text.ShouldContain("Skill docs — Documentation [Workspace]");
@@ -62,6 +64,7 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualFailureOccurs_PreservesOnlySafeFailureReason()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -69,7 +72,7 @@ public sealed class SkillToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"activate","id":"missing"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(tool, invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
             "Skill failed: No captured skill has that identity.");
@@ -116,8 +119,7 @@ public sealed class SkillToolPresentationFormatterTests
                 ExtensionData.Empty),
             []);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
     }
@@ -135,8 +137,7 @@ public sealed class SkillToolPresentationFormatterTests
                 ExtensionData.Empty),
             [new TextPart("not json", TextSemantics.Code, ExtensionData.Empty)]);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
     }
@@ -152,8 +153,7 @@ public sealed class SkillToolPresentationFormatterTests
         });
         var invocation = SuccessResult(json);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
     }
@@ -168,8 +168,7 @@ public sealed class SkillToolPresentationFormatterTests
         });
         var invocation = SuccessResult(json);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
     }
@@ -188,13 +187,13 @@ public sealed class SkillToolPresentationFormatterTests
         });
         var invocation = SuccessResult(json);
 
-        var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()), invocation);
+        var presentation = await FormatResultAsync(invocation);
 
         presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe("Skill result is malformed and cannot be presented safely.");
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActivationHasMoreCodePartsThanBoundAllows_TruncatesAndReportsOmittedTail()
     {
         var reader = new RecordingSnapshotReader
@@ -206,8 +205,7 @@ public sealed class SkillToolPresentationFormatterTests
             Request(/*lang=json,strict*/"""{"action":"activate","id":"docs"}"""),
             TestContext.Current.CancellationToken);
 
-        var presentation = await FormatResultAsync(
-            tool, invocation, new ToolPresentationBounds(maximumParts: 1));
+        var presentation = await FormatResultAsync(invocation, new ToolPresentationBounds(maximumParts: 1));
 
         presentation.Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
         _ = presentation.Parts.ShouldHaveSingleItem();
@@ -228,7 +226,6 @@ public sealed class SkillToolPresentationFormatterTests
             [new TextPart(/*lang=json,strict*/ "{\"secret\":\"do not echo\"}", TextSemantics.Code, ExtensionData.Empty)]);
 
         var presentation = await FormatResultAsync(
-            Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority()),
             invocation,
             new ToolPresentationBounds(maximumOutputCharacters: 28));
 
@@ -266,16 +263,15 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     private static async ValueTask<ToolPresentation> FormatResultAsync(
-        SkillTool tool,
         ToolInvocationResult invocation,
         ToolPresentationBounds? bounds = null)
     {
         var formatter = new SkillToolPresentationFormatter();
-        formatter.Descriptor.ShouldBe(tool.Descriptor);
-        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("skill"), SkillTool.Id, tool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+        formatter.Descriptor.ShouldBe(SkillTool.Descriptor);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("skill"), SkillTool.Id, SkillTool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return (await formatter.FormatAsync(
             new ToolPresentationRequest(
-                tool.Descriptor,
+                SkillTool.Descriptor,
                 new ToolResultPresentationSource(result),
                 bounds ?? new ToolPresentationBounds()),
             TestContext.Current.CancellationToken)).ShouldNotBeNull();

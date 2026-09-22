@@ -68,9 +68,10 @@ public static class ServiceExtensions
         /// <param name="key">The profile key for the virtual volume.</param>
         /// <param name="configure">Optional configuration for the profile options.</param>
         /// <returns>The same service collection, for chaining.</returns>
+        [Obsolete("Legacy host surface.")]
         public IServiceCollection AddInMemoryFileSystem(
-            FileSystemProfileKey key,
-            Action<InMemoryFileSystemOptions>? configure = null) =>
-            InMemoryFileSystemRegistration.Add(services, key, configure);
+                    FileSystemProfileKey key,
+                    Action<InMemoryFileSystemOptions>? configure = null) =>
+                    InMemoryFileSystemRegistration.Add(services, key, configure);
     }
 }

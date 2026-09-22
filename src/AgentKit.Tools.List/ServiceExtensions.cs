@@ -28,7 +28,11 @@ public static class ServiceExtensions
                 .Validate(
                     static value => value.DefaultPageEntries <= value.MaximumPageEntries,
                     "DefaultPageEntries must not exceed MaximumPageEntries.")
+                .Validate(
+                    static value => !string.IsNullOrWhiteSpace(value.HostRootPath),
+                    "HostRootPath must be configured.")
                 .ValidateOnStart();
+            services.TryAddSingleton<IFilePathNormalizer, ListToolPathNormalizer>();
             if (configure is not null)
             {
                 _ = options.Configure(configure);

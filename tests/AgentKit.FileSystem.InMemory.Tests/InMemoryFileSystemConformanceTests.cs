@@ -9,5 +9,6 @@ using AgentKit.Conformance;
 public sealed class InMemoryFileSystemConformanceTests: FileSystemConformanceTests<InMemoryFileSystemConformanceFixture>
 {
     /// <inheritdoc/>
+    [Obsolete]
     protected override InMemoryFileSystemConformanceFixture CreateFixture() => new();
 }

@@ -5,6 +5,8 @@ namespace AgentKit.Tools.Search;
 
 using AgentKit.Tools;
 
+using Microsoft.Extensions.DependencyInjection;
+
 /// <summary>Searches bounded workspace content through an authorized no-follow host capability.</summary>
 public sealed class SearchTool: IToolInvoker, ITool
 {
@@ -43,7 +45,7 @@ public sealed class SearchTool: IToolInvoker, ITool
     private readonly SearchToolOptions _options;
 
     /// <summary>Initializes a search tool.</summary>
-    /// <param name="searcher">The narrow host search capability.</param>
+    /// <param name="serviceProvider">Resolves the keyed host search capability.</param>
     /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
@@ -51,19 +53,19 @@ public sealed class SearchTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured default or ceiling is invalid.</exception>
     public SearchTool(
-        IFileContentSearcher searcher,
+        IServiceProvider serviceProvider,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<SearchToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(searcher);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
-        _searcher = searcher;
+        _searcher = serviceProvider.GetRequiredKeyedService<IFileContentSearcher>(options.Value.ProfileKey.Value);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;

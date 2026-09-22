@@ -61,6 +61,8 @@ internal static class NetworkTestData
 
         public Stream Content { get; }
 
+        public NetworkEgressEvidence? EgressEvidence { get; }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

@@ -17,6 +17,7 @@ public sealed class GlobToolTests
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":1}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":\"../escape\"}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":\"not-an-array\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var globber = new FakeFileGlobber();
@@ -33,6 +34,7 @@ public sealed class GlobToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExcludePatternsExceedsMaximumCount_ReturnsInvalidArguments()
     {
         var globber = new FakeFileGlobber();
@@ -57,6 +59,7 @@ public sealed class GlobToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveWorkspace()
     {
         var globber = new FakeFileGlobber();
@@ -71,6 +74,7 @@ public sealed class GlobToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsMatchesAndExactSecurityBinding()
     {
         var globber = new FakeFileGlobber
@@ -124,6 +128,7 @@ public sealed class GlobToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenNoMatches_ReturnsSuccessfulTypedEmptyResult()
     {
         var tool = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
@@ -137,6 +142,7 @@ public sealed class GlobToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitExceeded_PreservesPartialMatchesAndTypedFailure()
     {
         var globber = new FakeFileGlobber
@@ -165,11 +171,8 @@ public sealed class GlobToolTests
     private static string ExtensionStatus(ToolInvocationResult result) => Encoding.UTF8.GetString(
         result.Outcome.Extensions.Values["agentkit.glob.status"].CanonicalJson.AsSpan());
 
-    private static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority) => new(
-        globber, new FixedSecurityAuthoritySelector(authority),
-        new StubSecurityRequestIdGenerator(),
-        new FixedTimeProvider(),
-        Options.Create(new GlobToolOptions()));
+    private static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority) =>
+        TestGlobComposition.CreateTool(globber, authority);
 
     private static ToolInvocationRequest Request(string json) => new(
         TestSecurityEvidence.ToolContext(

@@ -67,7 +67,10 @@ public sealed class DefaultFileSystemSelector: IFileSystemSelector
                 _provider.GetRequiredKeyedService<IDirectoryCreator>(serviceKey),
                 capabilities),
             FileSystemCapability.None => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),
-            FileSystemCapability.Enumerate => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),
+            FileSystemCapability.Enumerate => new FileSystemDirectoryReaderSelected(
+                key,
+                _provider.GetRequiredKeyedService<IDirectoryReader>(serviceKey),
+                capabilities),
             FileSystemCapability.Watch => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),
             FileSystemCapability.Temporary => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),
             _ => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),

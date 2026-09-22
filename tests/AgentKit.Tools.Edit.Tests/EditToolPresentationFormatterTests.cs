@@ -43,16 +43,13 @@ public sealed class EditToolPresentationFormatterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualEditResultCommitted_RendersReadableBoundedEvidenceWithoutJson()
     {
-        var tool = new EditTool(
+        var tool = TestEditComposition.CreateTool(
             new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old value") },
             new FakeAtomicFileReplacer(),
-            new FixedSecurityAuthoritySelector(new SequencedSecurityAuthority()),
-            new SequenceSecurityRequestIdGenerator(),
-            new StubMutationIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(new EditToolOptions()));
+            new SequencedSecurityAuthority());
         var invocation = await tool.InvokeAsync(
             InvocationRequest(JsonSerializer.Serialize(new
             {

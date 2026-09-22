@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.WebSearch;
 
+using AgentKit.Tools;
+
 /// <summary>Registers provider-backed web search without fabricating a provider, endpoint, or credential.</summary>
 public static class ServiceExtensions
 {
@@ -31,6 +33,16 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton<IIdentifierGenerator<WebSearchRequestId>, GuidWebSearchRequestIdGenerator>();
+            _ = services.AddToolInvoker<WebSearchTool>(WebSearchTool.Descriptor);
+            if (!services.Any(static descriptor =>
+                    descriptor.IsKeyedService
+                    && descriptor.ServiceType == typeof(ToolsetPublication)
+                    && descriptor.ServiceKey is ToolsetKey key
+                    && key == WebSearchTool.DefaultToolset.Key))
+            {
+                _ = services.AddToolset(WebSearchTool.DefaultToolset);
+            }
+
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WebSearchTool>());
             return services;
         }

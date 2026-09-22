@@ -48,7 +48,8 @@ public sealed partial class InMemoryFileSystem:
     IFileReader,
     IFileWriter,
     IFileMetadataReader,
-    IDirectoryCreator
+    IDirectoryCreator,
+    IDirectoryReader
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, ImmutableArray<byte>> _files = new(StringComparer.Ordinal);

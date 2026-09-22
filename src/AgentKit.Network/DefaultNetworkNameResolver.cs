@@ -9,49 +9,85 @@ using Microsoft.Extensions.Options;
 public sealed partial class DefaultNetworkNameResolver: INetworkNameResolver
 {
     private readonly ISecurityGrantStore _grantStore;
-    private readonly NetworkDestinationPolicy _policy;
-    private readonly TimeSpan _addressLifetime;
+    private readonly ISecurityAuditDispatcher _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
+    private readonly AgentNetworkOptionsSnapshot _options;
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ILogger<DefaultNetworkNameResolver> _logger;
 
     /// <summary>Initializes the protected system resolver.</summary>
     /// <param name="grantStore">The authoritative grant store.</param>
+    /// <param name="auditDispatcher">The required-audit dispatcher consumed at the host boundary.</param>
     /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
     /// <param name="options">The validated structural policy.</param>
     /// <param name="logger">The optional content-free diagnostic logger; a null value selects a null logger.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="auditDispatcher"/>, <paramref name="timeProvider"/>, or <paramref name="options"/> is null.</exception>
     public DefaultNetworkNameResolver(
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
         TimeProvider timeProvider,
         IOptions<AgentNetworkOptions> options,
         ILogger<DefaultNetworkNameResolver>? logger = null)
-        : this(grantStore, timeProvider, options, logger, new GuidSecurityEnforcementIntentIdGenerator())
+        : this(
+            grantStore,
+            auditDispatcher,
+            timeProvider,
+            options,
+            logger,
+            new GuidSecurityEnforcementIntentIdGenerator(),
+            new GuidSecurityAuditRecordIdGenerator())
     {
     }
 
     /// <summary>Initializes the protected system resolver with an injected enforcement-intent identity source.</summary>
     /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="auditDispatcher">The required-audit dispatcher consumed at the host boundary.</param>
     /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
     /// <param name="options">The validated structural policy.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <param name="intentIds">The non-null thread-safe source of fresh per-resolution enforcement intent identities.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, <paramref name="options"/>, or <paramref name="intentIds"/> is null.</exception>
+    /// <param name="auditRecordIds">The audit-record identity generator.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
     public DefaultNetworkNameResolver(
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
         TimeProvider timeProvider,
         IOptions<AgentNetworkOptions> options,
         ILogger<DefaultNetworkNameResolver>? logger,
-        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds)
+        : this(
+            CreateSnapshot(new NetworkProfileKey("default"), options),
+            grantStore,
+            auditDispatcher,
+            auditRecordIds,
+            timeProvider,
+            intentIds,
+            logger)
     {
-        ArgumentNullException.ThrowIfNull(grantStore);
-        ArgumentNullException.ThrowIfNull(timeProvider);
+    }
+
+    internal DefaultNetworkNameResolver(
+        AgentNetworkOptionsSnapshot options,
+        ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        TimeProvider timeProvider,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        ILogger<DefaultNetworkNameResolver>? logger)
+    {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(grantStore);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(intentIds);
+        _options = options;
         _grantStore = grantStore;
+        _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
         _timeProvider = timeProvider;
-        _policy = options.Value.DestinationPolicy;
-        _addressLifetime = options.Value.AddressResolutionLifetime;
         _intentIds = intentIds;
         _logger = logger ?? NullLogger<DefaultNetworkNameResolver>.Instance;
     }
@@ -72,25 +108,27 @@ public sealed partial class DefaultNetworkNameResolver: INetworkNameResolver
             [NetworkSecurityBinding.ResolutionResource(request.Destination)],
             NetworkSecurityBinding.ResolutionFingerprint(request));
         var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-        var consumption = await _grantStore.ValidateAndConsumeAsync(
+        var denial = await NetworkHostGuard.ConsumeWithRequiredAuditAsync(
             request.Grant,
             enforcement,
             intent,
+            _grantStore,
+            _auditDispatcher,
+            _auditRecordIds,
+            _timeProvider,
             cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NetworkEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent))
+        if (denial is not null)
         {
-            return new NetworkResolutionDenied(consumption.Status == GrantConsumptionStatus.Consumed
-                ? "The grant store did not retain a fresh exact enforcement-intent receipt."
-                : consumption.SafeMessage);
+            return new NetworkResolutionDenied(denial);
         }
 
-        if (!_policy.AllowsSchemeAndHost(request.Destination))
+        if (!_options.DestinationPolicy.AllowsSchemeAndHost(request.Destination))
         {
             return new NetworkResolutionDenied("The destination is excluded by the configured network policy.");
         }
 
-        using var timeout = new CancellationTokenSource(request.Bounds.ConnectTimeout, _timeProvider);
+        using var timeout = new CancellationTokenSource(request.Bounds.Resolution.ResolutionTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         IPAddress[] addresses;
         try
@@ -113,9 +151,9 @@ public sealed partial class DefaultNetworkNameResolver: INetworkNameResolver
         }
 
         var now = _timeProvider.GetUtcNow();
-        var expiresAt = now.Add(_addressLifetime);
+        var expiresAt = now.Add(_options.AddressResolutionLifetime);
         var allowed = addresses
-            .Where(_policy.AllowsAddress)
+            .Where(_options.DestinationPolicy.AllowsAddress)
             .Select(address => new NetworkAddress(address, now, expiresAt))
             .ToImmutableArray();
         if (allowed.IsEmpty)
@@ -129,4 +167,21 @@ public sealed partial class DefaultNetworkNameResolver: INetworkNameResolver
 
     [LoggerMessage(14002, LogLevel.Warning, "Network resolution produced no policy-eligible addresses.")]
     private static partial void LogNoEligibleAddresses(ILogger logger);
+
+    private static AgentNetworkOptionsSnapshot CreateSnapshot(
+        NetworkProfileKey profileKey,
+        IOptions<AgentNetworkOptions> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var value = options.Value;
+        return new AgentNetworkOptionsSnapshot(
+            profileKey,
+            new NetworkProfileVersion(1),
+            value.DestinationPolicy,
+            value.AddressResolutionLifetime,
+            value.MaximumResponseHeaderKilobytes,
+            value.Proxy,
+            value.TlsPolicy,
+            value.DecompressionPolicy);
+    }
 }

@@ -12,6 +12,7 @@ public sealed class EditToolTests
     [InlineData(/*lang=json,strict*/ "{\"path\":\"../x\",\"old_text\":\"a\",\"new_text\":\"b\"}")]
     [InlineData(/*lang=json,strict*/ "{\"path\":\"a\",\"old_text\":\"\",\"new_text\":\"b\"}")]
     [InlineData(/*lang=json,strict*/ "{\"path\":\"a\",\"old_text\":\"a\",\"new_text\":\"b\",\"maximum_bytes\":10485761}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrObservation(string json)
     {
         var snapshot = new FakeSnapshotReader();
@@ -30,6 +31,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenReadDenied_PerformsNoObservationOrMutation()
     {
         var snapshot = new FakeSnapshotReader();
@@ -44,6 +46,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMatchAmbiguous_RequestsOnlyReadAuthorityAndDoesNotMutate()
     {
         var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old old") };
@@ -59,6 +62,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWriteDenied_DoesNotInvokeReplacer()
     {
         var snapshot = new FakeSnapshotReader();
@@ -74,6 +78,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUnique_PreservesUntouchedBomCrlfAndUnicodeAndBindsFinalBytes()
     {
         byte[] initial = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("α old\r\nlast")];
@@ -105,6 +110,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenReplaceAllRequested_ReplacesEveryNonOverlappingOccurrence()
     {
         var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old-old-old") };
@@ -125,6 +131,7 @@ public sealed class EditToolTests
     [InlineData("null")]
     [InlineData("{}")]
     [InlineData("[1]")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMaximumBytesIsNotANumber_ReturnsInvalidArgumentsWithoutThrowing(string literal)
     {
         // Model-supplied argument values are untrusted input; a wrong JSON kind is InvalidArguments, never an exception.
@@ -140,6 +147,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenReplacementIsIdentical_ReturnsNoChangeWithoutWriteAuthority()
     {
         var snapshot = new FakeSnapshotReader();
@@ -158,6 +166,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostReportsConflict_PreservesTypedFailure()
     {
         var replacer = new FakeAtomicFileReplacer
@@ -186,6 +195,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotFails_ReturnsInvocationFailedWithoutMutation()
     {
         var snapshot = new FakeSnapshotReader
@@ -204,6 +214,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotDeniedByHost_ReturnsDeniedTerminalStatus()
     {
         var snapshot = new FakeSnapshotReader
@@ -219,6 +230,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotSucceedsWithoutFingerprint_ReturnsInvocationFailed()
     {
         // A defensive contract check: success without a fingerprint is treated as a failed observation.
@@ -235,6 +247,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentIsNotStrictUtf8_ReturnsBinaryOrInvalidTextFailure()
     {
         byte[] invalidUtf8 = [0xff, 0xfe, 0x00];
@@ -249,6 +262,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentContainsNulByte_ReturnsBinaryOrInvalidTextFailure()
     {
         var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old\0binary") };
@@ -262,6 +276,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOldTextNotFound_ReturnsNoMatchFailure()
     {
         var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("content") };
@@ -275,6 +290,7 @@ public sealed class EditToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFinalContentExceedsMaximumBytes_ReturnsLimitExceededFailure()
     {
         var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old") };
@@ -298,13 +314,8 @@ public sealed class EditToolTests
     private static EditTool CreateTool(
         IFileSnapshotReader snapshotReader,
         IAtomicFileReplacer replacer,
-        ISecurityAuthority authority) => new(
-            snapshotReader,
-            replacer, new FixedSecurityAuthoritySelector(authority),
-            new SequenceSecurityRequestIdGenerator(),
-            new StubMutationIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(new EditToolOptions()));
+        ISecurityAuthority authority) =>
+        TestEditComposition.CreateTool(snapshotReader, replacer, authority);
 
     private static string Arguments(string oldText, string newText, bool replaceAll = false) =>
         JsonSerializer.Serialize(new

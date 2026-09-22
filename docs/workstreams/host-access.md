@@ -22,11 +22,11 @@ concept specifications for access bounds, egress, and sandboxing.
 - [x] WS5-C5 InMemory reader/writer/metadata/directory-create
 - [x] WS5-C6 file-system conformance suite
 - [x] WS5-C7 Read/Write tools migrate
-- [ ] WS5-C8 List/Glob/Search/Edit/Patch onto keyed profiles
-- [ ] WS5-C9 network contract additions
-- [ ] WS5-C10a route-partitioned pooling
-- [ ] WS5-C10b network audit, keyed profiles, stream upload
-- [ ] WS5-C11 network conformance suite
+- [x] WS5-C8 List/Glob/Search/Edit/Patch onto keyed profiles
+- [x] WS5-C9 network contract additions
+- [x] WS5-C10a route-partitioned pooling
+- [x] WS5-C10b network audit, keyed profiles, stream upload
+- [x] WS5-C11 network conformance suite
 - [ ] WS5-C12 process contracts (handle-based)
 - [ ] WS5-C13a `OperatingSystemProcessExecutor` start and streamed output
 - [ ] WS5-C13b terminate, exit status, audit, reevaluation
@@ -251,8 +251,8 @@ Conformance suites for all three boundaries are MISSING.
   `ProcessOutputEvent` hierarchy, `ProcessTerminationRequest/Result`,
   `IExecutableResolver`, `IProcessExecutor`, `IProcessHandle`,
   `IProcessExecutorSelector`, `IProcessSandboxSelector`, `SandboxDescriptor`,
-  `ProcessSandboxRequest`; `IProcessRunner` obsolete. Snapshots: Abstractions,
-  Processes, Processes.Scripted, Tools.Command.
+  `ProcessSandboxRequest`; `IProcessRunner` stays unmarked until C15 deletes it.
+  Snapshots: Abstractions, Processes, Processes.Scripted, Tools.Command.
 
 ### WS5-C13a: `OperatingSystemProcessExecutor` start and streamed output
 
@@ -260,9 +260,9 @@ Conformance suites for all three boundaries are MISSING.
   start, `ReadOutputAsync`, `Completion`).
 - Deliverables: `OperatingSystemProcessExecutor.cs`,
   `OperatingSystemProcessHandle.cs`, `OperatingSystemExecutableResolver.cs`,
-  keyed `AddAgentProcesses(ProcessExecutorKey, …)`; `IProcessRunner.RunAsync`
-  re-implemented as an adapter; tests for fragment-boundary streaming, loss
-  markers, permit exhaustion.
+  keyed `AddAgentProcesses(ProcessExecutorKey, …)`; tests for fragment-boundary
+  streaming, loss markers, permit exhaustion. `IProcessRunner` is not wrapped as
+  an adapter.
 
 ### WS5-C13b: Terminate, exit status, audit, authority reevaluation
 
@@ -285,7 +285,9 @@ Conformance suites for all three boundaries are MISSING.
 - Depends on: C13, C14. Risk: DENSE-MODIFY `CommandTool.cs:57-64` (419 lines).
   Size: M.
 - Deliverables: handle-based run with bounded tail and artifact spill; fakes
-  updated. Snapshot: Tools.Command.
+  updated; delete `IProcessRunner`, `OperatingSystemProcessRunner`,
+  `ScriptedProcessRunner`, and their tests. Snapshots: Tools.Command,
+  Abstractions, Processes, Processes.Scripted.
 
 ### WS5-C16: `WebFetchTool` onto split bounds
 

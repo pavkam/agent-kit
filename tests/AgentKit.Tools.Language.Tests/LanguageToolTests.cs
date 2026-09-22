@@ -21,6 +21,7 @@ public sealed class LanguageToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":0}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":999999999}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":\"soon\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrQuery(string json)
     {
         var service = new RecordingLanguageService();
@@ -34,6 +35,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_PerformsNoQuery()
     {
         var service = new RecordingLanguageService();
@@ -49,6 +51,7 @@ public sealed class LanguageToolTests
     [InlineData("implementations", LanguageQueryKind.Implementations, true)]
     [InlineData("references", LanguageQueryKind.References, true)]
     [InlineData("document_symbols", LanguageQueryKind.DocumentSymbols, false)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDocumentActionValid_UsesExactSecurityEvidence(string action, LanguageQueryKind kind, bool positionRequired)
     {
         var service = new RecordingLanguageService
@@ -75,6 +78,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWorkspaceSymbolQueryExceedsCharacterBoundary_RejectsWithoutAuthorization()
     {
         var service = new RecordingLanguageService();
@@ -92,6 +96,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWorkspaceSymbolQueryValid_OmitsPathAndHashesQueryInEvidence()
     {
         var service = new RecordingLanguageService
@@ -111,6 +116,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsOversizedSnapshot_ProjectsBoundedLossAwareOutput()
     {
         var location = new LanguageLocation(new FileSystemPath("src/very-long-name.cs"), new LanguageRange(new LanguagePosition(0, 1), new LanguagePosition(2, 3)), new ContentHash("sha256:document"));
@@ -133,6 +139,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSymbolsPresentAndNoFieldExceedsBoundary_ProjectsCompleteSymbolEntries()
     {
         var shortLocation = new LanguageLocation(
@@ -170,6 +177,7 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReportsStale_ReturnsFailureWithTypedSnapshot()
     {
         var service = new RecordingLanguageService
@@ -191,6 +199,7 @@ public sealed class LanguageToolTests
     [InlineData(LanguageQueryStatus.TimedOut, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
     [InlineData(LanguageQueryStatus.Cancelled, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
     [InlineData(LanguageQueryStatus.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenQueryDoesNotSucceed_PreservesExactStageAndCertainty(LanguageQueryStatus status, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
     {
         var service = new RecordingLanguageService

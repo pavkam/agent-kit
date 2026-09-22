@@ -11,13 +11,14 @@ using AgentKit.TestSupport;
 public sealed class TodoToolTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task TodoTool_WhenInvoked_UsesSameCanonicalStateAndSecurityBinding()
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
         var tool = new TodoTool(store, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
         var result = await tool.InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
-        tool.Descriptor.Id.ShouldBe(TodoTool.Id);
+        ((ITool) tool).Descriptor.Id.ShouldBe(TodoTool.Id);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         _ = store.Reads.ShouldHaveSingleItem();
         authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(PlanSecurityBinding.ReadFingerprint(TestData.Context.ToAddress()));

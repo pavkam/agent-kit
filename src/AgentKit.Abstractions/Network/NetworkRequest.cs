@@ -16,7 +16,7 @@ public sealed record NetworkRequest
     /// <param name="method">The request method.</param>
     /// <param name="destination">The destination to send to.</param>
     /// <param name="headers">The request headers.</param>
-    /// <param name="content">The request body, when applicable.</param>
+    /// <param name="content">The authorized request body, when applicable.</param>
     /// <param name="bounds">The bounds this request must respect.</param>
     /// <param name="resolvedAddresses">The exact non-empty address set returned by protected resolution.</param>
     /// <param name="classification">The maximum sensitivity of intentionally transmitted data.</param>
@@ -29,7 +29,7 @@ public sealed record NetworkRequest
         NetworkMethod method,
         NetworkDestination destination,
         NetworkHeaderSet headers,
-        NetworkRequestContent? content,
+        INetworkRequestContent? content,
         NetworkBounds bounds,
         ImmutableArray<NetworkAddress> resolvedAddresses,
         NetworkDataClassification classification,
@@ -65,8 +65,8 @@ public sealed record NetworkRequest
     /// <summary>Gets the request headers.</summary>
     public NetworkHeaderSet Headers { get; }
 
-    /// <summary>Gets the request body, when applicable.</summary>
-    public NetworkRequestContent? Content { get; }
+    /// <summary>Gets the authorized request body, when applicable.</summary>
+    public INetworkRequestContent? Content { get; }
 
     /// <summary>Gets the bounds this request must respect.</summary>
     public NetworkBounds Bounds { get; }

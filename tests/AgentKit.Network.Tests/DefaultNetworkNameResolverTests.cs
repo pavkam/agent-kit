@@ -126,7 +126,7 @@ public sealed class DefaultNetworkNameResolverTests
             DestinationPolicy = new NetworkDestinationPolicy(["https"], null, allowPrivateAddresses: true),
             AddressResolutionLifetime = TimeSpan.FromMinutes(1),
         };
-        var resolver = new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(options));
+        var resolver = new DefaultNetworkNameResolver(store, new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(options));
         var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("excluded by the configured network policy");
     }
@@ -149,7 +149,7 @@ public sealed class DefaultNetworkNameResolverTests
             DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: false),
             AddressResolutionLifetime = TimeSpan.FromMinutes(1),
         };
-        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(options));
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(options));
         var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("No resolved address is permitted");
     }
@@ -168,7 +168,7 @@ public sealed class DefaultNetworkNameResolverTests
     public async Task ResolveAsync_WhenLoggerIsEnabledAndIpLiteralAuthorized_EmitsCompletedStructuredEvent()
     {
         var logger = new RecordingLogger<DefaultNetworkNameResolver>();
-        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
         var request = ResolutionRequest(Destination(443));
         var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<NetworkResolved>();
@@ -183,7 +183,7 @@ public sealed class DefaultNetworkNameResolverTests
     {
         var logger = new RecordingLogger<DefaultNetworkNameResolver>();
         var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
-        var resolver = new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
+        var resolver = new DefaultNetworkNameResolver(store, new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), logger);
         var request = ResolutionRequest(Destination(443));
         var action = async () => await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
         _ = await action.ShouldThrowAsync<InvalidOperationException>();
@@ -203,7 +203,7 @@ public sealed class DefaultNetworkNameResolverTests
             DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: false),
             AddressResolutionLifetime = TimeSpan.FromMinutes(1),
         };
-        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(options), logger);
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(options), logger);
         var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("No resolved address is permitted");
         var warning = logger.Snapshot().Single(static entry => entry.EventId.Id == 14002);
@@ -215,7 +215,7 @@ public sealed class DefaultNetworkNameResolverTests
     {
         var clock = new FixedTimeProvider();
         var store = new InMemorySecurityGrantStore(clock);
-        var resolver = new DefaultNetworkNameResolver(store, clock, Options.Create(OptionsForNetwork()));
+        var resolver = new DefaultNetworkNameResolver(store, new AcceptingAuditDispatcher(), clock, Options.Create(OptionsForNetwork()));
         var request = ResolutionRequest(Destination(443));
         var grant = TestSecurity.CapturedGrant(resolver.SecurityAudience, [NetworkSecurityBinding.ResolutionResource(request.Destination)], NetworkSecurityBinding.ResolutionFingerprint(request));
         request = new NetworkResolutionRequest(request.Id, request.Destination, request.Bounds, grant);
@@ -224,7 +224,9 @@ public sealed class DefaultNetworkNameResolverTests
         _ = result.ShouldBeOfType<NetworkResolved>();
     }
 
-    private static DefaultNetworkNameResolver Resolver(TestGrantStore store, IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null) => intentIds is null ? new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork())) : new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, intentIds);
+    private static DefaultNetworkNameResolver Resolver(TestGrantStore store, IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null) => intentIds is null
+        ? new DefaultNetworkNameResolver(store, new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()))
+        : new DefaultNetworkNameResolver(store, new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, intentIds, new TestAuditRecordIdGenerator());
     private static AgentNetworkOptions OptionsForNetwork() => new()
     {
         DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: true),
@@ -238,10 +240,17 @@ public sealed class DefaultNetworkNameResolverTests
     public void Constructors_WhenIntentIdsNull_ThrowWithExactParameterName()
     {
         var store = new TestGrantStore();
-        var resolver = Should.Throw<ArgumentNullException>(() => new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, null!));
+        var resolver = Should.Throw<ArgumentNullException>(() => new DefaultNetworkNameResolver(
+            store,
+            new AcceptingAuditDispatcher(),
+            new FixedTimeProvider(),
+            Options.Create(OptionsForNetwork()),
+            null,
+            null!,
+            new TestAuditRecordIdGenerator()));
         resolver.ParamName.ShouldBe("intentIds");
     }
 
     [Fact]
-    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
+    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
 }

@@ -9,70 +9,90 @@ using Microsoft.Extensions.Options;
 /// <remarks>Redirects are returned unfollowed so every hop receives fresh DNS and egress authority.</remarks>
 public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposable
 {
-    private static readonly HttpRequestOptionsKey<IPAddress> _resolvedAddressKey = new("AgentKit.Network.ResolvedAddress");
-    private static readonly HttpRequestOptionsKey<TimeSpan> _connectTimeoutKey = new("AgentKit.Network.ConnectTimeout");
     private readonly ISecurityGrantStore _grantStore;
-    private readonly NetworkDestinationPolicy _policy;
+    private readonly ISecurityAuditDispatcher _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
+    private readonly AgentNetworkOptionsSnapshot _options;
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
-    private readonly HttpMessageInvoker _invoker;
+    private readonly NetworkTransportHandlerPool _handlerPool;
     private readonly ILogger<DefaultNetworkTransport> _logger;
 
     /// <summary>Initializes the protected HTTP transport.</summary>
     /// <param name="grantStore">The authoritative grant store.</param>
+    /// <param name="auditDispatcher">The required security audit dispatcher.</param>
     /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
     /// <param name="options">The validated structural destination policy.</param>
     /// <param name="logger">The optional content-free diagnostic logger; a null value selects a null logger.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
     public DefaultNetworkTransport(
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
         TimeProvider timeProvider,
         IOptions<AgentNetworkOptions> options,
         ILogger<DefaultNetworkTransport>? logger = null)
-        : this(grantStore, timeProvider, options, logger, new GuidSecurityEnforcementIntentIdGenerator())
+        : this(
+            grantStore,
+            auditDispatcher,
+            timeProvider,
+            options,
+            logger,
+            new GuidSecurityEnforcementIntentIdGenerator(),
+            new GuidSecurityAuditRecordIdGenerator())
     {
     }
 
-    /// <summary>Initializes the protected HTTP transport with an injected enforcement-intent identity source.</summary>
+    /// <summary>Initializes the protected HTTP transport with injected identity sources.</summary>
     /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="auditDispatcher">The required security audit dispatcher.</param>
     /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
     /// <param name="options">The validated structural destination policy.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <param name="intentIds">The non-null thread-safe source of fresh per-send enforcement intent identities.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, <paramref name="options"/>, or <paramref name="intentIds"/> is null.</exception>
+    /// <param name="auditRecordIds">The non-null thread-safe source of audit record identities.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
     public DefaultNetworkTransport(
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
         TimeProvider timeProvider,
         IOptions<AgentNetworkOptions> options,
         ILogger<DefaultNetworkTransport>? logger,
-        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds)
+        : this(
+            CreateSnapshot(new NetworkProfileKey("default"), options),
+            grantStore,
+            auditDispatcher,
+            auditRecordIds,
+            timeProvider,
+            intentIds,
+            logger)
     {
-        ArgumentNullException.ThrowIfNull(grantStore);
-        ArgumentNullException.ThrowIfNull(timeProvider);
+    }
+
+    internal DefaultNetworkTransport(
+        AgentNetworkOptionsSnapshot options,
+        ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        TimeProvider timeProvider,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        ILogger<DefaultNetworkTransport>? logger)
+    {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(grantStore);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(intentIds);
         _logger = logger ?? NullLogger<DefaultNetworkTransport>.Instance;
+        _options = options;
         _grantStore = grantStore;
+        _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
         _timeProvider = timeProvider;
-        _policy = options.Value.DestinationPolicy;
         _intentIds = intentIds;
-        _invoker = new HttpMessageInvoker(
-            new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                MaxResponseHeadersLength = options.Value.MaximumResponseHeaderKilobytes,
-                ConnectCallback = ConnectAsync,
-                // The pool key is (scheme, host, port, SNI host) - not the resolved peer address - and
-                // ConnectCallback only runs when a genuinely new connection is opened. Every send is
-                // independently authorized against a specific still-valid resolved address, so a
-                // connection reused from the pool for a later send would bypass that per-send
-                // verification entirely (a different or re-resolved address for the same origin could
-                // silently reuse an earlier send's connection for up to the idle timeout). Disabling
-                // reuse forces ConnectCallback - and therefore address verification - to run for every
-                // send, per docs/architecture/network.md's "verifies... before each send" requirement.
-                PooledConnectionLifetime = TimeSpan.Zero,
-            },
-            disposeHandler: true);
+        _handlerPool = new NetworkTransportHandlerPool(options, timeProvider);
     }
 
     /// <inheritdoc/>
@@ -91,20 +111,22 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
             NetworkSecurityBinding.RequestResources(request),
             NetworkSecurityBinding.RequestFingerprint(request));
         var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-        var consumption = await _grantStore.ValidateAndConsumeAsync(
+        var denial = await NetworkHostGuard.ConsumeWithRequiredAuditAsync(
             request.Grant,
             enforcement,
             intent,
+            _grantStore,
+            _auditDispatcher,
+            _auditRecordIds,
+            _timeProvider,
             cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NetworkEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent))
+        if (denial is not null)
         {
-            return new NetworkDenied(consumption.Status == GrantConsumptionStatus.Consumed
-                ? "The grant store did not retain a fresh exact enforcement-intent receipt."
-                : consumption.SafeMessage);
+            return new NetworkDenied(denial);
         }
 
-        if (!_policy.AllowsSchemeAndHost(request.Destination))
+        if (!_options.DestinationPolicy.AllowsSchemeAndHost(request.Destination))
         {
             return new NetworkDenied("The destination is excluded by the configured network policy.");
         }
@@ -117,19 +139,35 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
 
         var now = _timeProvider.GetUtcNow();
         var resolved = request.ResolvedAddresses.FirstOrDefault(address =>
-            address.ExpiresAt > now && _policy.AllowsAddress(address.Address));
+            address.ExpiresAt > now && _options.DestinationPolicy.AllowsAddress(address.Address));
         if (resolved is null)
         {
             return new NetworkDenied("No still-valid resolved address is permitted by the configured network policy.");
         }
 
-        using var message = BuildMessage(request, resolved.Address);
+        var upload = await NetworkUploadBuilder.BuildAsync(
+            request.Content,
+            request.Bounds.Request,
+            cancellationToken).ConfigureAwait(false);
+        if (upload is null)
+        {
+            return new NetworkDenied("The request body exceeds the authorized upload bounds or fingerprint.");
+        }
+
+        var partition = new NetworkConnectionPartitionKey(
+            request.Destination,
+            resolved.Address,
+            _options.Proxy,
+            _options.TlsPolicy,
+            _options.DecompressionPolicy);
+        var invoker = _handlerPool.GetInvoker(partition);
+        using var message = BuildMessage(request, resolved.Address, upload.Content);
         CancellationTokenSource? timeout = new(request.Bounds.ResponseTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         HttpResponseMessage response;
         try
         {
-            response = await _invoker.SendAsync(message, linked.Token).ConfigureAwait(false);
+            response = await invoker.SendAsync(message, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -196,7 +234,8 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
                     response,
                     new BoundedReadStream(stream, request.Bounds.MaximumResponseBytes, responseDeadline.Token),
                     metadata,
-                    responseDeadline));
+                    responseDeadline,
+                    upload.Evidence));
         }
         catch
         {
@@ -206,78 +245,48 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
         }
     }
 
-    private static HttpRequestMessage BuildMessage(NetworkRequest request, IPAddress address)
+    private static HttpRequestMessage BuildMessage(
+        NetworkRequest request,
+        IPAddress address,
+        HttpContent? content)
     {
         var message = new HttpRequestMessage(new HttpMethod(request.Method.Value), request.Destination.ToString());
-        message.Options.Set(_resolvedAddressKey, address);
-        message.Options.Set(_connectTimeoutKey, request.Bounds.ConnectTimeout);
+        message.Options.Set(NetworkTransportHandlerPool.ResolvedAddressKey, address);
+        message.Options.Set(NetworkTransportHandlerPool.ConnectTimeoutKey, request.Bounds.ConnectTimeout);
         foreach (var header in request.Headers.Headers)
         {
             _ = message.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
 
-        if (request.Content is { } content)
+        if (content is not null)
         {
-            message.Content = new ByteArrayContent(content.Body.ToArray());
-            message.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(content.ContentType);
+            message.Content = content;
         }
 
         return message;
     }
 
-    private async ValueTask<Stream> ConnectAsync(
-        SocketsHttpConnectionContext context,
-        CancellationToken cancellationToken)
+    private static AgentNetworkOptionsSnapshot CreateSnapshot(
+        NetworkProfileKey profileKey,
+        IOptions<AgentNetworkOptions> options)
     {
-        if (!context.InitialRequestMessage.Options.TryGetValue(_resolvedAddressKey, out var address))
-        {
-            throw new NetworkConnectFailedException("No authorized resolved address was attached.");
-        }
-
-        if (!context.InitialRequestMessage.Options.TryGetValue(_connectTimeoutKey, out var connectTimeout))
-        {
-            throw new NetworkConnectFailedException("No authorized connection deadline was attached.");
-        }
-
-        var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        using var timeout = new CancellationTokenSource(connectTimeout, _timeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
-        try
-        {
-            await socket.ConnectAsync(address, context.DnsEndPoint.Port, linked.Token).ConfigureAwait(false);
-            return new NetworkStream(socket, ownsSocket: true);
-        }
-        catch (OperationCanceledException exception)
-            when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            socket.Dispose();
-            throw new NetworkConnectFailedException(
-                "The pinned-address connection exceeded its deadline.",
-                NetworkFailureKind.Timeout,
-                exception);
-        }
-        catch (OperationCanceledException)
-        {
-            socket.Dispose();
-            throw;
-        }
-        catch (SocketException exception)
-        {
-            socket.Dispose();
-            throw new NetworkConnectFailedException(
-                "The pinned-address connection failed.",
-                NetworkFailureKind.ConnectionFailed,
-                exception);
-        }
+        ArgumentNullException.ThrowIfNull(options);
+        var value = options.Value;
+        return new AgentNetworkOptionsSnapshot(
+            profileKey,
+            new NetworkProfileVersion(1),
+            value.DestinationPolicy,
+            value.AddressResolutionLifetime,
+            value.MaximumResponseHeaderKilobytes,
+            value.Proxy,
+            value.TlsPolicy,
+            value.DecompressionPolicy);
     }
 
     /// <summary>
     /// Header names that, if forwarded verbatim, would let a caller-supplied value override the
     /// wire-level host/authority, TLS SNI/certificate target, or connection framing that
     /// <see cref="SocketsHttpHandler"/> derives from <see cref="HttpRequestMessage.Headers"/>.
-    /// <see cref="NetworkDestination.Host"/> - not a free-form header - must be the only authority
-    /// for those, since <see cref="NetworkDestinationPolicy.AllowsSchemeAndHost"/> only inspects
-    /// <see cref="NetworkDestination.Host"/>, not the header set.
     /// </summary>
     private static readonly string[] _connectionControllingHeaderNames = ["host", ":authority", "connection", "upgrade"];
 
@@ -321,5 +330,5 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
             header.Value.Select(value => new NetworkHeader(header.Key, value)))]);
 
     /// <inheritdoc/>
-    public void Dispose() => _invoker.Dispose();
+    public void Dispose() => _handlerPool.Dispose();
 }

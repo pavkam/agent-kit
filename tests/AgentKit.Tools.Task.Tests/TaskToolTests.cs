@@ -28,6 +28,7 @@ public sealed class TaskToolTests
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[],\"allowed_tools\":[]}")]
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[\"read\",\"read\"]}")]
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"max_turns\":0}")]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrDispatch(string json)
     {
         var broker = new RecordingDelegationBroker();
@@ -43,6 +44,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenAuthorized_BindsExactScopedChildEvidence()
     {
         var broker = new RecordingDelegationBroker();
@@ -62,6 +64,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenAuthorityDenies_PerformsNoDispatch()
     {
         var broker = new RecordingDelegationBroker();
@@ -71,6 +74,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenChildSucceeds_ProjectsTypedNonAuthoritativeResult()
     {
         var result = await Tool(new RecordingDelegationBroker(), new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
@@ -81,6 +85,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenBrokerReturnsDifferentTarget_FailsClosed()
     {
         var broker = new RecordingDelegationBroker
@@ -93,6 +98,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenChildFails_PreservesTerminalEvidenceWithoutInstructionAuthority()
     {
         var broker = new RecordingDelegationBroker
@@ -108,6 +114,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenCorrelationIsNotInRun_PerformsNoAuthorizationOrDispatch()
     {
         var broker = new RecordingDelegationBroker();
@@ -131,6 +138,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenBrokerRejects_PreservesTypedFailureWithoutContent()
     {
         var broker = new RecordingDelegationBroker
@@ -147,6 +155,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenTurnsToolCallsAndTimeoutOmitted_UsesConfiguredDefaults()
     {
         var broker = new RecordingDelegationBroker();
@@ -172,6 +181,7 @@ public sealed class TaskToolTests
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":-1}")]
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":999999999}")]
     [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":\"soon\"}")]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenTimeoutSecondsIsInvalid_PerformsNoAuthorizationOrDispatch(string json)
     {
         var broker = new RecordingDelegationBroker();
@@ -185,6 +195,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenAcceptanceCriterionExceedsMaximumCharacters_PerformsNoAuthorizationOrDispatch()
     {
         var broker = new RecordingDelegationBroker();
@@ -206,6 +217,7 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenNoSession_PerformsNoAuthorizationOrDispatch()
     {
         var broker = new RecordingDelegationBroker();
@@ -223,6 +235,7 @@ public sealed class TaskToolTests
     [InlineData(TaskDelegationStatus.Cancelled, SideEffectCertainty.PartiallyPerformed, ToolTerminalStatus.Cancelled, SideEffectCertainty.PartiallyPerformed)]
     [InlineData(TaskDelegationStatus.Blocked, SideEffectCertainty.Unknown, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
     [InlineData(TaskDelegationStatus.Succeeded, SideEffectCertainty.NotApplicable, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
+    [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenChildSettles_PreservesEffectEvidenceAndCancellation(TaskDelegationStatus status, SideEffectCertainty childCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
     {
         var broker = new RecordingDelegationBroker

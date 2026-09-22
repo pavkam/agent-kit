@@ -501,8 +501,12 @@ The architecture index defines document authority and change rules.
 - Avoid speculative generality. Add an abstraction for a demonstrated extension
   axis and at least two plausible implementations, not merely to wrap a single
   method.
-- Public contract changes require compatibility review. Prefer additive
-  evolution; document intentional breaking changes.
+- AgentKit has no consumers and keeps no backwards compatibility. A change that
+  supersedes a surface replaces it in place and updates every caller in the same
+  change. Do not add `[Obsolete]` members, `Legacy*` renames, forwarders,
+  adapters over a replaced shape, nullable fallbacks for old callers, or
+  migrations and readers for earlier persisted layouts. Note each breaking
+  change in the commit message.
 
 ## Tests
 

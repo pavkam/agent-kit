@@ -6,6 +6,9 @@ namespace AgentKit.Tools.Patch;
 /// <summary>Configures syntax, complete-file, and final-plan bounds for patch execution.</summary>
 public sealed class PatchToolOptions
 {
+    /// <summary>Gets or sets the keyed profile used to select host patch capabilities.</summary>
+    public FileSystemProfileKey ProfileKey { get; set; } = new("workspace");
+
     /// <summary>Gets or sets the maximum UTF-8 byte length accepted for patch syntax.</summary>
     /// <value>Defaults to 1 MiB and must be positive.</value>
     public int MaximumPatchBytes { get; set; } = 1024 * 1024;

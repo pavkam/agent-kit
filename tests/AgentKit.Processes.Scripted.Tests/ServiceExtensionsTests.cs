@@ -10,6 +10,7 @@ public sealed class ServiceExtensionsTests
 {
     private static readonly ProcessOperationId _operationId = new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task AddScriptedProcesses_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
     {
         var store = new TestGrantStore();

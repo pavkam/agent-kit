@@ -25,6 +25,7 @@ public sealed class WebSearchToolTests
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":-1}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":999999}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":\"soon\"}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrSearch(string json)
     {
         var provider = new EnforcingSearchProvider();
@@ -40,6 +41,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_BindsAndReenforcesExactClassifiedEgress()
     {
         var provider = new EnforcingSearchProvider();
@@ -68,6 +70,7 @@ public sealed class WebSearchToolTests
     [InlineData("day", WebSearchFreshness.Day)]
     [InlineData("month", WebSearchFreshness.Month)]
     [InlineData("year", WebSearchFreshness.Year)]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFreshnessSpecified_ForwardsExactFreshnessToProvider(string freshness, WebSearchFreshness expected)
     {
         var provider = new EnforcingSearchProvider();
@@ -80,6 +83,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutProviderCall()
     {
         var provider = new EnforcingSearchProvider();
@@ -89,6 +93,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsUntrustedProviderIdentityAndResults()
     {
         var provider = new EnforcingSearchProvider();
@@ -101,6 +106,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsOutsideDomainFilter_FailsClosed()
     {
         var provider = new EnforcingSearchProvider();
@@ -111,6 +117,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsSubdomainOfFilter_AcceptsIt()
     {
         var provider = new EnforcingSearchProvider
@@ -122,6 +129,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderExceedsProjectionBounds_TruncatesExplicitlyAndClearsCompleteness()
     {
         var provider = new EnforcingSearchProvider
@@ -144,6 +152,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
     {
         // Truncate sliced on UTF-16 code units. "AB\U0001F600" is ['A','B',HighSurrogate,LowSurrogate] (4 code
@@ -171,6 +180,7 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsDifferentRequest_FailsClosed()
     {
         var provider = new EnforcingSearchProvider
@@ -185,6 +195,7 @@ public sealed class WebSearchToolTests
     [InlineData("denied")]
     [InlineData("unavailable")]
     [InlineData("failed")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderDoesNotSucceed_PreservesTypedFailure(string kind)
     {
         var provider = new EnforcingSearchProvider

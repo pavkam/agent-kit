@@ -8,6 +8,7 @@ using AgentKit.TestSupport;
 public sealed class ListDirectoryToolTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve()
     {
         var reader = new FakeDirectoryReader();
@@ -30,6 +31,7 @@ public sealed class ListDirectoryToolTests
     [InlineData("[]")]
     [InlineData("null")]
     [InlineData("\"str\"")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsAreNotAnObject_DoesNotAuthorizeOrObserve(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -44,6 +46,7 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathIsWrongType_ReturnsInvalidArguments()
     {
         var reader = new FakeDirectoryReader();
@@ -64,6 +67,7 @@ public sealed class ListDirectoryToolTests
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":0}")]
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":-1}")]
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":100000}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMaximumEntriesIsInvalid_ReturnsInvalidArguments(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -83,6 +87,7 @@ public sealed class ListDirectoryToolTests
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":\"1\"}}")]
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":0}}")]
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"\",\"next_index\":1}}")]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCursorIsInvalid_ReturnsInvalidArguments(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -96,6 +101,7 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCursorIsValid_ForwardsExactCursorToReader()
     {
         var reader = new FakeDirectoryReader();
@@ -113,6 +119,7 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveDirectory()
     {
         var reader = new FakeDirectoryReader();
@@ -129,6 +136,7 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsEntriesAndStableContinuation()
     {
         var cursor = new DirectoryEnumerationCursor(new ContentHash("sha256:snapshot"), 2);
@@ -161,6 +169,7 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostReportsSnapshotChanged_PreservesTypedStatusInOutcome()
     {
         var reader = new FakeDirectoryReader
@@ -177,15 +186,13 @@ public sealed class ListDirectoryToolTests
         System.Text.Encoding.UTF8.GetString(status.CanonicalJson.AsSpan()).ShouldBe("\"SnapshotChanged\"");
     }
 
+    [Obsolete("Legacy host surface.")]
     private static ListDirectoryTool CreateTool(
-        ILegacyDirectoryReader reader,
-        ISecurityAuthority authority) => new(
-            reader,
-            new FixedSecurityAuthoritySelector(authority),
-            new StubSecurityRequestIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(new ListDirectoryToolOptions()));
+            ILegacyDirectoryReader reader,
+            ISecurityAuthority authority) =>
+            TestListComposition.CreateTool(reader, authority);
 
+    [Obsolete]
     private static Task<ToolInvocationResult> InvokeAsync(
         ListDirectoryTool tool,
         string json,

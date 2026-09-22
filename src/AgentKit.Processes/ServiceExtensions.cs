@@ -14,9 +14,10 @@ public static class ServiceExtensions
         /// <returns>The same service collection.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="rootDirectory"/> is blank.</exception>
+        [Obsolete("Legacy host surface.")]
         public IServiceCollection AddOperatingSystemProcesses(
-            string rootDirectory,
-            Action<OperatingSystemProcessOptions> configure)
+                    string rootDirectory,
+                    Action<OperatingSystemProcessOptions> configure)
         {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
