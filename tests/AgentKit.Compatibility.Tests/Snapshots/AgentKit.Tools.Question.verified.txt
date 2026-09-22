@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Question
     public sealed class QuestionTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        public QuestionTool(AgentKit.IHumanQuestionBroker broker, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.QuestionId> questionIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Question.QuestionToolOptions> options) { }
+        public QuestionTool(AgentKit.IHumanQuestionBroker broker, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.QuestionId> questionIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Question.QuestionToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

@@ -48,11 +48,22 @@ public sealed class AgentEngineBuilderTests
         // is reachable, since a single descriptor whose factory produces null still passes the earlier count-only
         // metadata check.
         var builder = CompositionTestData.RunnableBuilder();
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton<TimeProvider>(static _ => null!));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IApprovalBroker, StubApprovalBroker>());
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<ISecurityAuditDispatcher, StubSecurityAuditDispatcher>());
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<ISecurityAuthoritySelector, StubSecurityAuthoritySelector>());
+        _ = builder.Services.RemoveAll<TimeProvider>();
+        _ = builder.Services.AddSingleton<TimeProvider>(static _ => null!);
+        _ = builder.Services.AddSingleton(ComponentRegistrationSnapshot.Capture(builder.Services));
+        using var provider = builder.Services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = false,
+            ValidateScopes = false,
+        });
 
-        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+        var exception = Should.Throw<AgentCompositionException>(
+            () => AgentCompositionValidator.Validate(provider));
 
-        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.time.missing");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.time.missing");
     }
 
     [Fact]
@@ -86,7 +97,6 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.AddSingleton<TimeProvider, TrackingTimeProvider>();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
 
         var exception = Should.Throw<AggregateException>(builder.Build);
@@ -117,7 +127,6 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.catalog.empty");
@@ -592,7 +601,6 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
@@ -720,7 +728,6 @@ public sealed class AgentEngineBuilderTests
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(legacy);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.definition.profiles.missing");
     }
@@ -801,7 +808,6 @@ public sealed class AgentEngineBuilderTests
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
         CompositionTestData.AddRunServicesFakes(builder.Services);
@@ -819,7 +825,6 @@ public sealed class AgentEngineBuilderTests
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
-        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(reader));
         return builder;
     }
@@ -921,5 +926,30 @@ public sealed class AgentEngineBuilderTests
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.engine.missing");
         factoryCalls.ShouldBe(0);
+    }
+
+    private sealed class StubApprovalBroker: IApprovalBroker
+    {
+        public ValueTask<ApprovalBrokerResult> RequestAsync(
+            ApprovalRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The stub approval broker is not invoked during composition validation.");
+
+        public ValueTask<ApprovalResolutionResult> ResolveAsync(
+            ApprovalResponse response, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The stub approval broker is not invoked during composition validation.");
+    }
+
+    private sealed class StubSecurityAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The stub audit dispatcher is not invoked during composition validation.");
+    }
+
+    private sealed class StubSecurityAuthoritySelector: ISecurityAuthoritySelector
+    {
+        public ValueTask<SecurityAuthoritySelectionResult> SelectAsync(
+            SecurityAuthorizationContext authorization, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The stub authority selector is not invoked during composition validation.");
     }
 }

@@ -58,27 +58,45 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             receipt));
     }
 
-    internal static SecurityGrant Grant() => new(
-        new GrantId(Guid.NewGuid()),
-        new SecurityRequestId(Guid.NewGuid()),
-        new SecurityAuthorizationScope(
+    internal static SecurityGrant Grant()
+    {
+        var scope = new SecurityAuthorizationScope(
             new AgentId(Guid.NewGuid()),
             null,
-            new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null)),
-        TestExecutionIdentity.Create(
+            new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
+        var identity = TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human),
-        new ComponentId("agentkit.processes.operating-system"),
-        SecurityOperationKind.Process,
-        SecurityEffect.Execute,
-        [new ProtectedResource(ProtectedResourceKind.Process, "test")],
-        new InputFingerprint("sha256:test"),
-        new SecurityPolicyVersion(1),
-        new SecurityRevocationVersion(1),
-        DateTimeOffset.UnixEpoch,
-        DateTimeOffset.MaxValue,
-        1);
+            ExecutionSubjectKind.Human);
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("test"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("11000000-0000-0000-0000-000000000011")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:test-policy")),
+            new ComponentKey<ISecurityAuthority>("test"),
+            new AgentDefinitionRevision(0),
+            new ConfigurationVersion(1),
+            scope,
+            identity);
+        return new SecurityGrant(
+            new GrantId(Guid.NewGuid()),
+            new SecurityRequestId(Guid.NewGuid()),
+            scope,
+            identity,
+            authorization,
+            new ComponentId("agentkit.processes.operating-system"),
+            SecurityOperationKind.Process,
+            SecurityEffect.Execute,
+            [new ProtectedResource(ProtectedResourceKind.Process, "test")],
+            new InputFingerprint("sha256:test"),
+            new SecurityPolicyVersion(1),
+            new SecurityRevocationVersion(1),
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.MaxValue,
+            1);
+    }
     public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
 }

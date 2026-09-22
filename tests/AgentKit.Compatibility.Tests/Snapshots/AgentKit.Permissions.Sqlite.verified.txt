@@ -11,7 +11,46 @@ namespace AgentKit.Permissions.Sqlite
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, System.Action<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings settings) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteApprovalStore(AgentKit.Permissions.Sqlite.SqliteApprovalStoreTarget target, System.Action<AgentKit.Permissions.Sqlite.SqliteApprovalStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteApprovalStore(AgentKit.Permissions.Sqlite.SqliteApprovalStoreTarget target, AgentKit.Permissions.Sqlite.SqliteApprovalStoreSettings settings) { }
         }
+    }
+    public sealed class SqliteApprovalStore : AgentKit.IApprovalStore
+    {
+        public SqliteApprovalStore(AgentKit.Permissions.Sqlite.SqliteApprovalStoreTarget target, AgentKit.Permissions.Sqlite.SqliteApprovalStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteApprovalStore>? logger = null) { }
+        public AgentKit.ApprovalStoreCapabilities Capabilities { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreCreateResult> CreateAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteApprovalStoreInstanceId : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteApprovalStoreInstanceId>
+    {
+        public SqliteApprovalStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteApprovalStoreOptions
+    {
+        public SqliteApprovalStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteApprovalStoreSettings : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteApprovalStoreSettings>
+    {
+        public SqliteApprovalStoreSettings(System.TimeSpan lockTimeout, int maximumRecordBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Permissions.Sqlite.SqliteApprovalStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteApprovalStoreTarget : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteApprovalStoreTarget>
+    {
+        public SqliteApprovalStoreTarget(string databasePath, AgentKit.Permissions.Sqlite.SqliteApprovalStoreInstanceId expectedStoreInstanceId, AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Permissions.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Permissions.Sqlite.SqliteApprovalStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Permissions.Sqlite.SqliteSchemaMode SchemaMode { get; }
     }
     public enum SqliteDatabaseOpenMode
     {
@@ -28,6 +67,7 @@ namespace AgentKit.Permissions.Sqlite
         public SqliteSecurityDecisionStore(AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStore>? logger = null) { }
         public System.Collections.Generic.IReadOnlyList<AgentKit.SecurityDecision> Decisions { get; }
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityDecision decision, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public readonly struct SqliteSecurityDecisionStoreInstanceId : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityDecisionStoreInstanceId>
@@ -60,9 +100,11 @@ namespace AgentKit.Permissions.Sqlite
     public sealed class SqliteSecurityGrantStore : AgentKit.ISecurityGrantStore
     {
         public SqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStore>? logger = null) { }
+        public SqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStore>? logger, AgentKit.ISecurityAuditDispatcher? auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId>? auditRecordIds, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions>? permissionOptions) { }
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantRevocationResult> RevokeAsync(AgentKit.GrantId grantId, AgentKit.RevocationReason reason, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
     }

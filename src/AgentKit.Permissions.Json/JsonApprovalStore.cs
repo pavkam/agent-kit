@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Json;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>Persists approval requests and their single terminal response as a newline-delimited JSON transition log.</summary>
@@ -13,14 +15,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// process is exactly what makes deferred human approval usable, and a recorded decision is never replayed as pending.
 /// </para>
 /// <para>
-/// Live state is projected into memory during <see cref="InitializeAsync"/> and kept authoritative under one in-process
+/// Live state is projected into memory during trusted bootstrap initialization and kept authoritative under one in-process
 /// gate, so two concurrent responders cannot both resolve the same request. A host-local advisory exclusive lock is held for
 /// the store's lifetime, so a second writer on the same host fails fast instead of interleaving appends. This is durable
 /// single-process host-local storage: it provides no distributed lease, no fencing token, and no atomicity with any external
 /// effect such as notifying the approver.
 /// </para>
 /// <para>
-/// Call <see cref="InitializeAsync"/> exactly once during trusted bootstrap before resolving the store for use. Requests and
+/// Call bootstrap initialization exactly once during trusted bootstrap before resolving the store for use. Requests and
 /// responses are retained indefinitely, because a terminal approval decision is audit evidence and an idempotency key long
 /// after the operation it authorized has finished.
 /// </para>
@@ -42,6 +44,7 @@ public sealed partial class JsonApprovalStore: IApprovalStore, IDisposable
     private readonly JsonStoreRoot _root;
     private readonly JsonRecordLog _log;
     private readonly Lock _gate = new();
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
     private readonly Dictionary<ApprovalRequestId, ApprovalEntry> _entries = [];
     private JsonStoreLock? _exclusive;
     private bool _initialized;
@@ -53,7 +56,7 @@ public sealed partial class JsonApprovalStore: IApprovalStore, IDisposable
     /// <param name="timeProvider">The clock used only to measure operation duration for diagnostics; approval instants are supplied by the caller and are never fabricated here.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
-    /// <remarks>Construction performs no I/O, so composition never touches the filesystem; every effect happens in <see cref="InitializeAsync"/>.</remarks>
+    /// <remarks>Construction performs no I/O, so composition never touches the filesystem; every effect happens during bootstrap initialization.</remarks>
     public JsonApprovalStore(
         JsonApprovalStoreTarget target,
         JsonApprovalStoreSettings settings,
@@ -125,6 +128,20 @@ public sealed partial class JsonApprovalStore: IApprovalStore, IDisposable
                 _initialized = true;
             }
         });
+
+    /// <summary>Records bootstrap evidence and initializes the approval store under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before initialization completes.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the target is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
@@ -393,6 +410,8 @@ public sealed partial class JsonApprovalStore: IApprovalStore, IDisposable
             throw Unavailable(_openFailed,
                 "The JSON approval store was used before trusted bootstrap initialization.");
         }
+
+        _controlPlaneGate.RequireReadyForWrites();
     }
 
     private static T Require<T>(T? value, string context)

@@ -27,6 +27,7 @@ internal sealed class FakeToolExecutor(FakeToolInvoker invoker): IToolExecutor
                 ? "{}"
                 : Encoding.UTF8.GetString(call.RawArguments.AsSpan());
             using var document = JsonDocument.Parse(argumentText);
+            var arguments = document.RootElement.Clone();
             var legacyContext = new ToolExecutionContext(
                 call.AgentId,
                 call.SessionId,
@@ -38,7 +39,7 @@ internal sealed class FakeToolExecutor(FakeToolInvoker invoker): IToolExecutor
             var legacyRequest = new LegacyToolCallRequest(
                 new ToolReference(call.ProviderAlias, null, null),
                 legacyContext,
-                document.RootElement,
+                arguments,
                 call.RequestedAt);
             var resolved = await invoker.InvokeAsync(legacyRequest, cancellationToken).ConfigureAwait(false);
             results.Add(TestToolCallResults.FromResolved(call, resolved));

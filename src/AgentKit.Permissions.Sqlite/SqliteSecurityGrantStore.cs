@@ -3,14 +3,17 @@
 
 namespace AgentKit.Permissions.Sqlite;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Persists authoritative security grants and enforcement-intent receipts in one fixed local SQLite database.</summary>
 /// <remarks>
 /// The singleton retains no connection. Every operation opens and validates the exact configured store identity and schema,
 /// then uses an immediate SQLite transaction for one atomic state transition. SQLite coordinates processes on one host but
-/// does not provide distributed fencing. Enforcement receipts are retained indefinitely. Call <see cref="InitializeAsync"/>
-/// explicitly during trusted bootstrap.
+/// does not provide distributed fencing. Enforcement receipts are retained indefinitely. Trusted bootstrap must
+/// complete schema initialization and record <see cref="SecurityControlPlaneBootstrap"/> evidence before writes.
 /// </remarks>
 public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
 {
@@ -23,6 +26,12 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SqliteSecurityGrantStore> _logger;
+    private readonly ISecurityAuditDispatcher? _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId>? _auditRecordIds;
+    private readonly IOptions<AgentPermissionOptions>? _permissionOptions;
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
+    private readonly Lock _initializationGate = new();
+    private bool _schemaInitialized;
 
     /// <summary>Initializes a store for one host-authorized fixed target without opening or creating it.</summary>
     /// <param name="target">The exact database and bootstrap effects supplied by the host.</param>
@@ -35,6 +44,27 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         SqliteSecurityGrantStoreSettings settings,
         TimeProvider timeProvider,
         ILogger<SqliteSecurityGrantStore>? logger = null)
+        : this(target, settings, timeProvider, logger, null, null, null)
+    {
+    }
+
+    /// <summary>Initializes a store with optional grant-lifecycle audit dispatch.</summary>
+    /// <param name="target">The exact database and bootstrap effects supplied by the host.</param>
+    /// <param name="settings">The immutable lock-wait and evidence bounds.</param>
+    /// <param name="timeProvider">The clock used for validity checks and consumption receipts.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
+    /// <param name="auditDispatcher">The optional security-audit dispatcher.</param>
+    /// <param name="auditRecordIds">The optional audit-record identity generator.</param>
+    /// <param name="permissionOptions">The optional permission options governing audit delivery.</param>
+    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
+    public SqliteSecurityGrantStore(
+        SqliteSecurityGrantStoreTarget target,
+        SqliteSecurityGrantStoreSettings settings,
+        TimeProvider timeProvider,
+        ILogger<SqliteSecurityGrantStore>? logger,
+        ISecurityAuditDispatcher? auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId>? auditRecordIds,
+        IOptions<AgentPermissionOptions>? permissionOptions)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(settings);
@@ -43,23 +73,47 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         _settings = settings;
         _timeProvider = timeProvider;
         _logger = logger ?? NullLogger<SqliteSecurityGrantStore>.Instance;
+        _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
+        _permissionOptions = permissionOptions;
     }
 
-    /// <summary>Creates or validates the exact version-one schema and persistent store identity under bootstrap policy.</summary>
-    /// <param name="cancellationToken">Cancels before the schema transaction commits or, for an initialized target, before a permitted journal-mode change begins.</param>
-    /// <returns>A task completed after the exact target is ready for grant operations.</returns>
+    /// <summary>Creates or validates schema without recording trusted bootstrap evidence.</summary>
+    /// <param name="cancellationToken">Cancels before the schema transaction commits.</param>
+    /// <returns>A task completed after schema validation or creation.</returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the applicable bootstrap linearization point.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The target, schema, store identity, or persistence provider cannot be validated safely.</exception>
     /// <remarks>
-    /// Creation may leave an empty version-zero database when cancellation or process loss occurs after the exact file is
-    /// opened but before the schema commits. A later create-and-migrate initialization may recover only that structurally
-    /// empty state. Once schema commit begins, initialization completes journal setup or reports a retryable typed failure;
-    /// caller cancellation does not turn a known committed schema into an unknown result.
+    /// Mutating operations remain unavailable until initialization completes with explicit
+    /// <see cref="SecurityControlPlaneBootstrap"/> evidence through the bootstrap overload.
     /// </remarks>
     public ValueTask InitializeAsync(CancellationToken cancellationToken = default) => ExecuteVoidAsync(
         "initialize",
-        () =>
+        () => InitializeSchemaCore(cancellationToken));
+
+    /// <summary>Records bootstrap evidence and creates or validates the exact schema under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before the schema transaction commits.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the target is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
+
+    private void InitializeSchemaCore(CancellationToken cancellationToken)
+    {
+        lock (_initializationGate)
         {
+            if (_schemaInitialized)
+            {
+                return;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             ValidateTargetBeforeOpen(allowMissingFile: _target.OpenMode == SqliteDatabaseOpenMode.CreateIfMissing);
             using var connection = OpenConnection(forInitialization: true);
@@ -75,11 +129,13 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
                     throw Unavailable(SecurityGrantStoreFailureKind.SchemaUnsupported,
                         "The SQLite target has no initialized grant-store schema.");
                 }
+
                 InitializeNewSchema(connection, transaction, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 transaction.Commit();
                 SetWalMode(connection);
                 ValidateConnection(connection, requireWal: true, performIntegrityCheck: true);
+                _schemaInitialized = true;
                 return;
             }
 
@@ -91,13 +147,18 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
             transaction.Commit();
             if (_target.SchemaMode == SqliteSchemaMode.ValidateExact)
             {
+                _schemaInitialized = true;
                 return;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             SetWalMode(connection);
             ValidateConnection(connection, requireWal: true, performIntegrityCheck: false);
-        });
+            _schemaInitialized = true;
+        }
+    }
+
+    private void RequireReadyForWrites() => _controlPlaneGate.RequireReadyForWrites();
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentException"><paramref name="grant"/> contains malformed copied evidence that cannot be reconstructed exactly by the bounded codec.</exception>
@@ -113,6 +174,7 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         var payload = SqliteSecurityGrantCodec.EncodeGrant(grant, _settings);
         return ExecuteVoidAsync("register", () =>
         {
+            RequireReadyForWrites();
             cancellationToken.ThrowIfCancellationRequested();
             using var connection = OpenStoreConnection();
             cancellationToken.ThrowIfCancellationRequested();
@@ -161,8 +223,8 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         ArgumentException.ThrowIfNotPersistable(grant, _settings);
         ArgumentException.ThrowIfNotPersistable(enforcement, _settings);
         var enforcementPayload = SqliteSecurityGrantCodec.EncodeEnforcement(enforcement, _settings);
-        return ExecuteAsync("consume", () => ConsumeCore(
-            grant, enforcement, enforcementPayload, null, cancellationToken), grant, null, null);
+        return ConsumeWithLifecycleAuditAsync(
+            grant, enforcement, enforcementPayload, null, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -182,24 +244,32 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         ArgumentException.ThrowIfNotPersistable(grant, _settings);
         ArgumentException.ThrowIfNotPersistable(enforcement, _settings);
         var enforcementPayload = SqliteSecurityGrantCodec.EncodeEnforcement(enforcement, _settings);
-        return ExecuteAsync("consume_intent", () => ConsumeCore(
-            grant, enforcement, enforcementPayload, intent, cancellationToken), grant, intent, null);
+        return ConsumeWithLifecycleAuditAsync(
+            grant, enforcement, enforcementPayload, intent, cancellationToken);
     }
 
     /// <inheritdoc/>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before revocation commits.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The exact target, schema, persisted evidence, lock, or provider operation cannot be validated safely.</exception>
     /// <remarks>The adapter owns and disposes the per-call connection and immediate transaction. Revocation is idempotent, so retrying the same grant identity reconciles an uncertain acknowledgement without restoring authority.</remarks>
-    /// <inheritdoc/>
     public ValueTask<GrantRevocationResult> RevokeAsync(
         GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reason);
         ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
-        return ExecuteAsync(
+        return RevokeWithLifecycleAuditAsync(grantId, reason, cancellationToken);
+    }
+
+    private async ValueTask<GrantRevocationResult> RevokeWithLifecycleAuditAsync(
+        GrantId grantId,
+        RevocationReason reason,
+        CancellationToken cancellationToken)
+    {
+        var result = await ExecuteAsync(
             "revoke",
             () =>
             {
+                RequireReadyForWrites();
                 cancellationToken.ThrowIfCancellationRequested();
                 using var connection = OpenStoreConnection();
                 cancellationToken.ThrowIfCancellationRequested();
@@ -235,7 +305,190 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
                 cancellationToken.ThrowIfCancellationRequested();
                 transaction.Commit();
                 return new GrantRevoked(grantId, reason);
-            }, null, null, grantId);
+            }, null, null, grantId).ConfigureAwait(false);
+        if (result is GrantRevoked)
+        {
+            var grant = await ReadGrantForAuditAsync(grantId, cancellationToken).ConfigureAwait(false);
+            if (grant is not null)
+            {
+                await EmitGrantLifecycleAsync(
+                    grant,
+                    SecurityAuditOutcome.Accepted,
+                    _timeProvider.GetUtcNow(),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return result;
+    }
+
+    private async ValueTask<GrantConsumptionResult> ConsumeWithLifecycleAuditAsync(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        byte[] enforcementPayload,
+        SecurityEnforcementIntent? intent,
+        CancellationToken cancellationToken)
+    {
+        var assessment = await ExecuteAsync(
+            intent is null ? "consume_assess" : "consume_intent_assess",
+            () => AssessConsumption(grant, enforcement, intent, cancellationToken),
+            grant,
+            intent,
+            null).ConfigureAwait(false);
+        if (assessment.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
+        {
+            await EmitGrantLifecycleAsync(
+                grant,
+                SecurityAuditOutcome.Denied,
+                _timeProvider.GetUtcNow(),
+                cancellationToken).ConfigureAwait(false);
+            return assessment;
+        }
+
+        if (assessment.Status is GrantConsumptionStatus.Consumed)
+        {
+            if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
+            {
+                return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
+            }
+        }
+
+        if (assessment.Status is not GrantConsumptionStatus.Consumed)
+        {
+            return assessment;
+        }
+
+        var committed = await ExecuteAsync(
+            intent is null ? "consume" : "consume_intent",
+            () =>
+            {
+                RequireReadyForWrites();
+                return ConsumeCore(grant, enforcement, enforcementPayload, intent, cancellationToken);
+            },
+            grant,
+            intent,
+            null).ConfigureAwait(false);
+        if (committed.Status is GrantConsumptionStatus.Consumed)
+        {
+            await EmitGrantLifecycleAsync(
+                grant,
+                SecurityAuditOutcome.Accepted,
+                _timeProvider.GetUtcNow(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return committed;
+    }
+
+    private GrantConsumptionResult AssessConsumption(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent? intent,
+        CancellationToken cancellationToken)
+    {
+        RequireReadyForWrites();
+        cancellationToken.ThrowIfCancellationRequested();
+        using var connection = OpenStoreConnection();
+        cancellationToken.ThrowIfCancellationRequested();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateConnection(connection, requireWal: true, performIntegrityCheck: false, transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = ReadGrant(connection, transaction, grant.Id);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (state is null)
+        {
+            return Result(GrantConsumptionStatus.Unknown, 0, "The security grant is unknown.");
+        }
+
+        var (authoritativeGrant, currentRemainingUses, revoked) = state.Value;
+        if (!GrantMatches(authoritativeGrant, grant))
+        {
+            return Result(GrantConsumptionStatus.Tampered, currentRemainingUses,
+                "The security grant evidence does not match its authoritative record.");
+        }
+
+        if (intent is not null)
+        {
+            var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+            var historical = ReadReceipt(connection, transaction, intent.Id);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (historical is not null)
+            {
+                return ReceiptMatches(historical, grant, enforcement, intent, effectFingerprint)
+                    ? Result(GrantConsumptionStatus.Reconciled, currentRemainingUses,
+                        "The enforcement intent was reconciled without granting another effect.", historical)
+                    : Result(GrantConsumptionStatus.Mismatch, currentRemainingUses,
+                        "The enforcement intent identity was reused with different evidence.");
+            }
+        }
+
+        if (revoked || enforcement.RevocationVersion != grant.RevocationVersion)
+        {
+            return Result(GrantConsumptionStatus.Revoked, currentRemainingUses,
+                "The security grant is revoked or stale.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        return now < grant.NotBefore || now >= grant.ExpiresAt
+            ? Result(GrantConsumptionStatus.Expired, currentRemainingUses,
+                "The security grant is outside its validity window.")
+            : !EnforcementMatches(grant, enforcement)
+            ? Result(GrantConsumptionStatus.Mismatch, currentRemainingUses,
+                "The concrete effect does not match the security grant.")
+            : currentRemainingUses == 0
+                ? Result(GrantConsumptionStatus.Exhausted, 0, "The security grant has no remaining uses.")
+                : Result(GrantConsumptionStatus.Consumed, currentRemainingUses,
+                    "The security grant is ready for consumption.");
+    }
+
+    private async ValueTask<SecurityGrant?> ReadGrantForAuditAsync(
+        GrantId grantId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await ExecuteAsync(
+            "read_grant",
+            () =>
+            {
+                RequireReadyForWrites();
+                using var connection = OpenStoreConnection();
+                using var transaction = connection.BeginTransaction(deferred: false);
+                ValidateConnection(connection, requireWal: true, performIntegrityCheck: false, transaction);
+                return ReadGrant(connection, transaction, grantId)?.Grant;
+            },
+            null,
+            null,
+            grantId).ConfigureAwait(false);
+    }
+
+    private ValueTask<bool> RefuseConsumptionAuditAsync(
+        SecurityGrant grant,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken) =>
+        SecurityGrantStoreLifecycleAudit.RefuseConsumptionIfRequiredAuditFailedAsync(
+            _auditDispatcher,
+            _auditRecordIds,
+            _permissionOptions,
+            grant,
+            SecurityAuditOutcome.Accepted,
+            occurredAt,
+            cancellationToken);
+
+    private async ValueTask EmitGrantLifecycleAsync(
+        SecurityGrant grant,
+        SecurityAuditOutcome outcome,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        _ = await SecurityGrantStoreLifecycleAudit.RefuseConsumptionIfRequiredAuditFailedAsync(
+            _auditDispatcher,
+            _auditRecordIds,
+            _permissionOptions,
+            grant,
+            outcome,
+            occurredAt,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private GrantConsumptionResult ConsumeCore(
@@ -248,6 +501,7 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         Debug.Assert(grant is not null, "Caller-validated grant evidence is required.");
         Debug.Assert(enforcement is not null, "Caller-validated enforcement evidence is required.");
         Debug.Assert(enforcementPayload is not null, "Pre-encoded bounded enforcement evidence is required.");
+        RequireReadyForWrites();
         cancellationToken.ThrowIfCancellationRequested();
         using var connection = OpenStoreConnection();
         cancellationToken.ThrowIfCancellationRequested();

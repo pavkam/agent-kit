@@ -45,7 +45,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             meterListener.Start();
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true, new ThrowingLogger());
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             var intent = TestGrantFactory.CreateIntent();
@@ -113,7 +113,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             listener.Start();
             var now = DateTimeOffset.UnixEpoch;
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), new ThrowingMeasurementTimeProvider(now), create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(now);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
@@ -152,13 +152,14 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
             var path = Path.Combine(directory, "grants.db");
             var store = CreateStore(path, instanceId, new CancellingTimeProvider(now, cancellation), create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(now);
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             var intent = TestGrantFactory.CreateIntent();
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             _ = await Should.ThrowAsync<OperationCanceledException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, intent, cancellation.Token));
             var reopened = CreateStore(path, instanceId, new FakeTimeProvider(now), create: false);
+            await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var consumed = await reopened.ValidateAndConsumeAsync(grant, enforcement, intent, TestContext.Current.CancellationToken);
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             consumed.RemainingUses.ShouldBe(1);
@@ -187,7 +188,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
                 Sample = SampleAllData,
                 ActivityStopped = activity =>
                 {
-                    if (activity.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && activity.ParentSpanId == parentSpanId && activity.GetTagItem(AgentKitTagNames.GenAiOperationName)?.ToString() == "consume")
+                    if (activity.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && activity.ParentSpanId == parentSpanId && IsConsumeFamily(activity.GetTagItem(AgentKitTagNames.GenAiOperationName)?.ToString()))
                     {
                         stopped = activity;
                     }
@@ -206,14 +207,14 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             };
             meterListener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
             {
-                if (Activity.Current?.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && Activity.Current.ParentSpanId == parentSpanId && HasOperation(tags, "consume"))
+                if (Activity.Current?.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && Activity.Current.ParentSpanId == parentSpanId && HasConsumeFamilyOperation(tags))
                 {
                     counts.Enqueue(ReadOutcome(tags));
                 }
             });
             meterListener.SetMeasurementEventCallback<double>((_, _, tags, _) =>
             {
-                if (Activity.Current?.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && Activity.Current.ParentSpanId == parentSpanId && HasOperation(tags, "consume"))
+                if (Activity.Current?.OperationName == AgentKitActivityNames.SecurityGrantStoreOperation && Activity.Current.ParentSpanId == parentSpanId && HasConsumeFamilyOperation(tags))
                 {
                     durations.Enqueue(ReadOutcome(tags));
                 }
@@ -221,7 +222,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             meterListener.Start();
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             clock.Advance(TimeSpan.FromMinutes(10));
@@ -252,19 +253,6 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
 
             return string.Empty;
         }
-
-        static bool HasOperation(ReadOnlySpan<KeyValuePair<string, object?>> tags, string expected)
-        {
-            foreach (var tag in tags)
-            {
-                if (tag.Key == AgentKitTagNames.GenAiOperationName)
-                {
-                    return string.Equals(tag.Value?.ToString(), expected, StringComparison.Ordinal);
-                }
-            }
-
-            return false;
-        }
     }
 
     /// <summary>Verifies source-generated terminal logs retain bounded fields and truthful severity without exporting protected evidence.</summary>
@@ -278,7 +266,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var logger = new RecordingLogger();
             var path = Path.Combine(directory, "grants.db");
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true, logger);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
@@ -292,8 +280,14 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             _ = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken));
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             expired.Status.ShouldBe(GrantConsumptionStatus.Expired);
-            var entries = logger.Snapshot().Where(static entry => entry.Properties.TryGetValue("Operation", out var operation) && Equals(operation, "consume")).ToArray();
-            entries.Select(static entry => (entry.EventId.Id, entry.Level, entry.Properties["Outcome"]?.ToString())).ShouldBe([(19000, LogLevel.Debug, "consumed"), (19001, LogLevel.Warning, "expired"), (19001, LogLevel.Warning, "cancelled"), (19001, LogLevel.Warning, "unavailable"),]);
+            var entries = logger.Snapshot().Where(static entry => entry.Properties.TryGetValue("Operation", out var operation) && IsConsumeFamily(operation?.ToString())).ToArray();
+            entries.Select(static entry => (entry.EventId.Id, entry.Level, entry.Properties["Outcome"]?.ToString())).ShouldBe([
+                (19000, LogLevel.Debug, "consumed"),
+                (19000, LogLevel.Debug, "consumed"),
+                (19001, LogLevel.Warning, "expired"),
+                (19001, LogLevel.Warning, "cancelled"),
+                (19001, LogLevel.Warning, "unavailable"),
+            ]);
             foreach (var entry in entries)
             {
                 entry.Exception.ShouldBeNull();
@@ -325,7 +319,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             }
 
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             using var verification = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
             verification.Open();
             ExecuteScalar(verification, "PRAGMA application_id;").ShouldBe(0x414B5047L);
@@ -375,7 +369,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             }
 
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.SchemaUnsupported);
             using var verification = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
             verification.Open();
@@ -401,8 +395,8 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var stores = Enumerable.Range(0, 8).Select(_ => CreateStore(path, instanceId, clock, create: true)).ToArray();
-            await Task.WhenAll(stores.Select(store => Task.Run(async () => await store.InitializeAsync(TestContext.Current.CancellationToken))));
-            await stores[0].InitializeAsync(TestContext.Current.CancellationToken);
+            await Task.WhenAll(stores.Select(store => Task.Run(async () => await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken))));
+            await stores[0].InitializeTrustedAsync(clock, TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await stores[0].RegisterAsync(grant, TestContext.Current.CancellationToken);
             var result = await stores[^1].ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
@@ -423,7 +417,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var path = Path.Combine(directory, "grants.db");
             var first = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            await first.InitializeAsync(TestContext.Current.CancellationToken);
+            await first.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             using (var changedJournal = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
             {
                 changedJournal.Open();
@@ -431,7 +425,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             }
 
             var second = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await second.InitializeAsync(TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await second.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
             using var verification = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
             verification.Open();
@@ -458,7 +452,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
             {
                 connection.Open();
@@ -496,7 +490,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var path = Path.Combine(directory, "grants.db");
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = File.CreateSymbolicLink(path + suffix, Path.Combine(directory, "missing-sidecar"));
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.RegisterAsync(TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
@@ -524,7 +518,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             await File.WriteAllBytesAsync(path + suffix, [1], TestContext.Current.CancellationToken);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
-            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
             File.Exists(path).ShouldBeFalse();
             File.ReadAllBytes(path + suffix).ShouldBe([1]);
@@ -549,11 +543,11 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             var intent = TestGrantFactory.CreateIntent();
             var first = CreateStore(path, instanceId, clock, create: true);
-            await first.InitializeAsync(TestContext.Current.CancellationToken);
+            await first.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await first.RegisterAsync(grant, TestContext.Current.CancellationToken);
             var consumed = await first.ValidateAndConsumeAsync(grant, enforcement, intent, TestContext.Current.CancellationToken);
             var reopened = CreateStore(path, instanceId, clock, create: false);
-            await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+            await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var reconciled = await reopened.ValidateAndConsumeAsync(grant, enforcement, intent, TestContext.Current.CancellationToken);
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             reconciled.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
@@ -574,7 +568,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             var intent = TestGrantFactory.CreateIntent();
@@ -599,7 +593,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             var replay = grant with
             {
@@ -627,7 +621,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
@@ -657,7 +651,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
@@ -690,7 +684,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = new SqliteSecurityGrantStore(new SqliteSecurityGrantStoreTarget(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), new SqliteSecurityGrantStoreSettings(TimeSpan.FromSeconds(1), 1_048_576, 64, 32, 32, 8), clock);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             File.Delete(path);
@@ -712,7 +706,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch);
             // SecurityGrant's own init accessors now reject a default Audience directly, so this
             // probes RegisterAsync's own codec round-trip rejection with a mutation SecurityGrant
@@ -740,7 +734,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         {
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
 
             var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
@@ -770,7 +764,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: false);
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+                async () => await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.SchemaUnsupported);
         }
@@ -790,7 +784,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
             var store = CreateStore(path, instanceId, TimeProvider.System, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
             // Overstate the header's declared page count (big-endian bytes 28-31) so every ordinary table scan still
             // succeeds against real, undamaged pages while PRAGMA quick_check reports the file as inconsistent.
@@ -800,7 +794,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var reopened = CreateStore(path, instanceId, TimeProvider.System, create: false);
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await reopened.InitializeAsync(TestContext.Current.CancellationToken));
+                async () => await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
         }
@@ -820,7 +814,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
             var first = CreateStore(path, instanceId, TimeProvider.System, create: true);
-            await first.InitializeAsync(TestContext.Current.CancellationToken);
+            await first.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
             {
                 connection.Open();
@@ -830,7 +824,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var second = CreateStore(path, instanceId, TimeProvider.System, create: false);
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await second.InitializeAsync(TestContext.Current.CancellationToken));
+                async () => await second.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.SchemaUnsupported);
         }
@@ -936,7 +930,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+                async () => await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
             var inner = exception.InnerException.ShouldBeOfType<SqliteException>();
@@ -958,7 +952,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
             var store = CreateStore(path, instanceId, TimeProvider.System, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
             // Claim one freelist page exists (bytes 36-39) without a freelist trunk pointer (bytes 32-35), which
             // ordinary table scans and our own bootstrap pragmas never traverse but PRAGMA quick_check validates.
@@ -968,7 +962,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var reopened = CreateStore(path, instanceId, TimeProvider.System, create: false);
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await reopened.InitializeAsync(TestContext.Current.CancellationToken));
+                async () => await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
             exception.SafeMessage.ShouldBe("The SQLite grant-store integrity check failed during bootstrap validation.");
@@ -989,7 +983,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
@@ -1021,7 +1015,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var path = Path.Combine(directory, "grants.db");
             var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
             var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
@@ -1062,7 +1056,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
                 new SqliteSecurityGrantStoreTarget(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
                 settings,
                 TimeProvider.System);
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             using var blocker = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
             blocker.Open();
             // BEGIN IMMEDIATE acquires a RESERVED write lock immediately, without requiring any write statement, so the
@@ -1125,6 +1119,22 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
     {
         public override DateTimeOffset GetUtcNow() => now;
         public override long GetTimestamp() => throw new InvalidOperationException("measurement clock failure");
+    }
+
+    private static bool IsConsumeFamily(string? operation) =>
+        operation is "consume" or "consume_assess";
+
+    private static bool HasConsumeFamilyOperation(ReadOnlySpan<KeyValuePair<string, object?>> tags)
+    {
+        foreach (var tag in tags)
+        {
+            if (tag.Key == AgentKitTagNames.GenAiOperationName && IsConsumeFamily(tag.Value?.ToString()))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <inheritdoc/>

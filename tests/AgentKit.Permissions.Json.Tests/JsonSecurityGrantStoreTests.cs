@@ -105,7 +105,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         store.Dispose();
 
@@ -118,7 +118,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         store.Dispose();
         var grant = TestGrantFactory.CreateGrant(_now);
 
@@ -328,7 +328,7 @@ public sealed class JsonSecurityGrantStoreTests
         using (var store = new JsonSecurityGrantStore(
             CreateTarget(root.Path, instanceId), settings, clock))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             var consumed = await store.ValidateAndConsumeAsync(
                 grant, enforcement, intent, TestContext.Current.CancellationToken);
@@ -339,7 +339,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         using var reopened = new JsonSecurityGrantStore(
             CreateTarget(root.Path, instanceId, JsonStoreOpenMode.OpenExisting), settings, clock);
-        await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+        await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var replayed = await reopened.ValidateAndConsumeAsync(
             grant, enforcement, intent, TestContext.Current.CancellationToken);
@@ -360,7 +360,7 @@ public sealed class JsonSecurityGrantStoreTests
         var grant = TestGrantFactory.CreateGrant(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         }
 
@@ -370,7 +370,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         using var recovered = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting,
             recoveryMode: JsonStoreRecoveryMode.RecoverTornAppends, settings: settings);
-        await recovered.InitializeAsync(TestContext.Current.CancellationToken);
+        await recovered.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await recovered.ValidateAndConsumeAsync(
             grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
@@ -387,7 +387,7 @@ public sealed class JsonSecurityGrantStoreTests
         var grant = TestGrantFactory.CreateGrant(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         }
 
@@ -411,7 +411,7 @@ public sealed class JsonSecurityGrantStoreTests
         var settings = JsonSecurityGrantStoreSettings.CreateDefault();
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(TestGrantFactory.CreateGrant(_now), TestContext.Current.CancellationToken);
         }
 
@@ -458,7 +458,7 @@ public sealed class JsonSecurityGrantStoreTests
         var grant = TestGrantFactory.CreateGrant(_now, allowedUses: 2);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         }
 
@@ -517,7 +517,7 @@ public sealed class JsonSecurityGrantStoreTests
         SecurityEnforcementIntentReceipt? receipt;
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             var consumed = await store.ValidateAndConsumeAsync(
                 grant, enforcement, intent, TestContext.Current.CancellationToken);
@@ -533,7 +533,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         using (var reopened = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting, settings: settings))
         {
-            await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+            await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
             root.LogLineCount("grants").ShouldBeLessThan(beforeCompaction);
             var result = await reopened.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
@@ -544,7 +544,7 @@ public sealed class JsonSecurityGrantStoreTests
         // Replaying the already-compacted log on a third open decodes its State and Receipt records, proving compaction
         // output itself replays back to the identical live projection rather than only being written correctly once.
         using var thirdOpen = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting, settings: settings);
-        await thirdOpen.InitializeAsync(TestContext.Current.CancellationToken);
+        await thirdOpen.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var replayedReceipt = await thirdOpen.ValidateAndConsumeAsync(
             grant, enforcement, intent, TestContext.Current.CancellationToken);
@@ -613,7 +613,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
 
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
@@ -629,7 +629,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         _ = (await store.RevokeAsync(new GrantId(Guid.NewGuid()), _revocation, TestContext.Current.CancellationToken))
             .ShouldBeOfType<GrantRevocationNotFound>();
@@ -642,7 +642,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
 
@@ -662,7 +662,7 @@ public sealed class JsonSecurityGrantStoreTests
         using var root = new TestStoreRoot();
         var logger = new RecordingSecurityGrantStoreLogger();
         using var store = CreateStore(root.Path, logger: logger);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
 
         Activity? stopped = null;
@@ -689,7 +689,7 @@ public sealed class JsonSecurityGrantStoreTests
         using var root = new TestStoreRoot();
         var logger = new RecordingSecurityGrantStoreLogger();
         using var store = CreateStore(root.Path, logger: logger);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var conflicting = grant with { Effect = SecurityEffect.Delete };
@@ -736,7 +736,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path, logger: new ThrowingSecurityGrantStoreLogger());
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
 
         await Should.NotThrowAsync(async () => await store.RegisterAsync(grant, TestContext.Current.CancellationToken));
@@ -751,7 +751,7 @@ public sealed class JsonSecurityGrantStoreTests
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var grant = TestGrantFactory.CreateGrant(_now);
 
         await Should.NotThrowAsync(async () => await store.RegisterAsync(grant, TestContext.Current.CancellationToken));

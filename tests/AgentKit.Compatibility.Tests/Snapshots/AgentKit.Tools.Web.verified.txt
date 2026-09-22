@@ -13,7 +13,7 @@ namespace AgentKit.Tools.Web
     public sealed class WebFetchTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        public WebFetchTool(AgentKit.INetworkNameResolver resolver, AgentKit.INetworkTransport transport, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.NetworkOperationId> operationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Web.WebFetchToolOptions> options) { }
+        public WebFetchTool(AgentKit.INetworkNameResolver resolver, AgentKit.INetworkTransport transport, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.NetworkOperationId> operationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Web.WebFetchToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

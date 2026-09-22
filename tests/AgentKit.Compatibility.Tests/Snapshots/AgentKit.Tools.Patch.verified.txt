@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Patch
     public sealed class PatchTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        public PatchTool(AgentKit.IFileSnapshotReader snapshotReader, AgentKit.IWorkspacePatchApplier applier, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Patch.PatchToolOptions> options) { }
+        public PatchTool(AgentKit.IFileSnapshotReader snapshotReader, AgentKit.IWorkspacePatchApplier applier, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Patch.PatchToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

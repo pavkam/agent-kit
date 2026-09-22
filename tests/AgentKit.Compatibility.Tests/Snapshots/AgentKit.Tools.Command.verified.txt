@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Command
     public sealed class CommandTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        public CommandTool(AgentKit.IProcessIntentResolver resolver, AgentKit.IProcessRunner runner, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.ProcessOperationId> processOperationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Command.CommandToolOptions> options) { }
+        public CommandTool(AgentKit.IProcessIntentResolver resolver, AgentKit.IProcessRunner runner, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.ProcessOperationId> processOperationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Command.CommandToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

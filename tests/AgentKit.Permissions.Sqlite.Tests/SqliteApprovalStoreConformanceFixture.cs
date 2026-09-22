@@ -27,7 +27,7 @@ public sealed class SqliteApprovalStoreConformanceFixture: IApprovalStoreConform
                 SqliteApprovalStoreSettings.CreateDefault());
             _provider = services.BuildServiceProvider(validateScopes: true);
             _store = _provider.GetRequiredService<IApprovalStore>().ShouldBeOfType<SqliteApprovalStore>();
-            await _store.InitializeAsync(cancellationToken);
+            await _store.InitializeAsync(SecurityControlPlaneTestBootstrap.Create(), cancellationToken);
         }
 
         return _store;

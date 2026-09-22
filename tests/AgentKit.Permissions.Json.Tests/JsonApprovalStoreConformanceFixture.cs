@@ -27,7 +27,7 @@ public sealed class JsonApprovalStoreConformanceFixture: IApprovalStoreConforman
                 JsonApprovalStoreSettings.CreateDefault());
             _provider = services.BuildServiceProvider(validateScopes: true);
             _store = _provider.GetRequiredService<IApprovalStore>().ShouldBeOfType<JsonApprovalStore>();
-            await _store.InitializeAsync(cancellationToken);
+            await _store.InitializeAsync(SecurityControlPlaneTestBootstrap.Create(), cancellationToken);
         }
 
         return _store;

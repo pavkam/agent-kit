@@ -35,7 +35,7 @@ public sealed class SqliteSecurityDecisionStoreConformanceFixture: ISecurityDeci
             _ = services.AddSqliteSecurityDecisionStore(_target, SqliteSecurityDecisionStoreSettings.CreateDefault());
             _provider = services.BuildServiceProvider(validateScopes: true);
             _store = _provider.GetRequiredService<ISecurityDecisionStore>().ShouldBeOfType<SqliteSecurityDecisionStore>();
-            await _store.InitializeAsync(cancellationToken);
+            await _store.InitializeAsync(SecurityControlPlaneTestBootstrap.Create(), cancellationToken);
         }
 
         return _store;

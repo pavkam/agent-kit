@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.Permissions;
+using AgentKit.Permissions.InMemory;
 using AgentKit.TestSupport;
 
 /// <summary>
@@ -154,6 +156,7 @@ internal static class CompositionTestData
         services.TryAddSingleton<ISessionRunCoordinator, UnsupportedSessionRunCoordinator>();
         services.TryAddSingleton<IContextAssembler, UnsupportedContextAssembler>();
         services.TryAddSingleton<IToolInvoker, CaptureTestToolInvoker>();
+        services.TryAddSingleton<IToolExecutor, CaptureTestToolExecutor>();
         services.TryAddSingleton<IModelCatalog>(
             new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
         services.TryAddSingleton<IModelSelector>(
@@ -164,9 +167,28 @@ internal static class CompositionTestData
         HookCompositionTestSupport.TryAddDefaultHookKernel(services);
     }
 
-    public static void AddRequiredSecurityGrantStore(IServiceCollection services) =>
-        services.TryAddSingleton<ISecurityGrantStore>(static _ =>
-            throw new InvalidOperationException("The reduced facade fixture must not activate security grant storage."));
+    public static void AddRequiredSecurityServices(IServiceCollection services, bool includeGrantStore = true)
+    {
+        _ = services.AddAgentPermissions(static options => options.AuditDelivery = SecurityAuditDelivery.BestEffort);
+        if (includeGrantStore)
+        {
+            _ = services.AddInMemorySecurityGrantStore();
+        }
+
+        _ = services.AddInMemoryApprovalStore();
+        _ = services.AddInMemorySecurityDecisionStore();
+        _ = services.AddSecurityAuthority(new ComponentKey<ISecurityAuthority>("authority"));
+        _ = services.RemoveAll<ISecurityProfileSelector>();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+    }
+
+    /// <summary>Registers the security services required by facade registration validation.</summary>
+    /// <param name="services">The composition under test.</param>
+    /// <param name="includeGrantStore">Whether to register the default in-memory grant store.</param>
+    public static void AddFacadeRegistrationRequirements(IServiceCollection services, bool includeGrantStore = true) =>
+        AddRequiredSecurityServices(services, includeGrantStore);
+
+    public static void AddRequiredSecurityGrantStore(IServiceCollection services) => AddRequiredSecurityServices(services);
 
     /// <summary>Registers the hook kernel so composition validation can reach later readiness checks.</summary>
     /// <param name="services">The composition under test.</param>
@@ -178,8 +200,9 @@ internal static class CompositionTestData
 
     public static void AddRunProfiles(IServiceCollection services, SessionBusyBehavior busyBehavior, params AgentDefinition[] definitions)
     {
+        AddRequiredSecurityServices(services);
+        _ = services.RemoveAll<ISecurityProfileSelector>();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        AddRequiredSecurityGrantStore(services);
         foreach (var definition in definitions)
         {
             _ = services.AddAgentRunProfilePublication(RunProfile(definition, busyBehavior));

@@ -36,7 +36,8 @@ public static class ServiceExtensions
             if (!services.Any(static descriptor =>
                     descriptor.ServiceType == typeof(ISecurityGrantStore)
                     && descriptor.Lifetime == ServiceLifetime.Singleton
-                    && descriptor.ImplementationType == typeof(InMemorySecurityGrantStore)))
+                    && (descriptor.ImplementationType == typeof(InMemorySecurityGrantStore)
+                        || descriptor.ImplementationFactory is not null)))
             {
                 services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore>(static provider =>
                     new InMemorySecurityGrantStore(

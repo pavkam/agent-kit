@@ -16,10 +16,14 @@ using System.Text.Json;
 /// </remarks>
 internal static class LegacyToolCallResultFactory
 {
-    private static readonly ToolResultNormalizationSnapshot _normalization = new(
+    private static readonly ToolExecutionPolicyReference _legacyExecutionPolicy = new(
+        new ToolExecutionPolicyKey("legacy"),
+        new ToolExecutionPolicyVersion(1));
+
+    private static ToolResultNormalizationSnapshot NormalizationFor(bool resolvedTool) => new(
         new ToolResultRejectionPolicyReference(new ToolResultRejectionPolicyKey("legacy"), new ToolResultRejectionPolicyVersion(1)),
         ToolResultProjectionPolicyReference.Default,
-        executionPolicy: null,
+        executionPolicy: resolvedTool ? _legacyExecutionPolicy : null,
         new ToolResultNormalizationAlgorithmVersion(1),
         new ToolResultBounds(4_194_304, 64),
         ToolResultProjectionTransformations.None,
@@ -49,6 +53,11 @@ internal static class LegacyToolCallResultFactory
         GrantId? grantId = null;
         DateTimeOffset? startedAt = null;
         ToolEffects? effects = null;
+        if (hasResolvedTool)
+        {
+            effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
+        }
+
         if (succeeded && hasResolvedTool)
         {
             grantId = new GrantId(request.CallId.Value);
@@ -57,7 +66,6 @@ internal static class LegacyToolCallResultFactory
                 new InputFingerprint($"legacy:{request.CallId}"),
                 request.RequestedAt);
             startedAt = request.RequestedAt;
-            effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
         }
 
         var admission = new ToolCallAdmissionEvidence(
@@ -66,13 +74,10 @@ internal static class LegacyToolCallResultFactory
             new InputFingerprint($"legacy-raw:{request.CallId}"));
 
         var content = MapContent(invocation.Content);
-        var error = outcome.Kind is ToolCallOutcomeKind.Rejected or ToolCallOutcomeKind.Failed
-            ? new ToolError(ToolErrorKind.Tool, outcome.FailureReason ?? "The tool call did not succeed.", null, null, ExtensionData.Empty)
-            : null;
-
-        if (succeeded)
+        ToolError? error = null;
+        if (!succeeded && outcome.FailureReason is { Length: > 0 } failureReason)
         {
-            error = null;
+            error = new ToolError(ToolErrorKind.Tool, failureReason, null, null, ExtensionData.Empty);
         }
 
         var sideEffectCertainty = outcome.SideEffectCertainty;
@@ -100,7 +105,7 @@ internal static class LegacyToolCallResultFactory
             sideEffectCertainty,
             usage: null,
             retryable,
-            _normalization,
+            NormalizationFor(hasResolvedTool),
             new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
             resolved.ProjectionPolicy,
             request.RequestedAt,

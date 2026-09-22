@@ -113,7 +113,7 @@ public sealed class TaskToolTests
         var broker = new RecordingDelegationBroker();
         var authority = new RecordingSecurityAuthority();
         var request = new ToolInvocationRequest(
-            TestSupport.TestSecurityEvidence.ToolContext(
+            TestSecurityEvidence.ToolContext(
                 TestData.ParentAgentId,
                 TestData.ParentSessionId,
                 TestData.ToolCallId,
@@ -239,5 +239,5 @@ public sealed class TaskToolTests
     }
 
     private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
-    private static ToolInvocationRequest Request(string json, bool withSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationRequest Request(string json, bool withSession = true) => new(TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
 }

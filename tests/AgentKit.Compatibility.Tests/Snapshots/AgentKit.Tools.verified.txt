@@ -22,6 +22,23 @@ namespace AgentKit.Tools
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger, AgentKit.IToolSchemaEngine schemaEngine, AgentKit.ToolSchemaLimits argumentValidationLimits) { }
         public System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.LegacyToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class LegacyToolCatalogCapture : AgentKit.IToolCatalogCapture, System.IAsyncDisposable
+    {
+        public LegacyToolCatalogCapture(AgentKit.ToolCatalogSnapshot snapshot) { }
+        public AgentKit.ToolCatalogSnapshot Snapshot { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public sealed class LegacyToolInvokerExecutor : AgentKit.IToolExecutor
+    {
+        public LegacyToolInvokerExecutor(AgentKit.IToolInvoker orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger) { }
+        public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class LegacyToolRunCatalogCaptureFactory : AgentKit.IToolRunCatalogCaptureFactory
+    {
+        public LegacyToolRunCatalogCaptureFactory(AgentKit.IToolCatalog catalog) { }
+        public AgentKit.IToolCatalogCapture Create(AgentKit.RunToolCatalogCaptureRequest request) { }
+    }
     public sealed class RejectingToolCatalogMergePolicy : AgentKit.IToolCatalogMergePolicy
     {
         public RejectingToolCatalogMergePolicy(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.RejectingToolCatalogMergePolicy> logger) { }

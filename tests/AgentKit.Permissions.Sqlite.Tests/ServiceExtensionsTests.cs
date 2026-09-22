@@ -124,9 +124,9 @@ public sealed class ServiceExtensionsTests
             SqliteSecurityGrantStoreSettings.CreateDefault());
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ShouldBe(2);
-        services.ShouldContain(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)
+        services.Any(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)
             && descriptor.Lifetime == ServiceLifetime.Singleton
-            && descriptor.ImplementationType == typeof(SqliteSecurityGrantStore));
+            && descriptor.ImplementationFactory is not null).ShouldBeTrue();
     }
 
     /// <summary>Verifies more than one ambiguous unkeyed captured registration is rejected rather than arbitrarily chosen.</summary>

@@ -58,6 +58,7 @@ namespace AgentKit.Permissions.Json
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreCreateResult> CreateAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -127,6 +128,7 @@ namespace AgentKit.Permissions.Json
         public System.Collections.Generic.IReadOnlyList<AgentKit.SecurityDecision> Decisions { get; }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityDecision decision, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public readonly struct JsonSecurityDecisionStoreInstanceId : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityDecisionStoreInstanceId>
@@ -194,10 +196,12 @@ namespace AgentKit.Permissions.Json
     public sealed class JsonSecurityGrantStore : AgentKit.ISecurityGrantStore, System.IDisposable
     {
         public JsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Json.JsonSecurityGrantStore>? logger = null) { }
+        public JsonSecurityGrantStore(AgentKit.Permissions.Json.JsonSecurityGrantStoreTarget target, AgentKit.Permissions.Json.JsonSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Json.JsonSecurityGrantStore>? logger, AgentKit.ISecurityAuditDispatcher? auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId>? auditRecordIds, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions>? permissionOptions) { }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantRevocationResult> RevokeAsync(AgentKit.GrantId grantId, AgentKit.RevocationReason reason, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
     }

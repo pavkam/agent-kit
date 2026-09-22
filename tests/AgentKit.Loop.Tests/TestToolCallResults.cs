@@ -8,10 +8,14 @@ using System.Collections.Immutable;
 /// <summary>Builds minimal <see cref="ToolCallResult"/> values for loop tests.</summary>
 internal static class TestToolCallResults
 {
-    private static readonly ToolResultNormalizationSnapshot Normalization = new(
+    private static readonly ToolExecutionPolicyReference ExecutionPolicy = new(
+        new ToolExecutionPolicyKey("test"),
+        new ToolExecutionPolicyVersion(1));
+
+    private static ToolResultNormalizationSnapshot NormalizationFor(bool resolvedTool) => new(
         new ToolResultRejectionPolicyReference(new ToolResultRejectionPolicyKey("test"), new ToolResultRejectionPolicyVersion(1)),
         ToolResultProjectionPolicyReference.Default,
-        executionPolicy: null,
+        executionPolicy: resolvedTool ? ExecutionPolicy : null,
         new ToolResultNormalizationAlgorithmVersion(1),
         new ToolResultBounds(1024, 4),
         ToolResultProjectionTransformations.None,
@@ -31,12 +35,15 @@ internal static class TestToolCallResults
         GrantId? grantId = null;
         DateTimeOffset? startedAt = null;
         ToolEffects? effects = null;
+        if (hasTool)
+        {
+            effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
+        }
         if (succeeded && hasTool)
         {
             grantId = new GrantId(call.CallId.Value);
             acceptance = new ToolCallAcceptanceEvidence(grantId.Value, new InputFingerprint("test"), call.RequestedAt);
             startedAt = call.RequestedAt;
-            effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
         }
 
         var content = ImmutableArray<ToolResultContent>.Empty;
@@ -47,6 +54,14 @@ internal static class TestToolCallResults
                 content = content.Add(new ToolResultTextContent(text.Text, text.Semantics, text.Extensions));
             }
         }
+
+        ToolError? error = null;
+        if (!succeeded && outcome.FailureReason is { Length: > 0 } failureReason)
+        {
+            error = new ToolError(ToolErrorKind.Tool, failureReason, null, null, ExtensionData.Empty);
+        }
+
+        var normalization = NormalizationFor(hasTool);
 
         return new ToolCallResult(
             call.AgentId,
@@ -66,11 +81,11 @@ internal static class TestToolCallResults
             new ToolCallAdmissionEvidence(call.CatalogVersion, call.SourceOrdinal, new InputFingerprint("test")),
             succeeded ? ToolTerminalStatus.Succeeded : outcome.SourceStatus,
             content,
-            succeeded ? null : new ToolError(ToolErrorKind.Tool, outcome.FailureReason ?? "failed", null, null, ExtensionData.Empty),
+            error,
             outcome.SideEffectCertainty,
             null,
             outcome.Retryable,
-            Normalization,
+            normalization,
             new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
             resolved.ProjectionPolicy,
             call.RequestedAt,

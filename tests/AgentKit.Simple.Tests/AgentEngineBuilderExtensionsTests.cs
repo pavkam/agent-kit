@@ -484,7 +484,11 @@ public sealed class AgentEngineBuilderExtensionsTests
     public void Build_WhenStorageAndSecurityAreSuppliedButNoIdentity_FailsNamingTheFix()
     {
         var builder = AgentEngine.CreateBuilder().UseOpenAI("sk-test", "gpt-4o-mini");
-        _ = builder.Services.AddInMemorySecurityGrantStore().AddAllowAllSecurityPolicy();
+        _ = builder.Services.AddAgentPermissions(static o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+        _ = builder.Services.AddInMemorySecurityGrantStore();
+        _ = builder.Services.AddInMemoryApprovalStore();
+        _ = builder.Services.AddInMemorySecurityDecisionStore();
+        _ = builder.Services.AddAllowAllSecurityPolicy();
         _ = builder.Services.AddInMemorySessionStore().AddInMemorySessionDirectory(new ComponentId("t"));
 
         var exception = Should.Throw<Exception>(builder.Build);

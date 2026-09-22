@@ -825,6 +825,34 @@ durable deferral returns a typed unavailable result rather than holding an
 in-memory task. A sandbox reduces consequences but never changes a denial into
 an allow.
 
+Host bootstrap for durable control-plane stores is explicit configuration
+evidence, not authority recursion. Applications register a bounded capability
+identifier and pass `SecurityControlPlaneBootstrap` when initializing grant,
+approval, and decision stores.
+
+```csharp
+namespace AgentKit;
+
+/// <summary>
+/// Host-supplied evidence that authorizes opening or creating one fixed security control-plane persistence target
+/// without recursively requesting grants or required audit from the authority being bootstrapped.
+/// </summary>
+/// <param name="CapabilityId">The non-blank stable identifier of the bounded bootstrap capability that issued this evidence.</param>
+/// <param name="IssuedAt">The instant the host recorded this bootstrap evidence.</param>
+/// <remarks>
+/// Bootstrap evidence is configuration-bound, not caller-selected at runtime. Stores validate that initialization
+/// was performed with explicit bootstrap proof before accepting grant, approval, or decision writes.
+/// </remarks>
+public sealed record SecurityControlPlaneBootstrap(string CapabilityId, DateTimeOffset IssuedAt)
+{
+    /// <summary>Gets the bounded bootstrap capability identifier.</summary>
+    /// <exception cref="ArgumentException">The value is blank.</exception>
+    public string CapabilityId { get; } = !string.IsNullOrWhiteSpace(CapabilityId)
+        ? CapabilityId
+        : throw new ArgumentException("The capability identifier cannot be blank.", nameof(CapabilityId));
+}
+```
+
 ## Trusted infrastructure and the security dependency graph
 
 The authority's decision, grant, approval, and required-audit stores are part of

@@ -1892,7 +1892,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     arguments = hookArgs.Arguments;
                 }
 
-                var rawArguments = arguments.ValueKind is JsonValueKind.Undefined
+                var rawArguments = arguments.ValueKind is System.Text.Json.JsonValueKind.Undefined
                     ? ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes("{}"))
                     : ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes(arguments.GetRawText()));
                 var callRequest = new ToolCallRequest(

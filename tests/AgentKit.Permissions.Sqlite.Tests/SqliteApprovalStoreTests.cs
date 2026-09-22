@@ -45,14 +45,14 @@ public sealed class SqliteApprovalStoreTests: ApprovalStoreConformanceTests<Sqli
         var response = CreateResponse(request);
 
         var store = CreateStore(target, settings);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         (await store.CreateAsync(request, TestContext.Current.CancellationToken))
             .ShouldBe(ApprovalStoreCreateResult.Created);
         (await store.ResolveAsync(response, TestContext.Current.CancellationToken))
             .ShouldBe(ApprovalStoreResolveResult.Resolved);
 
         var reopened = CreateStore(target, settings);
-        await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+        await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var retained = await reopened.ReadAsync(request.Id, TestContext.Current.CancellationToken);
         retained.Request.ShouldBe(request);
         retained.Response.ShouldBe(response);

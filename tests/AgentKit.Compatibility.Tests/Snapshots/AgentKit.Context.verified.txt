@@ -13,6 +13,10 @@ namespace AgentKit.Context
         public int ProviderOverheadTokens { get; set; }
         public int ReservedOutputTokens { get; set; }
     }
+    public static class ContextContributorCompositionValidator
+    {
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> ValidateRegistrations(Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

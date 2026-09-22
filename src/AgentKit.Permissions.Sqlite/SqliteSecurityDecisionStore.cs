@@ -3,10 +3,12 @@
 
 namespace AgentKit.Permissions.Sqlite;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>Persists terminal security decisions in one fixed local SQLite database append-only table.</summary>
-/// <remarks>Call <see cref="InitializeAsync"/> explicitly during trusted bootstrap before recording.</remarks>
+/// <remarks>Call trusted bootstrap initialization explicitly before recording.</remarks>
 public sealed class SqliteSecurityDecisionStore: ISecurityDecisionStore
 {
     private const int _applicationId = 0x414B5044;
@@ -18,6 +20,7 @@ public sealed class SqliteSecurityDecisionStore: ISecurityDecisionStore
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SqliteSecurityDecisionStore> _logger;
     private readonly Lock _gate = new();
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
     private readonly List<SecurityDecision> _decisions = [];
     private bool _initialized;
 
@@ -115,6 +118,20 @@ public sealed class SqliteSecurityDecisionStore: ISecurityDecisionStore
                 _initialized = true;
             }
         });
+
+    /// <summary>Records bootstrap evidence and initializes the decision store under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before initialization completes.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the target is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException"><paramref name="decision"/> is null.</exception>
@@ -306,6 +323,8 @@ public sealed class SqliteSecurityDecisionStore: ISecurityDecisionStore
             throw Unavailable(SecurityGrantStoreFailureKind.OpenFailed,
                 "The SQLite security decision store was used before trusted bootstrap initialization.");
         }
+
+        _controlPlaneGate.RequireReadyForWrites();
     }
 
     private static void VerifyDigest(ReadOnlySpan<byte> payload, ReadOnlySpan<byte> digest)

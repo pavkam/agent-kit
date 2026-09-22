@@ -322,7 +322,7 @@ public sealed class EditToolPresentationFormatterTests
     }
 
     private static ToolInvocationRequest InvocationRequest(string json) => new(
-        TestSupport.TestSecurityEvidence.ToolContext(
+        TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("51000000-0000-0000-0000-000000000005")),
             new ToolCallId(Guid.Parse("61000000-0000-0000-0000-000000000006")),
@@ -330,7 +330,7 @@ public sealed class EditToolPresentationFormatterTests
                 new OperationId(Guid.Parse("71000000-0000-0000-0000-000000000007")),
                 new RunId(Guid.Parse("81000000-0000-0000-0000-000000000008")),
                 null),
-            TestSupport.TestExecutionIdentity.Create(
+            TestExecutionIdentity.Create(
                 new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch);

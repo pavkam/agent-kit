@@ -4,3 +4,5 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("AgentKit.Permissions.Tests")]
+[assembly: InternalsVisibleTo("AgentKit.Permissions.Json")]
+[assembly: InternalsVisibleTo("AgentKit.Permissions.Sqlite")]

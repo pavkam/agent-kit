@@ -84,12 +84,16 @@ internal static class SqliteSecurityGrantCodec
             var notBefore = reader.ReadDateTimeOffset();
             var expiresAt = reader.ReadDateTimeOffset();
             var allowedUses = reader.ReadInt32();
+            ApprovalResponseId? approval = envelopeVersion == _grantEnvelopeVersionTwo
+                ? reader.ReadBoolean() ? new ApprovalResponseId(reader.ReadGuid()) : null
+                : null;
             reader.EnsureComplete();
-            return authorization is null
+            var grant = authorization is null
                 ? new SecurityGrant(id, requestId, scope, identity, audience, kind, effect, resources,
                     inputFingerprint, policyVersion, revocationVersion, notBefore, expiresAt, allowedUses)
                 : new SecurityGrant(id, requestId, scope, identity, authorization, audience, kind, effect, resources,
                     inputFingerprint, policyVersion, revocationVersion, notBefore, expiresAt, allowedUses);
+            return approval is null ? grant : grant with { Approval = approval };
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {
@@ -110,7 +114,7 @@ internal static class SqliteSecurityGrantCodec
         ArgumentNullException.ThrowIfNull(enforcement);
         ArgumentNullException.ThrowIfNull(settings);
         var writer = new SqliteSecurityGrantCodecWriter(settings, settings.MaximumEnforcementBytes, nameof(enforcement));
-        writer.WriteHeader(_enforcementKind);
+        writer.WriteHeader(_enforcementKind, _grantEnvelopeVersionOne);
         writer.WriteScope(enforcement.Scope);
         writer.WriteIdentity(enforcement.Identity);
         writer.WriteAuthorization(enforcement.Authorization);
@@ -141,7 +145,7 @@ internal static class SqliteSecurityGrantCodec
         try
         {
             var reader = new SqliteSecurityGrantCodecReader(payload, settings);
-            reader.ReadHeader(_enforcementKind);
+            _ = reader.ReadHeader(_enforcementKind);
             var scope = reader.ReadScope();
             var identity = reader.ReadIdentity();
             var authorization = reader.ReadAuthorization();

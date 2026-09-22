@@ -35,7 +35,7 @@ public sealed class JsonSecurityDecisionStoreConformanceFixture: ISecurityDecisi
             _ = services.AddJsonSecurityDecisionStore(_target, JsonSecurityDecisionStoreSettings.CreateDefault());
             _provider = services.BuildServiceProvider(validateScopes: true);
             _store = _provider.GetRequiredService<ISecurityDecisionStore>().ShouldBeOfType<JsonSecurityDecisionStore>();
-            await _store.InitializeAsync(cancellationToken);
+            await _store.InitializeAsync(SecurityControlPlaneTestBootstrap.Create(), cancellationToken);
         }
 
         return _store;

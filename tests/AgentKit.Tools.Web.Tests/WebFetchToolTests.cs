@@ -528,7 +528,7 @@ public sealed class WebFetchToolTests
         JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 
     private static ToolInvocationRequest Request(string json) => new(
-        TestSupport.TestSecurityEvidence.ToolContext(
+        TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
             new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
@@ -536,7 +536,7 @@ public sealed class WebFetchToolTests
                 new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
                 new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
                 null),
-            TestSupport.TestExecutionIdentity.Create(
+            TestExecutionIdentity.Create(
                 new TenantId("tenant"),
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),

@@ -3,7 +3,10 @@
 
 namespace AgentKit.Permissions.Json;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Persists authoritative security grants and enforcement receipts as a newline-delimited JSON transition log.</summary>
 /// <remarks>
@@ -13,14 +16,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// writes the new remaining-use count and the receipt in the same line, making the pair atomic by construction.
 /// </para>
 /// <para>
-/// Live state is projected into memory during <see cref="InitializeAsync"/> and kept authoritative under one in-process
+/// Live state is projected into memory during trusted bootstrap initialization and kept authoritative under one in-process
 /// gate, so concurrent callers cannot exceed <see cref="SecurityGrant.AllowedUses"/>. A host-local advisory exclusive lock
 /// is held for the store's lifetime, so a second writer on the same host fails fast instead of interleaving appends. This is
 /// durable single-process host-local storage: it provides no distributed lease, no fencing token, and no atomicity with any
 /// external effect.
 /// </para>
 /// <para>
-/// Call <see cref="InitializeAsync"/> exactly once during trusted bootstrap before resolving the store for use. Enforcement
+/// Call bootstrap initialization exactly once during trusted bootstrap before resolving the store for use. Enforcement
 /// receipts are retained indefinitely so an uncertain attempt can always be reconciled rather than repeated.
 /// </para>
 /// </remarks>
@@ -33,6 +36,10 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     private readonly JsonSecurityGrantStoreSettings _settings;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<JsonSecurityGrantStore> _logger;
+    private readonly ISecurityAuditDispatcher? _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId>? _auditRecordIds;
+    private readonly IOptions<AgentPermissionOptions>? _permissionOptions;
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
     private readonly JsonStoreRoot _root;
     private readonly JsonRecordLog _log;
     private readonly Lock _gate = new();
@@ -48,12 +55,33 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     /// <param name="timeProvider">The clock used for validity checks and consumption receipts.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
-    /// <remarks>Construction performs no I/O, so composition never touches the filesystem; every effect happens in <see cref="InitializeAsync"/>.</remarks>
+    /// <remarks>Construction performs no I/O, so composition never touches the filesystem; every effect happens during bootstrap initialization.</remarks>
     public JsonSecurityGrantStore(
         JsonSecurityGrantStoreTarget target,
         JsonSecurityGrantStoreSettings settings,
         TimeProvider timeProvider,
         ILogger<JsonSecurityGrantStore>? logger = null)
+        : this(target, settings, timeProvider, logger, null, null, null)
+    {
+    }
+
+    /// <summary>Initializes a store with optional grant-lifecycle audit dispatch.</summary>
+    /// <param name="target">The exact store root and bootstrap effects supplied by the host.</param>
+    /// <param name="settings">The immutable evidence bounds, compaction policy, and encoding contract.</param>
+    /// <param name="timeProvider">The clock used for validity checks and consumption receipts.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
+    /// <param name="auditDispatcher">The optional security-audit dispatcher.</param>
+    /// <param name="auditRecordIds">The optional audit-record identity generator.</param>
+    /// <param name="permissionOptions">The optional permission options governing audit delivery.</param>
+    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
+    public JsonSecurityGrantStore(
+        JsonSecurityGrantStoreTarget target,
+        JsonSecurityGrantStoreSettings settings,
+        TimeProvider timeProvider,
+        ILogger<JsonSecurityGrantStore>? logger,
+        ISecurityAuditDispatcher? auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId>? auditRecordIds,
+        IOptions<AgentPermissionOptions>? permissionOptions)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(settings);
@@ -62,6 +90,9 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
         _settings = settings;
         _timeProvider = timeProvider;
         _logger = logger ?? NullLogger<JsonSecurityGrantStore>.Instance;
+        _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
+        _permissionOptions = permissionOptions;
         _root = new JsonStoreRoot(target.DirectoryPath);
         _log = new JsonRecordLog(_root.LogPath(_logName), settings.MaximumRecordBytes);
     }
@@ -85,31 +116,47 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     /// </remarks>
     public ValueTask InitializeAsync(CancellationToken cancellationToken = default) => ExecuteVoidAsync(
         "initialize",
-        () =>
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_gate)
-            {
-                if (_initialized)
-                {
-                    return;
-                }
+        () => InitializeSchemaCore(cancellationToken));
 
-                _root.Validate(allowCreate: _target.OpenMode == JsonStoreOpenMode.CreateIfMissing);
-                JsonStoreRoot.ValidateFile(_root.ManifestPath);
-                JsonStoreRoot.ValidateFile(_log.Path);
-                _exclusive = JsonStoreLock.Acquire(_root.LockPath);
-                cancellationToken.ThrowIfCancellationRequested();
-                JsonStoreSerialization.VerifyRoundTrip(
-                    JsonSecurityGrantStoreProbe.Create(), _settings.Encoding.RecordOptions);
-                cancellationToken.ThrowIfCancellationRequested();
-                BindManifest(cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                Replay(cancellationToken);
-                _initialized = true;
+    /// <summary>Records bootstrap evidence and initializes the JSON grant store under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before initialization completes.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the root is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
+
+    private void InitializeSchemaCore(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_initialized)
+            {
+                return;
             }
-        });
+
+            _root.Validate(allowCreate: _target.OpenMode == JsonStoreOpenMode.CreateIfMissing);
+            JsonStoreRoot.ValidateFile(_root.ManifestPath);
+            JsonStoreRoot.ValidateFile(_log.Path);
+            _exclusive = JsonStoreLock.Acquire(_root.LockPath);
+            cancellationToken.ThrowIfCancellationRequested();
+            JsonStoreSerialization.VerifyRoundTrip(
+                JsonSecurityGrantStoreProbe.Create(), _settings.Encoding.RecordOptions);
+            cancellationToken.ThrowIfCancellationRequested();
+            BindManifest(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            Replay(cancellationToken);
+            _initialized = true;
+        }
+    }
 
     /// <inheritdoc/>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the registration append begins.</exception>
@@ -157,7 +204,7 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
         CancellationToken cancellationToken = default)
     {
         ValidateArguments(grant, enforcement);
-        return ExecuteAsync("consume", () => Consume(grant, enforcement, null, cancellationToken), grant);
+        return ConsumeWithLifecycleAuditAsync(grant, enforcement, null, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -176,20 +223,20 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     {
         ValidateArguments(grant, enforcement);
         ArgumentNullException.ThrowIfNull(intent);
-        return ExecuteAsync("consume_intent",
-            () => Consume(grant, enforcement, intent, cancellationToken), grant, intent);
+        return ConsumeWithLifecycleAuditAsync(grant, enforcement, intent, cancellationToken);
     }
 
     /// <inheritdoc/>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the revocation append begins.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The store is uninitialized, or the append cannot be completed and flushed.</exception>
     /// <remarks>Revocation is idempotent; revoking an already revoked grant appends nothing and still reports that the grant exists.</remarks>
-    public ValueTask<GrantRevocationResult> RevokeAsync(
+    public async ValueTask<GrantRevocationResult> RevokeAsync(
         GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reason);
         ArgumentOutOfRangeException.ThrowIfEqual(grantId, default);
-        return ExecuteAsync(
+        SecurityGrant? revokedGrant = null;
+        var result = await ExecuteAsync(
             "revoke",
             () =>
             {
@@ -209,9 +256,20 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                     cancellationToken.ThrowIfCancellationRequested();
                     AppendRecord(JsonSecurityGrantLogRecord.ForRevocation(grantId), cancellationToken);
                     _grants[grantId] = state with { Revoked = true };
+                    revokedGrant = state.Grant;
                     return new GrantRevoked(grantId, reason);
                 }
-            }, null, null, grantId);
+            }, null, null, grantId).ConfigureAwait(false);
+        if (result is GrantRevoked && revokedGrant is not null)
+        {
+            await EmitGrantLifecycleAsync(
+                revokedGrant,
+                SecurityAuditOutcome.Accepted,
+                _timeProvider.GetUtcNow(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
     }
 
     /// <summary>Releases the advisory exclusive lock held for this store's lifetime.</summary>
@@ -237,7 +295,58 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
         }
     }
 
-    private GrantConsumptionResult Consume(
+    private async ValueTask<GrantConsumptionResult> ConsumeWithLifecycleAuditAsync(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent? intent,
+        CancellationToken cancellationToken)
+    {
+        var preview = await ExecuteAsync(
+            intent is null ? "consume_assess" : "consume_intent_assess",
+            () => PreviewConsumption(grant, enforcement, intent, cancellationToken),
+            grant,
+            intent).ConfigureAwait(false);
+        if (preview.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
+        {
+            await EmitGrantLifecycleAsync(
+                grant,
+                SecurityAuditOutcome.Denied,
+                _timeProvider.GetUtcNow(),
+                cancellationToken).ConfigureAwait(false);
+            return preview;
+        }
+
+        if (preview.Status is GrantConsumptionStatus.Consumed)
+        {
+            if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
+            {
+                return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
+            }
+        }
+
+        if (preview.Status is not GrantConsumptionStatus.Consumed)
+        {
+            return preview;
+        }
+
+        var committed = await ExecuteAsync(
+            intent is null ? "consume" : "consume_intent",
+            () => CommitConsumption(grant, enforcement, intent, cancellationToken),
+            grant,
+            intent).ConfigureAwait(false);
+        if (committed.Status is GrantConsumptionStatus.Consumed)
+        {
+            await EmitGrantLifecycleAsync(
+                grant,
+                SecurityAuditOutcome.Accepted,
+                _timeProvider.GetUtcNow(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return committed;
+    }
+
+    private GrantConsumptionResult PreviewConsumption(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
         SecurityEnforcementIntent? intent,
@@ -279,21 +388,48 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
             }
 
             var now = _timeProvider.GetUtcNow();
-            if (now < grant.NotBefore || now >= grant.ExpiresAt)
+            return now < grant.NotBefore || now >= grant.ExpiresAt
+                ? Result(GrantConsumptionStatus.Expired, state.RemainingUses,
+                    "The security grant is outside its validity window.")
+                : !EnforcementMatches(grant, enforcement)
+                ? Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
+                    "The concrete effect does not match the security grant.")
+                : state.RemainingUses == 0
+                    ? Result(GrantConsumptionStatus.Exhausted, 0, "The security grant has no remaining uses.")
+                    : Result(
+                        GrantConsumptionStatus.Consumed,
+                        state.RemainingUses,
+                        "The security grant is ready for consumption.");
+        }
+    }
+
+    private GrantConsumptionResult CommitConsumption(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent? intent,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(grant is not null, "Caller-validated grant evidence is required.");
+        Debug.Assert(enforcement is not null, "Caller-validated enforcement evidence is required.");
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            RequireInitialized();
+            var result = PreviewConsumption(grant, enforcement, intent, cancellationToken);
+            if (result.Status is not GrantConsumptionStatus.Consumed)
             {
-                return Result(GrantConsumptionStatus.Expired, state.RemainingUses,
-                    "The security grant is outside its validity window.");
-            }
-            if (!EnforcementMatches(grant, enforcement))
-            {
-                return Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
-                    "The concrete effect does not match the security grant.");
-            }
-            if (state.RemainingUses == 0)
-            {
-                return Result(GrantConsumptionStatus.Exhausted, 0, "The security grant has no remaining uses.");
+                return result;
             }
 
+            if (!_grants.TryGetValue(grant.Id, out var state))
+            {
+                return Result(GrantConsumptionStatus.Unknown, 0, "The security grant is unknown.");
+            }
+
+            ContentHash? fingerprint = intent is null
+                ? null
+                : SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+            var now = _timeProvider.GetUtcNow();
             var remainingUses = state.RemainingUses - 1;
             var receipt = intent is null
                 ? null
@@ -313,6 +449,35 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                     : "The security grant and enforcement intent were consumed.",
                 receipt);
         }
+    }
+
+    private ValueTask<bool> RefuseConsumptionAuditAsync(
+        SecurityGrant grant,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken) =>
+        SecurityGrantStoreLifecycleAudit.RefuseConsumptionIfRequiredAuditFailedAsync(
+            _auditDispatcher,
+            _auditRecordIds,
+            _permissionOptions,
+            grant,
+            SecurityAuditOutcome.Accepted,
+            occurredAt,
+            cancellationToken);
+
+    private async ValueTask EmitGrantLifecycleAsync(
+        SecurityGrant grant,
+        SecurityAuditOutcome outcome,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        _ = await SecurityGrantStoreLifecycleAudit.RefuseConsumptionIfRequiredAuditFailedAsync(
+            _auditDispatcher,
+            _auditRecordIds,
+            _permissionOptions,
+            grant,
+            outcome,
+            occurredAt,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private void BindManifest(CancellationToken cancellationToken)
@@ -474,6 +639,8 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
             throw Unavailable(SecurityGrantStoreFailureKind.OpenFailed,
                 "The JSON grant store was used before trusted bootstrap initialization.");
         }
+
+        _controlPlaneGate.RequireReadyForWrites();
     }
 
     private GrantState RequireState(Guid? grantId, string context)

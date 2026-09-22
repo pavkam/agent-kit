@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Json;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Registers the durable local JSON security-grant and approval storage leaves.</summary>
 public static class ServiceExtensions
 {
@@ -59,7 +61,7 @@ public static class ServiceExtensions
         /// Repeating the exact registration is idempotent. Other leaf or custom <see cref="ISecurityGrantStore"/>
         /// registrations remain visible so composition rejects ambiguity. Trusted bootstrap resolves the selected interface,
         /// verifies it is <see cref="JsonSecurityGrantStore"/>, and calls
-        /// <see cref="JsonSecurityGrantStore.InitializeAsync"/> before first use.
+        /// bootstrap initialization before first use.
         /// </remarks>
         public IServiceCollection AddJsonSecurityGrantStore(
             JsonSecurityGrantStoreTarget target,
@@ -72,9 +74,18 @@ public static class ServiceExtensions
             if (!services.Any(static descriptor =>
                     descriptor.ServiceType == typeof(ISecurityGrantStore)
                     && descriptor.Lifetime == ServiceLifetime.Singleton
-                    && descriptor.ImplementationType == typeof(JsonSecurityGrantStore)))
+                    && (descriptor.ImplementationType == typeof(JsonSecurityGrantStore)
+                        || descriptor.ImplementationFactory is not null)))
             {
-                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore, JsonSecurityGrantStore>());
+                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore>(static provider =>
+                    new JsonSecurityGrantStore(
+                        provider.GetRequiredService<JsonSecurityGrantStoreTarget>(),
+                        provider.GetRequiredService<JsonSecurityGrantStoreSettings>(),
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetService<ILogger<JsonSecurityGrantStore>>(),
+                        provider.GetService<ISecurityAuditDispatcher>(),
+                        provider.GetService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                        provider.GetService<IOptions<AgentPermissionOptions>>())));
             }
 
             return services;
@@ -118,7 +129,7 @@ public static class ServiceExtensions
         /// <exception cref="InvalidOperationException">The same leaf was already configured with different target or settings evidence.</exception>
         /// <remarks>
         /// Repeating the exact registration is idempotent. Trusted bootstrap resolves <see cref="IApprovalStore"/>, verifies
-        /// it is <see cref="JsonApprovalStore"/>, and calls <see cref="JsonApprovalStore.InitializeAsync"/> before first use.
+        /// it is <see cref="JsonApprovalStore"/>, and completes bootstrap initialization before first use.
         /// </remarks>
         public IServiceCollection AddJsonApprovalStore(
             JsonApprovalStoreTarget target,

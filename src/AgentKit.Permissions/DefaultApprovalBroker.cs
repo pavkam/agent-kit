@@ -128,6 +128,8 @@ public sealed class DefaultApprovalBroker: IApprovalBroker
         {
             ApprovalHandlerResponded responded =>
                 await CommitResponseAsync(request, responded.Response, cancellationToken).ConfigureAwait(false),
+            ApprovalHandlerUnavailable { SafeReason: "An approval handler failed." } =>
+                new ApprovalBrokerUnavailable("The approval channel failed."),
             _ => _headlessApprovalBehavior == HeadlessApprovalBehavior.Defer && _store.Capabilities.IsDurable
                 ? new ApprovalBrokerDeferred(request)
                 : new ApprovalBrokerUnavailable("No approval channel resolved the request."),

@@ -32,14 +32,11 @@ internal ref struct SqliteSecurityGrantCodecReader
         }
 
         var version = ReadByte();
-        if (ReadByte() != expectedKind)
-        {
-            throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
-        }
-
-        return version is _grantEnvelopeVersionOne or _grantEnvelopeVersionTwo
-            ? version
-            : throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
+        return ReadByte() != expectedKind
+            ? throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.")
+            : version is _grantEnvelopeVersionOne or _grantEnvelopeVersionTwo
+                ? version
+                : throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
     }
 
     /// <summary>Reads one RFC 4122 network-order GUID.</summary><returns>The decoded value.</returns><exception cref="InvalidDataException">The envelope is truncated.</exception>
@@ -198,7 +195,7 @@ internal ref struct SqliteSecurityGrantCodecReader
 
     private Guid? ReadOptionalGuid() => ReadBoolean() ? ReadGuid() : null;
 
-    private bool ReadBoolean() => ReadByte() switch
+    internal bool ReadBoolean() => ReadByte() switch
     {
         0 => false,
         1 => true,

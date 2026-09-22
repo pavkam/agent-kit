@@ -10,8 +10,6 @@ using System.Buffers.Binary;
 internal sealed class SqliteSecurityGrantCodecWriter
 {
     private const uint _magic = 0x414B5347;
-    private const byte _grantEnvelopeVersionOne = 1;
-    private const byte _grantEnvelopeVersionTwo = 2;
     private readonly ArrayBufferWriter<byte> _buffer = new();
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private readonly int _maximumBytes;

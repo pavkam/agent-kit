@@ -73,7 +73,7 @@ public sealed class PlanToolTests
             TestData.ToolCallId,
             TestData.Correlation,
             TestData.Identity,
-            TestSupport.TestSecurityEvidence.Authorization(TestData.AgentId, TestData.SessionId, TestData.Correlation, TestData.Identity),
+            TestSecurityEvidence.Authorization(TestData.AgentId, TestData.SessionId, TestData.Correlation, TestData.Identity),
             sessionProfile: null);
         var request = new ToolInvocationRequest(context, JsonDocument.Parse( /*lang=json,strict*/"{\"action\":\"get\"}").RootElement, DateTimeOffset.UnixEpoch);
 
@@ -349,7 +349,7 @@ public sealed class PlanToolTests
     }
 
     private static PlanTool Tool(IPlanStateStore store, ISecurityAuthority authority, FixedSecurityRequestIdGenerator? ids = null) => new(store, new FixedSecurityAuthoritySelector(authority), ids ?? new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
-    private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 
 }

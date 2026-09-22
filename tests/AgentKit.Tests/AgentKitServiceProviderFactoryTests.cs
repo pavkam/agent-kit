@@ -576,7 +576,6 @@ public sealed class AgentKitServiceProviderFactoryTests
         _ = services.AddAgentKit();
         CompositionTestData.AddRequiredSecurityGrantStore(services);
         CompositionTestData.AddHookKernelForEngineValidation(services);
-        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         using var provider = CompositionTestData.BuildHostedProvider(services);

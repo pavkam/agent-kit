@@ -234,7 +234,8 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
             new FakeSessionCoordinator(),
             new FakeSecurityProfileSelector(),
             new UnsupportedContextAssembler(),
-            new CaptureTestToolInvoker(),
+            new CaptureTestToolExecutor(),
+            toolCatalogCaptures: null,
             new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])),
             ScriptedModelSelector.Selecting(new ModelDescriptor(
                 new ModelAlias("chat"),

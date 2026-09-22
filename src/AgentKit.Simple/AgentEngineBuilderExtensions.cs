@@ -62,6 +62,8 @@ public static class AgentEngineBuilderExtensions
             var plan = Plan(builder);
             plan.LocalDevelopmentDefaults = true;
             _ = builder.Services.AddInMemorySecurityGrantStore();
+            _ = builder.Services.AddInMemoryApprovalStore();
+            _ = builder.Services.AddInMemorySecurityDecisionStore();
             _ = builder.Services.AddAllowAllSecurityPolicy();
             _ = builder.Services.AddInMemorySessionStore();
             _ = builder.Services.AddInMemorySessionDirectory(new ComponentId("agentkit.simple.session"));

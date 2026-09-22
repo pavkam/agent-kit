@@ -3,12 +3,14 @@
 
 namespace AgentKit.Permissions.Json;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>Persists terminal security decisions as a newline-delimited JSON append-only log.</summary>
 /// <remarks>
 /// Every acknowledged record is flushed before the call returns. Live history is projected during
-/// <see cref="InitializeAsync"/> and updated under one in-process gate. Call <see cref="InitializeAsync"/> once during
+/// trusted bootstrap initialization and updated under one in-process gate. Call bootstrap initialization once during
 /// trusted bootstrap before use.
 /// </remarks>
 public sealed partial class JsonSecurityDecisionStore: ISecurityDecisionStore, IDisposable
@@ -28,6 +30,7 @@ public sealed partial class JsonSecurityDecisionStore: ISecurityDecisionStore, I
     private readonly JsonStoreRoot _root;
     private readonly JsonRecordLog _log;
     private readonly Lock _gate = new();
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
     private readonly List<SecurityDecision> _decisions = [];
     private JsonStoreLock? _exclusive;
     private bool _initialized;
@@ -102,6 +105,20 @@ public sealed partial class JsonSecurityDecisionStore: ISecurityDecisionStore, I
                 _initialized = true;
             }
         });
+
+    /// <summary>Records bootstrap evidence and initializes the decision store under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before initialization completes.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the target is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException"><paramref name="decision"/> is null.</exception>
@@ -245,6 +262,8 @@ public sealed partial class JsonSecurityDecisionStore: ISecurityDecisionStore, I
             throw Unavailable(_openFailed,
                 "The JSON security decision store was used before trusted bootstrap initialization.");
         }
+
+        _controlPlaneGate.RequireReadyForWrites();
     }
 
     private static JsonSecurityDecision Require(JsonSecurityDecision? value, string context) =>

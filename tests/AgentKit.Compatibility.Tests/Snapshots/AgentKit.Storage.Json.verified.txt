@@ -179,8 +179,25 @@ namespace AgentKit.Storage.Json
     }
     public sealed class JsonSecurityGrant : System.IEquatable<AgentKit.Storage.Json.JsonSecurityGrant>
     {
-        public JsonSecurityGrant(System.Guid Id, System.Guid RequestId, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, long PolicyVersion, long RevocationVersion, System.DateTimeOffset NotBefore, System.DateTimeOffset ExpiresAt, int AllowedUses) { }
+        public JsonSecurityGrant(
+                    System.Guid Id,
+                    System.Guid RequestId,
+                    AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope,
+                    AgentKit.Storage.Json.JsonExecutionIdentity Identity,
+                    AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization,
+                    string Audience,
+                    AgentKit.SecurityOperationKind Kind,
+                    AgentKit.SecurityEffect Effect,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources,
+                    string InputFingerprint,
+                    long PolicyVersion,
+                    long RevocationVersion,
+                    System.DateTimeOffset NotBefore,
+                    System.DateTimeOffset ExpiresAt,
+                    int AllowedUses,
+                    System.Guid? ApprovalResponseId = default) { }
         public int AllowedUses { get; init; }
+        public System.Guid? ApprovalResponseId { get; init; }
         public string Audience { get; init; }
         public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }

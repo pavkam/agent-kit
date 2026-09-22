@@ -307,7 +307,7 @@ public sealed class ReadFileToolTests
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
         var tool = TestFactory.Tool(
             fileSystem,
-            new TestSupport.UninvokedSecurityAuthority(),
+            new UninvokedSecurityAuthority(),
             options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
 
         var result = await tool.InvokeAsync(

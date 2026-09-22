@@ -67,6 +67,29 @@ public sealed class SqliteSecurityGrantCodecTests
         _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeEnforcement(tooLarge, _settings));
     }
 
+    /// <summary>Verifies optional approval identity round-trips through version-two grant envelopes.</summary>
+    [Fact]
+    public void EncodeGrant_WhenApprovalIsPresent_RoundTripsApprovalResponseId()
+    {
+        var grant = TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch) with
+        {
+            Approval = new ApprovalResponseId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
+        };
+        var payload = SqliteSecurityGrantCodec.EncodeGrant(grant, _settings);
+        payload[4].ShouldBe((byte) 2);
+        SqliteSecurityGrantCodec.DecodeGrant(payload, _settings).ShouldBe(grant);
+    }
+
+    /// <summary>Verifies version-two grant envelopes without approval decode with a null binding.</summary>
+    [Fact]
+    public void EncodeGrant_WhenApprovalIsAbsent_EncodesVersionTwoWithoutApproval()
+    {
+        var grant = TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch);
+        var payload = SqliteSecurityGrantCodec.EncodeGrant(grant, _settings);
+        payload[4].ShouldBe((byte) 2);
+        SqliteSecurityGrantCodec.DecodeGrant(payload, _settings).Approval.ShouldBeNull();
+    }
+
     /// <summary>Verifies complete captured authorization survives strict grant and enforcement reconstruction.</summary>
     [Fact]
     public void Encode_WhenAuthorizationIsCaptured_PreservesEveryPinnedReference()

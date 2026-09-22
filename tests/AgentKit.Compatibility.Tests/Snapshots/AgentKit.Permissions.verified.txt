@@ -1,4 +1,6 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Json")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Sqlite")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Tests")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Permissions
@@ -8,6 +10,7 @@ namespace AgentKit.Permissions
         public AgentPermissionOptions() { }
         public AgentKit.SecurityAuditDelivery AuditDelivery { get; set; }
         public System.TimeSpan AuditDeliveryTimeout { get; set; }
+        public AgentKit.HeadlessApprovalBehavior HeadlessApprovalBehavior { get; set; }
         public System.TimeSpan MaximumGrantLifetime { get; set; }
         public int MaximumGrantUses { get; set; }
         public AgentKit.SecurityPolicySnapshotReference? PolicySnapshot { get; set; }
@@ -21,18 +24,29 @@ namespace AgentKit.Permissions
     }
     public sealed class DefaultApprovalBroker : AgentKit.IApprovalBroker
     {
-        public DefaultApprovalBroker(AgentKit.IApprovalStore store, AgentKit.IApprovalHandler handler, AgentKit.IApprovalResponderAuthorizer responderAuthorizer, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
+        public DefaultApprovalBroker(AgentKit.IApprovalStore store, AgentKit.IApprovalHandlerDispatcher handlerDispatcher, AgentKit.IApprovalResponderAuthorizer responderAuthorizer, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalResolutionResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultApprovalHandlerDispatcher : AgentKit.IApprovalHandlerDispatcher
+    {
+        public DefaultApprovalHandlerDispatcher(System.Collections.Generic.IEnumerable<AgentKit.IApprovalHandler> handlers) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalHandlerResult> TryResolveAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultSecurityGrantIssuer : AgentKit.ISecurityGrantIssuer
     {
         public DefaultSecurityGrantIssuer(AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SecurityGrant> IssueAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, AgentKit.ApprovalScopeBinding? approvedBinding, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityGrant> IssueAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, AgentKit.ApprovalScopeBinding? approvedBinding, AgentKit.ApprovalResponseId? approvalResponseId = default, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultSecurityPolicySelector : AgentKit.ISecurityPolicySelector
     {
         public DefaultSecurityPolicySelector(AgentKit.ISecurityPolicyCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicySnapshotResult> SelectAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultSecurityRevocationGeneration : AgentKit.ISecurityRevocationGeneration
+    {
+        public DefaultSecurityRevocationGeneration(Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityRevocationVersion> GetCurrentAsync(System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DenyAllSecurityAuthority : AgentKit.ISecurityAuthority
     {
@@ -43,9 +57,13 @@ namespace AgentKit.Permissions
     }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
-        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityGrantIssuer grantIssuer, AgentKit.ISecurityDecisionStore decisionStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityGrantIssuer grantIssuer, AgentKit.ISecurityDecisionStore decisionStore, AgentKit.ISecurityRevocationGeneration revocationGeneration, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.ISecurityPolicySelector policySelector, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null, AgentKit.IIdentityValidationPolicy? identityValidation = null) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class SecurityGrantStoreLifecycleAudit
+    {
+        public static System.Threading.Tasks.ValueTask<bool> RefuseConsumptionIfRequiredAuditFailedAsync(AgentKit.ISecurityAuditDispatcher? dispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId>? auditRecordIds, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions>? options, AgentKit.SecurityGrant grant, AgentKit.SecurityAuditOutcome outcome, System.DateTimeOffset occurredAt, System.Threading.CancellationToken cancellationToken) { }
     }
     public sealed class SecurityPolicyCatalog : AgentKit.ISecurityPolicyCatalog
     {
@@ -68,6 +86,8 @@ namespace AgentKit.Permissions
                 where TCatalog :  class, AgentKit.ISecurityPolicyCatalog { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSecurityPolicySelector<TSelector>()
                 where TSelector :  class, AgentKit.ISecurityPolicySelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddApprovalHandler<THandler>()
+                where THandler :  class, AgentKit.IApprovalHandler { }
         }
     }
     public sealed class WorkspaceScopedFileAccessPolicy : AgentKit.ISecurityPolicy

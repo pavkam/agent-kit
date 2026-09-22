@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Sqlite;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Registers the durable local SQLite security-grant storage leaf.</summary>
 public static class ServiceExtensions
 {
@@ -64,7 +66,7 @@ public static class ServiceExtensions
         /// <remarks>
         /// Repeating the exact registration is idempotent. Other leaf or custom <see cref="ISecurityGrantStore"/>
         /// registrations remain visible so composition rejects ambiguity. Trusted bootstrap resolves the selected interface,
-        /// verifies it is <see cref="SqliteSecurityGrantStore"/>, and calls <see cref="SqliteSecurityGrantStore.InitializeAsync"/>.
+        /// verifies it is <see cref="SqliteSecurityGrantStore"/>, and calls bootstrap initialization before first use.
         /// </remarks>
         public IServiceCollection AddSqliteSecurityGrantStore(
             SqliteSecurityGrantStoreTarget target,
@@ -97,9 +99,18 @@ public static class ServiceExtensions
             if (!services.Any(static descriptor =>
                     descriptor.ServiceType == typeof(ISecurityGrantStore)
                     && descriptor.Lifetime == ServiceLifetime.Singleton
-                    && descriptor.ImplementationType == typeof(SqliteSecurityGrantStore)))
+                    && (descriptor.ImplementationType == typeof(SqliteSecurityGrantStore)
+                        || descriptor.ImplementationFactory is not null)))
             {
-                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore, SqliteSecurityGrantStore>());
+                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore>(static provider =>
+                    new SqliteSecurityGrantStore(
+                        provider.GetRequiredService<SqliteSecurityGrantStoreTarget>(),
+                        provider.GetRequiredService<SqliteSecurityGrantStoreSettings>(),
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetService<ILogger<SqliteSecurityGrantStore>>(),
+                        provider.GetService<ISecurityAuditDispatcher>(),
+                        provider.GetService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                        provider.GetService<IOptions<AgentPermissionOptions>>())));
             }
             return services;
 

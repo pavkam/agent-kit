@@ -30,7 +30,7 @@ namespace AgentKit.Tools.Skill
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSkillTool(System.Action<AgentKit.Tools.Skill.SkillToolOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSkillTool(System.Action<AgentKit.Tools.Skill.SkillToolOptions>? configure = null, AgentKit.ComponentKey<AgentKit.IContextAssembler>? assemblerKey = default) { }
         }
     }
     public sealed class SkillCatalogSnapshot : System.IEquatable<AgentKit.Tools.Skill.SkillCatalogSnapshot>
@@ -55,10 +55,15 @@ namespace AgentKit.Tools.Skill
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class SkillInventoryContextContributor : AgentKit.IContextContributor
+    {
+        public SkillInventoryContextContributor(AgentKit.Tools.Skill.ISkillCatalogContextSource catalog) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class SkillTool : AgentKit.ITool
     {
         public static readonly AgentKit.ToolId Id;
-        public SkillTool(AgentKit.IFileSnapshotReader reader, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, AgentKit.Tools.Skill.ISkillCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Skill.SkillToolOptions> options) { }
+        public SkillTool(AgentKit.IFileSnapshotReader reader, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, AgentKit.Tools.Skill.ISkillCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Skill.SkillToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

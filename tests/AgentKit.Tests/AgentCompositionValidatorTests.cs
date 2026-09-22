@@ -62,6 +62,8 @@ public sealed class AgentCompositionValidatorTests
         var applicationKey = new ThrowingServiceKey();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        CompositionTestData.AddFacadeRegistrationRequirements(services, includeGrantStore: false);
+        _ = services.RemoveAll<ISecurityProfileSelector>();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         HookCompositionTestSupport.TryAddDefaultHookKernel(services);
@@ -87,6 +89,8 @@ public sealed class AgentCompositionValidatorTests
         var grantStore = new StubSecurityGrantStore();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        CompositionTestData.AddFacadeRegistrationRequirements(services, includeGrantStore: false);
+        _ = services.RemoveAll<ISecurityProfileSelector>();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         HookCompositionTestSupport.TryAddDefaultHookKernel(services);
@@ -206,6 +210,8 @@ public sealed class AgentCompositionValidatorTests
     {
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        CompositionTestData.AddFacadeRegistrationRequirements(services);
+        _ = services.RemoveAll<ISecurityProfileSelector>();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var snapshot = ComponentRegistrationSnapshot.Capture(services);

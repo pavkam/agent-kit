@@ -100,7 +100,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         store.Dispose();
 
@@ -113,7 +113,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         store.Dispose();
         var request = TestApprovalFactory.CreateRequest(_now);
 
@@ -311,7 +311,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         using var source = new CancellationTokenSource();
         await source.CancelAsync();
@@ -337,7 +337,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
 
         using (var store = new JsonApprovalStore(CreateTarget(root.Path, instanceId), settings, clock))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             (await store.CreateAsync(request, TestContext.Current.CancellationToken))
                 .ShouldBe(ApprovalStoreCreateResult.Created);
             (await store.ResolveAsync(response, TestContext.Current.CancellationToken))
@@ -346,7 +346,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
 
         using var reopened = new JsonApprovalStore(
             CreateTarget(root.Path, instanceId, JsonStoreOpenMode.OpenExisting), settings, clock);
-        await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+        await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var read = await reopened.ReadAsync(request.Id, TestContext.Current.CancellationToken);
         read.Request.ShouldBe(request);
@@ -363,7 +363,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var request = TestApprovalFactory.CreateRequest(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         }
 
@@ -373,7 +373,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
 
         using var recovered = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting,
             recoveryMode: JsonStoreRecoveryMode.RecoverTornAppends, settings: settings);
-        await recovered.InitializeAsync(TestContext.Current.CancellationToken);
+        await recovered.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var read = await recovered.ReadAsync(request.Id, TestContext.Current.CancellationToken);
         read.Request.ShouldBeNull();
@@ -390,7 +390,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var request = TestApprovalFactory.CreateRequest(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         }
 
@@ -414,7 +414,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var settings = JsonApprovalStoreSettings.CreateDefault();
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(TestApprovalFactory.CreateRequest(_now), TestContext.Current.CancellationToken);
         }
 
@@ -464,7 +464,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var response = TestApprovalFactory.CreateResponse(request);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
             _ = await store.ResolveAsync(response, TestContext.Current.CancellationToken);
         }
@@ -491,7 +491,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var request = TestApprovalFactory.CreateRequest(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         }
 
@@ -519,7 +519,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var request = TestApprovalFactory.CreateRequest(_now);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         }
 
@@ -575,7 +575,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         var response = TestApprovalFactory.CreateResponse(request);
         using (var store = CreateStore(root.Path, instanceId: instanceId, settings: settings))
         {
-            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
             _ = await store.ResolveAsync(response, TestContext.Current.CancellationToken);
         }
@@ -584,7 +584,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         beforeCompaction.ShouldBe(2);
 
         using var reopened = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting, settings: settings);
-        await reopened.InitializeAsync(TestContext.Current.CancellationToken);
+        await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         root.LogLineCount("approvals").ShouldBe(beforeCompaction);
         var read = await reopened.ReadAsync(request.Id, TestContext.Current.CancellationToken);
@@ -651,7 +651,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
 
         (await store.CreateAsync(request, TestContext.Current.CancellationToken))
@@ -669,7 +669,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         var countAfterFirst = root.LogLineCount("approvals");
@@ -687,7 +687,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         var response = TestApprovalFactory.CreateResponse(request);
         var countBefore = root.LogLineCount("approvals");
@@ -704,7 +704,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         var response = TestApprovalFactory.CreateResponse(request);
@@ -724,7 +724,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         var response = TestApprovalFactory.CreateResponse(request);
@@ -748,7 +748,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         using var root = new TestStoreRoot();
         var logger = new RecordingApprovalStoreLogger();
         using var store = CreateStore(root.Path, logger: logger);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
 
         Activity? stopped = null;
@@ -795,7 +795,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
         using var root = new TestStoreRoot();
         var logger = new RecordingApprovalStoreLogger();
         using var store = CreateStore(root.Path, logger: logger);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
         _ = await store.CreateAsync(request, TestContext.Current.CancellationToken);
         var response = TestApprovalFactory.CreateResponse(request);
@@ -820,7 +820,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path, logger: new ThrowingApprovalStoreLogger());
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
 
         await Should.NotThrowAsync(async () => await store.CreateAsync(request, TestContext.Current.CancellationToken));
@@ -834,7 +834,7 @@ public sealed class JsonApprovalStoreTests: ApprovalStoreConformanceTests<JsonAp
     {
         using var root = new TestStoreRoot();
         using var store = CreateStore(root.Path);
-        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
         var request = TestApprovalFactory.CreateRequest(_now);
 
         await Should.NotThrowAsync(async () => await store.CreateAsync(request, TestContext.Current.CancellationToken));

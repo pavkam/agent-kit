@@ -70,6 +70,12 @@ internal static class AgentCompositionValidator
         var profileReader = Resolve<IAgentRunProfilePublicationReader>(
             provider, diagnostics, "agentkit.run-profile-reader.missing");
         _ = Resolve<ISecurityProfileSelector>(provider, diagnostics, "agentkit.security-profile-selector.missing");
+        _ = Resolve<ISecurityAuthoritySelector>(provider, diagnostics, "agentkit.security-authority-selector.missing");
+        _ = Resolve<ISecurityPolicyCatalog>(provider, diagnostics, "agentkit.security-policy-catalog.missing");
+        _ = Resolve<IApprovalBroker>(provider, diagnostics, "agentkit.approval-broker.missing");
+        _ = Resolve<ISecurityAuditDispatcher>(provider, diagnostics, "agentkit.security-audit-dispatcher.missing");
+        _ = Resolve<IApprovalStore>(provider, diagnostics, "agentkit.approval-store.missing");
+        _ = Resolve<ISecurityDecisionStore>(provider, diagnostics, "agentkit.security-decision-store.missing");
         _ = Resolve<TimeProvider>(provider, diagnostics, "agentkit.time.missing");
         _ = Resolve<IIdentifierGenerator<RunId>>(provider, diagnostics, "agentkit.runid.missing");
         _ = Resolve<IIdentifierGenerator<OperationId>>(provider, diagnostics, "agentkit.operationid.missing");
@@ -153,6 +159,12 @@ internal static class AgentCompositionValidator
         ValidateSingularRegistration<IAgentDefinitionCatalog>(snapshot, diagnostics, "agentkit.catalog");
         ValidateSingularRegistration<IAgentRunProfilePublicationReader>(snapshot, diagnostics, "agentkit.run-profile-reader");
         ValidateSingularRegistration<ISecurityProfileSelector>(snapshot, diagnostics, "agentkit.security-profile-selector");
+        ValidateSingularRegistration<ISecurityAuthoritySelector>(snapshot, diagnostics, "agentkit.security-authority-selector");
+        ValidateSingularRegistration<ISecurityPolicyCatalog>(snapshot, diagnostics, "agentkit.security-policy-catalog");
+        ValidateSingularRegistration<IApprovalBroker>(snapshot, diagnostics, "agentkit.approval-broker");
+        ValidateSingularRegistration<ISecurityAuditDispatcher>(snapshot, diagnostics, "agentkit.security-audit-dispatcher");
+        ValidateSingularRegistration<IApprovalStore>(snapshot, diagnostics, "agentkit.approval-store");
+        ValidateSingularRegistration<ISecurityDecisionStore>(snapshot, diagnostics, "agentkit.security-decision-store");
         ValidateSingularRegistration<ISecurityGrantStore>(snapshot, diagnostics, "agentkit.security-grant-store");
         ValidateSingularRegistration<TimeProvider>(snapshot, diagnostics, "agentkit.time");
         ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");

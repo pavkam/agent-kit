@@ -21,10 +21,18 @@ namespace AgentKit.Permissions.InMemory
     {
         public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
         public InMemorySecurityGrantStore(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.InMemory.InMemorySecurityGrantStore>? logger) { }
+        public InMemorySecurityGrantStore(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.InMemory.InMemorySecurityGrantStore>? logger, AgentKit.ISecurityAuditDispatcher? auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId>? auditRecordIds, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions>? permissionOptions) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantRevocationResult> RevokeAsync(AgentKit.GrantId grantId, AgentKit.RevocationReason reason, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemorySecurityRevocationGeneration : AgentKit.ISecurityRevocationGeneration
+    {
+        public InMemorySecurityRevocationGeneration() { }
+        public InMemorySecurityRevocationGeneration(long initialVersion) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityRevocationVersion> GetCurrentAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public void SetCurrent(long version) { }
     }
     public static class ServiceExtensions
     {

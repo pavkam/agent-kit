@@ -32,7 +32,7 @@ public sealed class SqliteSecurityGrantStoreConformanceFixture: ISecurityGrantSt
                 SqliteSecurityGrantStoreSettings.CreateDefault());
             _provider = services.BuildServiceProvider(validateScopes: true);
             _store = _provider.GetRequiredService<ISecurityGrantStore>().ShouldBeOfType<SqliteSecurityGrantStore>();
-            await _store.InitializeAsync(cancellationToken);
+            await _store.InitializeAsync(SecurityControlPlaneTestBootstrap.Create(_timeProvider), cancellationToken);
         }
         return _store;
     }

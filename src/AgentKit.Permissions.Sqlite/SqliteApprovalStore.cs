@@ -3,6 +3,8 @@
 
 namespace AgentKit.Permissions.Sqlite;
 
+using AgentKit.Permissions;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>Persists approval requests and terminal responses in one fixed local SQLite database.</summary>
@@ -10,7 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// The singleton retains no connection. Every operation opens and validates the exact configured store identity and schema,
 /// then uses an immediate SQLite transaction for one atomic state transition. SQLite coordinates processes on one host but
 /// does not provide distributed fencing. Requests and terminal responses are retained indefinitely. Call
-/// <see cref="InitializeAsync"/> explicitly during trusted bootstrap.
+/// bootstrap initialization explicitly during trusted host startup.
 /// </remarks>
 public sealed partial class SqliteApprovalStore: IApprovalStore
 {
@@ -23,6 +25,7 @@ public sealed partial class SqliteApprovalStore: IApprovalStore
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SqliteApprovalStore> _logger;
     private readonly Lock _gate = new();
+    private readonly SecurityControlPlaneStoreGate _controlPlaneGate = new();
     private bool _initialized;
 
     /// <summary>Initializes a store for one host-authorized fixed target without opening or creating it.</summary>
@@ -111,6 +114,20 @@ public sealed partial class SqliteApprovalStore: IApprovalStore
                 _initialized = true;
             }
         });
+
+    /// <summary>Records bootstrap evidence and initializes the approval store under host authorization.</summary>
+    /// <param name="bootstrap">The bounded bootstrap capability evidence supplied by the host.</param>
+    /// <param name="cancellationToken">Cancels before initialization completes.</param>
+    /// <returns>A task completed after bootstrap evidence is recorded and the target is ready.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="bootstrap"/> is null.</exception>
+    public async ValueTask InitializeAsync(
+        SecurityControlPlaneBootstrap bootstrap,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        _controlPlaneGate.CompleteBootstrap(bootstrap);
+    }
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
@@ -414,6 +431,8 @@ public sealed partial class SqliteApprovalStore: IApprovalStore
                     "The SQLite approval store was used before trusted bootstrap initialization.");
             }
         }
+
+        _controlPlaneGate.RequireReadyForWrites();
     }
 
     private static void VerifyDigest(ReadOnlySpan<byte> payload, ReadOnlySpan<byte> digest)
