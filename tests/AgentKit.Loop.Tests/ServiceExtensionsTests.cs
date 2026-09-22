@@ -222,7 +222,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
         _ = services.AddSingleton<ISecurityProfileSelector, FakeSecurityProfileSelector>();
         _ = services.AddAgentContext();
-        _ = services.AddSingleton<IToolInvoker>(new FakeToolInvoker(_ => TestFactory.SuccessResult()));
+        _ = services.AddSingleton<ILegacyToolCallOrchestrator>(new FakeToolInvoker(_ => TestFactory.SuccessResult()));
 
         // The loop no longer owns model selection, so a composable graph must
         // supply the provider-runtime collaborators separately. AddAgentLoop

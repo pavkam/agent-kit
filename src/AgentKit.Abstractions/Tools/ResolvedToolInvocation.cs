@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>
-/// The result of one <see cref="IToolInvoker"/> attempt: the exact tool
+/// The result of one <see cref="ILegacyToolCallOrchestrator"/> attempt: the exact tool
 /// reference the invoker resolved (or left unresolved) the requested call
 /// against, the captured projection-policy reference in effect for it, and
 /// the terminal invocation outcome.

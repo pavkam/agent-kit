@@ -571,7 +571,7 @@ public sealed class ServiceExtensionsTests
 
         _ = provider.GetRequiredService<IToolCatalog>().ShouldBeOfType<ToolCatalog>();
         _ = provider.GetRequiredService<IToolAuthorizer>().ShouldBeOfType<AllowListToolAuthorizer>();
-        _ = provider.GetRequiredService<IToolInvoker>().ShouldBeOfType<DefaultToolInvoker>();
+        _ = provider.GetRequiredService<ILegacyToolCallOrchestrator>().ShouldBeOfType<DefaultToolInvoker>();
         _ = provider.GetRequiredService<IToolResultProjectionPolicyCatalog>().ShouldBeOfType<ToolResultProjectionPolicyCatalog>();
     }
 
@@ -592,7 +592,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentTools();
         using var provider = services.BuildServiceProvider();
 
-        provider.GetServices<IToolInvoker>().Count().ShouldBe(1);
+        provider.GetServices<ILegacyToolCallOrchestrator>().Count().ShouldBe(1);
     }
 
     [Fact]

@@ -4515,6 +4515,10 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.LanguageQueryResult> QueryAsync(AgentKit.LanguageQueryRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ILegacyToolCallOrchestrator
+    {
+        System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.LegacyToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ILlmModel
     {
         AgentKit.ModelAlias Alias { get; }
@@ -4841,7 +4845,7 @@ namespace AgentKit
     }
     public interface IToolInvoker
     {
-        System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.LegacyToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolInvokerLease : System.IAsyncDisposable
     {

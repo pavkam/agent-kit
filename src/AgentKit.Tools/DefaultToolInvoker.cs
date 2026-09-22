@@ -4,7 +4,7 @@
 namespace AgentKit.Tools;
 
 /// <summary>
-/// The default <see cref="IToolInvoker"/>: resolves a call's requested
+/// The default <see cref="ILegacyToolCallOrchestrator"/>: resolves a call's requested
 /// <see cref="ToolReference"/> against the registered <see cref="IToolCatalog"/>,
 /// authorizes it through the registered <see cref="IToolAuthorizer"/>, and
 /// invokes the resolved tool, translating every reachable failure into an
@@ -31,7 +31,7 @@ namespace AgentKit.Tools;
 /// <see cref="ToolTerminalStatus.UnknownTool"/> with an unresolved reference; it is never treated as resolved
 /// merely because the text was syntactically usable as a <see cref="ToolId"/>.
 /// </remarks>
-public sealed class DefaultToolInvoker: IToolInvoker
+public sealed class DefaultToolInvoker: ILegacyToolCallOrchestrator
 {
     /// <summary>
     /// The bounds used to compile a resolved tool's declared input schema and validate one call's arguments

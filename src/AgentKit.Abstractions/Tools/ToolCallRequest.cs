@@ -6,7 +6,7 @@ namespace AgentKit;
 /// <summary>The immutable raw call request that an <see cref="IToolExecutor"/> resolves, validates, authorizes, and invokes.</summary>
 /// <remarks>
 /// This is the spec-shaped call request consumed by the tool-executor pipeline. It is distinct from the reduced
-/// <see cref="LegacyToolCallRequest"/> still consumed by the legacy <see cref="IToolInvoker"/> orchestrator until
+/// <see cref="LegacyToolCallRequest"/> still consumed by <see cref="ILegacyToolCallOrchestrator"/> until
 /// every tool package migrates onto this runtime. <see cref="RawArguments"/> are bounded, provider-supplied,
 /// unparsed bytes; bounding, parsing, canonical schema validation, and authorization all happen downstream in the
 /// executor pipeline described by the tool-call lifecycle contract. This type is an immutable value object with

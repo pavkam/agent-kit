@@ -4,35 +4,27 @@
 namespace AgentKit;
 
 /// <summary>
-/// Orchestrates one complete tool call: resolving <see cref="LegacyToolCallRequest.Tool"/>
-/// against an <see cref="IToolCatalog"/>, authorizing it through an
-/// <see cref="IToolAuthorizer"/>, invoking the resolved <see cref="ITool"/>,
-/// and translating every outcome — including an unknown tool, a denial, or
-/// an unexpected exception — into one <see cref="ResolvedToolInvocation"/>.
+/// Performs one already validated and authorized tool invocation attempt for a resolved descriptor.
 /// </summary>
 /// <remarks>
-/// An invoker composes exactly one <see cref="IToolCatalog"/> and one
-/// <see cref="IToolAuthorizer"/>; it never re-implements catalog resolution
-/// or authorization policy inline. It never lets a tool's thrown exception
-/// escape as a fault: every reachable failure — unknown tool, denied
-/// authorization, or an unhandled exception from
-/// <see cref="ITool.InvokeAsync"/> — becomes an ordinary
-/// <see cref="ToolInvocationResult"/> whose <see cref="ToolCallOutcome.Kind"/>
-/// classifies which of those happened, so a caller (typically an agent
-/// loop) always receives exactly one terminal result per call regardless of
-/// how it failed. An <see cref="OperationCanceledException"/> propagates only
-/// when the caller-provided cancellation token is signaled; an implementation
-/// that throws one without caller cancellation is normalized as a tool failure.
+/// A spec-shaped invoker never discovers tools, authorizes calls, or records terminal session state.
+/// It receives a bounded <see cref="ToolInvocationContext"/> and returns raw <see cref="ToolInvocationResult"/>
+/// evidence for the executor to normalize into an authoritative <see cref="ToolCallResult"/>.
+/// An <see cref="OperationCanceledException"/> propagates only when the caller-supplied cancellation token
+/// is signaled; an implementation-thrown cancellation without caller cancellation is normalized as a failed
+/// invocation by the caller.
 /// </remarks>
 public interface IToolInvoker
 {
-    /// <summary>Resolves, authorizes, and invokes one tool call.</summary>
-    /// <param name="request">The call request, whose <see cref="LegacyToolCallRequest.Tool"/> may be unresolved.</param>
-    /// <param name="cancellationToken">A token used to cancel the call.</param>
-    /// <returns>A task producing the resolved-or-not tool reference alongside the terminal outcome and result content.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <summary>Invokes one authorized attempt for the resolved tool named in <paramref name="context"/>.</summary>
+    /// <param name="context">The restricted immutable context for this attempt.</param>
+    /// <param name="cancellationToken">Propagates caller cancellation for this attempt.</param>
+    /// <returns>The raw terminal outcome and normalized content parts for this attempt.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
     /// <exception cref="OperationCanceledException">
-    /// <paramref name="cancellationToken"/> is canceled before the call settles.
+    /// <paramref name="cancellationToken"/> is canceled before the attempt settles.
     /// </exception>
-    public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default);
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default);
 }

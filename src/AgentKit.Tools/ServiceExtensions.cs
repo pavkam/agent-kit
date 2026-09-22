@@ -324,14 +324,14 @@ public static class ServiceExtensions
 
             services.TryAddSingleton<IToolAuthorizer, AllowListToolAuthorizer>();
             services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalog(provider.GetServices<ITool>()));
-            services.TryAddSingleton<IToolInvoker>(static provider => new DefaultToolInvoker(
+            services.TryAddSingleton<ILegacyToolCallOrchestrator>(static provider => new DefaultToolInvoker(
                 provider.GetRequiredService<IToolCatalog>(),
                 provider.GetRequiredService<IToolAuthorizer>(),
                 provider.GetRequiredService<ILogger<DefaultToolInvoker>>(),
                 provider.GetRequiredService<IToolSchemaEngine>(),
                 provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits));
             services.TryAddSingleton<IToolExecutor>(static provider => new LegacyToolInvokerExecutor(
-                provider.GetRequiredService<IToolInvoker>(),
+                provider.GetRequiredService<ILegacyToolCallOrchestrator>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<ILogger<LegacyToolInvokerExecutor>>()));
             services.TryAddSingleton<IToolRunCatalogCaptureFactory, LegacyToolRunCatalogCaptureFactory>();

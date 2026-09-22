@@ -17,7 +17,7 @@ Owning documents: [Tools](../architecture/tools.md),
 - [x] WS4-C1 executor and batch contracts
 - [x] WS4-C2 loop and engine consume `IToolExecutor` through a legacy adapter
 - [x] WS4-C3 catalog capture coordinator
-- [ ] WS4-C4 spec-shaped `IToolInvoker` with `ITool` bridge
+- [x] WS4-C4 spec-shaped `IToolInvoker` with `ITool` bridge
 - [ ] WS4-C5a `DefaultToolExecutor` single-call pipeline
 - [ ] WS4-C5b scheduler
 - [ ] WS4-C5c retry policy

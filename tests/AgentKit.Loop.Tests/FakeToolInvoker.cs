@@ -4,11 +4,11 @@
 namespace AgentKit.Loop.Tests;
 
 /// <summary>
-/// An <see cref="IToolInvoker"/> test double that answers every call
+/// An <see cref="ILegacyToolCallOrchestrator"/> test double that answers every call
 /// through a caller-supplied handler and records every request it
 /// received.
 /// </summary>
-internal sealed class FakeToolInvoker: IToolInvoker
+internal sealed class FakeToolInvoker: ILegacyToolCallOrchestrator
 {
     private readonly Func<LegacyToolCallRequest, ResolvedToolInvocation> _handler;
 

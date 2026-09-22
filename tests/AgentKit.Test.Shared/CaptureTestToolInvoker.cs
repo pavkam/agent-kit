@@ -3,7 +3,7 @@
 
 namespace AgentKit.TestSupport;
 
-/// <summary>Detects accidental invocation or disposal while testing retained invoker acquisitions.</summary>
+/// <summary>Detects accidental invocation while testing retained per-tool invoker acquisitions.</summary>
 /// <remarks>Capture and lease operations must preserve this instance without invoking or directly disposing it.</remarks>
 public sealed class CaptureTestToolInvoker: IToolInvoker, IAsyncDisposable
 {
@@ -19,14 +19,16 @@ public sealed class CaptureTestToolInvoker: IToolInvoker, IAsyncDisposable
     public int Disposals => Volatile.Read(ref _disposals);
 
     /// <summary>Fails if a capture or lease attempts to execute a tool.</summary>
-    /// <param name="request">The nonnull request whose unexpected arrival is counted.</param>
+    /// <param name="context">The nonnull context whose unexpected arrival is counted.</param>
     /// <param name="cancellationToken">Unused because this fake must never be invoked.</param>
     /// <returns>No result; valid calls always throw.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
     /// <exception cref="InvalidOperationException">A tool invocation was attempted.</exception>
-    public Task<ResolvedToolInvocation> InvokeAsync(LegacyToolCallRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
         _ = Interlocked.Increment(ref _invocations);
         throw new InvalidOperationException("A source capture must not invoke its tools.");
     }

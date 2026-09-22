@@ -33,10 +33,10 @@ public sealed class ToolInvokerLeaseTests: ToolInvokerLeaseConformanceTests
     public async Task InvokeAsync_WhenCalledDirectly_ThrowsBecauseACaptureMustNeverInvokeItsTools()
     {
         var invoker = new CaptureTestToolInvoker();
-        var request = TestFactory.CallRequest(ToolCaptureTestData.Descriptor().Id);
+        var context = ToolCaptureTestData.InvocationContext();
 
         _ = await Should.ThrowAsync<InvalidOperationException>(
-            async () => await invoker.InvokeAsync(request, TestContext.Current.CancellationToken));
+            async () => await invoker.InvokeAsync(context, TestContext.Current.CancellationToken));
 
         invoker.Invocations.ShouldBe(1);
     }

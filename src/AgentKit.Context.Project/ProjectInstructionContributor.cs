@@ -7,14 +7,14 @@ namespace AgentKit.Context.Project;
 public sealed class ProjectInstructionContributor: IContextContributor
 {
     private readonly IFileSystem _fileSystem;
-    private readonly ISecurityAuthority _securityAuthority;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ProjectInstructionOptions _options;
 
     /// <summary>Initializes the contributor.</summary>
     /// <param name="fileSystem">The protected file-system boundary used for reads.</param>
-    /// <param name="securityAuthority">The authority used to authorize each read.</param>
+    /// <param name="authoritySelector">The selector used to resolve the captured authority for each read.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The clock used to bound authorization.</param>
     /// <param name="options">Validated discovery options captured at construction.</param>
@@ -22,13 +22,13 @@ public sealed class ProjectInstructionContributor: IContextContributor
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public ProjectInstructionContributor(
         IFileSystem fileSystem,
-        ISecurityAuthority securityAuthority,
+        ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         IOptions<ProjectInstructionOptions> options)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
-        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -45,7 +45,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
             ArgumentException.ThrowIfNullOrWhiteSpace(filename);
         }
         _fileSystem = fileSystem;
-        _securityAuthority = securityAuthority;
+        _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
@@ -88,13 +88,20 @@ public sealed class ProjectInstructionContributor: IContextContributor
             authorization.Scope,
             toolCallId: null,
             authorization.Identity,
+            authorization,
             _fileSystem.SecurityAudience,
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
             [FileSecurityBinding.Resource(path)],
             FileSecurityBinding.ReadFingerprint(path),
             _timeProvider.GetUtcNow().AddMinutes(1));
-        var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return null;
+        }
+
+        var decision = await selected.Authority.AuthorizeAsync(securityRequest, hooks: null, cancellationToken).ConfigureAwait(false);
         if (decision is not SecurityAllowed allowed)
         {
             return null;

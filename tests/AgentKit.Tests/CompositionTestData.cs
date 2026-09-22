@@ -155,7 +155,6 @@ internal static class CompositionTestData
         services.TryAddSingleton<ISessionCoordinator, UnsupportedSessionCoordinator>();
         services.TryAddSingleton<ISessionRunCoordinator, UnsupportedSessionRunCoordinator>();
         services.TryAddSingleton<IContextAssembler, UnsupportedContextAssembler>();
-        services.TryAddSingleton<IToolInvoker, CaptureTestToolInvoker>();
         services.TryAddSingleton<IToolExecutor, CaptureTestToolExecutor>();
         services.TryAddSingleton<IModelCatalog>(
             new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));

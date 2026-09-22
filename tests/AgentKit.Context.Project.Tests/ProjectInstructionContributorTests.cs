@@ -15,7 +15,7 @@ public sealed class ProjectInstructionContributorTests
         fileSystem.Seed("AGENTS.md", "project rules");
         var contributor = new ProjectInstructionContributor(
             fileSystem,
-            new AllowAllSecurityAuthority(new InMemoryGrantStore()),
+            new FixedSecurityAuthoritySelector(new AllowAllSecurityAuthority(new InMemoryGrantStore())),
             new GuidSecurityRequestIdGenerator(),
             TimeProvider.System,
             Options.Create(new ProjectInstructionOptions()));

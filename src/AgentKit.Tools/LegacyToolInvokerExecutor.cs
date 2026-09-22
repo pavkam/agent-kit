@@ -7,7 +7,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 
 /// <summary>
-/// Adapts the legacy <see cref="IToolInvoker"/> orchestrator to <see cref="IToolExecutor"/> by executing calls
+/// Adapts the legacy <see cref="ILegacyToolCallOrchestrator"/> to <see cref="IToolExecutor"/> by executing calls
 /// sequentially and mapping results into <see cref="ToolCallResult"/> records.
 /// </summary>
 /// <remarks>
@@ -16,7 +16,7 @@ using System.Diagnostics;
 /// </remarks>
 public sealed class LegacyToolInvokerExecutor: IToolExecutor
 {
-    private readonly IToolInvoker _orchestrator;
+    private readonly ILegacyToolCallOrchestrator _orchestrator;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<LegacyToolInvokerExecutor> _logger;
 
@@ -26,7 +26,7 @@ public sealed class LegacyToolInvokerExecutor: IToolExecutor
     /// <param name="logger">The type-specific structured logger.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public LegacyToolInvokerExecutor(
-        IToolInvoker orchestrator,
+        ILegacyToolCallOrchestrator orchestrator,
         TimeProvider timeProvider,
         ILogger<LegacyToolInvokerExecutor> logger)
     {

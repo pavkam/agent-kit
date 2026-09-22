@@ -11,9 +11,8 @@ namespace AgentKit;
 /// <remarks>
 /// <para>
 /// A tool never authorizes itself, never records its own audit trail, and
-/// never decides whether its call was accepted; <see cref="IToolInvoker"/>
-/// owns resolving a call to a tool, authorizing it through
-/// <see cref="IToolAuthorizer"/>, and recording the terminal result. A tool
+/// never decides whether its call was accepted; the tool runtime owns resolution,
+/// authorization, and terminal recording. A tool
 /// implementation is responsible only for parsing and validating its own
 /// arguments and producing a result, and it must never crash the invoker on
 /// malformed input — malformed arguments are reported through

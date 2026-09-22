@@ -5,7 +5,7 @@ namespace AgentKit.Context.Project
 {
     public sealed class ProjectInstructionContributor : AgentKit.IContextContributor
     {
-        public ProjectInstructionContributor(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Project.ProjectInstructionOptions> options) { }
+        public ProjectInstructionContributor(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Project.ProjectInstructionOptions> options) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ProjectInstructionOptions

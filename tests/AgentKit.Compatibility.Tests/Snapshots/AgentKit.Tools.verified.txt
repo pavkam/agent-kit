@@ -15,7 +15,7 @@ namespace AgentKit.Tools
         public AllowListToolAuthorizer(Microsoft.Extensions.Options.IOptions<AgentKit.Tools.AgentToolsOptions> options) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolAuthorizationDecision> AuthorizeAsync(AgentKit.ToolAuthorizationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
-    public sealed class DefaultToolInvoker : AgentKit.IToolInvoker
+    public sealed class DefaultToolInvoker : AgentKit.ILegacyToolCallOrchestrator
     {
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer) { }
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger) { }
@@ -31,7 +31,7 @@ namespace AgentKit.Tools
     }
     public sealed class LegacyToolInvokerExecutor : AgentKit.IToolExecutor
     {
-        public LegacyToolInvokerExecutor(AgentKit.IToolInvoker orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger) { }
+        public LegacyToolInvokerExecutor(AgentKit.ILegacyToolCallOrchestrator orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class LegacyToolRunCatalogCaptureFactory : AgentKit.IToolRunCatalogCaptureFactory

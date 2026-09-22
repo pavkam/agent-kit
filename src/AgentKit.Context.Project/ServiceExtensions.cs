@@ -16,7 +16,7 @@ public static class ServiceExtensions
         /// <param name="configure">Optional discovery bounds.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// Requires <see cref="IFileSystem"/>, <see cref="ISecurityAuthority"/>, and
+        /// Requires <see cref="IFileSystem"/>, <see cref="ISecurityAuthoritySelector"/>, and
         /// <c>AgentKit.Context</c> registration for the same assembler key.
         /// </remarks>
         public IServiceCollection AddProjectInstructionContributor(

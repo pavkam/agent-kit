@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// One complete, immutable request to resolve, authorize, and invoke a
-/// tool by reference — the entry point to <see cref="IToolInvoker"/>,
+/// tool by reference — the entry point to <see cref="ILegacyToolCallOrchestrator"/>,
 /// upstream of <see cref="ToolInvocationRequest"/>.
 /// </summary>
 /// <remarks>
@@ -17,12 +17,12 @@ namespace AgentKit;
 /// knowing only which tool it wants called and with what arguments.
 /// <see cref="Tool"/> is normally unresolved (its <see cref="ToolReference.Id"/>
 /// is null) when it originates from a parsed model response, since a parser
-/// never consults the tool catalog; <see cref="IToolInvoker"/> is responsible
+/// never consults the tool catalog; <see cref="ILegacyToolCallOrchestrator"/> is responsible
 /// for resolving <see cref="ToolReference.ProviderAlias"/> against the
 /// registered catalog before invoking.
 /// </remarks>
 /// <remarks>
-/// This is the reduced legacy call shape consumed by the legacy <see cref="IToolInvoker"/>
+/// This is the reduced legacy call shape consumed by <see cref="ILegacyToolCallOrchestrator"/>
 /// orchestrator; it is distinct from the spec-shaped <see cref="ToolCallRequest"/> consumed by
 /// <see cref="IToolExecutor"/>. It is a deliberately reduced stand-in scheduled for deletion once
 /// every tool package migrates to the spec-shaped runtime (workstream 4, chunk C10a).

@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 
 /// <summary>Test double that adapts <see cref="FakeToolInvoker"/> to <see cref="IToolExecutor"/>.</summary>
-internal sealed class FakeToolExecutor(FakeToolInvoker invoker): IToolExecutor
+internal sealed class FakeToolExecutor(FakeToolInvoker orchestrator): IToolExecutor
 {
     /// <inheritdoc/>
     public async Task<ToolBatchResult> ExecuteAsync(
@@ -41,7 +41,7 @@ internal sealed class FakeToolExecutor(FakeToolInvoker invoker): IToolExecutor
                 legacyContext,
                 arguments,
                 call.RequestedAt);
-            var resolved = await invoker.InvokeAsync(legacyRequest, cancellationToken).ConfigureAwait(false);
+            var resolved = await orchestrator.InvokeAsync(legacyRequest, cancellationToken).ConfigureAwait(false);
             results.Add(TestToolCallResults.FromResolved(call, resolved));
         }
 
