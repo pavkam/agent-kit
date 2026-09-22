@@ -16,7 +16,6 @@ internal sealed class ProjectReferenceGraph
     private static readonly ImmutableHashSet<string> BehavioralRuntimes =
     [
         "AgentKit.Artifacts", "AgentKit.Budgets", "AgentKit.Context", "AgentKit.Context.Compaction",
-        "AgentKit.Context.Project",
         "AgentKit.Conversations", "AgentKit.Durability", "AgentKit.Goals", "AgentKit.Hooks", "AgentKit.Identity",
         "AgentKit.IO", "AgentKit.Loop", "AgentKit.Memory", "AgentKit.Output", "AgentKit.Permissions",
         "AgentKit.Providers", "AgentKit.Session", "AgentKit.Tools",
