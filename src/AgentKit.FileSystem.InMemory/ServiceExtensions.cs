@@ -23,6 +23,7 @@ public static class ServiceExtensions
         /// The <see cref="IFileSystem"/> facade and each narrow capability use independent <c>TryAdd</c> registrations,
         /// so a host may replace any one contract without changing the remaining defaults.
         /// </remarks>
+        [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
         public IServiceCollection AddInMemoryFileSystem(Action<InMemoryFileSystemOptions>? configure = null)
         {
             _ = services.AddAgentKitObservability();
@@ -54,7 +55,7 @@ public static class ServiceExtensions
                 provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             services.TryAddSingleton<IFileSystem>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IDirectoryReader>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
+            services.TryAddSingleton<ILegacyDirectoryReader>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
             services.TryAddSingleton<IFileGlobber>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
             services.TryAddSingleton<IFileContentSearcher>(static provider => provider.GetRequiredService<InMemoryFileSystem>());
             services.TryAddSingleton<IFileSnapshotReader>(static provider => provider.GetRequiredService<InMemoryFileSystem>());

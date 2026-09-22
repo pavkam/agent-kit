@@ -1272,6 +1272,49 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class AuthorizedDirectoryCreate : System.IEquatable<AgentKit.AuthorizedDirectoryCreate>
+    {
+        public AuthorizedDirectoryCreate(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
+    public sealed class AuthorizedDirectoryEnumeration : System.IEquatable<AgentKit.AuthorizedDirectoryEnumeration>
+    {
+        public AuthorizedDirectoryEnumeration(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
+    public sealed class AuthorizedFileMetadataRead : System.IEquatable<AgentKit.AuthorizedFileMetadataRead>
+    {
+        public AuthorizedFileMetadataRead(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
+    public sealed class AuthorizedFileRead : System.IEquatable<AgentKit.AuthorizedFileRead>
+    {
+        public AuthorizedFileRead(AgentKit.FileReadRequest request, AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.FileReadRequest Request { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
+    public sealed class AuthorizedFileWatch : System.IEquatable<AgentKit.AuthorizedFileWatch>
+    {
+        public AuthorizedFileWatch(AgentKit.ResolvedFileTarget resolvedRoot, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedRoot { get; init; }
+    }
+    public sealed class AuthorizedFileWrite : System.IEquatable<AgentKit.AuthorizedFileWrite>
+    {
+        public AuthorizedFileWrite(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.FileWriteDisposition disposition, AgentKit.ContentHash? expectedTargetFingerprint, long declaredContentLength, AgentKit.ContentHash declaredContentFingerprint, AgentKit.FileWriteAtomicityMode atomicityMode, AgentKit.FileWriteEffectClass effectClass, AgentKit.SecurityGrant grant) { }
+        public AgentKit.FileWriteAtomicityMode AtomicityMode { get; init; }
+        public AgentKit.ContentHash DeclaredContentFingerprint { get; init; }
+        public long DeclaredContentLength { get; init; }
+        public AgentKit.FileWriteDisposition Disposition { get; init; }
+        public AgentKit.FileWriteEffectClass EffectClass { get; init; }
+        public AgentKit.ContentHash? ExpectedTargetFingerprint { get; init; }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
     public sealed class AuthorizedSessionDirectoryRequest<TRequest> : System.IEquatable<AgentKit.AuthorizedSessionDirectoryRequest<TRequest>>
         where TRequest :  class
     {
@@ -1288,6 +1331,13 @@ namespace AgentKit
         public AgentKit.SecurityEnforcementIntent Intent { get; }
         public TRequest Request { get; }
         public AgentKit.SessionStoreKey StoreKey { get; }
+    }
+    public sealed class AuthorizedTemporaryFileCreation : System.IEquatable<AgentKit.AuthorizedTemporaryFileCreation>
+    {
+        public AuthorizedTemporaryFileCreation(AgentKit.ResolvedFileTarget resolvedParentDirectory, long maxBytes, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public long MaxBytes { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedParentDirectory { get; init; }
     }
     public enum BackpressureDecision
     {
@@ -2923,6 +2973,34 @@ namespace AgentKit
     {
         public DeveloperMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
     }
+    public sealed class DirectoryCreateAlreadyExists : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateAlreadyExists>
+    {
+        public DirectoryCreateAlreadyExists(AgentKit.ResolvedFileTarget target) { }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public sealed class DirectoryCreateCancelled : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateCancelled>
+    {
+        public DirectoryCreateCancelled() { }
+    }
+    public sealed class DirectoryCreateDenied : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateDenied>
+    {
+        public DirectoryCreateDenied() { }
+    }
+    public sealed class DirectoryCreateFailed : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateFailed>
+    {
+        public DirectoryCreateFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class DirectoryCreateResult : System.IEquatable<AgentKit.DirectoryCreateResult> { }
+    public sealed class DirectoryCreateSuccess : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateSuccess>
+    {
+        public DirectoryCreateSuccess(AgentKit.ResolvedFileTarget target) { }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public sealed class DirectoryCreateUnsupported : AgentKit.DirectoryCreateResult, System.IEquatable<AgentKit.DirectoryCreateUnsupported>
+    {
+        public DirectoryCreateUnsupported() { }
+    }
     public sealed class DirectoryEntry : System.IEquatable<AgentKit.DirectoryEntry>
     {
         public DirectoryEntry(AgentKit.FileSystemPath path) { }
@@ -3438,21 +3516,81 @@ namespace AgentKit
         public static bool operator >(AgentKit.FencingToken left, AgentKit.FencingToken right) { }
         public static bool operator >=(AgentKit.FencingToken left, AgentKit.FencingToken right) { }
     }
-    public sealed class FileAlreadyExists : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileAlreadyExists>
+    public sealed class FileChange : System.IEquatable<AgentKit.FileChange>
     {
-        public FileAlreadyExists(AgentKit.FileSystemPath path) { }
-        public AgentKit.FileSystemPath Path { get; init; }
+        public FileChange(AgentKit.NormalizedRelativePath relativePath, AgentKit.FileChangeKind kind) { }
+        public AgentKit.FileChangeKind Kind { get; init; }
+        public AgentKit.NormalizedRelativePath RelativePath { get; init; }
+    }
+    public enum FileChangeKind
+    {
+        Created = 0,
+        Modified = 1,
+        Deleted = 2,
+        Renamed = 3,
+        Overflow = 4,
+    }
+    public sealed class FileMetadata : System.IEquatable<AgentKit.FileMetadata>
+    {
+        public FileMetadata(long lengthBytes, System.DateTimeOffset? lastModifiedUtc, AgentKit.ContentHash? contentFingerprint) { }
+        public AgentKit.ContentHash? ContentFingerprint { get; init; }
+        public System.DateTimeOffset? LastModifiedUtc { get; init; }
+        public long LengthBytes { get; init; }
+    }
+    public sealed class FileMetadataCancelled : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataCancelled>
+    {
+        public FileMetadataCancelled() { }
+    }
+    public sealed class FileMetadataDenied : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataDenied>
+    {
+        public FileMetadataDenied() { }
+    }
+    public sealed class FileMetadataFailed : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataFailed>
+    {
+        public FileMetadataFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class FileMetadataNotFound : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataNotFound>
+    {
+        public FileMetadataNotFound(AgentKit.ResolvedFileTarget target) { }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public abstract class FileMetadataResult : System.IEquatable<AgentKit.FileMetadataResult> { }
+    public sealed class FileMetadataSuccess : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataSuccess>
+    {
+        public FileMetadataSuccess(AgentKit.FileMetadata metadata) { }
+        public AgentKit.FileMetadata Metadata { get; init; }
+    }
+    public sealed class FileMetadataUnsupported : AgentKit.FileMetadataResult, System.IEquatable<AgentKit.FileMetadataUnsupported>
+    {
+        public FileMetadataUnsupported() { }
     }
     public sealed class FileNotFound : AgentKit.FileReadResult, System.IEquatable<AgentKit.FileNotFound>
     {
         public FileNotFound(AgentKit.FileSystemPath path) { }
         public AgentKit.FileSystemPath Path { get; init; }
     }
+    public readonly struct FileOperationId : System.IEquatable<AgentKit.FileOperationId>
+    {
+        public FileOperationId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public enum FilePathComparisonKind
+    {
+        Ordinal = 0,
+        OrdinalIgnoreCase = 1,
+    }
     public sealed class FileRead : AgentKit.FileReadResult, System.IEquatable<AgentKit.FileRead>
     {
         public FileRead(string content, long bytes) { }
         public long Bytes { get; init; }
         public string Content { get; init; }
+    }
+    public readonly struct FileReadBounds : System.IEquatable<AgentKit.FileReadBounds>
+    {
+        public FileReadBounds(long maxBytes) { }
+        public long MaxBytes { get; }
     }
     public sealed class FileReadDenied : AgentKit.FileReadResult, System.IEquatable<AgentKit.FileReadDenied>
     {
@@ -3466,11 +3604,21 @@ namespace AgentKit
     }
     public sealed class FileReadRequest : System.IEquatable<AgentKit.FileReadRequest>
     {
-        public FileReadRequest(AgentKit.FileSystemPath path, AgentKit.SecurityGrant grant) { }
-        public AgentKit.SecurityGrant Grant { get; init; }
-        public AgentKit.FileSystemPath Path { get; init; }
+        public FileReadRequest(AgentKit.FileOperationId id, AgentKit.OperationId causalOperationId, AgentKit.AgentId agentId, AgentKit.RunId? runId, AgentKit.FileTarget target, AgentKit.FileReadBounds bounds) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public AgentKit.FileReadBounds Bounds { get; init; }
+        public AgentKit.OperationId CausalOperationId { get; init; }
+        public AgentKit.FileOperationId Id { get; init; }
+        public AgentKit.RunId? RunId { get; init; }
+        public AgentKit.FileTarget Target { get; init; }
     }
     public abstract class FileReadResult : System.IEquatable<AgentKit.FileReadResult> { }
+    public readonly struct FileRootId : System.IEquatable<AgentKit.FileRootId>
+    {
+        public FileRootId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class FileSearchMatch : System.IEquatable<AgentKit.FileSearchMatch>
     {
         public FileSearchMatch(AgentKit.FileSystemPath path, AgentKit.ContentHash contentFingerprint, int lineNumber, long lineByteOffset, int matchByteOffset, int matchByteLength, int lineProjectionByteOffset, string lineText, bool lineTextTruncated) { }
@@ -3580,21 +3728,169 @@ namespace AgentKit
         Changed = 4,
         Failed = 5,
     }
+    public sealed class FileSystemCapabilities : System.IEquatable<AgentKit.FileSystemCapabilities>
+    {
+        public FileSystemCapabilities(AgentKit.FileSystemCapability supported, bool supportsSymbolicLinks = false, bool supportsAtomicReplace = true, bool supportsAtomicAppend = false) { }
+        public AgentKit.FileSystemCapability Supported { get; init; }
+        public bool SupportsAtomicAppend { get; init; }
+        public bool SupportsAtomicReplace { get; init; }
+        public bool SupportsSymbolicLinks { get; init; }
+    }
+    [System.Flags]
+    public enum FileSystemCapability
+    {
+        None = 0,
+        Read = 1,
+        Write = 2,
+        Enumerate = 4,
+        Metadata = 8,
+        Watch = 16,
+        Temporary = 32,
+        CreateDirectory = 64,
+    }
+    public sealed class FileSystemCapabilityUnsupported : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemCapabilityUnsupported>
+    {
+        public FileSystemCapabilityUnsupported(AgentKit.FileSystemProfileKey key, AgentKit.FileSystemCapability requiredCapability, AgentKit.FileSystemCapabilities declaredCapabilities) { }
+        public AgentKit.FileSystemCapabilities DeclaredCapabilities { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+        public AgentKit.FileSystemCapability RequiredCapability { get; init; }
+    }
+    public sealed class FileSystemChangeSourceSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemChangeSourceSelected>
+    {
+        public FileSystemChangeSourceSelected(AgentKit.FileSystemProfileKey key, AgentKit.IFileChangeSource changeSource, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.IFileChangeSource ChangeSource { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+    }
+    public sealed class FileSystemDirectoryCreatorSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemDirectoryCreatorSelected>
+    {
+        public FileSystemDirectoryCreatorSelected(AgentKit.FileSystemProfileKey key, AgentKit.IDirectoryCreator directoryCreator, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.IDirectoryCreator DirectoryCreator { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+    }
+    public sealed class FileSystemDirectoryReaderSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemDirectoryReaderSelected>
+    {
+        public FileSystemDirectoryReaderSelected(AgentKit.FileSystemProfileKey key, AgentKit.IDirectoryReader directoryReader, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.IDirectoryReader DirectoryReader { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+    }
+    public sealed class FileSystemEntry : System.IEquatable<AgentKit.FileSystemEntry>
+    {
+        public FileSystemEntry(AgentKit.NormalizedRelativePath name, bool isDirectory) { }
+        public bool IsDirectory { get; init; }
+        public AgentKit.NormalizedRelativePath Name { get; init; }
+    }
+    public sealed class FileSystemMetadataReaderSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemMetadataReaderSelected>
+    {
+        public FileSystemMetadataReaderSelected(AgentKit.FileSystemProfileKey key, AgentKit.IFileMetadataReader metadataReader, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+        public AgentKit.IFileMetadataReader MetadataReader { get; init; }
+    }
     public readonly struct FileSystemPath : System.IEquatable<AgentKit.FileSystemPath>
     {
         public FileSystemPath(string value) { }
         public string Value { get; }
         public override string ToString() { }
     }
+    public readonly struct FileSystemProfileKey : System.IEquatable<AgentKit.FileSystemProfileKey>
+    {
+        public FileSystemProfileKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class FileSystemProfileMissing : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemProfileMissing>
+    {
+        public FileSystemProfileMissing(AgentKit.FileSystemProfileKey key) { }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+    }
+    public readonly struct FileSystemProfileVersion : System.IEquatable<AgentKit.FileSystemProfileVersion>
+    {
+        public FileSystemProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class FileSystemReaderSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemReaderSelected>
+    {
+        public FileSystemReaderSelected(AgentKit.FileSystemProfileKey key, AgentKit.IFileReader reader, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+        public AgentKit.IFileReader Reader { get; init; }
+    }
+    public abstract class FileSystemSelectionResult : System.IEquatable<AgentKit.FileSystemSelectionResult> { }
+    public sealed class FileSystemTemporaryStoreSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemTemporaryStoreSelected>
+    {
+        public FileSystemTemporaryStoreSelected(AgentKit.FileSystemProfileKey key, AgentKit.ITemporaryFileStore temporaryStore, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+        public AgentKit.ITemporaryFileStore TemporaryStore { get; init; }
+    }
+    public sealed class FileSystemWriterSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemWriterSelected>
+    {
+        public FileSystemWriterSelected(AgentKit.FileSystemProfileKey key, AgentKit.IFileWriter writer, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
+        public AgentKit.IFileWriter Writer { get; init; }
+    }
+    public sealed class FileTarget : System.IEquatable<AgentKit.FileTarget>
+    {
+        public FileTarget(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath path) { }
+        public AgentKit.NormalizedRelativePath Path { get; init; }
+        public AgentKit.FileRootId RootId { get; init; }
+    }
+    public enum FileWriteAtomicityMode
+    {
+        Required = 0,
+        BestEffort = 1,
+    }
+    public sealed class FileWriteCancelled : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteCancelled>
+    {
+        public FileWriteCancelled(AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class FileWriteConflict : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteConflict>
+    {
+        public FileWriteConflict(AgentKit.ResolvedFileTarget target, string safeMessage) { }
+        public string SafeMessage { get; init; }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public sealed class FileWriteContent : System.IEquatable<AgentKit.FileWriteContent>
+    {
+        public FileWriteContent(System.ReadOnlyMemory<byte> payload, AgentKit.ContentHash payloadFingerprint) { }
+        public System.ReadOnlyMemory<byte> Payload { get; init; }
+        public AgentKit.ContentHash PayloadFingerprint { get; init; }
+        public bool Equals(AgentKit.FileWriteContent? other) { }
+        public override int GetHashCode() { }
+    }
     public sealed class FileWriteDenied : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteDenied>
     {
         public FileWriteDenied(string safeMessage) { }
         public string SafeMessage { get; init; }
     }
+    public enum FileWriteDisposition
+    {
+        CreateOnly = 0,
+        ReplaceExisting = 1,
+        CreateOrReplace = 2,
+        Append = 3,
+    }
+    public enum FileWriteEffectClass
+    {
+        WorkspaceBytes = 0,
+        ExternalOrUnknown = 1,
+    }
     public sealed class FileWriteFailed : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteFailed>
     {
         public FileWriteFailed(string safeMessage) { }
         public string SafeMessage { get; init; }
+    }
+    public sealed class FileWriteLimitExceeded : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteLimitExceeded>
+    {
+        public FileWriteLimitExceeded(long authorizedLimitBytes, long observedBytes) { }
+        public long AuthorizedLimitBytes { get; init; }
+        public long ObservedBytes { get; init; }
     }
     public enum FileWriteMode
     {
@@ -3602,6 +3898,17 @@ namespace AgentKit
         CreateNew = 1,
         Append = 2,
         ReplaceExisting = 3,
+    }
+    public sealed class FileWriteNotFound : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteNotFound>
+    {
+        public FileWriteNotFound(AgentKit.ResolvedFileTarget target) { }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public enum FileWriteOutcomeKind
+    {
+        Created = 0,
+        Replaced = 1,
+        Appended = 2,
     }
     public sealed class FileWriteRequest : System.IEquatable<AgentKit.FileWriteRequest>
     {
@@ -3612,10 +3919,20 @@ namespace AgentKit
         public AgentKit.FileSystemPath Path { get; init; }
     }
     public abstract class FileWriteResult : System.IEquatable<AgentKit.FileWriteResult> { }
-    public sealed class FileWritten : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWritten>
+    public sealed class FileWriteSuccess : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteSuccess>
     {
-        public FileWritten(long bytesWritten) { }
-        public long BytesWritten { get; init; }
+        public FileWriteSuccess(AgentKit.FileWriteOutcomeKind outcome, long payloadBytes, long previousBytes, long finalBytes, AgentKit.ContentHash payloadFingerprint, AgentKit.ContentHash finalFingerprint) { }
+        public long FinalBytes { get; init; }
+        public AgentKit.ContentHash FinalFingerprint { get; init; }
+        public AgentKit.FileWriteOutcomeKind Outcome { get; init; }
+        public long PayloadBytes { get; init; }
+        public AgentKit.ContentHash PayloadFingerprint { get; init; }
+        public long PreviousBytes { get; init; }
+    }
+    public sealed class FileWriteUnsupported : AgentKit.FileWriteResult, System.IEquatable<AgentKit.FileWriteUnsupported>
+    {
+        public FileWriteUnsupported(string safeMessage) { }
+        public string SafeMessage { get; init; }
     }
     public readonly struct GlobPattern : System.IEquatable<AgentKit.GlobPattern>
     {
@@ -4340,10 +4657,13 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.IdentityResolutionResult> DeriveAsync(AgentKit.DelegatedIdentityRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IDirectoryCreator
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.DirectoryCreateResult> CreateAsync(AgentKit.AuthorizedDirectoryCreate operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IDirectoryReader
     {
-        AgentKit.ComponentId SecurityAudience { get; }
-        System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Collections.Generic.IAsyncEnumerable<AgentKit.FileSystemEntry> EnumerateAsync(AgentKit.AuthorizedDirectoryEnumeration operation, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IDurableLeaseManager
     {
@@ -4385,6 +4705,10 @@ namespace AgentKit
         AgentKit.WorkerId OwnerWorkerId { get; }
         System.Threading.Tasks.ValueTask<AgentKit.LeaseRenewalResult> RenewAsync(System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IFileChangeSource
+    {
+        System.Collections.Generic.IAsyncEnumerable<AgentKit.FileChange> WatchAsync(AgentKit.AuthorizedFileWatch operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IFileContentSearcher
     {
         AgentKit.ComponentId SecurityAudience { get; }
@@ -4395,16 +4719,39 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IFileMetadataReader
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.FileMetadataResult> GetMetadataAsync(AgentKit.AuthorizedFileMetadataRead operation, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IFileReadHandle : System.IAsyncDisposable
+    {
+        System.IO.Stream Content { get; }
+        AgentKit.FileMetadata Metadata { get; }
+    }
+    public interface IFileReader
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.IFileReadHandle> OpenReadAsync(AgentKit.AuthorizedFileRead operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IFileSnapshotReader
     {
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.FileSnapshotResult> ReadSnapshotAsync(AgentKit.FileSnapshotRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    [System.Obsolete("Use IFileReader, IFileWriter, and the other narrow capability contracts selected " +
+        "through IFileSystemSelector instead.")]
     public interface IFileSystem
     {
         AgentKit.ComponentId SecurityAudience { get; }
-        System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.FileReadRequest request, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.Task<AgentKit.FileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.LegacyFileReadRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.LegacyFileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IFileSystemSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.FileSystemSelectionResult> SelectAsync(AgentKit.FileSystemProfileKey key, AgentKit.FileSystemCapability requiredCapability, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IFileWriter
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.FileWriteResult> WriteAsync(AgentKit.AuthorizedFileWrite operation, AgentKit.FileWriteContent content, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IHistoryPipeline
     {
@@ -4514,6 +4861,13 @@ namespace AgentKit
     {
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.LanguageQueryResult> QueryAsync(AgentKit.LanguageQueryRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    [System.Obsolete("Use IDirectoryReader with AuthorizedDirectoryEnumeration and IFileSystemSelector " +
+        "instead.")]
+    public interface ILegacyDirectoryReader
+    {
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ILegacyToolCallOrchestrator
     {
@@ -4815,10 +5169,23 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationPrompt prompt, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ITemporaryFileLease : System.IAsyncDisposable
+    {
+        System.IO.Stream Content { get; }
+        AgentKit.ResolvedFileTarget Target { get; }
+    }
+    public interface ITemporaryFileStore
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ITemporaryFileLease> CreateAsync(AgentKit.AuthorizedTemporaryFileCreation operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ITool
     {
         AgentKit.ToolDescriptor Descriptor { get; }
         System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IToolArgumentValidator
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolArgumentValidationResult> ValidateAsync(AgentKit.ResolvedToolCall resolvedCall, AgentKit.ToolSchemaLimits limits, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolAuthorizer
     {
@@ -4880,9 +5247,21 @@ namespace AgentKit
     {
         AgentKit.ToolDiscoverySelection ResolveSelection(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IToolResolver
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResolutionResult> ResolveAsync(AgentKit.IToolCatalogCapture capture, AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IToolResultNormalizer
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResultNormalizationResult> NormalizeAsync(AgentKit.ValidatedToolCall validatedCall, AgentKit.ToolInvocationResult invocation, AgentKit.ToolResultNormalizationSnapshot snapshot, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IToolResultProjectionPolicyCatalog
     {
         System.Threading.Tasks.ValueTask<AgentKit.ToolResultProjectionPolicyResolution> ResolveAsync(AgentKit.ToolResultProjectionPolicyReference reference, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IToolResultProjector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResultPart> ProjectAsync(AgentKit.ToolCallResult result, AgentKit.ToolResultProjectionPolicySnapshot policy, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolRunCatalogCaptureFactory
     {
@@ -5419,6 +5798,39 @@ namespace AgentKit
     {
         public LeaseRenewed(System.DateTimeOffset expiresAt) { }
         public System.DateTimeOffset ExpiresAt { get; init; }
+    }
+    [System.Obsolete("Use FileWriteConflict from the spec IFileWriter contract instead.")]
+    public sealed class LegacyFileAlreadyExists : AgentKit.LegacyFileWriteResult, System.IEquatable<AgentKit.LegacyFileAlreadyExists>
+    {
+        public LegacyFileAlreadyExists(AgentKit.FileSystemPath path) { }
+        public AgentKit.FileSystemPath Path { get; init; }
+    }
+    [System.Obsolete("Use IFileReader with the spec FileReadRequest and AuthorizedFileRead instead.")]
+    public sealed class LegacyFileReadRequest : System.IEquatable<AgentKit.LegacyFileReadRequest>
+    {
+        public LegacyFileReadRequest(AgentKit.FileSystemPath path, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.FileSystemPath Path { get; init; }
+    }
+    [System.Obsolete("Use FileWriteDenied from the spec IFileWriter contract instead.")]
+    public sealed class LegacyFileWriteDenied : AgentKit.LegacyFileWriteResult, System.IEquatable<AgentKit.LegacyFileWriteDenied>
+    {
+        public LegacyFileWriteDenied(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    [System.Obsolete("Use FileWriteFailed from the spec IFileWriter contract instead.")]
+    public sealed class LegacyFileWriteFailed : AgentKit.LegacyFileWriteResult, System.IEquatable<AgentKit.LegacyFileWriteFailed>
+    {
+        public LegacyFileWriteFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    [System.Obsolete("Use IFileWriter with the spec FileWriteResult hierarchy instead.")]
+    public abstract class LegacyFileWriteResult : System.IEquatable<AgentKit.LegacyFileWriteResult> { }
+    [System.Obsolete("Use FileWriteSuccess from the spec IFileWriter contract instead.")]
+    public sealed class LegacyFileWritten : AgentKit.LegacyFileWriteResult, System.IEquatable<AgentKit.LegacyFileWritten>
+    {
+        public LegacyFileWritten(long bytesWritten) { }
+        public long BytesWritten { get; init; }
     }
     public sealed class LegacyToolCallRequest : System.IEquatable<AgentKit.LegacyToolCallRequest>
     {
@@ -6165,6 +6577,12 @@ namespace AgentKit
     public readonly struct NormalizedHost : System.IEquatable<AgentKit.NormalizedHost>
     {
         public NormalizedHost(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct NormalizedRelativePath : System.IEquatable<AgentKit.NormalizedRelativePath>
+    {
+        public NormalizedRelativePath(string value) { }
         public string Value { get; }
         public override string ToString() { }
     }
@@ -7192,6 +7610,16 @@ namespace AgentKit
         public AgentKit.AgentCatalogVersion CatalogVersion { get; init; }
         public AgentKit.AgentDefinition Definition { get; init; }
     }
+    public sealed class ResolvedFileTarget : System.IEquatable<AgentKit.ResolvedFileTarget>
+    {
+        public ResolvedFileTarget(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath relativePath, string hostTargetPath, AgentKit.FilePathComparisonKind comparisonKind, AgentKit.ContentHash linkResolutionEvidence, AgentKit.ContentHash targetFingerprint) { }
+        public AgentKit.FilePathComparisonKind ComparisonKind { get; init; }
+        public string HostTargetPath { get; init; }
+        public AgentKit.ContentHash LinkResolutionEvidence { get; init; }
+        public AgentKit.NormalizedRelativePath RelativePath { get; init; }
+        public AgentKit.FileRootId RootId { get; init; }
+        public AgentKit.ContentHash TargetFingerprint { get; init; }
+    }
     public sealed class ResolvedProcessIntent : System.IEquatable<AgentKit.ResolvedProcessIntent>
     {
         public ResolvedProcessIntent(AgentKit.ProcessResolveRequest request, string absoluteExecutablePath, AgentKit.ContentHash executableFingerprint, string absoluteWorkspaceRoot, string absoluteWorkingDirectory, AgentKit.ContentHash environmentFingerprint, AgentKit.ContentHash standardInputFingerprint) { }
@@ -7202,6 +7630,44 @@ namespace AgentKit
         public AgentKit.ContentHash ExecutableFingerprint { get; }
         public AgentKit.ProcessResolveRequest Request { get; }
         public AgentKit.ContentHash StandardInputFingerprint { get; }
+    }
+    public sealed class ResolvedToolCall : System.IEquatable<AgentKit.ResolvedToolCall>
+    {
+        public ResolvedToolCall(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.RunId runId,
+                    AgentKit.TurnId turnId,
+                    AgentKit.OperationId operationId,
+                    AgentKit.ToolCallId callId,
+                    AgentKit.SecurityAuthorizationContext authorization,
+                    AgentKit.ToolCatalogVersion catalogVersion,
+                    AgentKit.ToolAlias providerAlias,
+                    AgentKit.ToolDescriptor tool,
+                    AgentKit.ToolVersion toolVersion,
+                    AgentKit.ToolExecutionPolicyReference executionPolicy,
+                    int sourceOrdinal,
+                    System.Collections.Immutable.ImmutableArray<byte> rawArguments,
+                    System.DateTimeOffset requestedAt,
+                    System.DateTimeOffset resolvedAt) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ToolCallId CallId { get; }
+        public AgentKit.ToolCatalogVersion CatalogVersion { get; }
+        public AgentKit.ToolExecutionPolicyReference ExecutionPolicy { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.ToolAlias ProviderAlias { get; }
+        public System.Collections.Immutable.ImmutableArray<byte> RawArguments { get; }
+        public System.DateTimeOffset RequestedAt { get; }
+        public System.DateTimeOffset ResolvedAt { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public int SourceOrdinal { get; }
+        public AgentKit.ToolDescriptor Tool { get; }
+        public AgentKit.ToolVersion ToolVersion { get; }
+        public AgentKit.TurnId TurnId { get; }
+        public bool Equals(AgentKit.ResolvedToolCall? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class ResolvedToolInvocation : System.IEquatable<AgentKit.ResolvedToolInvocation>
     {
@@ -9102,6 +9568,10 @@ namespace AgentKit
         public AgentKit.ToolAlias Alias { get; }
         public AgentKit.ToolIdentity Tool { get; }
     }
+    public abstract class ToolArgumentValidationResult : System.IEquatable<AgentKit.ToolArgumentValidationResult>
+    {
+        protected ToolArgumentValidationResult(AgentKit.ToolArgumentValidationResult original) { }
+    }
     public sealed class ToolArgumentsContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ToolArgumentsContentDelta>
     {
         public ToolArgumentsContentDelta(AgentKit.ToolCallId toolCallId, string jsonFragment) { }
@@ -9227,6 +9697,14 @@ namespace AgentKit
         public bool Equals(AgentKit.ToolCallRequest? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class ToolCallResolved : AgentKit.ToolResolutionResult, System.IEquatable<AgentKit.ToolCallResolved>
+    {
+        public ToolCallResolved(AgentKit.ResolvedToolCall call, AgentKit.IToolInvokerLease lease) { }
+        public AgentKit.ResolvedToolCall Call { get; }
+        public AgentKit.IToolInvokerLease Lease { get; }
+        public bool Equals(AgentKit.ToolCallResolved? other) { }
+        public override int GetHashCode() { }
+    }
     public sealed class ToolCallResult : System.IEquatable<AgentKit.ToolCallResult>
     {
         public ToolCallResult(
@@ -9288,6 +9766,25 @@ namespace AgentKit
         public AgentKit.ToolUsage? Usage { get; }
         public bool Equals(AgentKit.ToolCallResult? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolCallUnresolved : AgentKit.ToolResolutionResult, System.IEquatable<AgentKit.ToolCallUnresolved>
+    {
+        public ToolCallUnresolved(AgentKit.ToolCallRequest request, AgentKit.ToolTerminalStatus status, string safeReason) { }
+        public AgentKit.ToolCallRequest Request { get; }
+        public string SafeReason { get; }
+        public AgentKit.ToolTerminalStatus Status { get; }
+    }
+    public sealed class ToolCallValidated : AgentKit.ToolArgumentValidationResult, System.IEquatable<AgentKit.ToolCallValidated>
+    {
+        public ToolCallValidated(AgentKit.ValidatedToolCall call) { }
+        public AgentKit.ValidatedToolCall Call { get; }
+    }
+    public sealed class ToolCallValidationFailed : AgentKit.ToolArgumentValidationResult, System.IEquatable<AgentKit.ToolCallValidationFailed>
+    {
+        public ToolCallValidationFailed(AgentKit.ResolvedToolCall call, AgentKit.ToolTerminalStatus status, string safeReason) { }
+        public AgentKit.ResolvedToolCall Call { get; }
+        public string SafeReason { get; }
+        public AgentKit.ToolTerminalStatus Status { get; }
     }
     public sealed class ToolCatalogAliasCollision : AgentKit.ToolCatalogCollision, System.IEquatable<AgentKit.ToolCatalogAliasCollision>
     {
@@ -9528,6 +10025,16 @@ namespace AgentKit
         public bool Equals(AgentKit.ToolInvocationResult? other) { }
         public override int GetHashCode() { }
     }
+    public static class ToolInvocationSecurityBinding
+    {
+        public static AgentKit.ComponentId SecurityAudience { get; }
+        public static AgentKit.InputFingerprint InvocationFingerprint(AgentKit.ToolCallId callId, AgentKit.InputFingerprint validatedArguments) { }
+        public static AgentKit.SecurityOperationKind OperationKind(AgentKit.ToolEffect effect) { }
+        public static AgentKit.InputFingerprint RawAdmissionFingerprint(System.Collections.Immutable.ImmutableArray<byte> rawArguments) { }
+        public static AgentKit.ProtectedResource Resource(AgentKit.ToolId toolId, AgentKit.ToolVersion toolVersion) { }
+        public static AgentKit.SecurityEffect ToSecurityEffect(AgentKit.ToolEffect effect) { }
+        public static AgentKit.InputFingerprint ValidatedArgumentsFingerprint(System.Text.Json.JsonElement arguments) { }
+    }
     public sealed class ToolInvocationVeto : System.IEquatable<AgentKit.ToolInvocationVeto>
     {
         public ToolInvocationVeto(string safeReason) { }
@@ -9622,6 +10129,10 @@ namespace AgentKit
         public AgentKit.ToolAlias ProviderAlias { get; init; }
         public AgentKit.ToolVersion? Version { get; }
     }
+    public abstract class ToolResolutionResult : System.IEquatable<AgentKit.ToolResolutionResult>
+    {
+        protected ToolResolutionResult(AgentKit.ToolResolutionResult original) { }
+    }
     public sealed class ToolResultArtifactContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultArtifactContent>
     {
         public ToolResultArtifactContent(AgentKit.ArtifactReference reference, AgentKit.ExtensionData extensions) { }
@@ -9650,6 +10161,12 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class ToolResultNormalizationFailed : AgentKit.ToolResultNormalizationResult, System.IEquatable<AgentKit.ToolResultNormalizationFailed>
+    {
+        public ToolResultNormalizationFailed(AgentKit.ToolTerminalStatus status, string safeReason) { }
+        public string SafeReason { get; }
+        public AgentKit.ToolTerminalStatus Status { get; }
+    }
     public sealed class ToolResultNormalizationInfo : System.IEquatable<AgentKit.ToolResultNormalizationInfo>
     {
         public ToolResultNormalizationInfo(System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultNormalizationTransformation> transformations, long? inputCanonicalBytes, int? inputParts, long? omittedCanonicalBytes, int? omittedParts, AgentKit.ExtensionData extensions) { }
@@ -9661,6 +10178,10 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultNormalizationTransformation> Transformations { get; }
         public bool Equals(AgentKit.ToolResultNormalizationInfo? other) { }
         public override int GetHashCode() { }
+    }
+    public abstract class ToolResultNormalizationResult : System.IEquatable<AgentKit.ToolResultNormalizationResult>
+    {
+        protected ToolResultNormalizationResult(AgentKit.ToolResultNormalizationResult original) { }
     }
     public sealed class ToolResultNormalizationSnapshot : System.IEquatable<AgentKit.ToolResultNormalizationSnapshot>
     {
@@ -9680,6 +10201,12 @@ namespace AgentKit
         Summarized = 2,
         Truncated = 3,
         Externalized = 4,
+    }
+    public sealed class ToolResultNormalized : AgentKit.ToolResultNormalizationResult, System.IEquatable<AgentKit.ToolResultNormalized>
+    {
+        public ToolResultNormalized(System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultContent> content, AgentKit.ToolResultNormalizationInfo info) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultContent> Content { get; }
+        public AgentKit.ToolResultNormalizationInfo Info { get; }
     }
     public sealed class ToolResultOpaqueContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultOpaqueContent>
     {
@@ -10080,6 +10607,46 @@ namespace AgentKit
         public string? Text { get; init; }
         public object? Value { get; init; }
         public bool Equals(AgentKit.ValidatedOutput? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ValidatedToolCall : System.IEquatable<AgentKit.ValidatedToolCall>
+    {
+        public ValidatedToolCall(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.RunId runId,
+                    AgentKit.TurnId turnId,
+                    AgentKit.OperationId operationId,
+                    AgentKit.ToolCallId callId,
+                    AgentKit.SecurityAuthorizationContext authorization,
+                    AgentKit.ToolCatalogVersion catalogVersion,
+                    AgentKit.ToolAlias providerAlias,
+                    AgentKit.ToolDescriptor tool,
+                    AgentKit.ToolVersion toolVersion,
+                    AgentKit.ToolExecutionPolicyReference executionPolicy,
+                    int sourceOrdinal,
+                    System.Text.Json.JsonElement arguments,
+                    AgentKit.InputFingerprint inputFingerprint,
+                    System.DateTimeOffset requestedAt,
+                    System.DateTimeOffset validatedAt) { }
+        public AgentKit.AgentId AgentId { get; }
+        public System.Text.Json.JsonElement Arguments { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ToolCallId CallId { get; }
+        public AgentKit.ToolCatalogVersion CatalogVersion { get; }
+        public AgentKit.ToolExecutionPolicyReference ExecutionPolicy { get; }
+        public AgentKit.InputFingerprint InputFingerprint { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.ToolAlias ProviderAlias { get; }
+        public System.DateTimeOffset RequestedAt { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public int SourceOrdinal { get; }
+        public AgentKit.ToolDescriptor Tool { get; }
+        public AgentKit.ToolVersion ToolVersion { get; }
+        public AgentKit.TurnId TurnId { get; }
+        public System.DateTimeOffset ValidatedAt { get; }
+        public bool Equals(AgentKit.ValidatedToolCall? other) { }
         public override int GetHashCode() { }
     }
     public readonly struct VersionToken : System.IEquatable<AgentKit.VersionToken>

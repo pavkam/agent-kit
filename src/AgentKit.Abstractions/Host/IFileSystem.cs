@@ -20,6 +20,7 @@ namespace AgentKit;
 /// elsewhere.
 /// </para>
 /// </remarks>
+[Obsolete("Use IFileReader, IFileWriter, and the other narrow capability contracts selected through IFileSystemSelector instead.")]
 public interface IFileSystem
 {
     /// <summary>Gets the component identity to which file-operation grants must be addressed.</summary>

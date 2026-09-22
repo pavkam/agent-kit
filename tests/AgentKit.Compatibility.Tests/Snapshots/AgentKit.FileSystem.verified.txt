@@ -3,7 +3,9 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.FileSystem
 {
-    public sealed class SandboxedFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryReader, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.IWorkspacePatchApplier
+    [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
+        ".")]
+    public sealed class SandboxedFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.ILegacyDirectoryReader, AgentKit.IWorkspacePatchApplier
     {
         public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger = null) { }
         public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
@@ -11,11 +13,15 @@ namespace AgentKit.FileSystem
         public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.FileReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
+            ".")]
+        public System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.LegacyFileReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.FileSnapshotResult> ReadSnapshotAsync(AgentKit.FileSnapshotRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.FileSearchResult> SearchAsync(AgentKit.FileSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.FileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
+            ".")]
+        public System.Threading.Tasks.Task<AgentKit.LegacyFileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class SandboxedFileSystemOptions
     {
@@ -37,6 +43,8 @@ namespace AgentKit.FileSystem
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
+                ".")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSandboxedFileSystem(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
         }
     }

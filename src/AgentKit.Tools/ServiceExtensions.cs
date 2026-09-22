@@ -322,6 +322,12 @@ public static class ServiceExtensions
                 _ = optionsBuilder.Configure(configure);
             }
 
+            services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
+            services.TryAddSingleton<IToolResolver, ToolCallResolver>();
+            services.TryAddSingleton<IToolArgumentValidator, ToolArgumentValidator>();
+            services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
+            services.TryAddSingleton<IToolResultProjector, ToolResultProjector>();
+            services.TryAddSingleton<DefaultToolExecutor>();
             services.TryAddSingleton<IToolAuthorizer, AllowListToolAuthorizer>();
             services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalog(provider.GetServices<ITool>()));
             services.TryAddSingleton<ILegacyToolCallOrchestrator>(static provider => new DefaultToolInvoker(

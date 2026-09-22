@@ -6,6 +6,7 @@ namespace AgentKit.FileSystem;
 public sealed partial class SandboxedFileSystem
 {
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -15,6 +16,7 @@ public sealed partial class SandboxedFileSystem
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

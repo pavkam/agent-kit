@@ -8,6 +8,7 @@ using AgentKit.TestSupport;
 /// <summary>Provides construction helpers for read-file tool tests.</summary>
 internal static class TestFactory
 {
+    [Obsolete]
     public static ReadFileTool Tool(
         IFileSystem? fileSystem = null,
         ISecurityAuthority? authority = null,

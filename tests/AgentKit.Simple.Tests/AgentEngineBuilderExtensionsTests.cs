@@ -323,6 +323,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task AddAgent_WhenBuilt_HostsBothAgentsAndDrivesEachThroughItsOwnSessions()
     {
         var handler = new StubOpenAIHandler("reply");
@@ -538,6 +539,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task Build_WhenServicesRegisterATool_AdvertisesItToTheModelAndInTheDefinition()
     {
         var handler = new StubOpenAIHandler("done");
@@ -555,6 +557,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task Build_WhenTheAllowListExcludesARegisteredTool_DoesNotAdvertiseItToTheModelOrTheDefinition()
     {
         var handler = new StubOpenAIHandler("done");
@@ -579,6 +582,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task Build_WhenABeforeToolInvocationHookVetoesACall_TheModelSeesARejectedResultAndTheToolNeverRuns()
     {
         var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"secret.txt\"}", "understood");
@@ -678,6 +682,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithBudget(static o => o.MaxCostUsd = 0m)).ParamName.ShouldBe("configure");
 
     [Fact]
+    [Obsolete]
     public async Task WithBudget_WhenTheToolCallBudgetIsExhausted_TheTurnFailsNamingTheDimensionAndTheToolIsNotInvoked()
     {
         var handler = new StubOpenAIHandler(
@@ -708,6 +713,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task WithBudget_WhenTheTurnBudgetIsExhausted_AskAsyncThrowsNamingTheDimension()
     {
         var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"a.txt\"}", "done");

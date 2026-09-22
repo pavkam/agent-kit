@@ -50,7 +50,7 @@ public sealed class ReadFileTool: ITool
 
     private static readonly ExtensionData _completeExtensions = CompleteExtensions(true);
     private static readonly ExtensionData _incompleteExtensions = CompleteExtensions(false);
-
+    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
     private readonly IFileSystem _fileSystem;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -68,6 +68,7 @@ public sealed class ReadFileTool: ITool
     /// A configured line bound is not positive or <see cref="ReadFileToolOptions.DefaultMaximumLines"/>
     /// exceeds <see cref="ReadFileToolOptions.MaximumLines"/>.
     /// </exception>
+    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
     public ReadFileTool(
         IFileSystem fileSystem,
         ISecurityAuthoritySelector authoritySelector,
@@ -109,6 +110,7 @@ public sealed class ReadFileTool: ITool
     public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
+    [Obsolete("Use IFileReader after WS5-C7 migrates read_file.")]
     public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

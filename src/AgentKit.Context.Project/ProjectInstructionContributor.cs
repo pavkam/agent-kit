@@ -3,9 +3,12 @@
 
 namespace AgentKit.Context.Project;
 
+#pragma warning disable CS0612 // Legacy IFileSystem until host tools migrate onto IFileReader.
+
 /// <summary>Discovers bounded workspace instruction files and contributes them as instruction candidates.</summary>
 public sealed class ProjectInstructionContributor: IContextContributor
 {
+    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
     private readonly IFileSystem _fileSystem;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -20,6 +23,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
     /// <param name="options">Validated discovery options captured at construction.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
     public ProjectInstructionContributor(
         IFileSystem fileSystem,
         ISecurityAuthoritySelector authoritySelector,
@@ -52,6 +56,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
     }
 
     /// <inheritdoc/>
+    [Obsolete]
     public async ValueTask<ContextContribution> ContributeAsync(
         ContextContributionRequest request,
         CancellationToken cancellationToken = default)
@@ -77,6 +82,7 @@ public sealed class ProjectInstructionContributor: IContextContributor
         return new ContextContribution(candidates.ToImmutable(), []);
     }
 
+    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
     private async Task<ContextCandidate?> TryReadInstructionCandidateAsync(
         ContextContributionRequest request,
         FileSystemPath path,
@@ -142,3 +148,5 @@ public sealed class ProjectInstructionContributor: IContextContributor
         return new FileSystemPath(combined);
     }
 }
+
+#pragma warning restore CS0612

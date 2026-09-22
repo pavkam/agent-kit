@@ -54,6 +54,7 @@ internal static class AgentRuntime
     /// <param name="approvals">Presents approval interactions in the authenticated terminal.</param>
     /// <param name="questions">Presents human questions in the authenticated terminal.</param>
     /// <param name="permissions">Provides the current UI mode to the normalized security policy.</param>
+    [Obsolete]
     public static OwnedConversationSession Create(
         string workspaceRoot,
         string apiKey,

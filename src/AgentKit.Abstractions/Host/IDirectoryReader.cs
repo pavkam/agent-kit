@@ -3,18 +3,16 @@
 
 namespace AgentKit;
 
-/// <summary>Enumerates bounded directory snapshots without conferring file-content or mutation authority.</summary>
+/// <summary>Streams directory entries for one authorized enumeration operation.</summary>
+/// <remarks>Cancellation stops observation and releases enumerator resources owned by the implementation.</remarks>
 public interface IDirectoryReader
 {
-    /// <summary>Gets the component audience to which enumeration grants must be addressed.</summary>
-    public ComponentId SecurityAudience { get; }
-
-    /// <summary>Enumerates one deterministic page after exact lower-boundary grant consumption.</summary>
-    /// <param name="request">The authorized page request.</param>
-    /// <param name="cancellationToken">Cancels before observation settles.</param>
-    /// <returns>The terminal typed result.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
-    public ValueTask<DirectoryEnumerationResult> EnumerateAsync(
-        DirectoryEnumerationRequest request,
+    /// <summary>Enumerates entries under the authorized directory target.</summary>
+    /// <param name="operation">The authorized enumeration evidence.</param>
+    /// <param name="cancellationToken">Stops observation and releases resources when canceled.</param>
+    /// <returns>An async sequence of observed entries.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="operation"/> is null.</exception>
+    public IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
         CancellationToken cancellationToken = default);
 }

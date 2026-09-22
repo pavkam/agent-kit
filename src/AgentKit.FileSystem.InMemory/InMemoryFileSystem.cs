@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 /// <para>
 /// This class exists to give tests and ephemeral hosts a fast, hermetic
 /// double for <c>SandboxedFileSystem</c> that proves the same <see cref="IFileSystem"/>,
-/// <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>,
+/// <see cref="ILegacyDirectoryReader"/>, <see cref="IFileGlobber"/>,
 /// <see cref="IFileContentSearcher"/>, <see cref="IFileSnapshotReader"/>,
 /// <see cref="IAtomicFileReplacer"/>, and <see cref="IWorkspacePatchApplier"/>
 /// contracts without touching real disk. Every effect still validates and
@@ -36,9 +36,10 @@ using Microsoft.Extensions.Options;
 /// resulting tree is fully protected.
 /// </para>
 /// </remarks>
+[Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
 public sealed partial class InMemoryFileSystem:
     IFileSystem,
-    IDirectoryReader,
+    ILegacyDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,
@@ -192,6 +193,7 @@ public sealed partial class InMemoryFileSystem:
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private async Task<FileReadResult> ReadCoreAsync(LegacyFileReadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -228,6 +230,7 @@ public sealed partial class InMemoryFileSystem:
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private async Task<LegacyFileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);

@@ -18,6 +18,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "agentkit-fs-tests-" + Guid.NewGuid().ToString("N"));
     private readonly string _outsideRoot = Path.Combine(Path.GetTempPath(), "agentkit-fs-outside-" + Guid.NewGuid().ToString("N"));
     [Fact]
+    [Obsolete]
     public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new SandboxedFileSystem(null!, TestSecurity.GrantStore(), TimeProvider.System));
@@ -25,6 +26,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenRootDirectoryNotRooted_ThrowsArgumentException()
     {
         var options = Options.Create(new SandboxedFileSystemOptions { RootDirectory = "relative/path" });
@@ -32,6 +34,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenRootDirectoryBlank_ThrowsArgumentException()
     {
         var options = Options.Create(new SandboxedFileSystemOptions { RootDirectory = "   " });
@@ -39,6 +42,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility()
     {
         _ = Directory.CreateDirectory(_root);
@@ -46,6 +50,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
     {
         _ = Directory.CreateDirectory(_root);
@@ -54,6 +59,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var fs = CreateFileSystem();
@@ -62,6 +68,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var fs = CreateFileSystem();
@@ -70,6 +77,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenFileDoesNotExist_CreatesFileAndReturnsWritten()
     {
         var fs = CreateFileSystem();
@@ -81,6 +89,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenTargetIsANamedPipe_FailsWithoutHanging()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -102,6 +111,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeAppendTargetsANamedPipe_FailsWithoutHanging()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -125,6 +135,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeCreateOrOverwriteTargetsAnExistingFile_ReplacesAtomicallyAndPreservesMode()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -152,6 +163,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenPathContainsEmbeddedNul_DoesNotWriteToTheTruncatedPath()
     {
         // The grant binds the resource string "allowed.md\0x"; libc sees only "allowed.md". An effect on a different
@@ -174,6 +186,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeAppendAndTargetIsMissing_DoesNotCreateTheFile()
     {
         // file-system-access-and-bounds.md write-disposition table: Append + missing target => "Not found, no mutation".
@@ -186,6 +199,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileIsExactlyAtMaximumReadBytes_ReturnsContent()
     {
         var fs = CreateFileSystem(options => options.MaximumReadBytes = 8);
@@ -197,6 +211,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReportsLimitRatherThanPermissionDenial()
     {
         // A size ceiling is resource exhaustion, not an authorization outcome; the model must not be told it was "denied".
@@ -210,6 +225,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenParentDirectoryMissing_DoesNotCreateParentDirectory()
     {
         var fs = CreateFileSystem();
@@ -220,6 +236,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheTarget()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -234,6 +251,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheTarget()
     {
         using var cancellation = new CancellationTokenSource();
@@ -249,6 +267,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         const string text = "captured";
@@ -263,6 +282,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileExists_ReturnsContent()
     {
         var fs = CreateFileSystem();
@@ -275,6 +295,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileDoesNotExist_ReturnsFileNotFound()
     {
         var fs = CreateFileSystem();
@@ -285,6 +306,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    [Obsolete]
     public async Task ReadAsync_WhenGrantDenied_LeaksNoTargetExistenceAndUsesExactBinding(bool createTarget)
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -305,6 +327,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenConsumedReceiptIsMissing_DoesNotReadTheTarget()
     {
         _ = Directory.CreateDirectory(_root);
@@ -319,6 +342,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenReceiptReferencesAnotherIntent_DoesNotReadTheTarget()
     {
         _ = Directory.CreateDirectory(_root);
@@ -333,6 +357,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         const string path = "captured-read.txt";
@@ -348,6 +373,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenPathTraversesDirectorySymbolicLink_ReturnsFileReadDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -364,6 +390,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenTargetIsSymbolicLinkOutsideRoot_ReturnsFileReadDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -381,6 +408,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenPathTraversesDirectorySymbolicLink_ReturnsLegacyFileWriteDeniedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -397,6 +425,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenTargetIsSymbolicLinkOutsideRoot_ReturnsLegacyFileWriteDeniedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -415,6 +444,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeCreateNewAndFileExists_ReturnsFileAlreadyExists()
     {
         var fs = CreateFileSystem();
@@ -426,6 +456,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenConcurrentCreateNewTargetsSamePath_CreatesExactlyOnce()
     {
         var fs = CreateFileSystem();
@@ -438,6 +469,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenRequestWasMutatedToUndefinedMode_ThrowsBeforeEffects()
     {
         var fs = CreateFileSystem();
@@ -451,6 +483,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeAppend_AppendsToExistingContent()
     {
         var fs = CreateFileSystem();
@@ -462,6 +495,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeCreateOrOverwrite_ReplacesExistingContent()
     {
         var fs = CreateFileSystem();
@@ -473,6 +507,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeReplaceExistingAndFileExists_ReplacesAtomically()
     {
         var fs = CreateFileSystem();
@@ -489,6 +524,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeReplaceExistingAndFileMissing_DoesNotCreateTarget()
     {
         var fs = CreateFileSystem();
@@ -503,6 +539,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeReplaceExistingAndTargetIsSymlinkOutsideRoot_ReturnsFailedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -523,6 +560,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenModeReplaceExistingAndParentIsNotWritable_ReturnsFailedWithoutMutation()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -551,6 +589,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
@@ -561,6 +600,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsLegacyFileWriteDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 4);
@@ -570,6 +610,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task WriteAsync_WhenGrantDenied_DoesNotMutateAndUsesExactDispositionBinding()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -587,6 +628,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenRootDirectoryDoesNotExist_ReturnsFileNotFound()
     {
         var options = new SandboxedFileSystemOptions
@@ -599,6 +641,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenFileDoesNotExistInExistingRoot_ReturnsFileNotFound()
     {
         var fs = CreateFileSystem();
@@ -607,6 +650,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenRootContainsEntries_ReturnsOrdinalPagesWithStableCursor()
     {
         var fs = CreateFileSystem();
@@ -625,6 +669,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenDirectoryChangesBetweenPages_ReturnsSnapshotChanged()
     {
         var fs = CreateFileSystem();
@@ -638,6 +683,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenSnapshotExceedsConfiguredBound_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem(options => options.MaximumDirectorySnapshotEntries = 2);
@@ -649,6 +695,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenPathTraversesSymbolicLink_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -666,6 +713,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    [Obsolete]
     public async Task EnumerateAsync_WhenGrantDenied_LeaksNoDirectoryExistenceAndUsesExactBinding(bool createDirectory)
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -689,6 +737,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenRecursivePatternMatches_ReturnsDeterministicCompleteResults()
     {
         var fs = CreateFileSystem();
@@ -704,6 +753,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenHiddenExcluded_DoesNotVisitDotPrefixedSubtrees()
     {
         var fs = CreateFileSystem();
@@ -717,6 +767,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenSubtreeExcluded_PrunesItBeforeVisitBoundIsConsumed()
     {
         var fs = CreateFileSystem();
@@ -740,6 +791,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenNoNameMatches_ReturnsDistinctNoMatchesOutcome()
     {
         var fs = CreateFileSystem();
@@ -751,6 +803,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenVisitBoundExceeded_ReturnsPartialIncompleteLimitOutcome()
     {
         var fs = CreateFileSystem();
@@ -764,6 +817,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenSymlinkPointsOutside_DoesNotTraverseTarget()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -781,6 +835,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
     {
         var fs = CreateFileSystem();
@@ -790,6 +845,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -799,6 +855,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenBaseDirectoryIsSymlinkOutsideRoot_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -814,6 +871,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenGrantDenied_DoesNotObserveAndUsesExactBinding()
     {
         var store = new TestSecurity.RecordingGrantStore
@@ -830,6 +888,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenRetainedResultLimitReached_ReturnsLimitExceededDuringMatchRetention()
     {
         var fs = CreateFileSystem();
@@ -842,6 +901,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenLimitIsReachedDeepInTraversal_PropagatesTerminalStatusToAncestor()
     {
         var fs = CreateFileSystem();
@@ -856,6 +916,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task GlobAsync_WhenSubdirectoryPermissionDenied_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -880,6 +941,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenNestedPathParentIsMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -888,6 +950,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenEntryNameContainsBackslash_ReturnsFailed()
     {
         var fs = CreateFileSystem();
@@ -897,6 +960,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
     {
         var fs = CreateFileSystem();
@@ -906,6 +970,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
     {
         const string protectedPath = "content-must-not-enter-diagnostics.txt";
@@ -932,6 +997,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
     {
         using var cancellation = new CancellationTokenSource();
@@ -945,6 +1011,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_LogsFailureAndRethrows()
     {
         var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
@@ -952,6 +1019,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadAsync_WhenLoggerIsEnabledAndReadSucceeds_EmitsCompletedStructuredEvent()
     {
         var logger = new RecordingLogger<SandboxedFileSystem>();
@@ -969,6 +1037,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
     {
         var logger = new RecordingLogger<SandboxedFileSystem>();
@@ -998,6 +1067,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         }
     }
 
+    [Obsolete]
     private SandboxedFileSystem CreateFileSystem(Action<SandboxedFileSystemOptions>? configure = null, ISecurityGrantStore? grantStore = null, ILogger<SandboxedFileSystem>? logger = null)
     {
         _ = Directory.CreateDirectory(_root);
@@ -1012,6 +1082,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
     private readonly string _rootSandboxedFileSystemSearch = Path.Combine(Path.GetTempPath(), $"agentkit-search-{Guid.NewGuid():N}");
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenLiteralMatches_ReturnsDeterministicVersionedByteLocations()
     {
         _ = Directory.CreateDirectory(Path.Combine(_rootSandboxedFileSystemSearch, "src"));
@@ -1031,6 +1102,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenRegexAndPathFilterProvided_UsesPinnedEngines()
     {
         _ = Directory.CreateDirectory(Path.Combine(_rootSandboxedFileSystemSearch, "src"));
@@ -1042,6 +1114,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenSubtreeExcluded_PrunesItBeforeCandidateFileBoundIsConsumed()
     {
         _ = Directory.CreateDirectory(Path.Combine(_rootSandboxedFileSystemSearch, "bin", "generated"));
@@ -1086,6 +1159,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenFilesAreHiddenBinaryOrInvalidUtf8_ExcludesThemWithoutDecoding()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, ".hidden"), "needle", TestContext.Current.CancellationToken);
@@ -1099,6 +1173,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenMatchLimitReached_ReturnsTypedPartialResult()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), "needle needle", TestContext.Current.CancellationToken);
@@ -1110,6 +1185,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenRetainedMatchesExactlyEqualLimit_RemainsComplete()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), "one needle", TestContext.Current.CancellationToken);
@@ -1121,6 +1197,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenMatchingLineIsLong_RetainsBoundedContextContainingMatch()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), $"{new string('x', 200)}needle{new string('y', 200)}", TestContext.Current.CancellationToken);
@@ -1135,6 +1212,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenProjectionWindowWouldSplitAMultiByteCharacter_AdjustsBothEdgesToValidUtf8()
     {
         // "é" is 2 UTF-8 bytes (0xC3 0xA9); with MaximumLineBytes=29 the naive half-context math lands the
@@ -1151,6 +1229,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenRequestExceedsHostCeiling_DeniesBeforeTraversal()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), "needle", TestContext.Current.CancellationToken);
@@ -1162,6 +1241,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenSymlinkPointsOutsideRoot_DoesNotTraverseOrRevealTarget()
     {
         var outside = Path.Combine(Path.GetTempPath(), $"agentkit-search-outside-{Guid.NewGuid():N}");
@@ -1182,6 +1262,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenGrantDenied_DoesNotCheckBaseExistence()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
@@ -1200,6 +1281,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenDurationElapses_ReturnsTypedTimeout()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), "needle", TestContext.Current.CancellationToken);
@@ -1210,6 +1292,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenEntryNameIsWhitespaceOnly_ReturnsFailedInsteadOfThrowing()
     {
         File.WriteAllText(Path.Combine(_rootSandboxedFileSystemSearch, " "), "needle");
@@ -1219,6 +1302,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
@@ -1229,6 +1313,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenBaseDirectoryIsSymlinkOutsideRoot_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1253,6 +1338,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenSubdirectoryPermissionDenied_ReturnsDeniedWithoutVisitingItsContent()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1278,6 +1364,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenCandidateFilePermissionDenied_ReturnsDeniedWithoutReadingContent()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1301,6 +1388,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenLaterSiblingFollowsATerminatedSubtree_SkipsItWithoutOpening()
     {
         foreach (var name in new[] { "a", "b", "c", "d" })
@@ -1319,6 +1407,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenCandidateExceedsRemainingByteBudget_ReturnsLimitExceeded()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "big.txt"), new string('x', 100), TestContext.Current.CancellationToken);
@@ -1330,6 +1419,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task SearchAsync_WhenCandidateIsANamedPipe_SkipsItWithoutHangingOrMatching()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1347,6 +1437,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         result.Matches.ShouldBeEmpty();
     }
 
+    [Obsolete]
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemSearch(ISecurityGrantStore? grantStore = null, TimeProvider? timeProvider = null, Action<SandboxedFileSystemOptions>? configure = null)
     {
         var options = new SandboxedFileSystemOptions
@@ -1368,6 +1459,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
 
     private readonly string _rootSandboxedFileSystemEdit = Path.Combine(Path.GetTempPath(), $"agentkit-edit-{Guid.NewGuid():N}");
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenSuccessful_ReturnsExactBytesHashAndEnforcement()
     {
         var bytes = new byte[]
@@ -1395,6 +1487,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenGrantDenied_DoesNotRevealMissingTarget()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
@@ -1408,6 +1501,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenRequestMaximumBytesExceedsConfiguredBound_ReturnsDenied()
     {
         var fileSystem = new SandboxedFileSystem(
@@ -1420,6 +1514,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenParentDirectoryIsMissing_ReturnsNotFound()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
@@ -1428,6 +1523,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenTargetFileIsMissingButParentExists_ReturnsNotFound()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
@@ -1436,6 +1532,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenParentIsSymlinkOutsideRoot_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1459,6 +1556,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenTargetIsSymlinkOutsideRoot_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1484,6 +1582,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenFileExceedsRequestByteBound_ReturnsLimitExceeded()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemEdit, "big.txt"), "0123456789", TestContext.Current.CancellationToken);
@@ -1493,6 +1592,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReadSnapshotAsync_WhenTargetIsNamedPipe_ReturnsFailedNotSeekable()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1511,6 +1611,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenExpectedVersionMatches_CommitsAtomicallyAndPreservesMode()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1540,6 +1641,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenExpectedVersionChanged_ReturnsConflictWithoutStaging()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1553,6 +1655,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenGrantDenied_CreatesNoStagingFile()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1570,6 +1673,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenContentExceedsMaximumWriteBytes_ReturnsDenied()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1585,6 +1689,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenParentDirectoryMissing_ReturnsNotFound()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
@@ -1595,6 +1700,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenParentIsSymlinkOutsideRoot_ReturnsDenied()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1620,6 +1726,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenTargetMissingButParentExists_ReturnsNotFound()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
@@ -1631,6 +1738,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenTargetIsSymlinkOutsideRoot_ReturnsDeniedWithoutOutsideEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1659,6 +1767,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenCurrentTargetExceedsReadBoundary_ReturnsFailedNotConflict()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1675,6 +1784,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenCallerCancelsWhileWaitingForAnotherPlanOnTheSamePath_ReleasesQueuePositionWithoutHarm()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1734,6 +1844,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ReplaceAsync_WhenTwoPlansRace_OnlyOneExpectedVersionCommits()
     {
         var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
@@ -1749,11 +1860,13 @@ public sealed class SandboxedFileSystemTests: IDisposable
         (content is "first" or "second").ShouldBeTrue();
     }
 
+    [Obsolete]
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemEdit(ISecurityGrantStore? grantStore = null) => new(Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemEdit }), grantStore ?? TestSecurity.GrantStore(), TimeProvider.System);
     private static AtomicFileReplaceRequest ReplaceRequest(string path, ContentHash expected, ImmutableArray<byte> content, WorkspaceMutationId id) => new(id, new FileSystemPath(path), expected, content, TestSecurity.Grant());
     private static WorkspaceMutationId MutationId(int suffix) => new(Guid.Parse($"10000000-0000-0000-0000-{suffix:D12}"));
     private readonly string _rootSandboxedFileSystemPatch = Path.Combine(Path.GetTempPath(), $"agentkit-patch-{Guid.NewGuid():N}");
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenCreateIsValid_CommitsAtomicallyWithExactSecurityBinding()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1778,6 +1891,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenMixedPlanIsValid_CommitsInSourceOrderWithHonestVisibilityStatus()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1816,6 +1930,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenLaterPreconditionIsStale_RejectsWholePlanBeforeEffects()
     {
         await WriteAsync("existing.txt", "current");
@@ -1831,6 +1946,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenLaterGrantIsDenied_ObservesAndMutatesNothing()
     {
         var store = new RecordingGrantStore(deniedIndex: 1);
@@ -1844,6 +1960,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenPathsOverlap_RejectsBeforeGrantConsumption()
     {
         var store = new RecordingGrantStore();
@@ -1857,6 +1974,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenCreateTargetExists_DoesNotReplaceIt()
     {
         await WriteAsync("existing.txt", "original");
@@ -1868,6 +1986,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenEntryCountExceedsConfiguredBoundary_RejectsBeforeGrantConsumption()
     {
         var fileSystem = new SandboxedFileSystem(
@@ -1884,6 +2003,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenEntryKindDoesNotMatchItsConcreteContract_RejectsBeforeGrantConsumption()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
@@ -1897,6 +2017,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenTwoEntriesShareTheSameMutationIdentity_RejectsBeforeGrantConsumption()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
@@ -1910,6 +2031,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenSingleEntryContentExceedsWriteBoundary_RejectsBeforeGrantConsumption()
     {
         var fileSystem = new SandboxedFileSystem(
@@ -1923,6 +2045,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenAggregateContentExceedsPatchByteBoundary_RejectsBeforeGrantConsumption()
     {
         var fileSystem = new SandboxedFileSystem(
@@ -1938,6 +2061,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenSourceParentDirectoryIsMissing_RejectsAtPreflight()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
@@ -1948,6 +2072,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenSourceParentIsSymlinkOutsideRoot_RejectsAtPreflightAsBoundary()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1974,6 +2099,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenDeleteTargetVersionChanged_RejectsAtPreflight()
     {
         await WriteAsync("deletable.txt", "current");
@@ -1985,6 +2111,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenMoveSourceVersionChanged_RejectsAtPreflight()
     {
         await WriteAsync("movable.txt", "current");
@@ -1997,6 +2124,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenMoveDestinationParentIsMissing_RejectsAtPreflight()
     {
         await WriteAsync("movable.txt", "current");
@@ -2009,6 +2137,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenMoveDestinationAlreadyExists_RejectsAtPreflight()
     {
         await WriteAsync("movable.txt", "current");
@@ -2022,6 +2151,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenRequiredFileIsMissing_RejectsAtPreflightWithoutRevealingDetails()
     {
         var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
@@ -2032,6 +2162,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenParentDirectoryIsNotWritable_RejectsStagingWithoutPartialEffect()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -2057,6 +2188,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    [Obsolete]
     public async Task ApplyPatchAsync_WhenALaterEntryFailsToStage_RemovesTheEarlierEntrysOrphanedStagingFile()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -2083,6 +2215,7 @@ public sealed class SandboxedFileSystemTests: IDisposable
         }
     }
 
+    [Obsolete]
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemPatch(ISecurityGrantStore store) => new(Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch }), store, TimeProvider.System);
     private async Task WriteAsync(string path, string content) => await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), content, TestContext.Current.CancellationToken);
     private async Task<ContentHash> FingerprintAsync(string path) => FileSecurityBinding.ContentFingerprint(await File.ReadAllBytesAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), TestContext.Current.CancellationToken));

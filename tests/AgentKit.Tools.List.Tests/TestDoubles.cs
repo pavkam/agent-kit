@@ -3,7 +3,8 @@
 
 namespace AgentKit.Tools.List.Tests;
 
-internal sealed class FakeDirectoryReader: IDirectoryReader
+[Obsolete]
+internal sealed class FakeDirectoryReader: ILegacyDirectoryReader
 {
     public ComponentId SecurityAudience { get; } = new("test.directory");
     public List<DirectoryEnumerationRequest> Requests { get; } = [];

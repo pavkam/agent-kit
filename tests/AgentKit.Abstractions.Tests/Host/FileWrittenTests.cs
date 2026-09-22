@@ -9,6 +9,7 @@ using AgentKit;
 public sealed class FileWrittenTests
 {
     [Fact]
+    [Obsolete]
     public void FileWritten_Constructor_WhenBytesWrittenNegative_ThrowsArgumentOutOfRangeException()
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LegacyFileWritten(-1));
@@ -16,6 +17,7 @@ public sealed class FileWrittenTests
     }
 
     [Fact]
+    [Obsolete]
     public void FileWritten_Constructor_WhenValid_RoundTripsBytesWritten()
     {
         var written = new LegacyFileWritten(42);
@@ -23,6 +25,7 @@ public sealed class FileWrittenTests
     }
 
     [Fact]
+    [Obsolete]
     public void FileWritten_With_WhenApplied_ProducesEqualCopy()
     {
         var original = new LegacyFileWritten(42);

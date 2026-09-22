@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.List;
 
+#pragma warning disable CS0612 // Legacy ILegacyDirectoryReader until WS5-C8 migrates list_directory onto spec IDirectoryReader.
+
 /// <summary>Lists one deterministic, snapshot-bound page of child paths from an authorized directory.</summary>
 public sealed class ListDirectoryTool: ITool
 {
@@ -29,8 +31,8 @@ public sealed class ListDirectoryTool: ITool
           "additionalProperties": false
         }
         """).RootElement;
-
-    private readonly IDirectoryReader _directoryReader;
+    [Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
+    private readonly ILegacyDirectoryReader _directoryReader;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
     private readonly TimeProvider _timeProvider;
@@ -44,8 +46,9 @@ public sealed class ListDirectoryTool: ITool
     /// <param name="options">The validated page options.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured page bound is not positive or the default exceeds the maximum.</exception>
+    [Obsolete("Use spec IDirectoryReader after WS5-C8 migrates list_directory.")]
     public ListDirectoryTool(
-        IDirectoryReader directoryReader,
+        ILegacyDirectoryReader directoryReader,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
@@ -81,6 +84,7 @@ public sealed class ListDirectoryTool: ITool
         ExtensionData.Empty);
 
     /// <inheritdoc/>
+    [Obsolete]
     public async Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default)
@@ -233,3 +237,5 @@ public sealed class ListDirectoryTool: ITool
                 new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])))),
         []);
 }
+
+#pragma warning restore CS0612

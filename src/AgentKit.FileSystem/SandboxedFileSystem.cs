@@ -22,9 +22,10 @@ using Microsoft.Win32.SafeHandles;
 /// authorization decision that already ran, which is the low-level
 /// boundary re-enforcing the same effect a higher-level allow cannot widen.
 /// </remarks>
+[Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
 public sealed partial class SandboxedFileSystem:
     IFileSystem,
-    IDirectoryReader,
+    ILegacyDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,
@@ -127,6 +128,7 @@ public sealed partial class SandboxedFileSystem:
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private async Task<FileReadResult> ReadCoreAsync(LegacyFileReadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -227,6 +229,7 @@ public sealed partial class SandboxedFileSystem:
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private async Task<LegacyFileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -347,6 +350,7 @@ public sealed partial class SandboxedFileSystem:
         }
     }
 
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private static async ValueTask<LegacyFileWriteResult> ReplaceExistingWriteAsync(
         SafeFileHandle parent,
         string fileName,
@@ -474,6 +478,7 @@ public sealed partial class SandboxedFileSystem:
     /// exists" and the replace attempt's own open, the replace fails with a "does not exist" outcome and this
     /// method retries the whole create-or-replace attempt rather than surfacing a transient race as a failure.
     /// </remarks>
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private static async ValueTask<LegacyFileWriteResult> CreateOrReplaceWriteAsync(
         SafeFileHandle parent,
         string fileName,
@@ -1009,6 +1014,7 @@ public sealed partial class SandboxedFileSystem:
             ? new FileReadDenied($"Path '{path}' crosses a symbolic link or an inaccessible boundary.")
             : new FileReadFailed("The file could not be read.");
 
+    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
     private static LegacyFileWriteResult BoundaryWriteFailure(FileSystemPath path, int error) =>
         IsBoundaryViolation(error)
             ? new LegacyFileWriteDenied($"Path '{path}' crosses a symbolic link or an inaccessible boundary.")

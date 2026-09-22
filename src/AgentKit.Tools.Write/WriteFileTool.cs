@@ -34,7 +34,7 @@ public sealed class WriteFileTool: ITool
           "required": ["path", "content", "mode"]
         }
         """).RootElement;
-
+    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
     private readonly IFileSystem _fileSystem;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -46,6 +46,7 @@ public sealed class WriteFileTool: ITool
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
     public WriteFileTool(
         IFileSystem fileSystem,
         ISecurityAuthoritySelector authoritySelector,
@@ -80,6 +81,7 @@ public sealed class WriteFileTool: ITool
     public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
+    [Obsolete("Use IFileWriter after WS5-C7 migrates write_file.")]
     public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

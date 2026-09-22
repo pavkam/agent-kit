@@ -4,8 +4,9 @@
 namespace AgentKit.FileSystem.Tests;
 
 /// <summary>Provides distinguishable replacements for each narrow filesystem capability without performing host effects.</summary>
+[Obsolete]
 internal sealed class ReplacementFileCapabilities:
-    IDirectoryReader,
+    ILegacyDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,

@@ -32,6 +32,7 @@ public static class ServiceExtensions
         /// <paramref name="rootDirectory"/> is null, empty, or consists
         /// only of whitespace.
         /// </exception>
+        [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
         public IServiceCollection AddSandboxedFileSystem(
             string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
         {
@@ -68,7 +69,7 @@ public static class ServiceExtensions
             services.TryAddSingleton<IFileSystem>(static provider =>
                 provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IDirectoryReader>(static provider =>
+            services.TryAddSingleton<ILegacyDirectoryReader>(static provider =>
                 provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IFileGlobber>(static provider =>
                 provider.GetRequiredService<SandboxedFileSystem>());

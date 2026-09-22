@@ -8,6 +8,7 @@ using AgentKit.TestSupport;
 public sealed class ReadFileToolTests
 {
     [Fact]
+    [Obsolete]
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
@@ -17,6 +18,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
@@ -35,6 +37,7 @@ public sealed class ReadFileToolTests
     [InlineData(10, 0)]
     [InlineData(10, -1)]
     [InlineData(11, 10)]
+    [Obsolete]
     public void Constructor_WhenOptionsInvalid_ThrowsArgumentOutOfRangeException(int defaultMaximumLines, int maximumLines)
     {
         var options = new ReadFileToolOptions { DefaultMaximumLines = defaultMaximumLines, MaximumLines = maximumLines };
@@ -43,6 +46,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public void Constructor_WhenDefaultEqualsMaximum_Succeeds()
     {
         var options = new ReadFileToolOptions { DefaultMaximumLines = 10, MaximumLines = 10 };
@@ -53,6 +57,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public void Descriptor_WhenAccessed_DeclaresAuthoredReadContractAndOpenInputSchema()
     {
         var descriptor = TestFactory.Tool().Descriptor;
@@ -65,6 +70,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var tool = TestFactory.Tool();
@@ -76,6 +82,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -89,6 +96,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -102,6 +110,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -115,6 +124,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenOffsetExplicitlyNull_ReadsFullContent()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2", 5) };
@@ -128,6 +138,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -141,6 +152,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -155,6 +167,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -168,6 +181,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -181,6 +195,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileFound_ReturnsFullContent()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("line1\nline2\nline3", 17) };
@@ -196,6 +211,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenOffsetAndLimitProvided_ReturnsRequestedLineRange()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
@@ -208,6 +224,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitExceedsAvailableLines_ReturnsRemainingLines()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
@@ -221,6 +238,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitOmitted_UsesConfiguredDefaultWindow()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
@@ -234,6 +252,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitOmittedAndOffsetProvided_UsesConfiguredDefaultWindowFromOffset()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
@@ -247,6 +266,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitOmittedAndFileFitsWindow_ReturnsFullContentMarkedComplete()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\r\nl2", 6) };
@@ -259,6 +279,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndFitsWindow_ReturnsFullContentMarkedComplete()
     {
         // Split('\n') turns a trailing line terminator into one extra, phantom empty final element ("l1\nl2\n"
@@ -275,6 +296,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndAnExplicitRangeReachesTheEnd_MarksComplete()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\n", 9) };
@@ -288,6 +310,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
@@ -302,6 +325,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenLimitExceedsMaximum_ReturnsInvalidArguments()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
@@ -322,6 +346,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileNotFound_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnRead = static r => new FileNotFound(r.Path) };
@@ -336,6 +361,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadDenied("outside sandbox") };
@@ -351,6 +377,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotObserveFileSystem()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("secret", 6) };
@@ -369,6 +396,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadFailed("disk error") };
@@ -383,6 +411,7 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task InvokeAsync_WhenUsingRealSandboxedFileSystem_ReadsFileEndToEnd()
     {
         var root = Path.Combine(Path.GetTempPath(), "agentkit-readtool-" + Guid.NewGuid().ToString("N"));

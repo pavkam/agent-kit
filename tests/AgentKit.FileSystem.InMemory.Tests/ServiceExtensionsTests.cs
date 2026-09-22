@@ -7,9 +7,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public sealed class ServiceExtensionsTests
 {
+    [Obsolete]
     private static readonly Type[] _narrowCapabilityTypes =
     [
-        typeof(IDirectoryReader),
+        typeof(ILegacyDirectoryReader),
         typeof(IFileGlobber),
         typeof(IFileContentSearcher),
         typeof(IFileSnapshotReader),
@@ -18,15 +19,16 @@ public sealed class ServiceExtensionsTests
     ];
 
     /// <summary>Gets every narrow capability in both registration orders.</summary>
+    [Obsolete]
     public static TheoryData<Type, bool> NarrowCapabilityReplacementCases { get; } = new()
     {
-        { typeof(IDirectoryReader), false },
+        { typeof(ILegacyDirectoryReader), false },
         { typeof(IFileGlobber), false },
         { typeof(IFileContentSearcher), false },
         { typeof(IFileSnapshotReader), false },
         { typeof(IAtomicFileReplacer), false },
         { typeof(IWorkspacePatchApplier), false },
-        { typeof(IDirectoryReader), true },
+        { typeof(ILegacyDirectoryReader), true },
         { typeof(IFileGlobber), true },
         { typeof(IFileContentSearcher), true },
         { typeof(IFileSnapshotReader), true },
@@ -35,6 +37,7 @@ public sealed class ServiceExtensionsTests
     };
 
     [Fact]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenCalled_RegistersEveryCapability()
     {
         var services = new ServiceCollection();
@@ -44,7 +47,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         _ = provider.GetRequiredService<IFileSystem>().ShouldBeOfType<InMemoryFileSystem>();
-        provider.GetRequiredService<IDirectoryReader>().ShouldBeSameAs(provider.GetRequiredService<IFileSystem>());
+        provider.GetRequiredService<ILegacyDirectoryReader>().ShouldBeSameAs(provider.GetRequiredService<IFileSystem>());
         provider.GetRequiredService<IFileGlobber>().ShouldBeSameAs(provider.GetRequiredService<IFileSystem>());
         provider.GetRequiredService<IFileContentSearcher>().ShouldBeSameAs(provider.GetRequiredService<IFileSystem>());
         provider.GetRequiredService<IFileSnapshotReader>().ShouldBeSameAs(provider.GetRequiredService<IFileSystem>());
@@ -53,6 +56,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenCalledTwice_KeepsFirstServiceRegistration()
     {
         var services = new ServiceCollection();
@@ -66,6 +70,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public async Task AddInMemoryFileSystem_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
     {
         var expectedId = new SecurityEnforcementIntentId(Guid.Parse("82000000-0000-0000-0000-000000000008"));
@@ -89,6 +94,7 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenFileSystemIsReplaced_PreservesReplacementAndDefaultNarrowCapabilities(
         bool replaceAfterRegistration)
     {
@@ -111,7 +117,7 @@ public sealed class ServiceExtensionsTests
 
         provider.GetRequiredService<IFileSystem>().ShouldBeSameAs(replacement);
         _ = provider.GetServices<IFileSystem>().ShouldHaveSingleItem();
-        provider.GetRequiredService<IDirectoryReader>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<ILegacyDirectoryReader>().ShouldBeSameAs(concrete);
         provider.GetRequiredService<IFileGlobber>().ShouldBeSameAs(concrete);
         provider.GetRequiredService<IFileContentSearcher>().ShouldBeSameAs(concrete);
         provider.GetRequiredService<IFileSnapshotReader>().ShouldBeSameAs(concrete);
@@ -121,6 +127,8 @@ public sealed class ServiceExtensionsTests
 
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
+    [Obsolete]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)
@@ -152,6 +160,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenConfigureProvided_AppliesOptions()
     {
         var services = new ServiceCollection();
@@ -164,6 +173,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenMaximumReadBytesIsNotPositive_FailsValidationOnAccess()
     {
         var services = new ServiceCollection();
@@ -176,6 +186,7 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenSearchDurationIsNotPositive_FailsValidationOnAccess()
     {
         var services = new ServiceCollection();
@@ -190,6 +201,7 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    [Obsolete]
     public void AddInMemoryFileSystem_WhenPatchBoundaryIsNotPositive_FailsValidationOnAccess(bool entryBoundary)
     {
         var services = new ServiceCollection();
