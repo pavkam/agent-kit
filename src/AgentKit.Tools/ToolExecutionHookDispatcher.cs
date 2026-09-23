@@ -63,28 +63,77 @@ internal static class ToolExecutionHookDispatcher
             hookArgs,
             HookFailureMode.FailOperation,
             cancellationToken).ConfigureAwait(false);
-        return hookArgs.ContentReplacement is { } replacement
-            ? result with { Content = replacement }
-            : result;
+        return hookArgs.ContentReplacement is not { } replacement
+            ? result
+            : new ToolCallResult(
+                result.AgentId,
+                result.SessionId,
+                result.RunId,
+                result.TurnId,
+                result.OperationId,
+                result.CallId,
+                result.Authorization,
+                result.GrantId,
+                result.Acceptance,
+                result.ProviderAlias,
+                result.ToolId,
+                result.ToolVersion,
+                result.Effects,
+                result.ExternalIdempotencyKey,
+                result.Admission,
+                result.Status,
+                replacement.Content,
+                result.Error,
+                result.SideEffectCertainty,
+                result.Usage,
+                result.Retryable,
+                result.Normalization,
+                result.NormalizationInfo,
+                result.ProjectionPolicy,
+                result.RequestedAt,
+                result.InvocationStartedAt,
+                result.CompletedAt,
+                result.Extensions);
     }
 
     internal static ToolCallPart CreateCallPart(ToolCatalogSnapshot snapshot, ToolCallRequest request)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(request);
-        if (!snapshot.ProviderAliases.TryGetValue(request.ProviderAlias, out var identity))
+        ToolId? resolvedId = null;
+        ToolVersion? resolvedVersion = null;
+        if (snapshot.ProviderAliases.TryGetValue(request.ProviderAlias, out var identity))
         {
-            identity = new ToolIdentity(new ToolId(request.ProviderAlias.Value), new ToolVersion("0"));
+            foreach (var tool in snapshot.Tools)
+            {
+                if (tool.Id == identity.Id && tool.Version == identity.Version)
+                {
+                    resolvedId = tool.Id;
+                    resolvedVersion = tool.Version;
+                    break;
+                }
+            }
         }
 
-        _ = snapshot.Tools.FirstOrDefault(tool => tool.Id == identity.Id && tool.Version == identity.Version) is { } descriptor;
-        var toolRef = new ToolReference(
-            request.ProviderAlias,
-            descriptor?.Id,
-            descriptor?.Version);
+        var toolRef = new ToolReference(request.ProviderAlias, resolvedId, resolvedVersion);
         var arguments = ParseRawArguments(request.RawArguments);
-        return new ToolCallPart(request.CallId, toolRef, arguments);
+        return new ToolCallPart(request.CallId, toolRef, arguments, providerCallId: null, ExtensionData.Empty);
     }
+
+    internal static ToolCallRequest WithRawArguments(ToolCallRequest request, ImmutableArray<byte> rawArguments) =>
+        new(
+            request.AgentId,
+            request.SessionId,
+            request.RunId,
+            request.TurnId,
+            request.OperationId,
+            request.CallId,
+            request.Authorization,
+            request.CatalogVersion,
+            request.SourceOrdinal,
+            request.ProviderAlias,
+            rawArguments,
+            request.RequestedAt);
 
     internal static ImmutableArray<byte> ToRawArguments(JsonElement arguments) =>
         arguments.ValueKind is JsonValueKind.Undefined
@@ -95,7 +144,7 @@ internal static class ToolExecutionHookDispatcher
     {
         return rawArguments.IsDefaultOrEmpty
             ? JsonDocument.Parse("{}").RootElement
-            : JsonDocument.Parse(System.Text.Encoding.UTF8.GetBytes(rawArguments)).RootElement;
+            : JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(rawArguments.AsSpan())).RootElement;
     }
 
     internal sealed record BeforeToolHookOutcome(JsonElement Arguments, ToolInvocationVeto? Veto);

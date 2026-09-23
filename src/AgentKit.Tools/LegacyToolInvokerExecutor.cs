@@ -18,23 +18,27 @@ public sealed class LegacyToolInvokerExecutor: IToolExecutor
 {
     private readonly ILegacyToolCallOrchestrator _orchestrator;
     private readonly TimeProvider _timeProvider;
+    private readonly IHookDispatcher? _hookDispatcher;
     private readonly ILogger<LegacyToolInvokerExecutor> _logger;
 
     /// <summary>Initializes the legacy adapter executor.</summary>
     /// <param name="orchestrator">The legacy orchestrator that resolves, authorizes, and invokes tools.</param>
     /// <param name="timeProvider">The clock used for terminal timestamps.</param>
     /// <param name="logger">The type-specific structured logger.</param>
+    /// <param name="hookDispatcher">Optional hook dispatcher for before/result tool hooks.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public LegacyToolInvokerExecutor(
         ILegacyToolCallOrchestrator orchestrator,
         TimeProvider timeProvider,
-        ILogger<LegacyToolInvokerExecutor> logger)
+        ILogger<LegacyToolInvokerExecutor> logger,
+        IHookDispatcher? hookDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(orchestrator);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         _orchestrator = orchestrator;
         _timeProvider = timeProvider;
+        _hookDispatcher = hookDispatcher;
         _logger = logger;
     }
 
@@ -69,10 +73,39 @@ public sealed class LegacyToolInvokerExecutor: IToolExecutor
                 call.Authorization,
                 capability.Session.Profile);
 
+            var rawArguments = call.RawArguments;
+            if (capability.Hooks is { } hooks && _hookDispatcher is not null)
+            {
+                var callPart = ToolExecutionHookDispatcher.CreateCallPart(capture.Snapshot, call);
+                var before = await ToolExecutionHookDispatcher.DispatchBeforeToolInvocationAsync(
+                    _hookDispatcher,
+                    hooks,
+                    call.AgentId,
+                    call.SessionId,
+                    callPart,
+                    cancellationToken).ConfigureAwait(false);
+                if (before.Veto is { } veto)
+                {
+                    results.Add(
+                        ToolCallResultComposer.PreInvocation(
+                            call,
+                            ToolTerminalStatus.Unsupported,
+                            $"The call was vetoed before invocation: {veto.SafeReason}",
+                            toolId: null,
+                            toolVersion: null,
+                            effects: null,
+                            ToolRuntimeNormalizationDefaults.RejectionSnapshot,
+                            _timeProvider.GetUtcNow()));
+                    continue;
+                }
+
+                rawArguments = ToolExecutionHookDispatcher.ToRawArguments(before.Arguments);
+            }
+
             var legacyRequest = new LegacyToolCallRequest(
                 new ToolReference(call.ProviderAlias, null, null),
                 legacyContext,
-                LegacyToolCallResultFactory.ParseRawArguments(call.RawArguments),
+                LegacyToolCallResultFactory.ParseRawArguments(rawArguments),
                 call.RequestedAt);
 
             ResolvedToolInvocation resolved;
@@ -102,7 +135,16 @@ public sealed class LegacyToolInvokerExecutor: IToolExecutor
             }
 
             Debug.Assert(capture.Snapshot is not null, "A catalog capture must expose its snapshot.");
-            results.Add(LegacyToolCallResultFactory.Create(call, resolved, _timeProvider.GetUtcNow()));
+            var terminal = LegacyToolCallResultFactory.Create(call, resolved, _timeProvider.GetUtcNow());
+            terminal = await ToolExecutionHookDispatcher.DispatchToolResultAsync(
+                _hookDispatcher,
+                capability.Hooks,
+                terminal.AgentId,
+                terminal.SessionId,
+                terminal.RunId,
+                terminal,
+                cancellationToken).ConfigureAwait(false);
+            results.Add(terminal);
         }
 
         return new ToolBatchResult(results.ToImmutable());

@@ -23,16 +23,17 @@ Owning documents: [Tools](../architecture/tools.md),
 - [x] WS4-C5c retry policy
 - [x] WS4-C5d oversized result spill (truncation path; artifact spill deferred
       to WS15)
-- [ ] WS4-C6 hooks move into the executor; `IToolResultHook` (contracts + hook
-      kernel registered; executor/loop move open)
+- [x] WS4-C6 hooks move into the executor; `IToolResultHook` (executor
+      dispatches `BeforeToolInvocation` and `ToolResult`; loop hook block
+      removed)
 - [x] WS4-C7a `AgentDefinition.Toolsets` and executor key
 - [ ] WS4-C7b derive tool definitions from capture; remove `Tools`/`ToolChoice`
-- [ ] WS4-C8 spec registration surface (`ReplaceToolExecutor`, `AddToolInvoker`,
-      `ApplicationToolProvider` landed; keyed `AddAgentTools` and full replace
-      surface open)
+- [ ] WS4-C8 spec registration surface (`AddToolDiscoveryRuntime`,
+      `AddTool`/`ReplaceTool` landed; keyed
+      `AddAgentTools(ComponentKey<IToolExecutor>)` still open)
 - [x] WS4-C9a migrate workspace file tools (List, Read, Write, Edit, Patch,
       Glob, Search)
-- [ ] WS4-C9b/c migrate remaining tool packages
+- [x] WS4-C9b/c migrate remaining tool packages
 - [ ] WS4-C10a delete legacy authorizer, catalog, invoker
 - [ ] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
 - [ ] WS4-C11 Simple over toolsets

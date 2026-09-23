@@ -12,12 +12,14 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"agentkit-process-{Guid.NewGuid():N}");
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public void Constructor_WhenLegacyLoggerAndArtifactArgumentsAreNull_RetainsUnambiguousSourceCompatibility()
     {
         using var runner = new OperatingSystemProcessRunner(CreateResolver("/bin/sh"), [new PlatformProcessSandboxProvider()], new TestGrantStore(), TimeProvider.System, Options.Create(OptionsFor("/bin/sh", 1024)), null, null);
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new OperatingSystemProcessRunner(CreateResolver("/bin/sh"), [new PlatformProcessSandboxProvider()], new TestGrantStore(), TimeProvider.System, Options.Create(OptionsFor("/bin/sh", 1024)), null, null, null!));
@@ -25,6 +27,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public void Constructor_WhenSandboxProfileIdentitiesCollide_ThrowsWithExactParameterName()
     {
         var first = new FakeProcessSandboxProvider(
@@ -45,6 +48,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public void Dispose_WhenCalledMoreThanOnce_IsIdempotent()
     {
         var runner = new OperatingSystemProcessRunner(
@@ -78,6 +82,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public async Task RunAsync_WhenSandboxPreparationReportsUnavailable_ReturnsSandboxUnavailableWithoutConsumingGrant()
     {
         if (!IsSupported())
@@ -106,6 +111,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public async Task RunAsync_WhenOperatingSystemRefusesProcessCreation_ReturnsFailedWithoutThrowing()
     {
         if (!IsSupported())
@@ -152,6 +158,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public async Task RunAsync_WhenLoggerIsEnabled_EmitsCompletedStructuredEvent()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -175,6 +182,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
     public async Task RunAsync_WhenLoggerIsEnabledAndResolverThrows_EmitsFailedStructuredEvent()
     {
         if (!IsSupported())

@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Keyed dependency-injection registration for operating-system file capabilities.</summary>
 internal static class OperatingSystemFileSystemRegistration
 {
-    [Obsolete]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,

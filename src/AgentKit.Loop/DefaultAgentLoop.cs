@@ -1255,7 +1255,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
-                tracking, hookScope, committedMessages, currentVersion, committedSequence, laneState, cancellationToken)
+                tracking, hookScope, model.Capabilities, committedMessages, currentVersion, committedSequence, laneState, cancellationToken)
                 .ConfigureAwait(false),
         };
     }
@@ -1797,6 +1797,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<ToolCallPart> toolCalls,
         RunTracking tracking,
         HookActivationScope? hookScope,
+        ModelCapabilities modelCapabilities,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence currentSequence,
@@ -1826,10 +1827,33 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 currentVersion);
         }
 
-        await using var catalogCapture = services.ToolCatalogCaptures.Create(
-            new RunToolCatalogCaptureRequest(
-                request.AgentId, request.SessionId, request.RunId, turnSessionContext.Authorization));
-        var toolCapability = ToolExecutionCapabilityFactory.Create(request, services, turnCorrelation, tracking.Budget);
+        var toolsets = request.Agent?.Toolsets ?? [];
+        var captureRequest = toolsets.IsEmpty
+            ? new RunToolCatalogCaptureRequest(
+                request.AgentId,
+                request.SessionId,
+                request.RunId,
+                turnSessionContext.Authorization)
+            : new RunToolCatalogCaptureRequest(
+                request.AgentId,
+                request.SessionId,
+                request.RunId,
+                turnSessionContext.Authorization,
+                toolsets,
+                new EffectiveConfigurationSnapshot(
+                    turnSessionContext.Authorization.ConfigurationVersion,
+                    new ContentHash($"sha256:tool-catalog:{turnSessionContext.Authorization.ConfigurationVersion.Value}"),
+                    [],
+                    []),
+                modelCapabilities);
+        await using var catalogCapture = await services.ToolCatalogCaptures
+            .CreateAsync(captureRequest, cancellationToken)
+            .ConfigureAwait(false);
+        var hookBinding = hookScope is null
+            ? null
+            : new ToolExecutionHookBinding(hookScope, turnCorrelation, CreateHookDispatch);
+        var toolCapability = ToolExecutionCapabilityFactory.Create(
+            request, services, turnCorrelation, tracking.Budget, hookBinding);
         var catalogVersion = catalogCapture.Snapshot.Version;
         var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
         var interrupted = false;
@@ -1868,30 +1892,6 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 }
 
                 var arguments = toolCall.Arguments;
-                if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeToolInvocation))
-                {
-                    var beforeToolDispatch = CreateHookDispatch(AgentHookPoints.BeforeToolInvocation, turnCorrelation);
-                    var hookArgs = new BeforeToolInvocationEventArgs(
-                        beforeToolDispatch, request.AgentId, request.SessionId, toolCall);
-                    var hookContext = hookScope.CreateDispatch(beforeToolDispatch);
-                    await _hookDispatcher!.DispatchAsync(
-                        AgentHookPointDefinitions.BeforeToolInvocation,
-                        hookContext,
-                        hookArgs,
-                        HookFailureMode.FailOperation,
-                        cancellationToken).ConfigureAwait(false);
-                    if (hookArgs.Veto is { } veto)
-                    {
-                        LoopLog.ToolCallVetoed(_logger, request.RunId, toolCall.CallId);
-                        resultPart = VetoedResultPart(toolCall, veto);
-                        resultParts.Add(resultPart);
-                        await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    arguments = hookArgs.Arguments;
-                }
-
                 var rawArguments = arguments.ValueKind is System.Text.Json.JsonValueKind.Undefined
                     ? ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes("{}"))
                     : ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes(arguments.GetRawText()));

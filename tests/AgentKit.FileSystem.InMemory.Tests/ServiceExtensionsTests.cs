@@ -133,8 +133,6 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
     [Obsolete("Legacy host surface.")]
-    [Obsolete("Legacy host surface.")]
-    [Obsolete]
     public void AddInMemoryFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)

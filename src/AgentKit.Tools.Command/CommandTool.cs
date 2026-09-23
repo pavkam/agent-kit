@@ -26,7 +26,6 @@ public sealed class CommandTool: IToolInvoker, ITool
         """).RootElement;
 
     private readonly IProcessIntentResolver _resolver;
-    [Obsolete]
     private readonly IProcessRunner _runner;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
@@ -57,7 +56,6 @@ public sealed class CommandTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
-    [Obsolete]
     public CommandTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,

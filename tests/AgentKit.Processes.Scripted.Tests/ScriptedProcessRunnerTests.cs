@@ -10,10 +10,10 @@ public sealed class ScriptedProcessRunnerTests
 {
     private static readonly ProcessOperationId _operationId = new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new ScriptedProcessRunner(Resolver(), new TestGrantStore(), TimeProvider.System, Options.Create(new ScriptedProcessOptions()), null);
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ScriptedProcessRunner(Resolver(), new TestGrantStore(), TimeProvider.System, Options.Create(new ScriptedProcessOptions()), null, null!));
@@ -21,7 +21,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public void Constructor_WhenScenarioOperationIdentitiesCollide_ThrowsArgumentException()
     {
         var options = new ScriptedProcessOptions();
@@ -56,7 +56,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public async Task RunAsync_WhenNoScenarioIsConfiguredForTheOperation_ReturnsFailedWithoutConsumingTheGrant()
     {
         var resolver = Resolver();
@@ -83,7 +83,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public async Task RunAsync_WhenLoggerIsEnabled_EmitsCompletedStructuredEvent()
     {
         var resolver = Resolver();
@@ -98,7 +98,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
-    [Obsolete]
+    [Obsolete("Legacy IProcessRunner surface.")]
     public async Task RunAsync_WhenLoggerIsEnabledAndResolverThrows_EmitsFailedStructuredEvent()
     {
         var resolver = Resolver();
@@ -272,7 +272,6 @@ public sealed class ScriptedProcessRunnerTests
         return new ScriptedProcessIntentResolver(Options.Create(options));
     }
 
-    [Obsolete]
     private static ScriptedProcessRunner Runner(IProcessIntentResolver resolver, ISecurityGrantStore store, ProcessRunResult result, TimeSpan delay, TimeProvider timeProvider, IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null)
     {
         var options = new ScriptedProcessOptions();

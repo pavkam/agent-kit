@@ -325,7 +325,6 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
         var tool = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());

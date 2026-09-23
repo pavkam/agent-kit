@@ -11,13 +11,15 @@ internal static class ToolExecutionCapabilityFactory
     /// <param name="services">The compiled run services.</param>
     /// <param name="turnCorrelation">The turn operation correlation.</param>
     /// <param name="runBudget">The run budget when the run declared limits; otherwise null.</param>
+    /// <param name="hooks">Optional hook binding forwarded to the tool executor; null when hooks are inactive.</param>
     /// <returns>The capability passed to <see cref="IToolExecutor.ExecuteAsync"/>.</returns>
     /// <exception cref="ArgumentNullException">A required reference is null.</exception>
     internal static ToolExecutionCapability Create(
         AgentLoopRunRequest request,
         AgentRunServices services,
         InRunOperationCorrelation turnCorrelation,
-        RunBudget? runBudget)
+        RunBudget? runBudget,
+        ToolExecutionHookBinding? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(services);
@@ -42,7 +44,7 @@ internal static class ToolExecutionCapabilityFactory
                     request.RunId,
                     turnCorrelation.OperationId)));
 
-        return new ToolExecutionCapability(session, budget);
+        return new ToolExecutionCapability(session, budget, hooks);
     }
 
     /// <summary>A budget scope that rejects every reservation; used only to satisfy capability shape for unbudgeted runs.</summary>

@@ -4,10 +4,8 @@
 namespace AgentKit.FileSystem;
 
 /// <summary>Spec <see cref="IDirectoryReader"/> over the legacy page-based sandbox enumerator.</summary>
-[Obsolete]
 internal sealed class OperatingSystemDirectoryReader(ILegacyDirectoryReader legacyReader): IDirectoryReader
 {
-    [Obsolete]
     private readonly ILegacyDirectoryReader _legacyReader = legacyReader;
 
     /// <inheritdoc/>

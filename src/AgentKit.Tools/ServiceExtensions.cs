@@ -416,7 +416,7 @@ public static class ServiceExtensions
         /// Idempotent: every registration here uses <c>TryAdd</c>
         /// semantics, so calling this more than once keeps the first
         /// registration. This method does not register any concrete
-        /// <see cref="ITool"/>; use <see cref="AddTool{TTool}"/> to add
+        /// <see cref="ITool"/>; use <see cref="AddTool{TInvoker}(IServiceCollection, ToolDescriptor, ServiceLifetime)"/> to add
         /// each tool the application wants available.
         /// The catalog receives only explicitly registered policy snapshots and
         /// preserves a host clock, supplying <see cref="TimeProvider.System"/>
@@ -456,11 +456,90 @@ public static class ServiceExtensions
             services.TryAddSingleton<IToolExecutor>(static provider => new LegacyToolInvokerExecutor(
                 provider.GetRequiredService<ILegacyToolCallOrchestrator>(),
                 provider.GetRequiredService<TimeProvider>(),
-                provider.GetRequiredService<ILogger<LegacyToolInvokerExecutor>>()));
-            services.TryAddSingleton<IToolRunCatalogCaptureFactory, LegacyToolRunCatalogCaptureFactory>();
+                provider.GetRequiredService<ILogger<LegacyToolInvokerExecutor>>(),
+                provider.GetService<IHookDispatcher>()));
+            services.TryAddSingleton<IToolRunCatalogCaptureFactory>(static provider =>
+                new LegacyToolRunCatalogCaptureFactory(
+                    provider.GetRequiredService<IToolCatalog>(),
+                    provider));
 
             return services;
         }
+
+        /// <summary>Registers discovery capture, the registration catalog, and the spec-shaped executor stack.</summary>
+        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// Call after tool invokers and toolsets are registered. Requires <see cref="ISecurityAuthoritySelector"/> from
+        /// the permissions stack and optionally <see cref="IHookDispatcher"/> for tool lifecycle hooks.
+        /// </remarks>
+        public IServiceCollection AddToolDiscoveryRuntime(Action<ToolRuntimeOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            if (configure is not null)
+            {
+                _ = services.Configure(configure);
+            }
+
+            _ = services.AddToolRegistrationCatalog();
+            _ = services.AddToolCatalogCoordinator();
+            services.TryAddSingleton<IToolExecutor>(static provider => new DefaultToolExecutor(
+                provider.GetRequiredService<IToolResolver>(),
+                provider.GetRequiredService<IToolArgumentValidator>(),
+                provider.GetRequiredService<ISecurityAuthoritySelector>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
+                provider.GetRequiredService<IToolScheduler>(),
+                provider.GetRequiredService<ToolSchemaLimits>(),
+                provider.GetRequiredService<IOptions<ToolRuntimeOptions>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<DefaultToolExecutor>>(),
+                provider.GetService<IHookDispatcher>()));
+            return services;
+        }
+
+        /// <summary>Explicitly replaces one registered tool invoker under the shared application tool source.</summary>
+        /// <typeparam name="TInvoker">The replacement invoker implementation.</typeparam>
+        /// <param name="descriptor">The complete immutable descriptor identity to replace.</param>
+        /// <param name="lifetime">The service lifetime for <typeparamref name="TInvoker"/>.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        public IServiceCollection ReplaceTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+            where TInvoker : class, IToolInvoker
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            var identity = new ToolIdentity(descriptor.Id, descriptor.Version);
+            foreach (var descriptorEntry in services.Where(entry =>
+                         !entry.IsKeyedService
+                         && entry.ServiceType == typeof(RegisteredToolInvoker)
+                         && entry.ImplementationInstance is RegisteredToolInvoker marker
+                         && marker.Identity == identity).ToArray())
+            {
+                _ = services.Remove(descriptorEntry);
+            }
+
+            foreach (var descriptorEntry in services.Where(entry =>
+                         entry.IsKeyedService
+                         && entry.ServiceType == typeof(IToolInvoker)
+                         && entry.ServiceKey is ToolIdentity keyed
+                         && keyed == identity).ToArray())
+            {
+                _ = services.Remove(descriptorEntry);
+            }
+
+            return services.AddToolInvoker<TInvoker>(descriptor, lifetime);
+        }
+
+        /// <summary>Adds one spec-shaped tool invoker; alias for <see cref="AddToolInvoker{TInvoker}"/>.</summary>
+        /// <typeparam name="TInvoker">The invoker implementation.</typeparam>
+        /// <param name="descriptor">The complete immutable descriptor.</param>
+        /// <param name="lifetime">The invoker lifetime.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        public IServiceCollection AddTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+            where TInvoker : class, IToolInvoker =>
+            services.AddToolInvoker<TInvoker>(descriptor, lifetime);
 
         /// <summary>Registers the replaceable exact-version projection-policy catalog over host-supplied immutable snapshots.</summary>
         /// <returns>The same collection for further composition.</returns>

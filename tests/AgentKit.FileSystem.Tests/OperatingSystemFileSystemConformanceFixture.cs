@@ -134,7 +134,6 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
         return ValueTask.CompletedTask;
     }
 
-    [Obsolete]
     private void RebuildProvider()
     {
         _provider?.Dispose();

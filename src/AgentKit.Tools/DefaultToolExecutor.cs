@@ -27,6 +27,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
     private readonly ToolSchemaLimits _argumentValidationLimits;
     private readonly ToolRuntimeOptions _runtimeOptions;
     private readonly TimeProvider _timeProvider;
+    private readonly IHookDispatcher? _hookDispatcher;
     private readonly ILogger<DefaultToolExecutor> _logger;
 
     /// <summary>Initializes the first-party spec-shaped tool executor.</summary>
@@ -38,6 +39,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
     /// <param name="argumentValidationLimits">The bounds applied to argument validation for each call.</param>
     /// <param name="runtimeOptions">The configured tool runtime limits and scheduling defaults.</param>
     /// <param name="timeProvider">The replaceable clock used for timestamps.</param>
+    /// <param name="hookDispatcher">The optional hook dispatcher for tool lifecycle points.</param>
     /// <param name="logger">The type-specific structured logger.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public DefaultToolExecutor(
@@ -49,7 +51,8 @@ public sealed class DefaultToolExecutor: IToolExecutor
         ToolSchemaLimits argumentValidationLimits,
         IOptions<ToolRuntimeOptions> runtimeOptions,
         TimeProvider timeProvider,
-        ILogger<DefaultToolExecutor> logger)
+        ILogger<DefaultToolExecutor> logger,
+        IHookDispatcher? hookDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(argumentValidator);
@@ -68,6 +71,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
         _argumentValidationLimits = argumentValidationLimits;
         _runtimeOptions = runtimeOptions.Value;
         _timeProvider = timeProvider;
+        _hookDispatcher = hookDispatcher;
         _logger = logger;
     }
 
@@ -96,6 +100,35 @@ public sealed class DefaultToolExecutor: IToolExecutor
             var request = calls[index];
             ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (capability.Hooks is { } hooks && _hookDispatcher is not null)
+            {
+                var callPart = ToolExecutionHookDispatcher.CreateCallPart(capture.Snapshot, request);
+                var before = await ToolExecutionHookDispatcher.DispatchBeforeToolInvocationAsync(
+                    _hookDispatcher,
+                    hooks,
+                    request.AgentId,
+                    request.SessionId,
+                    callPart,
+                    cancellationToken).ConfigureAwait(false);
+                if (before.Veto is { } veto)
+                {
+                    orderedResults[index] = ToolCallResultComposer.PreInvocation(
+                        request,
+                        ToolTerminalStatus.Unsupported,
+                        $"The call was vetoed before invocation: {veto.SafeReason}",
+                        toolId: null,
+                        toolVersion: null,
+                        effects: null,
+                        ToolRuntimeNormalizationDefaults.RejectionSnapshot,
+                        _timeProvider.GetUtcNow());
+                    continue;
+                }
+
+                request = ToolExecutionHookDispatcher.WithRawArguments(
+                    request,
+                    ToolExecutionHookDispatcher.ToRawArguments(before.Arguments));
+            }
 
             var preflight = await PreflightAsync(capture, request, cancellationToken).ConfigureAwait(false);
             if (preflight.EarlyResult is { } early)
@@ -139,7 +172,15 @@ public sealed class DefaultToolExecutor: IToolExecutor
                 throw new InvalidOperationException("Every tool call must produce exactly one terminal result.");
             }
 
-            builder.Add(result);
+            var hooked = await ToolExecutionHookDispatcher.DispatchToolResultAsync(
+                _hookDispatcher,
+                capability.Hooks,
+                result.AgentId,
+                result.SessionId,
+                result.RunId,
+                result,
+                cancellationToken).ConfigureAwait(false);
+            builder.Add(hooked);
         }
 
         return new ToolBatchResult(builder.ToImmutable());
