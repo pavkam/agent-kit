@@ -6,18 +6,18 @@ namespace AgentKit.Processes;
 public sealed partial class PlatformProcessSandboxProvider
 {
     /// <inheritdoc/>
-    public ValueTask<ProcessSandboxResult> PrepareAsync(
-        ResolvedProcessIntent intent,
+    public ValueTask<ProcessSandboxResult> CreateAsync(
+        ProcessSandboxRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(intent);
+        ArgumentNullException.ThrowIfNull(request);
         return ProcessObservability.ObserveAsync(
             _logger,
             AgentKitActivityNames.ProcessSandboxPrepare,
             "sandbox_prepare",
-            intent.Request.Id,
+            request.OperationId,
             securityRequestId: null,
-            token => PrepareCoreAsync(intent, token),
+            token => PrepareCoreAsync(request, token),
             static result => result.Status.ToString(),
             static result => result.Status == ProcessSandboxStatus.Ready,
             cancellationToken);

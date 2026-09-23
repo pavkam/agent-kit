@@ -33,8 +33,6 @@ public sealed record AgentDefinition
     private readonly ModelSelectionPolicy _models;
     private readonly ModelRequirements _modelRequirements;
     private readonly ImmutableArray<InstructionSource> _instructionSources;
-    private readonly ImmutableArray<LlmToolDefinition> _tools;
-    private readonly LlmToolChoice _toolChoice;
     private readonly LlmRequestSettings _settings;
     private readonly RunPolicyDefaults _runDefaults;
     private readonly ExtensionData _extensions;
@@ -56,8 +54,6 @@ public sealed record AgentDefinition
     /// <param name="instructions">
     /// The system and developer instructions placed first in every request.
     /// </param>
-    /// <param name="tools">The tools this agent may call.</param>
-    /// <param name="toolChoice">The tool-call selection policy.</param>
     /// <param name="settings">The effective sampling and output settings.</param>
     /// <param name="runDefaults">
     /// The default run limits applied when a caller does not override them.
@@ -70,13 +66,11 @@ public sealed record AgentDefinition
     /// </exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="displayName"/> is null, empty, or whitespace-only, or
-    /// <paramref name="instructions"/> or <paramref name="tools"/> is
-    /// uninitialized or contains <see langword="null"/>.
+    /// <paramref name="instructions"/> is uninitialized or contains <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="models"/>, <paramref name="modelRequirements"/>,
-    /// <paramref name="toolChoice"/>, <paramref name="settings"/>,
-    /// <paramref name="runDefaults"/>, or <paramref name="extensions"/> is
+    /// <paramref name="settings"/>, <paramref name="runDefaults"/>, or <paramref name="extensions"/> is
     /// <see langword="null"/>.
     /// </exception>
     /// <remarks>
@@ -92,8 +86,6 @@ public sealed record AgentDefinition
         ModelSelectionPolicy models,
         ModelRequirements modelRequirements,
         ImmutableArray<AgentMessage> instructions,
-        ImmutableArray<LlmToolDefinition> tools,
-        LlmToolChoice toolChoice,
         LlmRequestSettings settings,
         RunPolicyDefaults runDefaults,
         ExtensionData extensions)
@@ -103,8 +95,6 @@ public sealed record AgentDefinition
         ArgumentNullException.ThrowIfNull(models);
         ArgumentNullException.ThrowIfNull(modelRequirements);
         ArgumentException.ThrowIfContainsNull(instructions);
-        ArgumentException.ThrowIfContainsNull(tools);
-        ArgumentNullException.ThrowIfNull(toolChoice);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(runDefaults);
         ArgumentNullException.ThrowIfNull(extensions);
@@ -115,8 +105,6 @@ public sealed record AgentDefinition
         _models = models;
         _modelRequirements = modelRequirements;
         _instructionSources = InstructionSourceProjection.FromLegacyMessages(instructions, revision);
-        _tools = tools;
-        _toolChoice = toolChoice;
         _settings = settings;
         _runDefaults = runDefaults;
         _extensions = extensions;
@@ -129,8 +117,6 @@ public sealed record AgentDefinition
     /// <param name="models">The candidate and fallback model policy.</param>
     /// <param name="modelRequirements">The portable model behaviors required.</param>
     /// <param name="instructions">The ordered system and developer instructions.</param>
-    /// <param name="tools">The tools this agent may call.</param>
-    /// <param name="toolChoice">The tool-call selection policy.</param>
     /// <param name="settings">The effective model request settings.</param>
     /// <param name="runDefaults">The default bounded run limits.</param>
     /// <param name="extensions">Application-specific immutable definition data.</param>
@@ -146,15 +132,12 @@ public sealed record AgentDefinition
         ModelSelectionPolicy models,
         ModelRequirements modelRequirements,
         ImmutableArray<AgentMessage> instructions,
-        ImmutableArray<LlmToolDefinition> tools,
-        LlmToolChoice toolChoice,
         LlmRequestSettings settings,
         RunPolicyDefaults runDefaults,
         ExtensionData extensions,
         SecurityProfileKey securityProfile,
         SessionProfileKey sessionProfile)
-        : this(id, revision, displayName, models, modelRequirements, instructions, tools, toolChoice, settings,
-            runDefaults, extensions)
+        : this(id, revision, displayName, models, modelRequirements, instructions, settings, runDefaults, extensions)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(securityProfile.Value, nameof(securityProfile));
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionProfile.Value, nameof(sessionProfile));
@@ -169,8 +152,6 @@ public sealed record AgentDefinition
     /// <param name="models">The candidate and fallback model policy.</param>
     /// <param name="modelRequirements">The portable model behaviors required.</param>
     /// <param name="instructionSources">The ordered instruction sources placed first in every request.</param>
-    /// <param name="tools">The tools this agent may call.</param>
-    /// <param name="toolChoice">The tool-call selection policy.</param>
     /// <param name="settings">The effective model request settings.</param>
     /// <param name="runDefaults">The default bounded run limits.</param>
     /// <param name="extensions">Application-specific immutable definition data.</param>
@@ -190,8 +171,6 @@ public sealed record AgentDefinition
         ModelSelectionPolicy models,
         ModelRequirements modelRequirements,
         AgentInstructionSources instructionSources,
-        ImmutableArray<LlmToolDefinition> tools,
-        LlmToolChoice toolChoice,
         LlmRequestSettings settings,
         RunPolicyDefaults runDefaults,
         ExtensionData extensions,
@@ -204,8 +183,6 @@ public sealed record AgentDefinition
             models,
             modelRequirements,
             InstructionSourceProjection.ToMessages(instructionSources.Sources),
-            tools,
-            toolChoice,
             settings,
             runDefaults,
             extensions,
@@ -377,39 +354,9 @@ public sealed record AgentDefinition
         }
     }
 
-    /// <summary>Gets the tools this agent may call.</summary>
-    /// <exception cref="ArgumentException">
-    /// An initializer attempts to set an uninitialized array or one
-    /// containing <see langword="null"/>.
-    /// </exception>
-    public ImmutableArray<LlmToolDefinition> Tools
-    {
-        get => _tools;
-        init
-        {
-            ArgumentException.ThrowIfContainsNull(value, nameof(Tools));
-            _tools = value;
-        }
-    }
-
-    /// <summary>Gets the tool-call selection policy.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public LlmToolChoice ToolChoice
-    {
-        get => _toolChoice;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(ToolChoice));
-            _toolChoice = value;
-        }
-    }
-
     /// <summary>Gets the authored toolset selections resolved through the registration catalog at run time.</summary>
     /// <value>
-    /// An initialized sequence of toolset references; empty while the definition still advertises tools through
-    /// <see cref="Tools"/> alone.
+    /// An initialized sequence of toolset references; empty when the agent does not select toolsets for discovery.
     /// </value>
     /// <exception cref="ArgumentException">An initializer supplies an uninitialized array or a null entry.</exception>
     public ImmutableArray<ToolsetReference> Toolsets
@@ -499,8 +446,6 @@ public sealed record AgentDefinition
         && ModelRequirements.Equals(other.ModelRequirements)
         && InstructionSources.SequenceEqual(other.InstructionSources)
         && Instructions.SequenceEqual(other.Instructions)
-        && Tools.SequenceEqual(other.Tools)
-        && ToolChoice.Equals(other.ToolChoice)
         && Toolsets.SequenceEqual(other.Toolsets)
         && OptionalCapabilities.Equals(other.OptionalCapabilities)
         && Settings.Equals(other.Settings)
@@ -543,12 +488,6 @@ public sealed record AgentDefinition
             hash.Add(instruction);
         }
 
-        foreach (var tool in Tools)
-        {
-            hash.Add(tool);
-        }
-
-        hash.Add(ToolChoice);
         foreach (var toolset in Toolsets)
         {
             hash.Add(toolset);

@@ -79,9 +79,10 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Removes every unkeyed executor descriptor without activation. Keyed executors and in-flight runs remain
-        /// unchanged. Call after <see cref="AddAgentTools"/> to opt into the new runtime while legacy types remain
-        /// registered for bridge scenarios. Spec-shaped executors require <see cref="ISecurityAuthoritySelector"/>
-        /// from the permissions stack; <see cref="AddAgentTools"/> does not register security authority.
+        /// unchanged. Call after the legacy <c>AddAgentTools(Action&lt;AgentToolsOptions&gt;?)</c> registration to opt
+        /// into the new runtime while legacy types remain registered for bridge scenarios. Spec-shaped executors
+        /// require <see cref="ISecurityAuthoritySelector"/> from the permissions stack; that registration does not
+        /// register security authority.
         /// </remarks>
         public IServiceCollection ReplaceToolExecutor<TExecutor>() where TExecutor : class, IToolExecutor
         {
@@ -133,7 +134,7 @@ public static class ServiceExtensions
         /// <see cref="ApplicationToolProvider"/>, and ensures that provider is registered once. Repeated registration
         /// for the same identity is ignored without mutation.
         /// </remarks>
-        public IServiceCollection AddToolInvoker<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+        public IServiceCollection AddToolInvoker<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Singleton)
             where TInvoker : class, IToolInvoker
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -158,10 +159,11 @@ public static class ServiceExtensions
                 ServiceLifetime.Transient => services.AddTransient<TInvoker>(),
                 _ => throw new ArgumentOutOfRangeException(nameof(lifetime), lifetime, "Only Singleton, Scoped, and Transient are supported."),
             };
+            var applicationDescriptor = ApplicationToolDescriptors.ForApplicationSource(descriptor);
             _ = services.AddKeyedSingleton<IToolInvoker>(
                 identity,
                 (provider, _) => provider.GetRequiredService<TInvoker>());
-            _ = services.AddSingleton(new RegisteredToolInvoker(descriptor));
+            _ = services.AddSingleton(new RegisteredToolInvoker(applicationDescriptor));
             return ToolServiceRegistration.EnsureApplicationToolProvider(services);
         }
 
@@ -466,6 +468,37 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>
+        /// Registers the tool runtime for one keyed <see cref="IToolExecutor"/> while retaining the legacy catalog path.
+        /// </summary>
+        /// <param name="executorKey">The nondefault executor component key agents select through optional capabilities.</param>
+        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> is default.</exception>
+        /// <remarks>
+        /// Chains legacy <c>AddAgentTools(Action&lt;AgentToolsOptions&gt;?)</c>, <see cref="AddToolRegistrationCatalog"/>,
+        /// <see cref="AddToolCatalogCoordinator"/>, and keyed <c>ReplaceToolExecutor&lt;TExecutor&gt;(ComponentKey&lt;IToolExecutor&gt;)</c>.
+        /// Requires <see cref="ISecurityAuthoritySelector"/> when the spec-shaped executor is selected.
+        /// </remarks>
+        public IServiceCollection AddAgentTools(
+            ComponentKey<IToolExecutor> executorKey,
+            Action<ToolRuntimeOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
+            _ = services.AddAgentTools();
+            if (configure is not null)
+            {
+                _ = services.Configure(configure);
+            }
+
+            _ = services.AddToolRegistrationCatalog();
+            _ = services.AddToolCatalogCoordinator();
+            _ = services.ReplaceToolExecutor<DefaultToolExecutor>(executorKey);
+            return services;
+        }
+
         /// <summary>Registers discovery capture, the registration catalog, and the spec-shaped executor stack.</summary>
         /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
         /// <returns>The same service collection for chaining.</returns>
@@ -505,7 +538,7 @@ public static class ServiceExtensions
         /// <param name="lifetime">The service lifetime for <typeparamref name="TInvoker"/>.</param>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
-        public IServiceCollection ReplaceTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+        public IServiceCollection ReplaceTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Singleton)
             where TInvoker : class, IToolInvoker
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -537,7 +570,7 @@ public static class ServiceExtensions
         /// <param name="descriptor">The complete immutable descriptor.</param>
         /// <param name="lifetime">The invoker lifetime.</param>
         /// <returns>The same service collection for chaining.</returns>
-        public IServiceCollection AddTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Scoped)
+        public IServiceCollection AddTool<TInvoker>(ToolDescriptor descriptor, ServiceLifetime lifetime = ServiceLifetime.Singleton)
             where TInvoker : class, IToolInvoker =>
             services.AddToolInvoker<TInvoker>(descriptor, lifetime);
 

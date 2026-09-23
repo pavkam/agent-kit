@@ -144,7 +144,10 @@ internal static class ToolServiceRegistration
             return services.AddToolRegistrationCatalog();
         }
 
-        _ = services.AddKeyedSingleton<IToolProvider, ApplicationToolProvider>(sourceId);
+        _ = services.AddKeyedSingleton<IToolProvider>(sourceId, static (provider, _) => new ApplicationToolProvider(
+            provider,
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<ToolProviderCapture>>()));
         _ = services.AddSingleton(new ToolProviderRegistration(sourceId));
         return services.AddToolRegistrationCatalog();
     }

@@ -38,3 +38,24 @@ public sealed record ProcessCancelled(SideEffectCertainty SideEffectCertainty): 
 /// <summary>The process timed out according to policy.</summary>
 /// <param name="SideEffectCertainty">What the host can prove about effects.</param>
 public sealed record ProcessTimedOut(SideEffectCertainty SideEffectCertainty): ProcessExitResult(SideEffectCertainty);
+
+/// <summary>The process terminated because of a signal.</summary>
+public sealed record ProcessSignalled: ProcessExitResult
+{
+    /// <summary>Initializes a signalled exit result.</summary>
+    /// <param name="signal">The observed signal number.</param>
+    /// <param name="sideEffectCertainty">What the host can prove about effects.</param>
+    public ProcessSignalled(int signal, SideEffectCertainty sideEffectCertainty = SideEffectCertainty.DefinitelyPerformed)
+        : base(sideEffectCertainty) => Signal = signal;
+
+    /// <summary>Gets the observed signal number.</summary>
+    public int Signal { get; init; }
+}
+
+/// <summary>The process was forcibly killed after graceful termination failed.</summary>
+/// <param name="SideEffectCertainty">What the host can prove about effects.</param>
+public sealed record ProcessKilled(SideEffectCertainty SideEffectCertainty): ProcessExitResult(SideEffectCertainty);
+
+/// <summary>The host could not classify the terminal process state.</summary>
+/// <param name="SideEffectCertainty">What the host can prove about effects.</param>
+public sealed record ProcessUnknownExit(SideEffectCertainty SideEffectCertainty): ProcessExitResult(SideEffectCertainty);

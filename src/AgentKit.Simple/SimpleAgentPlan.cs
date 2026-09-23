@@ -89,6 +89,9 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets the additional agents hosted next to the default one, keyed by their pinned identities.</summary>
     public Dictionary<AgentId, SimpleAgentOptions> AdditionalAgents { get; } = [];
 
+    /// <summary>Gets the authored toolset keys this plan selects for run-bound discovery.</summary>
+    public List<ToolsetKey> ToolsetKeys { get; } = [];
+
     /// <summary>
     /// Records an additional agent, rejecting an identity already used by the default agent or another addition.
     /// </summary>
@@ -237,6 +240,8 @@ internal sealed class SimpleAgentPlan
     {
         Output = Output,
         BudgetLimits = BudgetLimits,
+        Toolsets = AuthoredToolsets(),
+        OptionalCapabilities = ToolOptionalCapabilities(),
     };
 
     /// <summary>Applies the plan to the conversation options.</summary>
@@ -313,8 +318,24 @@ internal sealed class SimpleAgentPlan
             SessionProfileKey)
         {
             Output = options.Output,
+            Toolsets = AuthoredToolsets(),
+            OptionalCapabilities = ToolOptionalCapabilities(),
         };
     }
+
+    /// <summary>Builds immutable toolset references from the plan's authored keys.</summary>
+    internal ImmutableArray<ToolsetReference> AuthoredToolsets() =>
+    [
+        .. ToolsetKeys
+            .Distinct()
+            .Select(static key => new ToolsetReference(key, SimpleToolRuntime.StandardExecutionPolicyKey)),
+    ];
+
+    /// <summary>Resolves optional tool capabilities when this plan selects toolsets.</summary>
+    internal AgentOptionalCapabilitySelection ToolOptionalCapabilities() =>
+        ToolsetKeys.Count > 0
+            ? new AgentOptionalCapabilitySelection(SimpleToolRuntime.ToolExecutorKey, null, null, null, null, [])
+            : AgentOptionalCapabilitySelection.None;
 
     /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>
     /// <returns>One immutable message per entry in <see cref="Instructions"/>, in call order.</returns>

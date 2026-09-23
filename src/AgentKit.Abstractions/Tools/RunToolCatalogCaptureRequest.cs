@@ -30,8 +30,9 @@ public sealed record RunToolCatalogCaptureRequest
         ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(runId, default);
         ArgumentNullException.ThrowIfNull(authorization);
-        ArgumentException.ThrowIfContainsNull(toolsets);
-        if (!toolsets.IsDefaultOrEmpty)
+        var normalizedToolsets = toolsets.IsDefault ? [] : toolsets;
+        ArgumentException.ThrowIfContainsNull(normalizedToolsets);
+        if (!normalizedToolsets.IsEmpty)
         {
             ArgumentNullException.ThrowIfNull(configuration);
             ArgumentNullException.ThrowIfNull(modelCapabilities);
@@ -41,7 +42,7 @@ public sealed record RunToolCatalogCaptureRequest
         SessionId = sessionId;
         RunId = runId;
         Authorization = authorization;
-        Toolsets = toolsets.IsDefault ? [] : toolsets;
+        Toolsets = normalizedToolsets;
         Configuration = configuration;
         ModelCapabilities = modelCapabilities;
     }

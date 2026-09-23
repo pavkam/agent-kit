@@ -8,6 +8,20 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers one keyed executable resolver and process executor profile.</summary>
+        /// <param name="key">The executor profile key authored by the application.</param>
+        /// <param name="configure">Profile configuration for workspace roots, executables, and defaults.</param>
+        /// <returns>The same service collection.</returns>
+        /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+        public IServiceCollection AddAgentProcesses(
+            ProcessExecutorKey key,
+            Action<AgentProcessOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(configure);
+            return AgentProcessRegistration.Add(services, key, configure);
+        }
+
         /// <summary>Registers one process resolver/runner and the supported platform sandbox profile.</summary>
         /// <param name="rootDirectory">The existing absolute workspace root.</param>
         /// <param name="configure">Additional executable allowlist and resource ceilings.</param>

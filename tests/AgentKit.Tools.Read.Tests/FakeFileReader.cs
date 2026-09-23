@@ -8,6 +8,9 @@ using System.Text;
 /// <summary>A scripted <see cref="IFileReader"/> test double.</summary>
 internal sealed class FakeFileReader: IFileReader
 {
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; init; } = new("agentkit.tools.read.tests");
+
     /// <summary>Gets or sets the handler invoked for each open request.</summary>
     public Func<AuthorizedFileRead, FileReadOpenResult>? OnOpenRead { get; set; }
 

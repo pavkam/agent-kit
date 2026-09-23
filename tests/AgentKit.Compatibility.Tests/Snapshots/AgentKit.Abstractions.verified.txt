@@ -2864,6 +2864,21 @@ namespace AgentKit
         public DefaultFileSystemSelector(System.IServiceProvider provider, System.Collections.Generic.IEnumerable<AgentKit.FileSystemProfileRegistration> profiles) { }
         public System.Threading.Tasks.ValueTask<AgentKit.FileSystemSelectionResult> SelectAsync(AgentKit.FileSystemProfileKey key, AgentKit.FileSystemCapability requiredCapability, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class DefaultNetworkProfileSelector : AgentKit.INetworkProfileSelector
+    {
+        public DefaultNetworkProfileSelector(System.IServiceProvider provider, System.Collections.Generic.IEnumerable<AgentKit.NetworkProfileRegistration> profiles) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.NetworkProfileSelectionResult> SelectAsync(AgentKit.NetworkProfileKey key, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultProcessExecutorSelector : AgentKit.IProcessExecutorSelector
+    {
+        public DefaultProcessExecutorSelector(System.IServiceProvider provider, System.Collections.Generic.IEnumerable<AgentKit.ProcessExecutorRegistration> registrations) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessExecutorSelectionResult> SelectAsync(AgentKit.ProcessExecutorKey key, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultProcessSandboxSelector : AgentKit.IProcessSandboxSelector
+    {
+        public DefaultProcessSandboxSelector(System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> providers) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxSelectionResult> SelectAsync(AgentKit.SandboxProfileId profileId, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class DefaultToolCallIdGenerator : AgentKit.IIdentifierGenerator<AgentKit.ToolCallId>
     {
         public DefaultToolCallIdGenerator() { }
@@ -3410,11 +3425,32 @@ namespace AgentKit
         End = 3,
     }
     public abstract class EmbeddingVector : System.IEquatable<AgentKit.EmbeddingVector> { }
+    public sealed class EnvironmentProjection : System.IEquatable<AgentKit.EnvironmentProjection>
+    {
+        public EnvironmentProjection(System.Collections.Immutable.ImmutableArray<AgentKit.ProcessEnvironmentVariable> variables) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProcessEnvironmentVariable> Variables { get; init; }
+    }
     public readonly struct ErrorOrigin : System.IEquatable<AgentKit.ErrorOrigin>
     {
         public ErrorOrigin(string value) { }
         public string? Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ExecutableResolutionDenied : AgentKit.ExecutableResolutionResult, System.IEquatable<AgentKit.ExecutableResolutionDenied>
+    {
+        public ExecutableResolutionDenied(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class ExecutableResolutionFailed : AgentKit.ExecutableResolutionResult, System.IEquatable<AgentKit.ExecutableResolutionFailed>
+    {
+        public ExecutableResolutionFailed(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class ExecutableResolutionResult : System.IEquatable<AgentKit.ExecutableResolutionResult> { }
+    public sealed class ExecutableResolved : AgentKit.ExecutableResolutionResult, System.IEquatable<AgentKit.ExecutableResolved>
+    {
+        public ExecutableResolved(AgentKit.ResolvedProcessStart resolved) { }
+        public AgentKit.ResolvedProcessStart Resolved { get; init; }
     }
     public sealed class ExecutionIdentity : System.IEquatable<AgentKit.ExecutionIdentity>
     {
@@ -4767,6 +4803,11 @@ namespace AgentKit
     {
         AgentKit.IEmbeddingModel? Resolve(AgentKit.EmbeddingModelDescriptor model);
     }
+    public interface IExecutableResolver
+    {
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ExecutableResolutionResult> ResolveAsync(AgentKit.ProcessStartRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IExecutionIdentityResolver
     {
         System.Threading.Tasks.ValueTask<AgentKit.IdentityResolutionResult> ResolveAsync(AgentKit.IdentityAssertion assertion, System.Threading.CancellationToken cancellationToken = default);
@@ -4809,6 +4850,7 @@ namespace AgentKit
     }
     public interface IFileReader
     {
+        AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.FileReadOpenResult> OpenReadAsync(AgentKit.AuthorizedFileRead operation, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IFileSnapshotReader
@@ -4830,6 +4872,7 @@ namespace AgentKit
     }
     public interface IFileWriter
     {
+        AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.FileWriteResult> WriteAsync(AgentKit.AuthorizedFileWrite operation, AgentKit.FileWriteContent content, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IHistoryPipeline
@@ -4991,9 +5034,23 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.NetworkResolutionResult> ResolveAsync(AgentKit.NetworkResolutionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface INetworkProfileSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.NetworkProfileSelectionResult> SelectAsync(AgentKit.NetworkProfileKey key, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface INetworkRequestBodySpool
+    {
+        System.Threading.Tasks.ValueTask<System.IO.Stream> OpenReadAsync(AgentKit.ContentHash expectedFingerprint, long maximumBytes, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface INetworkRequestContent
+    {
+        AgentKit.ContentHash BodyFingerprint { get; }
+        string ContentType { get; }
+    }
     public interface INetworkResponse : System.IAsyncDisposable
     {
         System.IO.Stream Content { get; }
+        AgentKit.NetworkEgressEvidence? EgressEvidence { get; }
         AgentKit.NetworkResponseMetadata Metadata { get; }
     }
     public interface INetworkTransport
@@ -5040,6 +5097,22 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.PlanStateResult> ReplaceAsync(AgentKit.PlanReplaceRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.PlanStateResult> SetStatusAsync(AgentKit.PlanStatusRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IProcessExecutor
+    {
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessStartResult> StartAsync(AgentKit.ResolvedProcessStart request, AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IProcessExecutorSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessExecutorSelectionResult> SelectAsync(AgentKit.ProcessExecutorKey key, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IProcessHandle : System.IAsyncDisposable
+    {
+        System.Threading.Tasks.Task<AgentKit.ProcessExitResult> Completion { get; }
+        AgentKit.ProcessOperationId Id { get; }
+        System.Collections.Generic.IAsyncEnumerable<AgentKit.ProcessOutputEvent> ReadOutputAsync(System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessTerminationResult> TerminateAsync(AgentKit.ProcessTerminationRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IProcessIntentResolver
     {
         System.Threading.Tasks.ValueTask<AgentKit.ProcessResolutionResult> ResolveAsync(AgentKit.ProcessResolveRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -5048,6 +5121,7 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ProcessOutputArtifactResult> StoreAsync(AgentKit.ProcessOutputArtifactRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    [System.Obsolete("Use IProcessExecutor and IProcessHandle for handle-based process execution.")]
     public interface IProcessRunner
     {
         AgentKit.ComponentId SecurityAudience { get; }
@@ -5055,8 +5129,12 @@ namespace AgentKit
     }
     public interface IProcessSandboxProvider
     {
-        AgentKit.SandboxProfileId ProfileId { get; }
-        System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxResult> PrepareAsync(AgentKit.ResolvedProcessIntent intent, System.Threading.CancellationToken cancellationToken = default);
+        AgentKit.SandboxDescriptor Descriptor { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxResult> CreateAsync(AgentKit.ProcessSandboxRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IProcessSandboxSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxSelectionResult> SelectAsync(AgentKit.SandboxProfileId profileId, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IProviderCredentialSource
     {
@@ -5349,6 +5427,7 @@ namespace AgentKit
     public interface IToolRunCatalogCaptureFactory
     {
         AgentKit.IToolCatalogCapture Create(AgentKit.RunToolCatalogCaptureRequest request);
+        System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CreateAsync(AgentKit.RunToolCatalogCaptureRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolScheduler
     {
@@ -6441,11 +6520,17 @@ namespace AgentKit
     }
     public sealed class NetworkBounds : System.IEquatable<AgentKit.NetworkBounds>
     {
+        public const long DefaultMaximumRequestBytes = 33554432;
+        public NetworkBounds(AgentKit.NetworkResolutionBounds resolution, AgentKit.NetworkRequestBounds request, AgentKit.NetworkResponseBounds response) { }
         public NetworkBounds(System.TimeSpan connectTimeout, System.TimeSpan responseTimeout, long maximumResponseBytes, int maximumRedirects) { }
-        public System.TimeSpan ConnectTimeout { get; init; }
-        public int MaximumRedirects { get; init; }
-        public long MaximumResponseBytes { get; init; }
-        public System.TimeSpan ResponseTimeout { get; init; }
+        public System.TimeSpan ConnectTimeout { get; }
+        public int MaximumRedirects { get; }
+        public long MaximumRequestBytes { get; }
+        public long MaximumResponseBytes { get; }
+        public AgentKit.NetworkRequestBounds Request { get; init; }
+        public AgentKit.NetworkResolutionBounds Resolution { get; init; }
+        public AgentKit.NetworkResponseBounds Response { get; init; }
+        public System.TimeSpan ResponseTimeout { get; }
     }
     public sealed class NetworkCancelled : AgentKit.NetworkSendResult, System.IEquatable<AgentKit.NetworkCancelled>
     {
@@ -6458,6 +6543,11 @@ namespace AgentKit
         Internal = 1,
         Confidential = 2,
         Restricted = 3,
+    }
+    public enum NetworkDecompressionPolicy
+    {
+        DenyAutomatic = 0,
+        AllowAutomatic = 1,
     }
     public sealed class NetworkDenied : AgentKit.NetworkSendResult, System.IEquatable<AgentKit.NetworkDenied>
     {
@@ -6485,6 +6575,12 @@ namespace AgentKit
         public bool AllowsSchemeAndHost(AgentKit.NetworkDestination destination) { }
         public bool Equals(AgentKit.NetworkDestinationPolicy? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class NetworkEgressEvidence : System.IEquatable<AgentKit.NetworkEgressEvidence>
+    {
+        public NetworkEgressEvidence(long sentBytes, AgentKit.ContentHash egressFingerprint) { }
+        public AgentKit.ContentHash EgressFingerprint { get; init; }
+        public long SentBytes { get; init; }
     }
     public enum NetworkFailureKind
     {
@@ -6531,6 +6627,44 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public readonly struct NetworkProfileKey : System.IEquatable<AgentKit.NetworkProfileKey>
+    {
+        public NetworkProfileKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class NetworkProfileMissing : AgentKit.NetworkProfileSelectionResult, System.IEquatable<AgentKit.NetworkProfileMissing>
+    {
+        public NetworkProfileMissing(AgentKit.NetworkProfileKey Key) { }
+        public AgentKit.NetworkProfileKey Key { get; init; }
+    }
+    public sealed class NetworkProfileRegistration : System.IEquatable<AgentKit.NetworkProfileRegistration>
+    {
+        public NetworkProfileRegistration(AgentKit.NetworkProfileKey Key) { }
+        public AgentKit.NetworkProfileKey Key { get; init; }
+    }
+    public sealed class NetworkProfileSelected : AgentKit.NetworkProfileSelectionResult, System.IEquatable<AgentKit.NetworkProfileSelected>
+    {
+        public NetworkProfileSelected(AgentKit.NetworkProfileKey key, AgentKit.INetworkNameResolver resolver, AgentKit.INetworkTransport transport) { }
+        public AgentKit.NetworkProfileKey Key { get; init; }
+        public AgentKit.INetworkNameResolver Resolver { get; init; }
+        public AgentKit.INetworkTransport Transport { get; init; }
+    }
+    public abstract class NetworkProfileSelectionResult : System.IEquatable<AgentKit.NetworkProfileSelectionResult> { }
+    public readonly struct NetworkProfileVersion : System.IEquatable<AgentKit.NetworkProfileVersion>
+    {
+        public NetworkProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class NetworkProxyDescriptor : System.IEquatable<AgentKit.NetworkProxyDescriptor>
+    {
+        public NetworkProxyDescriptor() { }
+        public NetworkProxyDescriptor(System.Uri proxyUri, AgentKit.ComponentId? credentialAudience = default) { }
+        public AgentKit.ComponentId? CredentialAudience { get; init; }
+        public System.Uri? ProxyUri { get; init; }
+        public bool UseProxy { get; init; }
+    }
     public sealed class NetworkRedirectLimitExceeded : AgentKit.NetworkSendResult, System.IEquatable<AgentKit.NetworkRedirectLimitExceeded>
     {
         public NetworkRedirectLimitExceeded(int maximumRedirects) { }
@@ -6544,10 +6678,10 @@ namespace AgentKit
     }
     public sealed class NetworkRequest : System.IEquatable<AgentKit.NetworkRequest>
     {
-        public NetworkRequest(AgentKit.NetworkOperationId id, AgentKit.NetworkMethod method, AgentKit.NetworkDestination destination, AgentKit.NetworkHeaderSet headers, AgentKit.NetworkRequestContent? content, AgentKit.NetworkBounds bounds, System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> resolvedAddresses, AgentKit.NetworkDataClassification classification, AgentKit.SecurityGrant grant) { }
+        public NetworkRequest(AgentKit.NetworkOperationId id, AgentKit.NetworkMethod method, AgentKit.NetworkDestination destination, AgentKit.NetworkHeaderSet headers, AgentKit.INetworkRequestContent? content, AgentKit.NetworkBounds bounds, System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> resolvedAddresses, AgentKit.NetworkDataClassification classification, AgentKit.SecurityGrant grant) { }
         public AgentKit.NetworkBounds Bounds { get; }
         public AgentKit.NetworkDataClassification Classification { get; }
-        public AgentKit.NetworkRequestContent? Content { get; }
+        public AgentKit.INetworkRequestContent? Content { get; }
         public AgentKit.NetworkDestination Destination { get; }
         public AgentKit.SecurityGrant Grant { get; }
         public AgentKit.NetworkHeaderSet Headers { get; }
@@ -6557,10 +6691,17 @@ namespace AgentKit
         public bool Equals(AgentKit.NetworkRequest? other) { }
         public override int GetHashCode() { }
     }
-    public sealed class NetworkRequestContent : System.IEquatable<AgentKit.NetworkRequestContent>
+    public sealed class NetworkRequestBounds : System.IEquatable<AgentKit.NetworkRequestBounds>
+    {
+        public NetworkRequestBounds(System.TimeSpan connectTimeout, long maximumRequestBytes) { }
+        public System.TimeSpan ConnectTimeout { get; init; }
+        public long MaximumRequestBytes { get; init; }
+    }
+    public sealed class NetworkRequestContent : AgentKit.INetworkRequestContent, System.IEquatable<AgentKit.NetworkRequestContent>
     {
         public NetworkRequestContent(string contentType, System.ReadOnlyMemory<byte> body) { }
         public System.ReadOnlyMemory<byte> Body { get; init; }
+        public AgentKit.ContentHash BodyFingerprint { get; init; }
         public string ContentType { get; init; }
         public bool Equals(AgentKit.NetworkRequestContent? other) { }
         public override int GetHashCode() { }
@@ -6571,6 +6712,11 @@ namespace AgentKit
         public AgentKit.NetworkFailureKind Kind { get; init; }
         public string SafeMessage { get; init; }
         public bool SideEffectCertain { get; init; }
+    }
+    public sealed class NetworkResolutionBounds : System.IEquatable<AgentKit.NetworkResolutionBounds>
+    {
+        public NetworkResolutionBounds(System.TimeSpan resolutionTimeout) { }
+        public System.TimeSpan ResolutionTimeout { get; init; }
     }
     public sealed class NetworkResolutionDenied : AgentKit.NetworkResolutionResult, System.IEquatable<AgentKit.NetworkResolutionDenied>
     {
@@ -6598,6 +6744,13 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> Addresses { get; init; }
         public bool Equals(AgentKit.NetworkResolved? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class NetworkResponseBounds : System.IEquatable<AgentKit.NetworkResponseBounds>
+    {
+        public NetworkResponseBounds(System.TimeSpan responseTimeout, long maximumResponseBytes, int maximumRedirects) { }
+        public int MaximumRedirects { get; init; }
+        public long MaximumResponseBytes { get; init; }
+        public System.TimeSpan ResponseTimeout { get; init; }
     }
     public sealed class NetworkResponseLimitExceeded : AgentKit.NetworkSendResult, System.IEquatable<AgentKit.NetworkResponseLimitExceeded>
     {
@@ -6638,7 +6791,7 @@ namespace AgentKit
     public static class NetworkSecurityBinding
     {
         public static AgentKit.InputFingerprint RequestFingerprint(AgentKit.NetworkRequest request) { }
-        public static AgentKit.InputFingerprint RequestFingerprint(AgentKit.NetworkOperationId id, AgentKit.NetworkMethod method, AgentKit.NetworkDestination destination, AgentKit.NetworkHeaderSet headers, AgentKit.NetworkRequestContent? content, AgentKit.NetworkBounds bounds, System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> resolvedAddresses, AgentKit.NetworkDataClassification classification) { }
+        public static AgentKit.InputFingerprint RequestFingerprint(AgentKit.NetworkOperationId id, AgentKit.NetworkMethod method, AgentKit.NetworkDestination destination, AgentKit.NetworkHeaderSet headers, AgentKit.INetworkRequestContent? content, AgentKit.NetworkBounds bounds, System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> resolvedAddresses, AgentKit.NetworkDataClassification classification) { }
         public static System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> RequestResources(AgentKit.NetworkRequest request) { }
         public static System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> RequestResources(AgentKit.NetworkDestination destination, System.Collections.Immutable.ImmutableArray<AgentKit.NetworkAddress> resolvedAddresses) { }
         public static AgentKit.InputFingerprint ResolutionFingerprint(AgentKit.NetworkResolutionRequest request) { }
@@ -6646,6 +6799,18 @@ namespace AgentKit
         public static AgentKit.ProtectedResource ResolutionResource(AgentKit.NetworkDestination destination) { }
     }
     public abstract class NetworkSendResult : System.IEquatable<AgentKit.NetworkSendResult> { }
+    public sealed class NetworkStagedRequestContent : AgentKit.INetworkRequestContent, System.IEquatable<AgentKit.NetworkStagedRequestContent>
+    {
+        public NetworkStagedRequestContent(string contentType, AgentKit.ContentHash bodyFingerprint, AgentKit.INetworkRequestBodySpool spool) { }
+        public AgentKit.ContentHash BodyFingerprint { get; init; }
+        public string ContentType { get; init; }
+        public AgentKit.INetworkRequestBodySpool Spool { get; init; }
+    }
+    public enum NetworkTlsPolicy
+    {
+        PlatformDefault = 0,
+        PinCertificateFingerprint = 1,
+    }
     public sealed class NoCompatibleModel : AgentKit.ModelSelectionResult, System.IEquatable<AgentKit.NoCompatibleModel>
     {
         public NoCompatibleModel(AgentKit.ModelRequirements requirements, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
@@ -7125,16 +7290,90 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class ProcessArgument : System.IEquatable<AgentKit.ProcessArgument>
+    {
+        public ProcessArgument(string value) { }
+        public string Value { get; }
+    }
+    public sealed class ProcessCancelled : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessCancelled>
+    {
+        public ProcessCancelled(AgentKit.SideEffectCertainty SideEffectCertainty) { }
+    }
     public enum ProcessChildPolicy
     {
         Deny = 0,
         AllowSandboxed = 1,
+    }
+    public enum ProcessEffectClass
+    {
+        ReadOnlyObservation = 0,
+        WorkspaceMutation = 1,
+        ExternalEffect = 2,
     }
     public sealed class ProcessEnvironmentVariable : System.IEquatable<AgentKit.ProcessEnvironmentVariable>
     {
         public ProcessEnvironmentVariable(string name, string value) { }
         public string Name { get; }
         public string Value { get; }
+    }
+    public sealed class ProcessExecutableReference : System.IEquatable<AgentKit.ProcessExecutableReference>
+    {
+        public ProcessExecutableReference(string value) { }
+        public string Value { get; }
+    }
+    public readonly struct ProcessExecutorKey : System.IEquatable<AgentKit.ProcessExecutorKey>
+    {
+        public ProcessExecutorKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ProcessExecutorMissing : AgentKit.ProcessExecutorSelectionResult, System.IEquatable<AgentKit.ProcessExecutorMissing>
+    {
+        public ProcessExecutorMissing(AgentKit.ProcessExecutorKey Key) { }
+        public AgentKit.ProcessExecutorKey Key { get; init; }
+    }
+    public sealed class ProcessExecutorRegistration : System.IEquatable<AgentKit.ProcessExecutorRegistration>
+    {
+        public ProcessExecutorRegistration(AgentKit.ProcessExecutorKey Key) { }
+        public AgentKit.ProcessExecutorKey Key { get; init; }
+    }
+    public sealed class ProcessExecutorSelected : AgentKit.ProcessExecutorSelectionResult, System.IEquatable<AgentKit.ProcessExecutorSelected>
+    {
+        public ProcessExecutorSelected(AgentKit.ProcessExecutorKey key, AgentKit.IExecutableResolver resolver, AgentKit.IProcessExecutor executor) { }
+        public AgentKit.IProcessExecutor Executor { get; init; }
+        public AgentKit.ProcessExecutorKey Key { get; init; }
+        public AgentKit.IExecutableResolver Resolver { get; init; }
+    }
+    public abstract class ProcessExecutorSelectionResult : System.IEquatable<AgentKit.ProcessExecutorSelectionResult> { }
+    public readonly struct ProcessExecutorVersion : System.IEquatable<AgentKit.ProcessExecutorVersion>
+    {
+        public ProcessExecutorVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public abstract class ProcessExitResult : System.IEquatable<AgentKit.ProcessExitResult>
+    {
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class ProcessExited : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessExited>
+    {
+        public ProcessExited(int exitCode, AgentKit.SideEffectCertainty sideEffectCertainty = 2) { }
+        public int ExitCode { get; init; }
+    }
+    public sealed class ProcessHandleStarted : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessHandleStarted>
+    {
+        public ProcessHandleStarted(AgentKit.IProcessHandle handle) { }
+        public AgentKit.IProcessHandle Handle { get; init; }
+    }
+    public sealed class ProcessInput : System.IEquatable<AgentKit.ProcessInput>
+    {
+        public ProcessInput(System.ReadOnlyMemory<byte> payload, AgentKit.ContentHash fingerprint) { }
+        public AgentKit.ContentHash Fingerprint { get; init; }
+        public System.ReadOnlyMemory<byte> Payload { get; init; }
+    }
+    public sealed class ProcessKilled : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessKilled>
+    {
+        public ProcessKilled(AgentKit.SideEffectCertainty SideEffectCertainty) { }
     }
     public readonly struct ProcessOperationId : System.IEquatable<AgentKit.ProcessOperationId>
     {
@@ -7167,10 +7406,18 @@ namespace AgentKit
         public ProcessOutputArtifactStored(AgentKit.ArtifactReference reference) { }
         public AgentKit.ArtifactReference Reference { get; }
     }
+    public abstract class ProcessOutputEvent : System.IEquatable<AgentKit.ProcessOutputEvent>
+    {
+        public long Sequence { get; init; }
+    }
     public enum ProcessOutputKind
     {
         StandardOutput = 0,
         StandardError = 1,
+    }
+    public sealed class ProcessOutputStreamsCompleted : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessOutputStreamsCompleted>
+    {
+        public ProcessOutputStreamsCompleted(long sequence) { }
     }
     public sealed class ProcessReadOnlyRoot : System.IEquatable<AgentKit.ProcessReadOnlyRoot>
     {
@@ -7257,6 +7504,25 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<string> Arguments { get; }
         public string ExecutablePath { get; }
     }
+    public sealed class ProcessSandboxMissing : AgentKit.ProcessSandboxSelectionResult, System.IEquatable<AgentKit.ProcessSandboxMissing>
+    {
+        public ProcessSandboxMissing(AgentKit.SandboxProfileId ProfileId) { }
+        public AgentKit.SandboxProfileId ProfileId { get; init; }
+    }
+    public sealed class ProcessSandboxRequest : System.IEquatable<AgentKit.ProcessSandboxRequest>
+    {
+        public ProcessSandboxRequest(AgentKit.ProcessOperationId operationId, AgentKit.SandboxProfileId profileId, AgentKit.ResolvedExecutable executable, string absoluteWorkspaceRoot, string absoluteWorkingDirectory, AgentKit.ProcessWorkspaceAccess workspaceAccess, AgentKit.ProcessChildPolicy childPolicy, System.Collections.Immutable.ImmutableArray<AgentKit.ProcessEnvironmentVariable> environment, System.Collections.Immutable.ImmutableArray<string> arguments, System.Collections.Immutable.ImmutableArray<AgentKit.ProcessReadOnlyRoot> readOnlyToolchainRoots) { }
+        public string AbsoluteWorkingDirectory { get; init; }
+        public string AbsoluteWorkspaceRoot { get; init; }
+        public System.Collections.Immutable.ImmutableArray<string> Arguments { get; init; }
+        public AgentKit.ProcessChildPolicy ChildPolicy { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProcessEnvironmentVariable> Environment { get; init; }
+        public AgentKit.ResolvedExecutable Executable { get; init; }
+        public AgentKit.ProcessOperationId OperationId { get; init; }
+        public AgentKit.SandboxProfileId ProfileId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProcessReadOnlyRoot> ReadOnlyToolchainRoots { get; init; }
+        public AgentKit.ProcessWorkspaceAccess WorkspaceAccess { get; init; }
+    }
     public sealed class ProcessSandboxResult : System.IEquatable<AgentKit.ProcessSandboxResult>
     {
         public ProcessSandboxResult(AgentKit.ProcessSandboxStatus status, AgentKit.ProcessSandboxLaunch? launch, string? safeMessage) { }
@@ -7264,6 +7530,13 @@ namespace AgentKit
         public string? SafeMessage { get; }
         public AgentKit.ProcessSandboxStatus Status { get; }
     }
+    public sealed class ProcessSandboxSelected : AgentKit.ProcessSandboxSelectionResult, System.IEquatable<AgentKit.ProcessSandboxSelected>
+    {
+        public ProcessSandboxSelected(AgentKit.SandboxProfileId profileId, AgentKit.IProcessSandboxProvider provider) { }
+        public AgentKit.SandboxProfileId ProfileId { get; init; }
+        public AgentKit.IProcessSandboxProvider Provider { get; init; }
+    }
+    public abstract class ProcessSandboxSelectionResult : System.IEquatable<AgentKit.ProcessSandboxSelectionResult> { }
     public enum ProcessSandboxStatus
     {
         Ready = 0,
@@ -7289,6 +7562,92 @@ namespace AgentKit
         ReadOnly = 0,
         WorkspaceMutation = 1,
         ExternalOrUnknown = 2,
+    }
+    public sealed class ProcessSignalled : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessSignalled>
+    {
+        public ProcessSignalled(int signal, AgentKit.SideEffectCertainty sideEffectCertainty = 2) { }
+        public int Signal { get; init; }
+    }
+    public sealed class ProcessStandardErrorBytes : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessStandardErrorBytes>
+    {
+        public ProcessStandardErrorBytes(long sequence, System.ReadOnlyMemory<byte> bytes) { }
+        public System.ReadOnlyMemory<byte> Bytes { get; init; }
+    }
+    public sealed class ProcessStandardErrorTruncated : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessStandardErrorTruncated>
+    {
+        public ProcessStandardErrorTruncated(long sequence, long bytesObserved) { }
+        public long BytesObserved { get; init; }
+    }
+    public sealed class ProcessStandardOutputBytes : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessStandardOutputBytes>
+    {
+        public ProcessStandardOutputBytes(long sequence, System.ReadOnlyMemory<byte> bytes) { }
+        public System.ReadOnlyMemory<byte> Bytes { get; init; }
+    }
+    public sealed class ProcessStandardOutputTruncated : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessStandardOutputTruncated>
+    {
+        public ProcessStandardOutputTruncated(long sequence, long bytesObserved) { }
+        public long BytesObserved { get; init; }
+    }
+    public sealed class ProcessStartCancelled : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartCancelled>
+    {
+        public ProcessStartCancelled(AgentKit.SideEffectCertainty SideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class ProcessStartDenied : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartDenied>
+    {
+        public ProcessStartDenied(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class ProcessStartFailed : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartFailed>
+    {
+        public ProcessStartFailed(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class ProcessStartRequest : System.IEquatable<AgentKit.ProcessStartRequest>
+    {
+        public ProcessStartRequest(AgentKit.ProcessOperationId id, AgentKit.OperationId causalOperationId, AgentKit.AgentId agentId, AgentKit.RunId? runId, AgentKit.ProcessExecutableReference executable, System.Collections.Immutable.ImmutableArray<AgentKit.ProcessArgument> arguments, AgentKit.FileTarget workingDirectory, AgentKit.EnvironmentProjection environment, AgentKit.ProcessInput? standardInput, AgentKit.SandboxProfileId sandboxProfileId, AgentKit.ProcessResourceLimits limits, AgentKit.ProcessEffectClass effect) { }
+        public AgentKit.AgentId AgentId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProcessArgument> Arguments { get; }
+        public AgentKit.OperationId CausalOperationId { get; }
+        public AgentKit.ProcessEffectClass Effect { get; }
+        public AgentKit.EnvironmentProjection Environment { get; }
+        public AgentKit.ProcessExecutableReference Executable { get; }
+        public AgentKit.ProcessOperationId Id { get; }
+        public AgentKit.ProcessResourceLimits Limits { get; }
+        public AgentKit.RunId? RunId { get; }
+        public AgentKit.SandboxProfileId SandboxProfileId { get; }
+        public AgentKit.ProcessInput? StandardInput { get; }
+        public AgentKit.FileTarget WorkingDirectory { get; }
+    }
+    public sealed class ProcessStartResolutionFailed : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartResolutionFailed>
+    {
+        public ProcessStartResolutionFailed(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class ProcessStartResult : System.IEquatable<AgentKit.ProcessStartResult> { }
+    public sealed class ProcessStartSandboxUnavailable : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartSandboxUnavailable>
+    {
+        public ProcessStartSandboxUnavailable(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class ProcessTerminationRequest : System.IEquatable<AgentKit.ProcessTerminationRequest>
+    {
+        public ProcessTerminationRequest(string reason) { }
+        public string Reason { get; init; }
+    }
+    public sealed class ProcessTerminationResult : System.IEquatable<AgentKit.ProcessTerminationResult>
+    {
+        public ProcessTerminationResult(bool completed, AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public bool Completed { get; init; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class ProcessTimedOut : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessTimedOut>
+    {
+        public ProcessTimedOut(AgentKit.SideEffectCertainty SideEffectCertainty) { }
+    }
+    public sealed class ProcessUnknownExit : AgentKit.ProcessExitResult, System.IEquatable<AgentKit.ProcessUnknownExit>
+    {
+        public ProcessUnknownExit(AgentKit.SideEffectCertainty SideEffectCertainty) { }
     }
     public enum ProcessWorkspaceAccess
     {
@@ -7693,6 +8052,12 @@ namespace AgentKit
         public AgentKit.AgentCatalogVersion CatalogVersion { get; init; }
         public AgentKit.AgentDefinition Definition { get; init; }
     }
+    public sealed class ResolvedExecutable : System.IEquatable<AgentKit.ResolvedExecutable>
+    {
+        public ResolvedExecutable(string absolutePath, AgentKit.ContentHash fingerprint) { }
+        public string AbsolutePath { get; init; }
+        public AgentKit.ContentHash Fingerprint { get; init; }
+    }
     public sealed class ResolvedFileTarget : System.IEquatable<AgentKit.ResolvedFileTarget>
     {
         public ResolvedFileTarget(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath relativePath, string hostTargetPath, AgentKit.FilePathComparisonKind comparisonKind, AgentKit.ContentHash linkResolutionEvidence, AgentKit.ContentHash targetFingerprint) { }
@@ -7713,6 +8078,15 @@ namespace AgentKit
         public AgentKit.ContentHash ExecutableFingerprint { get; }
         public AgentKit.ProcessResolveRequest Request { get; }
         public AgentKit.ContentHash StandardInputFingerprint { get; }
+    }
+    public sealed class ResolvedProcessStart : System.IEquatable<AgentKit.ResolvedProcessStart>
+    {
+        public ResolvedProcessStart(AgentKit.ProcessStartRequest request, AgentKit.ResolvedExecutable executable, string workingDirectory, AgentKit.ContentHash environmentFingerprint, AgentKit.ContentHash? standardInputFingerprint = default) { }
+        public AgentKit.ContentHash EnvironmentFingerprint { get; init; }
+        public AgentKit.ResolvedExecutable Executable { get; init; }
+        public AgentKit.ProcessStartRequest Request { get; init; }
+        public AgentKit.ContentHash? StandardInputFingerprint { get; init; }
+        public string WorkingDirectory { get; init; }
     }
     public sealed class ResolvedToolCall : System.IEquatable<AgentKit.ResolvedToolCall>
     {
@@ -7933,11 +8307,14 @@ namespace AgentKit
     }
     public sealed class RunToolCatalogCaptureRequest : System.IEquatable<AgentKit.RunToolCatalogCaptureRequest>
     {
-        public RunToolCatalogCaptureRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.SecurityAuthorizationContext authorization) { }
+        public RunToolCatalogCaptureRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.SecurityAuthorizationContext authorization, System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> toolsets = default, AgentKit.EffectiveConfigurationSnapshot? configuration = null, AgentKit.ModelCapabilities? modelCapabilities = null) { }
         public AgentKit.AgentId AgentId { get; }
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
+        public AgentKit.ModelCapabilities? ModelCapabilities { get; }
         public AgentKit.RunId RunId { get; }
         public AgentKit.SessionId SessionId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> Toolsets { get; }
     }
     public sealed class RunUsage : System.IEquatable<AgentKit.RunUsage>
     {
@@ -7964,6 +8341,13 @@ namespace AgentKit
     public sealed class RuntimeMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.RuntimeMessage>
     {
         public RuntimeMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
+    }
+    public sealed class SandboxDescriptor : System.IEquatable<AgentKit.SandboxDescriptor>
+    {
+        public SandboxDescriptor(AgentKit.SandboxProfileId profileId, long version, string displayName) { }
+        public string DisplayName { get; init; }
+        public AgentKit.SandboxProfileId ProfileId { get; init; }
+        public long Version { get; init; }
     }
     public readonly struct SandboxProfileId : System.IEquatable<AgentKit.SandboxProfileId>
     {
@@ -10019,8 +10403,9 @@ namespace AgentKit
     }
     public sealed class ToolExecutionCapability : System.IEquatable<AgentKit.ToolExecutionCapability>
     {
-        public ToolExecutionCapability(AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability budget) { }
+        public ToolExecutionCapability(AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability budget, AgentKit.ToolExecutionHookBinding? hooks = null) { }
         public AgentKit.BudgetExecutionCapability Budget { get; }
+        public AgentKit.ToolExecutionHookBinding? Hooks { get; }
         public AgentKit.SessionExecutionCapability Session { get; }
     }
     public sealed class ToolExecutionContext : System.IEquatable<AgentKit.ToolExecutionContext>
@@ -10041,6 +10426,13 @@ namespace AgentKit
         public string? ConcurrencyKey { get; }
         public System.TimeSpan? ExpectedDuration { get; }
         public AgentKit.ToolSchedulingMode SchedulingMode { get; }
+    }
+    public sealed class ToolExecutionHookBinding : System.IEquatable<AgentKit.ToolExecutionHookBinding>
+    {
+        public ToolExecutionHookBinding(AgentKit.HookActivationScope scope, AgentKit.InRunOperationCorrelation turnCorrelation, System.Func<AgentKit.HookPointId, AgentKit.InRunOperationCorrelation, AgentKit.HookDispatchMetadata> createDispatchMetadata) { }
+        public System.Func<AgentKit.HookPointId, AgentKit.InRunOperationCorrelation, AgentKit.HookDispatchMetadata> CreateDispatchMetadata { get; }
+        public AgentKit.HookActivationScope Scope { get; }
+        public AgentKit.InRunOperationCorrelation TurnCorrelation { get; }
     }
     public readonly struct ToolExecutionPolicyKey : System.IEquatable<AgentKit.ToolExecutionPolicyKey>
     {

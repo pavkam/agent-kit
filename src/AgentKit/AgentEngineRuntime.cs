@@ -1398,8 +1398,8 @@ internal sealed class AgentEngineRuntime
                 configuration, maxTurns, attemptTimeout, definition.Extensions)
             : new AgentLoopRunRequest(
                 definition.Id, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
-                definition.Models, definition.ModelRequirements, definition.Instructions, definition.Tools,
-                definition.ToolChoice, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)
+                definition.Models, definition.ModelRequirements, definition.Instructions, [],
+                LlmToolChoice.Auto, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)
             {
                 Output = definition.Output,
                 HookProfile = definition.HookProfile,

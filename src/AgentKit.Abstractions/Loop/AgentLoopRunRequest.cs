@@ -144,8 +144,8 @@ public sealed record AgentLoopRunRequest
             agent.Models,
             agent.ModelRequirements,
             agent.Instructions,
-            agent.Tools,
-            agent.ToolChoice,
+            [],
+            LlmToolChoice.Auto,
             agent.Settings,
             maxTurns,
             attemptTimeout,
@@ -267,12 +267,6 @@ public sealed record AgentLoopRunRequest
         init
         {
             ArgumentException.ThrowIfDefault(value, nameof(Tools));
-            if (Agent is not null && !Agent.Tools.SequenceEqual(value))
-            {
-                throw new ArgumentException(
-                    "A record copy must not diverge from the pinned Agent's own tools.", nameof(Tools));
-            }
-
             field = value;
         }
     }

@@ -44,6 +44,13 @@ public sealed class AgentLoopOptions
     public bool DisableToolsOnFinalTurn { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the tool-call selection policy applied on every turn of a run whose request pins an
+    /// <see cref="AgentDefinition"/> rather than supplying an explicit reduced tool list.
+    /// </summary>
+    /// <value><see cref="LlmToolChoice.Auto"/> by default.</value>
+    public LlmToolChoice DefaultToolChoice { get; set; } = LlmToolChoice.Auto;
+
+    /// <summary>
     /// Gets or sets the bound on each required terminal commit that must land regardless of the caller's
     /// cancellation: the tool message settling an already-committed assistant request, and the interrupted
     /// message preserving partial model output. Defaults to 30 seconds.

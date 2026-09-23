@@ -43,3 +43,40 @@ public sealed record ProcessStandardErrorBytes: ProcessOutputEvent
     /// <summary>Gets the observed bytes.</summary>
     public ReadOnlyMemory<byte> Bytes { get; init; }
 }
+
+/// <summary>Standard-output truncation was enforced by output bounds.</summary>
+public sealed record ProcessStandardOutputTruncated: ProcessOutputEvent
+{
+    /// <summary>Initializes one stdout truncation marker.</summary>
+    /// <param name="sequence">The monotonic sequence number.</param>
+    /// <param name="bytesObserved">The total stdout bytes observed before truncation.</param>
+    public ProcessStandardOutputTruncated(long sequence, long bytesObserved)
+        : base(sequence) => BytesObserved = bytesObserved;
+
+    /// <summary>Gets the total stdout bytes observed before truncation.</summary>
+    public long BytesObserved { get; init; }
+}
+
+/// <summary>Standard-error truncation was enforced by output bounds.</summary>
+public sealed record ProcessStandardErrorTruncated: ProcessOutputEvent
+{
+    /// <summary>Initializes one stderr truncation marker.</summary>
+    /// <param name="sequence">The monotonic sequence number.</param>
+    /// <param name="bytesObserved">The total stderr bytes observed before truncation.</param>
+    public ProcessStandardErrorTruncated(long sequence, long bytesObserved)
+        : base(sequence) => BytesObserved = bytesObserved;
+
+    /// <summary>Gets the total stderr bytes observed before truncation.</summary>
+    public long BytesObserved { get; init; }
+}
+
+/// <summary>Both standard streams reached a terminal state for this handle.</summary>
+public sealed record ProcessOutputStreamsCompleted: ProcessOutputEvent
+{
+    /// <summary>Initializes a stream-completion marker.</summary>
+    /// <param name="sequence">The monotonic sequence number.</param>
+    public ProcessOutputStreamsCompleted(long sequence)
+        : base(sequence)
+    {
+    }
+}

@@ -86,7 +86,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
         _resolver = resolver;
         try
         {
-            _sandboxes = sandboxes.ToImmutableDictionary(static sandbox => sandbox.ProfileId);
+            _sandboxes = sandboxes.ToImmutableDictionary(static sandbox => sandbox.Descriptor.ProfileId);
         }
         catch (ArgumentException exception)
         {
@@ -142,7 +142,9 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
                     : $"Sandbox profile '{currentIntent.Request.SandboxProfile}' is not registered. Registered profiles: {string.Join(", ", _sandboxes.Keys)}.");
             }
 
-            var sandboxResult = await sandbox.PrepareAsync(currentIntent, cancellationToken).ConfigureAwait(false);
+            var sandboxResult = await sandbox.CreateAsync(
+                ProcessSandboxRequestMapping.FromResolvedProcessIntent(currentIntent),
+                cancellationToken).ConfigureAwait(false);
             if (sandboxResult.Status != ProcessSandboxStatus.Ready || sandboxResult.Launch is null)
             {
                 return NotStarted(

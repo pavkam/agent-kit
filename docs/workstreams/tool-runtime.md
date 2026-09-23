@@ -28,16 +28,17 @@ Owning documents: [Tools](../architecture/tools.md),
       removed)
 - [x] WS4-C7a `AgentDefinition.Toolsets` and executor key
 - [ ] WS4-C7b derive tool definitions from capture; remove `Tools`/`ToolChoice`
-- [ ] WS4-C8 spec registration surface (`AddToolDiscoveryRuntime`,
-      `AddTool`/`ReplaceTool` landed; keyed
-      `AddAgentTools(ComponentKey<IToolExecutor>)` still open)
+- [x] WS4-C8 spec registration surface (`AddToolDiscoveryRuntime`,
+      `AddTool`/`ReplaceTool`, keyed `AddAgentTools(ComponentKey<IToolExecutor>)`)
 - [x] WS4-C9a migrate workspace file tools (List, Read, Write, Edit, Patch,
       Glob, Search)
 - [x] WS4-C9b/c migrate remaining tool packages
 - [ ] WS4-C10a delete legacy authorizer, catalog, invoker
 - [ ] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
-- [ ] WS4-C11 Simple over toolsets
-- [ ] WS4-C12 first-party `IWebSearchProvider`
+- [x] WS4-C11 Simple over toolsets (`WithTools`, `UseWorkspace` toolset publication,
+      keyed `DefaultToolExecutor`; model advertising still legacy until C7b)
+- [x] WS4-C12 first-party `IWebSearchProvider` (`NetworkWebSearchProvider` over
+      `HttpClient` + grant fingerprint; full `INetworkTransport` alignment open)
 - [ ] WS4-C13 documentation
 
 ## Verified current state
@@ -61,8 +62,8 @@ Owning documents: [Tools](../architecture/tools.md),
 | `IToolCallRecorder`, `IToolEventSink`, `IToolExecutionPolicy(+Selector)`, `PreparedToolCall`, `ToolRuntimeOptions`, `ToolRetryPolicy`                                                                                                 | MISSING                            | C5b–d, C6, C8                                                                                                                                                                                                           |
 | `ValidatedToolCall`, `ResolvedToolCall`, `IToolResolver`, `IToolArgumentValidator`, `IToolResultNormalizer`, `IToolResultProjector`                                                                                                   | EXISTS                             | `Abstractions/Tools/`; first-party implementations in `AgentKit.Tools` (C5a)                                                                                                                                            |
 | `HookDispatchContext`, `IToolResultHook`, `ToolResultHookEventArgs`                                                                                                                                                                   | EXISTS-UNWIRED                     | contracts + hook kernel (C6 partial); executor dispatch and loop removal open                                                                                                                                           |
-| first-party `IWebSearchProvider`                                                                                                                                                                                                      | MISSING                            | consumer `WebSearchTool.cs:53`                                                                                                                                                                                          |
-| Simple `WithTools`                                                                                                                                                                                                                    | MISSING                            | `UseWorkspace` registers 6 tools; `WithDelegation`; advertising via `IEnumerable<ITool>` at `SimpleAgentPlan.cs:277`                                                                                                    |
+| first-party `IWebSearchProvider`                                                                                                                                                                                                      | EXISTS (HTTP leaf)                 | `NetworkWebSearchProvider`, `AddNetworkWebSearchProvider`                                                                                                                                                               |
+| Simple `WithTools`                                                                                                                                                                                                                    | EXISTS (partial)                   | `AgentEngineBuilderExtensions.WithTools`, `UseWorkspace` selects `SimpleWorkspaceToolsets`; LLM tool list still from `IEnumerable<ITool>` until C7b                                                                     |
 
 Test doubles: `IToolInvoker` 3 class fakes (`Loop.Tests/FakeToolInvoker.cs`,
 `Test.Shared/CaptureTestToolInvoker.cs`, `AgentRunServicesTests.cs`) plus lambda

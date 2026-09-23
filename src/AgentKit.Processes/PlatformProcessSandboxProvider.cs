@@ -26,29 +26,29 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
     }
 
     /// <inheritdoc/>
-    public SandboxProfileId ProfileId => WorkspaceNoNetworkProfile;
+    public SandboxDescriptor Descriptor { get; } = new(WorkspaceNoNetworkProfile, 1, "workspace-no-network");
 
     /// <inheritdoc/>
-    private ValueTask<ProcessSandboxResult> PrepareCoreAsync(
-        ResolvedProcessIntent intent,
+    internal ValueTask<ProcessSandboxResult> PrepareCoreAsync(
+        ProcessSandboxRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(intent);
+        ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(intent.Request.WorkspaceAccess == ProcessWorkspaceAccess.None
+        return ValueTask.FromResult(request.WorkspaceAccess == ProcessWorkspaceAccess.None
             ? Failure(
                 ProcessSandboxStatus.UnsupportedIntent,
                 "The platform profile requires an explicit read-only or read-write workspace projection.")
             : _platformProbe.IsMacOs
-                ? PrepareMacOs(intent)
+                ? PrepareMacOs(request)
                 : _platformProbe.IsLinux
-                    ? PrepareLinux(intent)
+                    ? PrepareLinux(request)
                     : Failure(
                         ProcessSandboxStatus.Unavailable,
                         "No supported operating-system sandbox is available on this platform."));
     }
 
-    private ProcessSandboxResult PrepareMacOs(ResolvedProcessIntent intent)
+    private ProcessSandboxResult PrepareMacOs(ProcessSandboxRequest request)
     {
         if (!_platformProbe.FileExists(_sandboxExecPath))
         {
@@ -56,14 +56,14 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
         }
 
         var profile = new StringBuilder("(version 1)\n(deny default)\n")
-            .Append(intent.Request.ChildPolicy == ProcessChildPolicy.AllowSandboxed
+            .Append(request.ChildPolicy == ProcessChildPolicy.AllowSandboxed
                 ? "(allow process*)\n"
-                : $"(allow process-exec (literal \"{EscapeSandboxString(intent.AbsoluteExecutablePath)}\"))\n")
+                : $"(allow process-exec (literal \"{EscapeSandboxString(request.Executable.AbsolutePath)}\"))\n")
             .Append("(allow signal (target self))\n")
             .Append("(allow sysctl-read)\n")
             .Append("(allow file-read-data (literal \"/\"))\n")
             .Append("(allow file-read-metadata (literal \"/\"))\n");
-        foreach (var root in intent.Request.ReadOnlyRoots)
+        foreach (var root in request.ReadOnlyToolchainRoots)
         {
             foreach (var ancestor in ParentPaths(root.AbsolutePath))
             {
@@ -91,39 +91,39 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             .Append(' ')
             .Append(PathRule("/dev"))
             .Append(' ')
-            .Append(PathRule(intent.AbsoluteWorkspaceRoot))
+            .Append(PathRule(request.AbsoluteWorkspaceRoot))
             .Append(' ');
-        foreach (var root in intent.Request.ReadOnlyRoots)
+        foreach (var root in request.ReadOnlyToolchainRoots)
         {
             _ = profile.Append(PathRule(root.AbsolutePath)).Append(' ');
         }
 
         _ = profile
             .Append(")\n");
-        if (intent.Request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite)
+        if (request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite)
         {
             _ = profile.Append("(allow file-write* ")
-                .Append(PathRule(intent.AbsoluteWorkspaceRoot))
+                .Append(PathRule(request.AbsoluteWorkspaceRoot))
                 .Append(")\n");
         }
 
         _ = profile.Append("(deny network*)\n");
-        List<string> arguments = ["-p", profile.ToString(), intent.AbsoluteExecutablePath];
-        arguments.AddRange(intent.Request.Arguments);
+        List<string> arguments = ["-p", profile.ToString(), request.Executable.AbsolutePath];
+        arguments.AddRange(request.Arguments);
         return new ProcessSandboxResult(
             ProcessSandboxStatus.Ready,
             new ProcessSandboxLaunch(_sandboxExecPath, [.. arguments]),
             null);
     }
 
-    private ProcessSandboxResult PrepareLinux(ResolvedProcessIntent intent)
+    private ProcessSandboxResult PrepareLinux(ProcessSandboxRequest request)
     {
         if (!_platformProbe.FileExists(_bubblewrapPath))
         {
             return Failure(ProcessSandboxStatus.Unavailable, "The Linux bubblewrap launcher is unavailable.");
         }
 
-        if (intent.Request.ChildPolicy == ProcessChildPolicy.Deny)
+        if (request.ChildPolicy == ProcessChildPolicy.Deny)
         {
             return Failure(
                 ProcessSandboxStatus.UnsupportedIntent,
@@ -146,18 +146,18 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
         AddReadOnlyBindIfPresent(arguments, "/lib");
         AddReadOnlyBindIfPresent(arguments, "/lib64");
         AddReadOnlyBindIfPresent(arguments, "/etc");
-        foreach (var root in intent.Request.ReadOnlyRoots)
+        foreach (var root in request.ReadOnlyToolchainRoots)
         {
             arguments.Add("--ro-bind");
             arguments.Add(root.AbsolutePath);
             arguments.Add(root.AbsolutePath);
         }
-        arguments.Add(intent.Request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite ? "--bind" : "--ro-bind");
-        arguments.Add(intent.AbsoluteWorkspaceRoot);
-        arguments.Add(intent.AbsoluteWorkspaceRoot);
+        arguments.Add(request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite ? "--bind" : "--ro-bind");
+        arguments.Add(request.AbsoluteWorkspaceRoot);
+        arguments.Add(request.AbsoluteWorkspaceRoot);
         arguments.Add("--chdir");
-        arguments.Add(intent.AbsoluteWorkingDirectory);
-        foreach (var variable in intent.Request.Environment)
+        arguments.Add(request.AbsoluteWorkingDirectory);
+        foreach (var variable in request.Environment)
         {
             arguments.Add("--setenv");
             arguments.Add(variable.Name);
@@ -165,8 +165,8 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
         }
 
         arguments.Add("--");
-        arguments.Add(intent.AbsoluteExecutablePath);
-        arguments.AddRange(intent.Request.Arguments);
+        arguments.Add(request.Executable.AbsolutePath);
+        arguments.AddRange(request.Arguments);
         return new ProcessSandboxResult(
             ProcessSandboxStatus.Ready,
             new ProcessSandboxLaunch(_bubblewrapPath, [.. arguments]),

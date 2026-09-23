@@ -177,6 +177,15 @@ public sealed class ReadFileTool: IToolInvoker, ITool
         var target = FileHostTargetBinding.Target(_options.RootId, normalizedPath.Path);
         var resolved = FileHostTargetBinding.Resolve(_options.RootId, normalizedPath.Path, _options.HostRootPath);
 
+        var selection = await _fileSystemSelector.SelectAsync(
+            _options.ProfileKey,
+            FileSystemCapability.Read,
+            cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemReaderSelected readerSelected)
+        {
+            return Failed("The configured file-system reader profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
@@ -200,7 +209,7 @@ public sealed class ReadFileTool: IToolInvoker, ITool
             callId,
             authorization.Identity,
             authorization,
-            _options.SecurityAudience,
+            readerSelected.Reader.SecurityAudience,
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
             [FileSecurityBinding.Resource(target)],
@@ -215,15 +224,6 @@ public sealed class ReadFileTool: IToolInvoker, ITool
         if (decision is not SecurityAllowed allowed)
         {
             return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        var selection = await _fileSystemSelector.SelectAsync(
-            _options.ProfileKey,
-            FileSystemCapability.Read,
-            cancellationToken).ConfigureAwait(false);
-        if (selection is not FileSystemReaderSelected readerSelected)
-        {
-            return Failed("The configured file-system reader profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var operation = new AuthorizedFileRead(readRequest, resolved, allowed.Grant);

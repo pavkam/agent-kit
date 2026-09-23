@@ -8,6 +8,9 @@ using System.Text;
 /// <summary>A scripted <see cref="IFileWriter"/> test double.</summary>
 internal sealed class FakeFileWriter: IFileWriter
 {
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; init; } = new("agentkit.tools.write.tests");
+
     /// <summary>Gets or sets the handler invoked for each write.</summary>
     public Func<AuthorizedFileWrite, FileWriteContent, FileWriteResult>? OnWrite { get; set; }
 

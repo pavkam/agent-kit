@@ -15,7 +15,9 @@ public sealed class WriteFileToolOptions
     /// <summary>Gets or sets the absolute host directory backing <see cref="RootId"/>.</summary>
     public string HostRootPath { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the security audience reported on file-write authorization requests.</summary>
+    /// <summary>Gets or sets a legacy security audience override that is no longer used for authorization.</summary>
+    /// <remarks>File-write grants use <see cref="IFileWriter.SecurityAudience"/> from the selected profile.</remarks>
+    [Obsolete("Authorization uses IFileWriter.SecurityAudience from the selected profile.")]
     public ComponentId SecurityAudience { get; set; } = new("agentkit.filesystem.workspace");
 
     /// <summary>Gets or sets the lexical path policy applied before authorization.</summary>

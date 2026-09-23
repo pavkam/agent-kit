@@ -31,3 +31,19 @@ public sealed record ProcessHandleStarted: ProcessStartResult
 /// <summary>Start was denied before process creation.</summary>
 /// <param name="SafeMessage">The non-sensitive denial message.</param>
 public sealed record ProcessStartDenied(string SafeMessage): ProcessStartResult;
+
+/// <summary>Start failed because executable resolution did not succeed.</summary>
+/// <param name="SafeMessage">The non-sensitive failure message.</param>
+public sealed record ProcessStartResolutionFailed(string SafeMessage): ProcessStartResult;
+
+/// <summary>Start failed because the required sandbox could not be constructed.</summary>
+/// <param name="SafeMessage">The non-sensitive failure message.</param>
+public sealed record ProcessStartSandboxUnavailable(string SafeMessage): ProcessStartResult;
+
+/// <summary>Start was cancelled before process creation completed.</summary>
+/// <param name="SideEffectCertainty">What the host can prove about effects.</param>
+public sealed record ProcessStartCancelled(SideEffectCertainty SideEffectCertainty): ProcessStartResult;
+
+/// <summary>Start failed for a typed host reason other than denial or sandbox unavailability.</summary>
+/// <param name="SafeMessage">The non-sensitive failure message.</param>
+public sealed record ProcessStartFailed(string SafeMessage): ProcessStartResult;

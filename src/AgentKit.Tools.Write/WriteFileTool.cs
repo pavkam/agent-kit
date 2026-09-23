@@ -163,6 +163,15 @@ public sealed class WriteFileTool: IToolInvoker, ITool
         var payloadFingerprint = FileSecurityBinding.ContentFingerprint(payload);
 
         var authorization = context.Authorization;
+        var selection = await _fileSystemSelector.SelectAsync(
+            _options.ProfileKey,
+            FileSystemCapability.Write,
+            cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemWriterSelected writerSelected)
+        {
+            return Failed("The configured file-system writer profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
@@ -175,7 +184,7 @@ public sealed class WriteFileTool: IToolInvoker, ITool
             context.ToolCallId,
             authorization.Identity,
             authorization,
-            _options.SecurityAudience,
+            writerSelected.Writer.SecurityAudience,
             SecurityOperationKind.FileWrite,
             FileSecurityBinding.WriteEffect(disposition),
             [FileSecurityBinding.Resource(target)],
@@ -198,15 +207,6 @@ public sealed class WriteFileTool: IToolInvoker, ITool
         if (decision is not SecurityAllowed allowed)
         {
             return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        var selection = await _fileSystemSelector.SelectAsync(
-            _options.ProfileKey,
-            FileSystemCapability.Write,
-            cancellationToken).ConfigureAwait(false);
-        if (selection is not FileSystemWriterSelected writerSelected)
-        {
-            return Failed("The configured file-system writer profile is unavailable.", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var operation = new AuthorizedFileWrite(

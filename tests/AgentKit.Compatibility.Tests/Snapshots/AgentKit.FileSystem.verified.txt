@@ -78,6 +78,7 @@ namespace AgentKit.FileSystem
             [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
                 ".")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSandboxedFileSystem(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
+            [System.Obsolete("Legacy host surface.")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOperatingSystemFileSystem(AgentKit.FileSystemProfileKey key, System.Action<AgentKit.FileSystem.OperatingSystemFileSystemOptions> configure) { }
         }
     }

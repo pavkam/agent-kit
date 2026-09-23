@@ -10,6 +10,10 @@ namespace AgentKit;
 /// </remarks>
 public interface IFileReader
 {
+    /// <summary>Gets the security audience that must appear on grants this reader consumes.</summary>
+    /// <value>A nondefault component identity matching the host boundary enforcement surface.</value>
+    public ComponentId SecurityAudience { get; }
+
     /// <summary>Opens one bounded read handle for an authorized operation.</summary>
     /// <param name="operation">The authorized read evidence.</param>
     /// <param name="cancellationToken">Propagates caller cancellation before a handle is returned.</param>

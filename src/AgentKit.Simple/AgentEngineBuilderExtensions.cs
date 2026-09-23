@@ -405,6 +405,36 @@ public static class AgentEngineBuilderExtensions
             _ = builder.Services.AddSearchTool(o => o.ProfileKey = workspaceProfile);
             _ = builder.Services.AddEditTool(o => o.ProfileKey = workspaceProfile);
             _ = builder.Services.AddPatchTool(o => o.ProfileKey = workspaceProfile);
+            RegisterToolsetPublication(builder.Services, SimpleWorkspaceToolsets.Publication);
+            SelectToolset(builder, SimpleWorkspaceToolsets.Key);
+            return builder;
+        }
+
+        /// <summary>Selects one or more registered toolsets for run-bound discovery and the spec-shaped executor.</summary>
+        /// <param name="toolsets">The non-empty toolset keys to resolve through the registration catalog.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="toolsets"/> is empty or contains a default key.</exception>
+        /// <remarks>
+        /// Each key must already be published through <see cref="Tools.ServiceExtensions.AddToolset"/> or a tool
+        /// package registration. Tool definitions advertised to the model still come from registered
+        /// <see cref="ITool"/> instances until workstream 4 chunk C7b removes the legacy surface.
+        /// </remarks>
+        public AgentEngineBuilder WithTools(params ToolsetKey[] toolsets)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(toolsets);
+            if (toolsets.Length == 0)
+            {
+                throw new ArgumentException("At least one toolset key is required.", nameof(toolsets));
+            }
+
+            foreach (var key in toolsets)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(key, default);
+                SelectToolset(builder, key);
+            }
+
             return builder;
         }
 
@@ -626,6 +656,8 @@ public static class AgentEngineBuilderExtensions
             _ = builder.Services.AddEngineDelegationChannel();
             _ = builder.Services.AddAgentDelegation();
             _ = builder.Services.AddTaskTool(configure);
+            RegisterToolsetPublication(builder.Services, TaskTool.DefaultToolset);
+            SelectToolset(builder, TaskTool.DefaultToolset.Key);
             return builder;
         }
 
@@ -734,6 +766,34 @@ public static class AgentEngineBuilderExtensions
                 $"prose, code fences, or commentary before or after it:\n{schema.GetRawText()}");
             return builder;
         }
+    }
+
+    private static void SelectToolset(AgentEngineBuilder builder, ToolsetKey key)
+    {
+        var plan = Plan(builder);
+        if (!plan.ToolsetKeys.Contains(key))
+        {
+            plan.ToolsetKeys.Add(key);
+        }
+
+        SimpleToolRuntime.EnsureRegistered(builder.Services);
+    }
+
+    private static void RegisterToolsetPublication(IServiceCollection services, ToolsetPublication publication)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(publication);
+        var publicationKey = publication.Key;
+        if (services.Any(descriptor =>
+                descriptor.IsKeyedService
+                && descriptor.ServiceType == typeof(ToolsetPublication)
+                && descriptor.ServiceKey is ToolsetKey key
+                && key == publicationKey))
+        {
+            return;
+        }
+
+        _ = services.AddToolset(publication);
     }
 
     /// <summary>

@@ -22,8 +22,9 @@ namespace AgentKit.Network.InMemory
     }
     public sealed class ScriptedNetworkResponse : AgentKit.INetworkResponse, System.IAsyncDisposable
     {
-        public ScriptedNetworkResponse(AgentKit.NetworkResponseMetadata metadata, System.ReadOnlyMemory<byte> content) { }
+        public ScriptedNetworkResponse(AgentKit.NetworkResponseMetadata metadata, System.ReadOnlyMemory<byte> content, AgentKit.NetworkEgressEvidence? egressEvidence = null) { }
         public System.IO.Stream Content { get; }
+        public AgentKit.NetworkEgressEvidence? EgressEvidence { get; }
         public AgentKit.NetworkResponseMetadata Metadata { get; }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
     }

@@ -85,9 +85,9 @@ internal sealed class DefaultContextAssembler: IContextAssembler
                 new SessionVersion(0),
                 new SessionSequence(0));
         var rawHistory = evidence?.History.Messages ?? request.History;
-        var toolChoice = evidence?.Agent.ToolChoice ?? request.ToolChoice;
+        var toolChoice = request.ToolChoice;
         var settings = evidence?.Agent.Settings ?? request.Settings;
-        var fallbackTools = evidence?.Agent.Tools ?? request.Tools;
+        var fallbackTools = request.Tools;
 
         using var activityScope = AgentKitActivityScope.Start(
             AgentKitActivityNames.ContextPrepare,

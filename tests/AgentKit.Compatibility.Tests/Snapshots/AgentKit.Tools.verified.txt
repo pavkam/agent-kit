@@ -26,7 +26,7 @@ namespace AgentKit.Tools
     }
     public sealed class DefaultToolExecutor : AgentKit.IToolExecutor
     {
-        public DefaultToolExecutor(AgentKit.IToolResolver resolver, AgentKit.IToolArgumentValidator argumentValidator, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IToolScheduler scheduler, AgentKit.ToolSchemaLimits argumentValidationLimits, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> runtimeOptions, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolExecutor> logger) { }
+        public DefaultToolExecutor(AgentKit.IToolResolver resolver, AgentKit.IToolArgumentValidator argumentValidator, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IToolScheduler scheduler, AgentKit.ToolSchemaLimits argumentValidationLimits, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> runtimeOptions, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultToolInvoker : AgentKit.ILegacyToolCallOrchestrator
@@ -45,13 +45,14 @@ namespace AgentKit.Tools
     }
     public sealed class LegacyToolInvokerExecutor : AgentKit.IToolExecutor
     {
-        public LegacyToolInvokerExecutor(AgentKit.ILegacyToolCallOrchestrator orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger) { }
+        public LegacyToolInvokerExecutor(AgentKit.ILegacyToolCallOrchestrator orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class LegacyToolRunCatalogCaptureFactory : AgentKit.IToolRunCatalogCaptureFactory
     {
-        public LegacyToolRunCatalogCaptureFactory(AgentKit.IToolCatalog catalog) { }
+        public LegacyToolRunCatalogCaptureFactory(AgentKit.IToolCatalog legacyCatalog, System.IServiceProvider services) { }
         public AgentKit.IToolCatalogCapture Create(AgentKit.RunToolCatalogCaptureRequest request) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CreateAsync(AgentKit.RunToolCatalogCaptureRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class RejectingToolCatalogMergePolicy : AgentKit.IToolCatalogMergePolicy
     {
@@ -72,7 +73,7 @@ namespace AgentKit.Tools
                 where TExecutor :  class, AgentKit.IToolExecutor { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolExecutor<TExecutor>(AgentKit.ComponentKey<AgentKit.IToolExecutor> executorKey)
                 where TExecutor :  class, AgentKit.IToolExecutor { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolInvoker<TInvoker>(AgentKit.ToolDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = 1)
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolInvoker<TInvoker>(AgentKit.ToolDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = 0)
                 where TInvoker :  class, AgentKit.IToolInvoker { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolRegistrationCatalog() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolRegistrationCatalog<TCatalog>()
@@ -91,6 +92,12 @@ namespace AgentKit.Tools
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(AgentKit.ComponentKey<AgentKit.IToolExecutor> executorKey, System.Action<AgentKit.Tools.ToolRuntimeOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolDiscoveryRuntime(System.Action<AgentKit.Tools.ToolRuntimeOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceTool<TInvoker>(AgentKit.ToolDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = 0)
+                where TInvoker :  class, AgentKit.IToolInvoker { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTool<TInvoker>(AgentKit.ToolDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = 0)
+                where TInvoker :  class, AgentKit.IToolInvoker { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicyCatalog() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }

@@ -18,12 +18,14 @@ internal sealed class ThrowingProcessIntentResolver(Exception exception): IProce
 }
 
 /// <summary>Returns a fixed sandbox result for one declared profile regardless of the intent presented.</summary>
-internal sealed class FakeProcessSandboxProvider(SandboxProfileId profileId, Func<ResolvedProcessIntent, ProcessSandboxResult> prepare): IProcessSandboxProvider
+internal sealed class FakeProcessSandboxProvider(
+    SandboxProfileId profileId,
+    Func<ProcessSandboxRequest, ProcessSandboxResult> create): IProcessSandboxProvider
 {
-    public SandboxProfileId ProfileId { get; } = profileId;
+    public SandboxDescriptor Descriptor { get; } = new(profileId, 1, profileId.Value);
 
-    public ValueTask<ProcessSandboxResult> PrepareAsync(ResolvedProcessIntent intent, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(prepare(intent));
+    public ValueTask<ProcessSandboxResult> CreateAsync(ProcessSandboxRequest request, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(create(request));
 }
 
 /// <summary>Throws from output storage to exercise the runner's defensive artifact-storage catch clause.</summary>

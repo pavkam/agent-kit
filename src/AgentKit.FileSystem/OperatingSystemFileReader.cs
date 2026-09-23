@@ -19,8 +19,8 @@ internal sealed class OperatingSystemFileReader(
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly OperatingSystemFileSystemOptionsSnapshot _options = options;
 
-    /// <summary>Gets the security audience for this reader profile.</summary>
-    internal ComponentId SecurityAudience { get; } = new($"agentkit.filesystem.os.{options.ProfileKey.Value}");
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; } = new($"agentkit.filesystem.os.{options.ProfileKey.Value}");
 
     /// <inheritdoc/>
     public async ValueTask<FileReadOpenResult> OpenReadAsync(

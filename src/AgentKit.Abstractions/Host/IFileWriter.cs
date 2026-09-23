@@ -10,6 +10,10 @@ namespace AgentKit;
 /// </remarks>
 public interface IFileWriter
 {
+    /// <summary>Gets the security audience that must appear on grants this writer consumes.</summary>
+    /// <value>A nondefault component identity matching the host boundary enforcement surface.</value>
+    public ComponentId SecurityAudience { get; }
+
     /// <summary>Writes one authorized payload under the declared disposition.</summary>
     /// <param name="operation">The authorized write evidence.</param>
     /// <param name="content">The bounded payload and fingerprint to commit.</param>

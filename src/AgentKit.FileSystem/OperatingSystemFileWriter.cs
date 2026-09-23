@@ -19,8 +19,8 @@ internal sealed class OperatingSystemFileWriter(
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly OperatingSystemFileSystemOptionsSnapshot _options = options;
 
-    /// <summary>Gets the security audience for this writer profile.</summary>
-    internal ComponentId SecurityAudience { get; } = new($"agentkit.filesystem.os.{options.ProfileKey.Value}");
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; } = new($"agentkit.filesystem.os.{options.ProfileKey.Value}");
 
     /// <inheritdoc/>
     public ValueTask<FileWriteResult> WriteAsync(

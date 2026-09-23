@@ -14,8 +14,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = new PlatformProcessSandboxProvider(new FakeProcessSandboxPlatformProbe(isMacOs: true));
 
-        var result = await provider.PrepareAsync(
-            Intent(workspaceAccess: ProcessWorkspaceAccess.None), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(workspaceAccess: ProcessWorkspaceAccess.None), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.UnsupportedIntent);
         result.Launch.ShouldBeNull();
@@ -27,7 +27,7 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = new PlatformProcessSandboxProvider(new FakeProcessSandboxPlatformProbe(isMacOs: false, isLinux: false));
 
-        var result = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Unavailable);
         result.Launch.ShouldBeNull();
@@ -40,7 +40,7 @@ public sealed class PlatformProcessSandboxProviderTests
         var provider = new PlatformProcessSandboxProvider(
             new FakeProcessSandboxPlatformProbe(isMacOs: true, fileExists: static _ => false));
 
-        var result = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Unavailable);
         result.Launch.ShouldBeNull();
@@ -52,8 +52,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = MacOsProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(childPolicy: ProcessChildPolicy.AllowSandboxed), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(childPolicy: ProcessChildPolicy.AllowSandboxed), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         var launch = result.Launch.ShouldNotBeNull();
@@ -66,8 +66,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = MacOsProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(childPolicy: ProcessChildPolicy.Deny), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(childPolicy: ProcessChildPolicy.Deny), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         var profile = string.Join('\n', result.Launch.ShouldNotBeNull().Arguments);
@@ -80,8 +80,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = MacOsProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(workspaceAccess: ProcessWorkspaceAccess.ReadOnly), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(workspaceAccess: ProcessWorkspaceAccess.ReadOnly), TestContext.Current.CancellationToken);
 
         string.Join('\n', result.Launch.ShouldNotBeNull().Arguments).ShouldNotContain("(allow file-write*");
     }
@@ -91,8 +91,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = MacOsProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(workspaceAccess: ProcessWorkspaceAccess.ReadWrite), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(workspaceAccess: ProcessWorkspaceAccess.ReadWrite), TestContext.Current.CancellationToken);
 
         string.Join('\n', result.Launch.ShouldNotBeNull().Arguments).ShouldContain("(allow file-write*");
     }
@@ -103,12 +103,12 @@ public sealed class PlatformProcessSandboxProviderTests
         var provider = MacOsProvider();
         var root = "/opt/agentkit-test-toolchain";
 
-        var result = await provider.PrepareAsync(
-            Intent(roots: [new ProcessReadOnlyRoot("test-toolchain", root)]), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(roots: [new ProcessReadOnlyRoot("test-toolchain", root)]), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         string.Join('\n', result.Launch.ShouldNotBeNull().Arguments).ShouldContain(root);
-        var withoutRoot = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var withoutRoot = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
         string.Join('\n', withoutRoot.Launch.ShouldNotBeNull().Arguments).ShouldNotContain(root);
     }
 
@@ -118,7 +118,7 @@ public sealed class PlatformProcessSandboxProviderTests
         var provider = new PlatformProcessSandboxProvider(
             new FakeProcessSandboxPlatformProbe(isLinux: true, fileExists: static _ => false));
 
-        var result = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Unavailable);
         result.Launch.ShouldBeNull();
@@ -130,8 +130,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = LinuxProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(childPolicy: ProcessChildPolicy.Deny), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(childPolicy: ProcessChildPolicy.Deny), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.UnsupportedIntent);
         result.Launch.ShouldBeNull();
@@ -143,8 +143,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = LinuxProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(workspaceAccess: ProcessWorkspaceAccess.ReadOnly), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(workspaceAccess: ProcessWorkspaceAccess.ReadOnly), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         var launch = result.Launch.ShouldNotBeNull();
@@ -159,8 +159,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = LinuxProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(workspaceAccess: ProcessWorkspaceAccess.ReadWrite), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(workspaceAccess: ProcessWorkspaceAccess.ReadWrite), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
@@ -174,8 +174,8 @@ public sealed class PlatformProcessSandboxProviderTests
         var provider = LinuxProvider();
         var root = "/opt/agentkit-test-toolchain";
 
-        var result = await provider.PrepareAsync(
-            Intent(roots: [new ProcessReadOnlyRoot("test-toolchain", root)]), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(
+            SandboxRequest(roots: [new ProcessReadOnlyRoot("test-toolchain", root)]), TestContext.Current.CancellationToken);
 
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
         var rootIndex = arguments.IndexOf(root);
@@ -189,8 +189,8 @@ public sealed class PlatformProcessSandboxProviderTests
     {
         var provider = LinuxProvider();
 
-        var result = await provider.PrepareAsync(
-            Intent(environment: [new ProcessEnvironmentVariable("AGENTKIT_TEST", "value")]),
+        var result = await provider.CreateAsync(
+            SandboxRequest(environment: [new ProcessEnvironmentVariable("AGENTKIT_TEST", "value")]),
             TestContext.Current.CancellationToken);
 
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
@@ -208,7 +208,7 @@ public sealed class PlatformProcessSandboxProviderTests
             fileExists: path => path == _bubblewrapPath,
             directoryExists: static _ => false));
 
-        var result = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
 
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
         arguments.ShouldNotContain("/usr");
@@ -223,7 +223,7 @@ public sealed class PlatformProcessSandboxProviderTests
             fileExists: path => path == _bubblewrapPath,
             directoryExists: static _ => true));
 
-        var result = await provider.PrepareAsync(Intent(), TestContext.Current.CancellationToken);
+        var result = await provider.CreateAsync(SandboxRequest(), TestContext.Current.CancellationToken);
 
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
         foreach (var path in new[] { "/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc" })
@@ -239,6 +239,13 @@ public sealed class PlatformProcessSandboxProviderTests
 
     private static PlatformProcessSandboxProvider LinuxProvider() => new(
         new FakeProcessSandboxPlatformProbe(isLinux: true, fileExists: path => path == _bubblewrapPath));
+
+    private static ProcessSandboxRequest SandboxRequest(
+        ImmutableArray<ProcessReadOnlyRoot> roots = default,
+        ProcessWorkspaceAccess workspaceAccess = ProcessWorkspaceAccess.ReadOnly,
+        ProcessChildPolicy childPolicy = ProcessChildPolicy.AllowSandboxed,
+        ImmutableArray<ProcessEnvironmentVariable> environment = default) =>
+        ProcessSandboxRequestMapping.FromResolvedProcessIntent(Intent(roots, workspaceAccess, childPolicy, environment));
 
     private static ResolvedProcessIntent Intent(
         ImmutableArray<ProcessReadOnlyRoot> roots = default,

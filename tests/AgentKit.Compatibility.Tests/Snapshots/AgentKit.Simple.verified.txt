@@ -14,8 +14,9 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder UseOpenRouter(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenRouter.OpenRouterProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseAzureOpenAI(System.Uri resourceEndpoint, string apiKey, string deploymentId, string modelId, System.Action<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
-            [System.Obsolete("Legacy host surface.")]
+            [System.Obsolete("Prefer keyed AddOperatingSystemFileSystem and tool options HostRootPath.")]
             public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithTools(params AgentKit.ToolsetKey[] toolsets) { }
             public AgentKit.AgentEngineBuilder UseModel(AgentKit.ModelAlias alias) { }
             public AgentKit.AgentEngineBuilder WithInstructions(string text) { }
             public AgentKit.AgentEngineBuilder WithIdentity(AgentKit.ExecutionIdentity identity) { }
@@ -71,5 +72,10 @@ namespace AgentKit.Simple
         public long? MaxOutputTokens { get; set; }
         public int? MaxToolCalls { get; set; }
         public int? MaxTurns { get; set; }
+    }
+    public static class SimpleWorkspaceToolsets
+    {
+        public static AgentKit.ToolsetKey Key { get; }
+        public static AgentKit.ToolsetPublication Publication { get; }
     }
 }

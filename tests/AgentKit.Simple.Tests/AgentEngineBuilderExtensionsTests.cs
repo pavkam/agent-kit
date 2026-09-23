@@ -17,6 +17,7 @@ using AgentKit.Tools;
 using AgentKit.Tools.Glob;
 using AgentKit.Tools.Read;
 
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies AgentEngineBuilderExtensions behavior and contracts.</summary>
@@ -706,7 +707,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         result.Succeeded.ShouldBeTrue();
         var toolResults = result.Events.OfType<ConversationToolResultEvent>().ToList();
         toolResults.Count.ShouldBe(2);
-        toolResults[0].Succeeded.ShouldBeTrue();
+        toolResults[0].Succeeded.ShouldBeTrue(customMessage: toolResults[0].Summary);
         toolResults[1].Succeeded.ShouldBeFalse();
         handler.Bodies[2].ShouldContain("not attempted");
         definition.BudgetLimits.ShouldHaveSingleItem().Dimension.ShouldBe(BudgetDimensions.AttemptedToolCalls);
@@ -997,6 +998,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         var workspaceProfile = new FileSystemProfileKey("workspace");
         var workspaceRoot = new FileRootId("workspace");
         _ = services.AddInMemoryFileSystem(workspaceProfile);
+        services.TryAddSingleton(provider => provider.GetRequiredKeyedService<InMemoryFileSystem>(workspaceProfile.Value));
         _ = services.AddReadTool(o =>
         {
             o.ProfileKey = workspaceProfile;

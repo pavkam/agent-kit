@@ -99,6 +99,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>Whether the final permitted turn is requested without tools; see <see cref="AgentLoopOptions.DisableToolsOnFinalTurn"/>.</summary>
     private readonly bool _disableToolsOnFinalTurn;
+
+    /// <summary>The tool-call policy for definition-pinned runs; see <see cref="AgentLoopOptions.DefaultToolChoice"/>.</summary>
+    private readonly LlmToolChoice _defaultToolChoice;
     private readonly double _contextPressureThreshold;
     private readonly double _estimatedCharactersPerToken;
     private readonly int _maximumPromotionsPerBoundary;
@@ -218,6 +221,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _settlementTimeout = loopOptions.SettlementTimeout;
         _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
         _disableToolsOnFinalTurn = loopOptions.DisableToolsOnFinalTurn;
+        ArgumentNullException.ThrowIfNull(loopOptions.DefaultToolChoice, nameof(optionsMonitor));
+        _defaultToolChoice = loopOptions.DefaultToolChoice;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.ContextPressureThreshold, nameof(optionsMonitor));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(loopOptions.ContextPressureThreshold, 1, nameof(optionsMonitor));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(loopOptions.EstimatedCharactersPerToken, nameof(optionsMonitor));
