@@ -846,6 +846,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete]
     private void OnPromptPreviewKey(object? sender, KeyEventArgs e)
     {
         _ = sender;
@@ -1311,6 +1312,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         return entries.ToImmutable();
     }
 
+    [Obsolete]
     private void ExecuteSlashCommand(string commandLine)
     {
         var name = commandLine.Split(' ', 2)[0];

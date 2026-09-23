@@ -118,6 +118,7 @@ public sealed class OperatingSystemFileWriterTests
         return root;
     }
 
+    [Obsolete]
     private static IFileWriter CreateWriter(string root, ISecurityAuditDispatcher? audit = null)
     {
         var services = new ServiceCollection();

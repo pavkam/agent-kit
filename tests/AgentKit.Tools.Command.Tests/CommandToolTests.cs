@@ -127,7 +127,7 @@ public sealed class CommandToolTests
                 4,
                 false,
                 false,
-                ProcessSideEffectCertainty.Completed,
+                SideEffectCertainty.DefinitelyPerformed,
                 null),
         };
         var authority = new RecordingSecurityAuthority();
@@ -162,7 +162,7 @@ public sealed class CommandToolTests
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
         json.RootElement.GetProperty("stdout").GetString().ShouldBe("out");
         json.RootElement.GetProperty("stderr").GetString().ShouldBe("warn");
-        json.RootElement.GetProperty("effect_certainty").GetString().ShouldBe("Completed");
+        json.RootElement.GetProperty("effect_certainty").GetString().ShouldBe("DefinitelyPerformed");
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public sealed class CommandToolTests
                 3,
                 false,
                 false,
-                ProcessSideEffectCertainty.Completed,
+                SideEffectCertainty.DefinitelyPerformed,
                 null),
         };
 
@@ -211,7 +211,7 @@ public sealed class CommandToolTests
                 0,
                 false,
                 false,
-                ProcessSideEffectCertainty.Completed,
+                SideEffectCertainty.DefinitelyPerformed,
                 null),
         };
 
@@ -242,7 +242,7 @@ public sealed class CommandToolTests
                 0,
                 true,
                 false,
-                ProcessSideEffectCertainty.Completed,
+                SideEffectCertainty.DefinitelyPerformed,
                 null,
                 reference),
         };
@@ -277,16 +277,16 @@ public sealed class CommandToolTests
         DateTimeOffset.UnixEpoch);
 
     [Theory]
-    [InlineData(ProcessRunStatus.Exited, ProcessSideEffectCertainty.Completed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
-    [InlineData(ProcessRunStatus.Denied, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.SandboxUnavailable, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.ResolutionFailed, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.LimitExceeded, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.TimedOut, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
-    [InlineData(ProcessRunStatus.Cancelled, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
-    [InlineData(ProcessRunStatus.Failed, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [InlineData(ProcessRunStatus.Exited, SideEffectCertainty.DefinitelyPerformed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
+    [InlineData(ProcessRunStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.SandboxUnavailable, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.ResolutionFailed, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.LimitExceeded, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.TimedOut, SideEffectCertainty.Unknown, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
+    [InlineData(ProcessRunStatus.Cancelled, SideEffectCertainty.Unknown, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
+    [InlineData(ProcessRunStatus.Failed, SideEffectCertainty.Unknown, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
     [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenHostSettles_PreservesStageAndEffectEvidence(ProcessRunStatus status, ProcessSideEffectCertainty hostCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
+    public async Task InvokeAsync_WhenHostSettles_PreservesStageAndEffectEvidence(ProcessRunStatus status, SideEffectCertainty hostCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
     {
         // Arrange
         var runner = new RecordingProcessRunner

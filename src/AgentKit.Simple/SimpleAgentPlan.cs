@@ -221,17 +221,14 @@ internal sealed class SimpleAgentPlan
     }
 
     /// <summary>Builds the agent definition the engine catalog publishes.</summary>
-    /// <param name="tools">The tool definitions advertised to the model.</param>
     /// <returns>An immutable definition.</returns>
-    public AgentDefinition Definition(ImmutableArray<LlmToolDefinition> tools) => new(
+    public AgentDefinition Definition() => new(
         EffectiveAgentId,
         DefinitionRevision,
         "agent",
         new ModelSelectionPolicy([RequireModelAlias()]),
         ModelRequirements.None,
         InstructionMessages(),
-        tools,
-        LlmToolChoice.Auto,
         RequestSettings,
         new RunPolicyDefaults(MaxTurns, AttemptTimeout),
         ExtensionData.Empty,
@@ -291,14 +288,13 @@ internal sealed class SimpleAgentPlan
         ];
     }
 
-    /// <summary>Builds the immutable definition of one additional agent over the plan's shared model, profiles, and tools.</summary>
+    /// <summary>Builds the immutable definition of one additional agent over the plan's shared model and profiles.</summary>
     /// <param name="agentId">The additional agent's identity.</param>
     /// <param name="options">Its configured behavior.</param>
-    /// <param name="tools">Every registered tool, offered when <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> is set.</param>
     /// <returns>The definition the engine catalog publishes.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> is default.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-    public AgentDefinition DefinitionFor(AgentId agentId, SimpleAgentOptions options, ImmutableArray<LlmToolDefinition> tools)
+    public AgentDefinition DefinitionFor(AgentId agentId, SimpleAgentOptions options)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
         ArgumentNullException.ThrowIfNull(options);
@@ -309,8 +305,6 @@ internal sealed class SimpleAgentPlan
             new ModelSelectionPolicy([RequireModelAlias()]),
             ModelRequirements.None,
             [.. options.Instructions.Select(text => BuildInstructionMessage(agentId, text)).Cast<AgentMessage>()],
-            options.IncludeRegisteredTools ? tools : [],
-            LlmToolChoice.Auto,
             options.RequestSettings,
             new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
             ExtensionData.Empty,

@@ -61,16 +61,14 @@ public sealed class SimpleAgentPlanTests
         Should.Throw<ArgumentNullException>(() => new SimpleAgentPlan().AddAgent(new AgentId(Guid.NewGuid()), null!)).ParamName.ShouldBe("options");
 
     [Fact]
-    public void DefinitionFor_WhenToolsAreExcluded_PublishesNoToolsAndTheOutput()
+    public void DefinitionFor_WhenAdditionalAgentIsConfigured_PublishesItsInstructionsAndModel()
     {
         var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("chat"), LocalDevelopmentDefaults = true };
-        var tools = SimpleAgentPlan.AdvertisedTools([new NamedTool("a")], new AgentToolsOptions { AllowAllRegisteredTools = true }).ToLlmToolDefinitions();
-        var options = new SimpleAgentOptions { IncludeRegisteredTools = false };
+        var options = new SimpleAgentOptions();
         options.Instructions.Add("Be terse.");
 
-        var definition = plan.DefinitionFor(new AgentId(Guid.NewGuid()), options, tools);
+        var definition = plan.DefinitionFor(new AgentId(Guid.NewGuid()), options);
 
-        definition.Tools.ShouldBeEmpty();
         definition.Instructions.ShouldHaveSingleItem().ShouldBeOfType<SystemMessage>().AgentId.ShouldBe(definition.Id);
         definition.Models.Candidates.ShouldBe([new ModelAlias("chat")]);
     }
@@ -108,7 +106,7 @@ public sealed class SimpleAgentPlanTests
         plan.Instructions.Add("Be concise.");
         plan.Instructions.Add("Cite sources.");
 
-        var definition = plan.Definition([]);
+        var definition = plan.Definition();
         var options = new ConversationSessionOptions();
         plan.Apply(options);
 
@@ -121,8 +119,8 @@ public sealed class SimpleAgentPlanTests
         var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("assistant"), LocalDevelopmentDefaults = true };
         plan.Instructions.Add("Be concise.");
 
-        var first = plan.Definition([]);
-        var second = plan.Definition([]);
+        var first = plan.Definition();
+        var second = plan.Definition();
 
         first.Instructions.ShouldBe(second.Instructions);
     }

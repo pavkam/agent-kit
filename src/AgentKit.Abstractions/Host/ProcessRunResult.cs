@@ -15,7 +15,7 @@ public sealed record ProcessRunResult
     /// <param name="totalStandardErrorBytes">The non-negative observed stderr byte count.</param>
     /// <param name="standardOutputTruncated">Whether earlier stdout bytes were discarded.</param>
     /// <param name="standardErrorTruncated">Whether earlier stderr bytes were discarded.</param>
-    /// <param name="effectCertainty">What the host can prove about possible side effects.</param>
+    /// <param name="sideEffectCertainty">What the host can prove about possible side effects.</param>
     /// <param name="safeMessage">A non-sensitive explanation or warning.</param>
     /// <param name="standardOutputArtifact">The complete stdout artifact when the retained tail truncated.</param>
     /// <param name="standardErrorArtifact">The complete stderr artifact when the retained tail truncated.</param>
@@ -30,7 +30,7 @@ public sealed record ProcessRunResult
         long totalStandardErrorBytes,
         bool standardOutputTruncated,
         bool standardErrorTruncated,
-        ProcessSideEffectCertainty effectCertainty,
+        SideEffectCertainty sideEffectCertainty,
         string? safeMessage,
         ArtifactReference? standardOutputArtifact = null,
         ArtifactReference? standardErrorArtifact = null)
@@ -40,7 +40,7 @@ public sealed record ProcessRunResult
         ArgumentException.ThrowIfDefault(standardErrorTail);
         ArgumentOutOfRangeException.ThrowIfNegative(totalStandardOutputBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(totalStandardErrorBytes);
-        ArgumentOutOfRangeException.ThrowIfUndefined(effectCertainty);
+        ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
         if (status == ProcessRunStatus.Exited != exitCode.HasValue)
         {
             throw new ArgumentException("Only an exited process has an exit code.", nameof(exitCode));
@@ -59,7 +59,7 @@ public sealed record ProcessRunResult
         TotalStandardErrorBytes = totalStandardErrorBytes;
         StandardOutputTruncated = standardOutputTruncated;
         StandardErrorTruncated = standardErrorTruncated;
-        EffectCertainty = effectCertainty;
+        SideEffectCertainty = sideEffectCertainty;
         SafeMessage = safeMessage;
         StandardOutputArtifact = standardOutputArtifact;
         StandardErrorArtifact = standardErrorArtifact;
@@ -82,7 +82,7 @@ public sealed record ProcessRunResult
     /// <summary>Gets whether earlier stderr bytes were discarded.</summary>
     public bool StandardErrorTruncated { get; }
     /// <summary>Gets what the host can prove about possible side effects.</summary>
-    public ProcessSideEffectCertainty EffectCertainty { get; }
+    public SideEffectCertainty SideEffectCertainty { get; }
     /// <summary>Gets a non-sensitive explanation or warning.</summary>
     public string? SafeMessage { get; }
     /// <summary>Gets the complete stdout artifact when the retained tail truncated and preservation succeeded.</summary>
@@ -101,7 +101,7 @@ public sealed record ProcessRunResult
         && TotalStandardErrorBytes == other.TotalStandardErrorBytes
         && StandardOutputTruncated == other.StandardOutputTruncated
         && StandardErrorTruncated == other.StandardErrorTruncated
-        && EffectCertainty == other.EffectCertainty
+        && SideEffectCertainty == other.SideEffectCertainty
         && SafeMessage == other.SafeMessage
         && StandardOutputArtifact == other.StandardOutputArtifact
         && StandardErrorArtifact == other.StandardErrorArtifact;
@@ -126,7 +126,7 @@ public sealed record ProcessRunResult
         hash.Add(TotalStandardErrorBytes);
         hash.Add(StandardOutputTruncated);
         hash.Add(StandardErrorTruncated);
-        hash.Add(EffectCertainty);
+        hash.Add(SideEffectCertainty);
         hash.Add(SafeMessage);
         hash.Add(StandardOutputArtifact);
         hash.Add(StandardErrorArtifact);

@@ -38,7 +38,7 @@ internal sealed class RecordingProcessRunner: IProcessRunner
         0,
         false,
         false,
-        ProcessSideEffectCertainty.Completed,
+        SideEffectCertainty.DefinitelyPerformed,
         null);
 
     public ComponentId SecurityAudience { get; } = new("test.process-runner");

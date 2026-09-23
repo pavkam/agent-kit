@@ -102,7 +102,7 @@ internal static class LoopTestData
 
     public static AgentDefinition Definition() =>
         new(AgentId, new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]),
-            ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default,
+            ModelRequirements.None, [], LlmRequestSettings.Default,
             new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty,
             new SecurityProfileKey("security"), new SessionProfileKey("session"));
 

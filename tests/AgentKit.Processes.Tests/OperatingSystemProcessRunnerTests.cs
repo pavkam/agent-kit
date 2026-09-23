@@ -242,7 +242,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, new TestGrantStore());
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.TimedOut);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
     }
 
     [Fact]
@@ -376,7 +376,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, new TestGrantStore());
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Failed);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
         result.SafeMessage.ShouldNotBeNull().ShouldContain("did not settle within the drain bound");
     }
 
@@ -397,7 +397,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         File.Exists(Path.Combine(_root, "denied.txt")).ShouldBeFalse();
         var enforcement = store.Enforcements.ShouldHaveSingleItem();
         enforcement.Kind.ShouldBe(SecurityOperationKind.Process);
@@ -424,7 +424,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store, intentIds: new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         File.Exists(Path.Combine(_root, "reconciled.txt")).ShouldBeFalse();
         store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
         store.LegacyConsumptionCalls.ShouldBe(0);
@@ -447,7 +447,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         File.Exists(Path.Combine(_root, "receipt-missing.txt")).ShouldBeFalse();
     }
 
@@ -467,7 +467,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, grant), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Exited);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.Completed);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
     }
 
     [Fact]
@@ -615,7 +615,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.SandboxUnavailable);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         store.Enforcements.ShouldBeEmpty();
         _ = result.SafeMessage.ShouldNotBeNull();
         result.SafeMessage.ShouldContain("missing");
@@ -640,7 +640,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, store);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.ResolutionFailed);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         store.Enforcements.ShouldBeEmpty();
     }
 
@@ -774,7 +774,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, new TestGrantStore());
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.TimedOut);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
     }
 
     private OperatingSystemProcessIntentResolver CreateResolver(string executable, long maximumOutputBytes = 1024) => new(Options.Create(OptionsFor(executable, maximumOutputBytes)));

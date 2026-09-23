@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 /// <summary>Keyed registration for in-memory host file capabilities.</summary>
 internal static class InMemoryFileSystemRegistration
 {
+    [Obsolete]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,

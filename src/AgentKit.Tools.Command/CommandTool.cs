@@ -56,6 +56,7 @@ public sealed class CommandTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+    [Obsolete("Legacy host surface.")]
     public CommandTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,
@@ -231,7 +232,7 @@ public sealed class CommandTool: IToolInvoker, ITool
         var content = Project(result);
         return result.Status == ProcessRunStatus.Exited && result.ExitCode == 0
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, EffectCertainty(result.EffectCertainty), false, null, Status(result.Status.ToString())), content)
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, result.SideEffectCertainty, false, null, Status(result.Status.ToString())), content)
             : Failure(
                 result.SafeMessage ?? ExitFailure(result),
                 result.Status.ToString(),
@@ -243,16 +244,8 @@ public sealed class CommandTool: IToolInvoker, ITool
                     ProcessRunStatus.Cancelled => ToolTerminalStatus.Cancelled,
                     ProcessRunStatus.Exited or ProcessRunStatus.ResolutionFailed or ProcessRunStatus.LimitExceeded or ProcessRunStatus.Failed => ToolTerminalStatus.InvocationFailed,
                     _ => ToolTerminalStatus.InvocationFailed,
-                }, EffectCertainty(result.EffectCertainty));
+                }, result.SideEffectCertainty);
     }
-
-    private static SideEffectCertainty EffectCertainty(ProcessSideEffectCertainty certainty) => certainty switch
-    {
-        ProcessSideEffectCertainty.NotStarted => SideEffectCertainty.DefinitelyNotPerformed,
-        ProcessSideEffectCertainty.Completed => SideEffectCertainty.DefinitelyPerformed,
-        ProcessSideEffectCertainty.MayHaveOccurred => SideEffectCertainty.Unknown,
-        _ => SideEffectCertainty.Unknown,
-    };
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed, out string? error)
     {
@@ -332,7 +325,7 @@ public sealed class CommandTool: IToolInvoker, ITool
             stderr_artifact_id = result.StandardErrorArtifact?.Id.ToString(),
             stderr_artifact_version = result.StandardErrorArtifact?.Version.Value,
             stderr_artifact_hash = result.StandardErrorArtifact?.Integrity.ContentHash.Value,
-            effect_certainty = result.EffectCertainty.ToString(),
+            effect_certainty = result.SideEffectCertainty.ToString(),
             message = result.SafeMessage,
         });
         return [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)];

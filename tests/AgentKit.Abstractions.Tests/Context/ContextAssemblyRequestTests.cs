@@ -72,7 +72,7 @@ public sealed class ContextAssemblyRequestTests
     [Fact]
     public void Constructor_WhenSettingsIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, null!, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], null!, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("settings");
     }
 
@@ -110,7 +110,7 @@ public sealed class ContextAssemblyRequestTests
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), null);
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
@@ -188,7 +188,7 @@ public sealed class ContextAssemblyRequestTests
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new InRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), new RunId(Guid.Parse("50000000-0000-0000-0000-000000000001")), new TurnId(Guid.Parse("60000000-0000-0000-0000-000000000001")));
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);

@@ -550,148 +550,166 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var tracking = new RunTracking();
-        var (hookScopeLease, hookProfileFailure) = await OpenHookScopeAsync(request, cancellationToken).ConfigureAwait(false);
-        if (hookProfileFailure is not null)
+        var (catalogLease, catalogFailure) = await OpenRunToolCatalogAsync(
+            request, services, runAuthorization, model, cancellationToken).ConfigureAwait(false);
+        if (catalogFailure is not null)
         {
             return BuildResult(
                 request,
-                hookProfileFailure,
+                catalogFailure,
                 committedMessages.ToImmutable(),
                 currentVersion,
                 laneState.Usage);
         }
 
-        await using var hookScope = hookScopeLease;
-        if (!request.BudgetLimits.IsEmpty)
+        await using (catalogLease)
         {
-            if (services.Budgets is not { } budgets)
+            tracking.AdvertisedTools = catalogLease.AdvertisedTools;
+            tracking.CatalogCapture = catalogLease.Capture;
+
+            var (hookScopeLease, hookProfileFailure) = await OpenHookScopeAsync(request, cancellationToken).ConfigureAwait(false);
+            if (hookProfileFailure is not null)
             {
-                LoopLog.BudgetAuthorityMissing(_logger, request.RunId);
                 return BuildResult(
                     request,
-                    RunOutcomes.InvalidState("The run declares budget limits but the composition provides no budget authority."),
+                    hookProfileFailure,
                     committedMessages.ToImmutable(),
                     currentVersion,
                     laneState.Usage);
             }
 
-            var scopeResult = await budgets.CreateChildScopeAsync(
-                new BudgetScopeRequest(
-                    parentScopeId: null,
-                    new BudgetScopeAddress(
-                        request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, null),
-                    request.BudgetLimits,
-                    new IdempotencyKey($"run:{request.RunId}:budget")),
-                cancellationToken).ConfigureAwait(false);
-            if (scopeResult is not BudgetScopeCreated created)
+            await using var hookScope = hookScopeLease;
+            if (!request.BudgetLimits.IsEmpty)
             {
-                LoopLog.BudgetScopeNotCreated(_logger, request.RunId, scopeResult.GetType().Name);
-                return BuildResult(
-                    request,
-                    RunOutcomes.InvalidState("The run's budget scope could not be created."),
-                    committedMessages.ToImmutable(),
-                    currentVersion,
-                    laneState.Usage);
-            }
-
-            tracking.Budget = new RunBudget(created.Scope, request.RunId, _timeProvider);
-            _ = runActivity?.SetTag(AgentKitTagNames.BudgetScopeId, created.Scope.Id.ToString());
-        }
-
-        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.RunStarted))
-        {
-            var runStartedDispatch = CreateHookDispatch(AgentHookPoints.RunStarted, runCorrelation);
-            var runStartedArgs = new RunStartedEventArgs(
-                runStartedDispatch,
-                request.AgentId,
-                request.SessionId,
-                request.BranchId,
-                model,
-                request.MaxTurns,
-                request.AttemptTimeout);
-            var runStartedContext = hookScope.CreateDispatch(runStartedDispatch);
-            await _hookDispatcher!.DispatchAsync(
-                AgentHookPointDefinitions.RunStarted,
-                runStartedContext,
-                runStartedArgs,
-                HookFailureMode.IsolateAndDiagnose,
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        var compactionAttempted = false;
-        for (var turn = 1; turn <= request.MaxTurns; turn++)
-        {
-            if (tracking.Budget is { } turnBudget
-                && await turnBudget.CountAsync(BudgetDimensions.Turns, operationId, $"turn:{turn}", cancellationToken).ConfigureAwait(false) is { } turnExhausted)
-            {
-                LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
-                return BuildResult(
-                    request, RunOutcomes.BudgetExhausted(turnExhausted, hasPartialOutput: committedMessages.Count > 0),
-                    committedMessages.ToImmutable(), currentVersion, laneState.Usage);
-            }
-
-            if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
-            {
-                var estimatedTokens = EstimateTokens(history.Messages);
-                var threshold = contextWindow * _contextPressureThreshold;
-                if (estimatedTokens > threshold)
+                if (services.Budgets is not { } budgets)
                 {
-                    compactionAttempted = true;
-                    history = await CompactUnderPressureAsync(
-                        request, services, compactor, sessionContext, runCorrelation, runAuthorization, history,
-                        estimatedTokens, contextWindow, threshold, cancellationToken).ConfigureAwait(false);
-                    currentVersion = history.SourceCursor.Version;
+                    LoopLog.BudgetAuthorityMissing(_logger, request.RunId);
+                    return BuildResult(
+                        request,
+                        RunOutcomes.InvalidState("The run declares budget limits but the composition provides no budget authority."),
+                        committedMessages.ToImmutable(),
+                        currentVersion,
+                        laneState.Usage);
                 }
+
+                var scopeResult = await budgets.CreateChildScopeAsync(
+                    new BudgetScopeRequest(
+                        parentScopeId: null,
+                        new BudgetScopeAddress(
+                            request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, null),
+                        request.BudgetLimits,
+                        new IdempotencyKey($"run:{request.RunId}:budget")),
+                    cancellationToken).ConfigureAwait(false);
+                if (scopeResult is not BudgetScopeCreated created)
+                {
+                    LoopLog.BudgetScopeNotCreated(_logger, request.RunId, scopeResult.GetType().Name);
+                    return BuildResult(
+                        request,
+                        RunOutcomes.InvalidState("The run's budget scope could not be created."),
+                        committedMessages.ToImmutable(),
+                        currentVersion,
+                        laneState.Usage);
+                }
+
+                tracking.Budget = new RunBudget(created.Scope, request.RunId, _timeProvider);
+                _ = runActivity?.SetTag(AgentKitTagNames.BudgetScopeId, created.Scope.Id.ToString());
             }
 
-            TurnOutcome result;
-            try
+            if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.RunStarted))
             {
-                result = await RunTurnAsync(
-                    request,
-                    services,
+                var runStartedDispatch = CreateHookDispatch(AgentHookPoints.RunStarted, runCorrelation);
+                var runStartedArgs = new RunStartedEventArgs(
+                    runStartedDispatch,
+                    request.AgentId,
+                    request.SessionId,
+                    request.BranchId,
                     model,
-                    llmModel,
-                    operationId,
-                    turn,
-                    turn == 1 ? modelResolution.FirstModelRequestId : null,
-                    modelResolution.Adjustments,
-                    history,
-                    tracking,
-                    hookScope,
-                    committedMessages,
-                    currentVersion,
-                    laneState,
+                    request.MaxTurns,
+                    request.AttemptTimeout);
+                var runStartedContext = hookScope.CreateDispatch(runStartedDispatch);
+                await _hookDispatcher!.DispatchAsync(
+                    AgentHookPointDefinitions.RunStarted,
+                    runStartedContext,
+                    runStartedArgs,
+                    HookFailureMode.IsolateAndDiagnose,
                     cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && committedMessages.Count > 0)
+
+            var compactionAttempted = false;
+            for (var turn = 1; turn <= request.MaxTurns; turn++)
             {
-                // Cancellation may propagate as an exception only while this run has produced no durable effect.
-                // Once an earlier turn committed a message, the caller must still receive it: the run settles
-                // with a typed cancelled outcome carrying every committed message and the exact branch version.
-                return BuildResult(
-                    request,
-                    RunOutcomes.Cancelled("The run was cancelled after at least one message had been committed."),
-                    committedMessages.ToImmutable(),
-                    currentVersion,
-                    laneState.Usage);
+                if (tracking.Budget is { } turnBudget
+                    && await turnBudget.CountAsync(BudgetDimensions.Turns, operationId, $"turn:{turn}", cancellationToken).ConfigureAwait(false) is { } turnExhausted)
+                {
+                    LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
+                    return BuildResult(
+                        request, RunOutcomes.BudgetExhausted(turnExhausted, hasPartialOutput: committedMessages.Count > 0),
+                        committedMessages.ToImmutable(), currentVersion, laneState.Usage);
+                }
+
+                if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
+                {
+                    var estimatedTokens = EstimateTokens(history.Messages);
+                    var threshold = contextWindow * _contextPressureThreshold;
+                    if (estimatedTokens > threshold)
+                    {
+                        compactionAttempted = true;
+                        history = await CompactUnderPressureAsync(
+                            request, services, compactor, sessionContext, runCorrelation, runAuthorization, history,
+                            estimatedTokens, contextWindow, threshold, cancellationToken).ConfigureAwait(false);
+                        currentVersion = history.SourceCursor.Version;
+                    }
+                }
+
+                TurnOutcome result;
+                try
+                {
+                    result = await RunTurnAsync(
+                        request,
+                        services,
+                        model,
+                        llmModel,
+                        operationId,
+                        turn,
+                        turn == 1 ? modelResolution.FirstModelRequestId : null,
+                        modelResolution.Adjustments,
+                        history,
+                        tracking,
+                        hookScope,
+                        committedMessages,
+                        currentVersion,
+                        laneState,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && committedMessages.Count > 0)
+                {
+                    // Cancellation may propagate as an exception only while this run has produced no durable effect.
+                    // Once an earlier turn committed a message, the caller must still receive it: the run settles
+                    // with a typed cancelled outcome carrying every committed message and the exact branch version.
+                    return BuildResult(
+                        request,
+                        RunOutcomes.Cancelled("The run was cancelled after at least one message had been committed."),
+                        committedMessages.ToImmutable(),
+                        currentVersion,
+                        laneState.Usage);
+                }
+
+                if (result.Outcome is not null)
+                {
+                    return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, laneState.Usage, result.Output);
+                }
+
+                currentVersion = result.Version;
+                Debug.Assert(result.Cursor is not null, "A continuing turn retains an exact updated history cursor.");
+                Debug.Assert(turn < request.MaxTurns, "The final permitted turn always settles; it never continues.");
+                history = new HistoryView(result.Cursor, history.Messages.AddRange(result.NewMessages), []);
             }
 
-            if (result.Outcome is not null)
-            {
-                return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, laneState.Usage, result.Output);
-            }
-
-            currentVersion = result.Version;
-            Debug.Assert(result.Cursor is not null, "A continuing turn retains an exact updated history cursor.");
-            Debug.Assert(turn < request.MaxTurns, "The final permitted turn always settles; it never continues.");
-            history = new HistoryView(result.Cursor, history.Messages.AddRange(result.NewMessages), []);
+            // Every turn-limit exit is produced inside the final turn itself: pending tool calls are settled as
+            // rejected and a continuation proposal on the final turn settles as the typed turn limit. Reaching this
+            // point would mean a turn continued past the limit, which is an invariant violation rather than a limit.
+            throw new UnreachableException("The final permitted turn continued instead of settling the run.");
         }
-
-        // Every turn-limit exit is produced inside the final turn itself: pending tool calls are settled as
-        // rejected and a continuation proposal on the final turn settles as the typed turn limit. Reaching this
-        // point would mean a turn continued past the limit, which is an invariant violation rather than a limit.
-        throw new UnreachableException("The final permitted turn continued instead of settling the run.");
     }
 
     /// <summary>
@@ -878,8 +896,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 model,
                 agent.Instructions,
                 new ContextAssemblyEvidence(agent, request.Identity, history, turnAuthorization, configuration),
-                finalTurnWithoutTools ? [] : agent.Tools,
-                finalTurnWithoutTools ? LlmToolChoice.None : agent.ToolChoice,
+                finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
+                finalTurnWithoutTools ? LlmToolChoice.None : _defaultToolChoice,
                 ApplySelectionAdjustments(agent.Settings, selectionAdjustments),
                 ExtensionData.Empty)
             : new ContextAssemblyRequest(
@@ -892,7 +910,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 model,
                 request.Instructions,
                 history.Messages,
-                finalTurnWithoutTools ? [] : request.Tools,
+                finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
                 finalTurnWithoutTools ? LlmToolChoice.None : request.ToolChoice,
                 ApplySelectionAdjustments(request.Settings, selectionAdjustments),
                 ExtensionData.Empty);
@@ -1832,200 +1850,223 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 currentVersion);
         }
 
-        var toolsets = request.Agent?.Toolsets ?? [];
-        var captureRequest = toolsets.IsEmpty
-            ? new RunToolCatalogCaptureRequest(
-                request.AgentId,
-                request.SessionId,
-                request.RunId,
-                turnSessionContext.Authorization)
-            : new RunToolCatalogCaptureRequest(
-                request.AgentId,
-                request.SessionId,
-                request.RunId,
-                turnSessionContext.Authorization,
-                toolsets,
-                new EffectiveConfigurationSnapshot(
-                    turnSessionContext.Authorization.ConfigurationVersion,
-                    new ContentHash($"sha256:tool-catalog:{turnSessionContext.Authorization.ConfigurationVersion.Value}"),
-                    [],
-                    []),
-                modelCapabilities);
-        await using var catalogCapture = await services.ToolCatalogCaptures
-            .CreateAsync(captureRequest, cancellationToken)
-            .ConfigureAwait(false);
-        var hookBinding = hookScope is null
-            ? null
-            : new ToolExecutionHookBinding(hookScope, turnCorrelation, CreateHookDispatch);
-        var toolCapability = ToolExecutionCapabilityFactory.Create(
-            request, services, turnCorrelation, tracking.Budget, hookBinding);
-        var catalogVersion = catalogCapture.Snapshot.Version;
-        var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
-        var interrupted = false;
-        var sourceOrdinal = 0;
-        foreach (var toolCall in toolCalls)
+        IToolCatalogCapture catalogCapture;
+        IAsyncDisposable? ownedCatalogCapture = null;
+        if (tracking.CatalogCapture is { } runCatalogCapture)
         {
-            // A prior call may have absorbed cancellation into an ordinary settled outcome instead of throwing
-            // (see the remark on the commit below), so cancellation is also checked explicitly here: once
-            // requested, no further not-yet-attempted call in this batch is started.
-            if (interrupted || cancellationToken.IsCancellationRequested)
-            {
-                interrupted = true;
-                var skippedResult = InterruptedResultPart(toolCall);
-                resultParts.Add(skippedResult);
-                await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, skippedResult)).ConfigureAwait(false);
-                continue;
-            }
+            catalogCapture = runCatalogCapture;
+        }
+        else
+        {
+            var toolsets = request.Agent?.Toolsets ?? [];
+            var captureRequest = toolsets.IsEmpty
+                ? new RunToolCatalogCaptureRequest(
+                    request.AgentId,
+                    request.SessionId,
+                    request.RunId,
+                    turnSessionContext.Authorization)
+                : new RunToolCatalogCaptureRequest(
+                    request.AgentId,
+                    request.SessionId,
+                    request.RunId,
+                    turnSessionContext.Authorization,
+                    toolsets,
+                    request.Configuration
+                    ?? new EffectiveConfigurationSnapshot(
+                        turnSessionContext.Authorization.ConfigurationVersion,
+                        new ContentHash($"sha256:tool-catalog:{turnSessionContext.Authorization.ConfigurationVersion.Value}"),
+                        [],
+                        []),
+                    modelCapabilities);
+            var createdCapture = await services.ToolCatalogCaptures
+                .CreateAsync(captureRequest, cancellationToken)
+                .ConfigureAwait(false);
+            catalogCapture = createdCapture;
+            ownedCatalogCapture = createdCapture;
+        }
 
-            ToolResultPart resultPart;
-            try
+        try
+        {
+            var hookBinding = hookScope is null
+                ? null
+                : new ToolExecutionHookBinding(hookScope, turnCorrelation, CreateHookDispatch);
+            var toolCapability = ToolExecutionCapabilityFactory.Create(
+                request, services, turnCorrelation, tracking.Budget, hookBinding);
+            var catalogVersion = catalogCapture.Snapshot.Version;
+            var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
+            var interrupted = false;
+            var sourceOrdinal = 0;
+            foreach (var toolCall in toolCalls)
             {
-                await ObserveAsync(
-                    request,
-                    new AgentRunToolCallStarted(turnId, toolCall),
-                    cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (tracking.Budget is { } callBudget
-                    && await callBudget.CountAsync(BudgetDimensions.AttemptedToolCalls, turnCorrelation.OperationId, $"call:{toolCall.CallId}", cancellationToken).ConfigureAwait(false) is { } callExhausted)
+                // A prior call may have absorbed cancellation into an ordinary settled outcome instead of throwing
+                // (see the remark on the commit below), so cancellation is also checked explicitly here: once
+                // requested, no further not-yet-attempted call in this batch is started.
+                if (interrupted || cancellationToken.IsCancellationRequested)
                 {
-                    LoopLog.BudgetExhausted(_logger, request.RunId, callExhausted.Dimension);
-                    resultPart = BudgetRejectedResultPart(toolCall, callExhausted);
-                    resultParts.Add(resultPart);
-                    await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+                    interrupted = true;
+                    var skippedResult = InterruptedResultPart(toolCall);
+                    resultParts.Add(skippedResult);
+                    await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, skippedResult)).ConfigureAwait(false);
                     continue;
                 }
 
-                var arguments = toolCall.Arguments;
-                var rawArguments = arguments.ValueKind is System.Text.Json.JsonValueKind.Undefined
-                    ? ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes("{}"))
-                    : ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes(arguments.GetRawText()));
-                var callRequest = new ToolCallRequest(
-                    request.AgentId,
-                    request.SessionId,
-                    request.RunId,
-                    turnId,
-                    turnCorrelation.OperationId,
-                    toolCall.CallId,
-                    turnSessionContext.Authorization,
-                    catalogVersion,
-                    sourceOrdinal++,
-                    toolCall.Tool.ProviderAlias,
-                    rawArguments,
-                    _timeProvider.GetUtcNow());
-                var batch = await services.Tools.ExecuteAsync(
-                    catalogCapture,
-                    [callRequest],
-                    toolCapability,
+                ToolResultPart resultPart;
+                try
+                {
+                    await ObserveAsync(
+                        request,
+                        new AgentRunToolCallStarted(turnId, toolCall),
+                        cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (tracking.Budget is { } callBudget
+                        && await callBudget.CountAsync(BudgetDimensions.AttemptedToolCalls, turnCorrelation.OperationId, $"call:{toolCall.CallId}", cancellationToken).ConfigureAwait(false) is { } callExhausted)
+                    {
+                        LoopLog.BudgetExhausted(_logger, request.RunId, callExhausted.Dimension);
+                        resultPart = BudgetRejectedResultPart(toolCall, callExhausted);
+                        resultParts.Add(resultPart);
+                        await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var arguments = toolCall.Arguments;
+                    var rawArguments = arguments.ValueKind is System.Text.Json.JsonValueKind.Undefined
+                        ? ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes("{}"))
+                        : ImmutableArray.Create(System.Text.Encoding.UTF8.GetBytes(arguments.GetRawText()));
+                    var callRequest = new ToolCallRequest(
+                        request.AgentId,
+                        request.SessionId,
+                        request.RunId,
+                        turnId,
+                        turnCorrelation.OperationId,
+                        toolCall.CallId,
+                        turnSessionContext.Authorization,
+                        catalogVersion,
+                        sourceOrdinal++,
+                        toolCall.Tool.ProviderAlias,
+                        rawArguments,
+                        _timeProvider.GetUtcNow());
+                    var batch = await services.Tools.ExecuteAsync(
+                        catalogCapture,
+                        [callRequest],
+                        toolCapability,
+                        cancellationToken).ConfigureAwait(false);
+                    resultPart = ToolCallResultProjection.ToToolResultPart(batch.Results[0], toolCall.Tool);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // A cancelled tool call must still receive a matching terminal result: the assistant message
+                    // that requested these calls is already committed, and leaving any of them without a result
+                    // would permanently break causality for every later turn in this session (context assembly
+                    // requires exactly one terminal result per requested call). Every remaining, not-yet-attempted
+                    // call in this batch is settled the same way below, and the whole batch is committed with
+                    // CancellationToken.None before this cancellation is allowed to propagate.
+                    interrupted = true;
+                    resultPart = InterruptedResultPart(toolCall);
+                }
+                catch (Exception exception)
+                {
+                    // An invoker fault (resolution, authorization, or an unguarded tool exception) is a terminal
+                    // failure for this call, not for the session: the call still receives its exactly-one result.
+                    LoopLog.ToolCallFaulted(_logger, request.RunId, toolCall.CallId, exception.GetType().FullName ?? exception.GetType().Name);
+                    resultPart = new ToolResultPart(
+                        toolCall.CallId,
+                        toolCall.Tool,
+                        new ToolCallOutcome(
+                            ToolCallOutcomeKind.Failed,
+                            ToolTerminalStatus.InvocationFailed,
+                            SideEffectCertainty.Unknown,
+                            retryable: false,
+                            "The tool invocation faulted before it produced a result.",
+                            ExtensionData.Empty),
+                        [],
+                        DefaultProjection(ToolTerminalStatus.InvocationFailed),
+                        ExtensionData.Empty);
+                }
+
+                resultParts.Add(resultPart);
+                await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
+            }
+
+            // The commit deliberately ignores the caller's cancellation (see CommitToolMessageAsync). A tool invoker
+            // may also absorb cancellation into an ordinary ToolCallOutcomeKind.Cancelled result instead of throwing
+            // (for example, a process runner that kills its child process and returns a settled "cancelled" outcome) —
+            // cancellationToken.IsCancellationRequested is checked explicitly below, after this commit, so that case
+            // still propagates cancellation to the caller instead of silently continuing to the next turn.
+            var appendAttempt = await CommitToolMessageAsync(
+                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
+                resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
+
+            if (appendAttempt.Result is not SessionAppended appended)
+            {
+                activity.SetFailed("session_append_failed", appendAttempt.Result.GetType().Name);
+                LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendAttempt.Result.GetType().Name);
+                return TurnOutcome.Settled(
+                    RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
+            }
+
+            var toolMessage = committedMessages[^1];
+
+            if (services.Publisher is { } toolPublisher)
+            {
+                // Published regardless of the interruption/cancellation check below: the tool message is already
+                // durably committed at this point, and a required sink's failure must propagate rather than be
+                // swallowed, exactly as for the assistant message commit.
+                await toolPublisher.PublishAsync(
+                    new MessageCommittedEvent(
+                        request.AgentId,
+                        request.SessionId,
+                        sourceCursor.ConversationId,
+                        request.RunId,
+                        turnId,
+                        laneState.AllocateSequence(),
+                        _timeProvider.GetUtcNow(),
+                        toolMessage.Id,
+                        appended.NewVersion),
                     cancellationToken).ConfigureAwait(false);
-                resultPart = ToolCallResultProjection.ToToolResultPart(batch.Results[0], toolCall.Tool);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+            if (interrupted || cancellationToken.IsCancellationRequested)
             {
-                // A cancelled tool call must still receive a matching terminal result: the assistant message
-                // that requested these calls is already committed, and leaving any of them without a result
-                // would permanently break causality for every later turn in this session (context assembly
-                // requires exactly one terminal result per requested call). Every remaining, not-yet-attempted
-                // call in this batch is settled the same way below, and the whole batch is committed with
-                // CancellationToken.None before this cancellation is allowed to propagate.
-                interrupted = true;
-                resultPart = InterruptedResultPart(toolCall);
+                // The tool message is now durably committed. Cancellation observed at this point settles the run
+                // with a typed outcome rather than throwing: an exception here would discard a result whose
+                // messages already landed, and IAgentLoop promises exactly one terminal outcome for every effect.
+                activity.SetFailed("cancelled", "cancellation");
+                LoopLog.ToolBatchInterrupted(_logger, request.RunId, turnId);
+                return TurnOutcome.Settled(
+                    RunOutcomes.Cancelled("The run was cancelled while its tool calls were being invoked; every requested call was settled with a terminal result before the run stopped."),
+                    appended.NewVersion);
             }
-            catch (Exception exception)
+
+            activity.SetSuccessful("completed");
+            LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
+            // The next cursor covers everything through the committed tool message, so any message a concurrent
+            // writer interleaved between the assistant request and its results must become visible to the next turn
+            // in sequence order; otherwise the cursor would claim history the next request never saw.
+            var toolEntry = appended.CommittedEntries[^1];
+            var nextCursor = NextCursor(sourceCursor, appended.NewVersion, toolEntry.Sequence);
+            // Every call's terminal result was committed as one ContentPart of the single batched ToolMessage entry,
+            // so there is exactly one real SessionEntryId for the whole batch. CommittedToolResultReference requires
+            // a distinct SessionEntryId per call so the continuation policy sees one syntactically distinct
+            // identity for each; DerivePerCallEntryId supplies that without changing what was actually committed.
+            // See its own remarks for exactly what these derived identities do and do not mean.
+            var toolResultReferences = toolCalls
+                .Select((call, index) => new CommittedToolResultReference(
+                    DerivePerCallEntryId(toolEntry.Id, index), call.CallId, turnId))
+                .ToImmutableArray();
+            return await DecideContinuationAsync(
+                request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
+                [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, laneState,
+                committedMessages, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (ownedCatalogCapture is not null)
             {
-                // An invoker fault (resolution, authorization, or an unguarded tool exception) is a terminal
-                // failure for this call, not for the session: the call still receives its exactly-one result.
-                LoopLog.ToolCallFaulted(_logger, request.RunId, toolCall.CallId, exception.GetType().FullName ?? exception.GetType().Name);
-                resultPart = new ToolResultPart(
-                    toolCall.CallId,
-                    toolCall.Tool,
-                    new ToolCallOutcome(
-                        ToolCallOutcomeKind.Failed,
-                        ToolTerminalStatus.InvocationFailed,
-                        SideEffectCertainty.Unknown,
-                        retryable: false,
-                        "The tool invocation faulted before it produced a result.",
-                        ExtensionData.Empty),
-                    [],
-                    DefaultProjection(ToolTerminalStatus.InvocationFailed),
-                    ExtensionData.Empty);
+                await ownedCatalogCapture.DisposeAsync().ConfigureAwait(false);
             }
-
-            resultParts.Add(resultPart);
-            await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
         }
-
-        // The commit deliberately ignores the caller's cancellation (see CommitToolMessageAsync). A tool invoker
-        // may also absorb cancellation into an ordinary ToolCallOutcomeKind.Cancelled result instead of throwing
-        // (for example, a process runner that kills its child process and returns a settled "cancelled" outcome) —
-        // cancellationToken.IsCancellationRequested is checked explicitly below, after this commit, so that case
-        // still propagates cancellation to the caller instead of silently continuing to the next turn.
-        var appendAttempt = await CommitToolMessageAsync(
-            request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
-            resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
-
-        if (appendAttempt.Result is not SessionAppended appended)
-        {
-            activity.SetFailed("session_append_failed", appendAttempt.Result.GetType().Name);
-            LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendAttempt.Result.GetType().Name);
-            return TurnOutcome.Settled(
-                RunOutcomes.SessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
-        }
-
-        var toolMessage = committedMessages[^1];
-
-        if (services.Publisher is { } toolPublisher)
-        {
-            // Published regardless of the interruption/cancellation check below: the tool message is already
-            // durably committed at this point, and a required sink's failure must propagate rather than be
-            // swallowed, exactly as for the assistant message commit.
-            await toolPublisher.PublishAsync(
-                new MessageCommittedEvent(
-                    request.AgentId,
-                    request.SessionId,
-                    sourceCursor.ConversationId,
-                    request.RunId,
-                    turnId,
-                    laneState.AllocateSequence(),
-                    _timeProvider.GetUtcNow(),
-                    toolMessage.Id,
-                    appended.NewVersion),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        if (interrupted || cancellationToken.IsCancellationRequested)
-        {
-            // The tool message is now durably committed. Cancellation observed at this point settles the run
-            // with a typed outcome rather than throwing: an exception here would discard a result whose
-            // messages already landed, and IAgentLoop promises exactly one terminal outcome for every effect.
-            activity.SetFailed("cancelled", "cancellation");
-            LoopLog.ToolBatchInterrupted(_logger, request.RunId, turnId);
-            return TurnOutcome.Settled(
-                RunOutcomes.Cancelled("The run was cancelled while its tool calls were being invoked; every requested call was settled with a terminal result before the run stopped."),
-                appended.NewVersion);
-        }
-
-        activity.SetSuccessful("completed");
-        LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
-        // The next cursor covers everything through the committed tool message, so any message a concurrent
-        // writer interleaved between the assistant request and its results must become visible to the next turn
-        // in sequence order; otherwise the cursor would claim history the next request never saw.
-        var toolEntry = appended.CommittedEntries[^1];
-        var nextCursor = NextCursor(sourceCursor, appended.NewVersion, toolEntry.Sequence);
-        // Every call's terminal result was committed as one ContentPart of the single batched ToolMessage entry,
-        // so there is exactly one real SessionEntryId for the whole batch. CommittedToolResultReference requires
-        // a distinct SessionEntryId per call so the continuation policy sees one syntactically distinct
-        // identity for each; DerivePerCallEntryId supplies that without changing what was actually committed.
-        // See its own remarks for exactly what these derived identities do and do not mean.
-        var toolResultReferences = toolCalls
-            .Select((call, index) => new CommittedToolResultReference(
-                DerivePerCallEntryId(toolEntry.Id, index), call.CallId, turnId))
-            .ToImmutableArray();
-        return await DecideContinuationAsync(
-            request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
-            [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, laneState,
-            committedMessages, cancellationToken)
-            .ConfigureAwait(false);
     }
 
     /// <summary>Rebuilds the <see cref="AgentLoopOptions"/> this instance resolved at construction, for policy-version computation.</summary>
@@ -2035,6 +2076,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         HistoryReadPageSize = _historyReadPageSize,
         AppendConflictRetryLimit = _appendConflictRetryLimit,
         DisableToolsOnFinalTurn = _disableToolsOnFinalTurn,
+        DefaultToolChoice = _defaultToolChoice,
         SettlementTimeout = _settlementTimeout,
         ObserverDeliveryTimeout = _observerDeliveryTimeout,
         ContextPressureThreshold = _contextPressureThreshold,
@@ -3424,6 +3466,87 @@ public sealed class DefaultAgentLoop: IAgentLoop
         public ImmutableArray<AgentMessage> InterleavedMessages => ToMessages(Interleaved);
     }
 
+    /// <summary>Captures the run-scoped tool catalog and the model-facing tool list derived from it.</summary>
+    private sealed class RunCatalogCaptureLease(IToolCatalogCapture? capture, ImmutableArray<LlmToolDefinition> advertisedTools)
+        : IAsyncDisposable
+    {
+        /// <summary>Gets the retained catalog capture, or <see langword="null"/> when this run advertises explicit tools only.</summary>
+        public IToolCatalogCapture? Capture => capture;
+
+        /// <summary>Gets the tools offered to the model for this run.</summary>
+        public ImmutableArray<LlmToolDefinition> AdvertisedTools => advertisedTools;
+
+        /// <inheritdoc/>
+        public ValueTask DisposeAsync() => capture?.DisposeAsync() ?? ValueTask.CompletedTask;
+    }
+
+    /// <summary>Opens the run-bound tool catalog when the admitted agent selects toolsets; otherwise derives advertised tools from the request.</summary>
+    private static async ValueTask<(RunCatalogCaptureLease Lease, AgentRunOutcome? Failure)> OpenRunToolCatalogAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        SecurityAuthorizationContext runAuthorization,
+        ModelDescriptor model,
+        CancellationToken cancellationToken)
+    {
+        if (request.Agent is null)
+        {
+            return (new RunCatalogCaptureLease(null, request.Tools), null);
+        }
+
+        if (request.Agent.Toolsets.IsEmpty)
+        {
+            return (new RunCatalogCaptureLease(null, []), null);
+        }
+
+        if (services.ToolCatalogCaptures is null)
+        {
+            return (
+                new RunCatalogCaptureLease(null, []),
+                RunOutcomes.InvalidState("The composition provides no tool catalog capture factory."));
+        }
+
+        if (request.Configuration is not { } configuration)
+        {
+            return (
+                new RunCatalogCaptureLease(null, []),
+                RunOutcomes.InvalidState("Toolset-driven runs require effective configuration evidence."));
+        }
+
+        var captureRequest = new RunToolCatalogCaptureRequest(
+            request.AgentId,
+            request.SessionId,
+            request.RunId,
+            runAuthorization,
+            request.Agent.Toolsets,
+            configuration,
+            model.Capabilities);
+        var capture = await services.ToolCatalogCaptures
+            .CreateAsync(captureRequest, cancellationToken)
+            .ConfigureAwait(false);
+        return (new RunCatalogCaptureLease(capture, ProjectLlmTools(capture.Snapshot.Tools)), null);
+    }
+
+    /// <summary>Projects captured catalog descriptors to the model-facing tool list for one run.</summary>
+    private static ImmutableArray<LlmToolDefinition> ProjectLlmTools(ImmutableArray<ToolDescriptor> descriptors)
+    {
+        if (descriptors.IsDefaultOrEmpty)
+        {
+            return [];
+        }
+
+        var builder = ImmutableArray.CreateBuilder<LlmToolDefinition>(descriptors.Length);
+        foreach (var descriptor in descriptors)
+        {
+            builder.Add(new LlmToolDefinition(
+                descriptor.Id,
+                descriptor.Name,
+                descriptor.Description,
+                descriptor.InputSchema.Document));
+        }
+
+        return builder.ToImmutable();
+    }
+
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>
     /// <summary>Per-run state the turns share: the output validation attempt counter and the run's budget.</summary>
     /// <remarks>
@@ -3437,6 +3560,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         /// <summary>Gets or sets the run's budget, or <see langword="null"/> for an unbudgeted run.</summary>
         public RunBudget? Budget { get; set; }
+
+        /// <summary>Gets or sets the tools offered to the model on every turn of this run.</summary>
+        public ImmutableArray<LlmToolDefinition> AdvertisedTools { get; set; } = [];
+
+        /// <summary>Gets or sets the run-scoped catalog capture reused for every tool batch, when one was opened.</summary>
+        public IToolCatalogCapture? CatalogCapture { get; set; }
 
         /// <summary>Allocates the next one-based output validation attempt number.</summary>
         /// <returns>1 for the first validation of the run, then 2, 3, and so on.</returns>

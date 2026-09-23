@@ -23,7 +23,7 @@ public sealed class OperatingSystemExecutableResolverTests
         var resolved = result.ShouldBeOfType<ExecutableResolved>().Resolved;
         resolved.Executable.AbsolutePath.ShouldBe("/bin/echo");
         NormalizeTempPath(resolved.WorkingDirectory)
-            .ShouldBe(NormalizeTempPath(System.IO.Path.Combine(root.Path, "run")));
+            .ShouldBe(NormalizeTempPath(Path.Combine(root.Path, "run")));
     }
 
     [Fact]

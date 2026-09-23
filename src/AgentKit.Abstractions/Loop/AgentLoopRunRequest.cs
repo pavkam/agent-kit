@@ -280,11 +280,6 @@ public sealed record AgentLoopRunRequest
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(ToolChoice));
-            if (Agent is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Agent.ToolChoice, value, nameof(ToolChoice));
-            }
-
             field = value;
         }
     }

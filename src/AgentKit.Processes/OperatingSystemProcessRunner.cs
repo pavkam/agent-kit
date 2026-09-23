@@ -301,7 +301,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
                 standardError,
                 outputCapture,
                 errorCapture,
-                ProcessSideEffectCertainty.Completed,
+                SideEffectCertainty.DefinitelyPerformed,
                 null,
                 intent,
                 processGrant,
@@ -480,7 +480,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
         0,
         false,
         false,
-        ProcessSideEffectCertainty.NotStarted,
+        SideEffectCertainty.DefinitelyNotPerformed,
         message);
 
     private Task<ProcessRunResult> SettledAsync(
@@ -499,7 +499,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
             standardError,
             outputCapture,
             errorCapture,
-            ProcessSideEffectCertainty.MayHaveOccurred,
+            SideEffectCertainty.Unknown,
             message,
             intent,
             processGrant,
@@ -516,7 +516,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
         BoundedByteTail standardError,
         BoundedByteCapture? outputCapture,
         BoundedByteCapture? errorCapture,
-        ProcessSideEffectCertainty certainty,
+        SideEffectCertainty certainty,
         string? safeMessage,
         ResolvedProcessIntent intent,
         SecurityGrant processGrant,

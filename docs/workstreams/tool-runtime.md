@@ -27,16 +27,18 @@ Owning documents: [Tools](../architecture/tools.md),
       dispatches `BeforeToolInvocation` and `ToolResult`; loop hook block
       removed)
 - [x] WS4-C7a `AgentDefinition.Toolsets` and executor key
-- [ ] WS4-C7b derive tool definitions from capture; remove `Tools`/`ToolChoice`
+- [x] WS4-C7b derive tool definitions from capture; remove `Tools`/`ToolChoice`
 - [x] WS4-C8 spec registration surface (`AddToolDiscoveryRuntime`,
-      `AddTool`/`ReplaceTool`, keyed `AddAgentTools(ComponentKey<IToolExecutor>)`)
+      `AddTool`/`ReplaceTool`, keyed
+      `AddAgentTools(ComponentKey<IToolExecutor>)`)
 - [x] WS4-C9a migrate workspace file tools (List, Read, Write, Edit, Patch,
       Glob, Search)
 - [x] WS4-C9b/c migrate remaining tool packages
 - [ ] WS4-C10a delete legacy authorizer, catalog, invoker
 - [ ] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
-- [x] WS4-C11 Simple over toolsets (`WithTools`, `UseWorkspace` toolset publication,
-      keyed `DefaultToolExecutor`; model advertising still legacy until C7b)
+- [x] WS4-C11 Simple over toolsets (`WithTools`, `UseWorkspace` toolset
+      publication, keyed `DefaultToolExecutor`; model advertising still legacy
+      until C7b)
 - [x] WS4-C12 first-party `IWebSearchProvider` (`NetworkWebSearchProvider` over
       `HttpClient` + grant fingerprint; full `INetworkTransport` alignment open)
 - [ ] WS4-C13 documentation
@@ -54,7 +56,7 @@ Owning documents: [Tools](../architecture/tools.md),
 | loop tool execution                                                                                                                                                                                                                   | sequential, no scheduling/retries  | `DefaultAgentLoop.cs:1380`; no `ToolSchedulingMode`, `ExecutionHints`, `Retryable` reference                                                                                                                            |
 | `ToolRegistrationCatalog`, `ToolCatalogDiscovery`, `ToolDiscoveryCapture`, `ToolCatalogMerger`, `ToolCatalogCapture`, `StaticToolProvider`, `RejectingToolCatalogMergePolicy`, `AddToolset/AddToolProvider/AddStaticToolProvider/...` | EXISTS-UNWIRED                     | internal `ToolCatalogCoordinator` (C3) chains discovery, merge, schema preflight into `TransferToCatalog`; only tests resolve it; unreachable via `IToolCatalog` until C10b                                             |
 | `IToolResultProjectionPolicyCatalog`                                                                                                                                                                                                  | EXISTS-UNWIRED                     | registered `ServiceExtensions.cs:313-320`, never resolved                                                                                                                                                               |
-| `AgentDefinition.Tools`, `ToolChoice`; `Toolsets`, `OptionalCapabilities.ToolExecutor`                                                                                                                                                | PARTIAL                            | `Toolsets` and executor optional capability on definition (C7a); legacy `Tools`/`ToolChoice` still drive loop until C7b                                                                                                 |
+| `Toolsets`, `OptionalCapabilities.ToolExecutor`; loop derives model tools from run catalog capture                                                                                                                                    | EXISTS-AND-USED                    | C7b removed `AgentDefinition.Tools`/`ToolChoice`; `DefaultAgentLoop` opens run capture when toolsets are authored and projects `ToolDescriptor` → `LlmToolDefinition` for context assembly                              |
 | `ToolsetReference`, `ToolsetPublication`, `ToolDiscoveryRequest.Toolsets`                                                                                                                                                             | EXISTS (values)                    | `Abstractions/Tools/`                                                                                                                                                                                                   |
 | `IToolExecutor`, `ToolBatchResult`, `ToolExecutionCapability`, `ToolInvocationContext`, `IToolProgressReporter` (C1 contracts)                                                                                                        | EXISTS-AND-USED via legacy adapter | loop resolves `IToolExecutor` → `LegacyToolInvokerExecutor` (`ServiceExtensions.cs:339-342`); spec-shaped `DefaultToolExecutor` registered but not default (C5a)                                                        |
 | `IToolScheduler`, `ToolBatchFailureMode`, `UnknownSchedulingMode`                                                                                                                                                                     | EXISTS-UNWIRED                     | C1 contracts only; scheduler C5b                                                                                                                                                                                        |

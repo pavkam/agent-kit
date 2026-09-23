@@ -44,8 +44,6 @@ internal static class ConversationSessionOptionsFactory
             options.ModelSelectionPolicy!,
             options.ModelRequirements,
             [],
-            [],
-            options.ToolChoice,
             options.RequestSettings,
             new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
             ExtensionData.Empty,

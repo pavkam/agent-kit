@@ -135,7 +135,7 @@ public sealed partial class ScriptedProcessRunner: IProcessRunner
                 0,
                 false,
                 false,
-                ProcessSideEffectCertainty.MayHaveOccurred,
+                SideEffectCertainty.Unknown,
                 "The scripted process was cancelled after simulated start.");
         }
     }
@@ -149,6 +149,6 @@ public sealed partial class ScriptedProcessRunner: IProcessRunner
         0,
         false,
         false,
-        ProcessSideEffectCertainty.NotStarted,
+        SideEffectCertainty.DefinitelyNotPerformed,
         message);
 }

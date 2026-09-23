@@ -47,8 +47,6 @@ internal static class ContextTestData
             new ModelSelectionPolicy([new ModelAlias("chat")]),
             ModelRequirements.None,
             [],
-            [],
-            LlmToolChoice.Auto,
             LlmRequestSettings.Default,
             new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
             ExtensionData.Empty,

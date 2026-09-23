@@ -52,7 +52,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(changedResolver, new TestGrantStore(), Success("never"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.ResolutionFailed);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = new ScriptedProcessRunner(resolver, store, TimeProvider.System, Options.Create(options));
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Failed);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         store.Enforcements.ShouldBeEmpty();
     }
 
@@ -140,7 +140,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(resolver, store, Success("never"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(resolver, store, Success("never"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         _ = store.Intents.ShouldHaveSingleItem();
         store.LegacyConsumptionCalls.ShouldBe(0);
     }
@@ -172,7 +172,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(resolver, store, Success("never"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         result.SafeMessage.ShouldNotBeNull().ShouldContain("enforcement-intent receipt");
     }
 
@@ -188,7 +188,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(resolver, store, Success("never"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Denied);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class ScriptedProcessRunnerTests
         var runner = Runner(resolver, store, Success("captured"), TimeSpan.Zero, TimeProvider.System);
         var result = await runner.RunAsync(new ProcessRunRequest(intent, grant), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Exited);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.Completed);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public sealed class ScriptedProcessRunnerTests
         await cancellation.CancelAsync();
         var result = await pending;
         result.Status.ShouldBe(ProcessRunStatus.Cancelled);
-        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
     }
 
     private static ScriptedProcessIntentResolver Resolver()
@@ -280,5 +280,5 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     private static ProcessResolveRequest Request() => new(_operationId, "tool", ["literal *", "$(never)"], new FileSystemPath("src"), [], [], new SandboxProfileId("scripted"), ProcessWorkspaceAccess.ReadOnly, ProcessSideEffectClass.ReadOnly, ProcessChildPolicy.Deny, new ProcessResourceLimits(TimeSpan.FromSeconds(1), 100, TimeSpan.Zero));
-    private static ProcessRunResult Success(string text) => new(ProcessRunStatus.Exited, 0, [.. Encoding.UTF8.GetBytes(text)], [], Encoding.UTF8.GetByteCount(text), 0, false, false, ProcessSideEffectCertainty.Completed, null);
+    private static ProcessRunResult Success(string text) => new(ProcessRunStatus.Exited, 0, [.. Encoding.UTF8.GetBytes(text)], [], Encoding.UTF8.GetByteCount(text), 0, false, false, SideEffectCertainty.DefinitelyPerformed, null);
 }

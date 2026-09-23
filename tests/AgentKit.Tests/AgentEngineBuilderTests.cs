@@ -722,7 +722,7 @@ public sealed class AgentEngineBuilderTests
     public void Build_WhenDefinitionUsesLegacyUnconfiguredShape_RejectsAsUnrunnable()
     {
         var configured = CompositionTestData.Definition();
-        var legacy = new AgentDefinition(configured.Id, configured.Revision, configured.DisplayName, configured.Models, configured.ModelRequirements, configured.Instructions, configured.Tools, configured.ToolChoice, configured.Settings, configured.RunDefaults, configured.Extensions);
+        var legacy = new AgentDefinition(configured.Id, configured.Revision, configured.DisplayName, configured.Models, configured.ModelRequirements, configured.Instructions, configured.Settings, configured.RunDefaults, configured.Extensions);
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         CompositionTestData.AddHookKernelForEngineValidation(builder.Services);

@@ -91,8 +91,6 @@ internal static class TestFactory
             Policy(),
             ModelRequirements.None,
             [],
-            [],
-            LlmToolChoice.Auto,
             LlmRequestSettings.Default,
             new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
             ExtensionData.Empty,

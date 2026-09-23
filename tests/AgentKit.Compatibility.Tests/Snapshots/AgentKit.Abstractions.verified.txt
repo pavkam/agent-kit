@@ -129,9 +129,9 @@ namespace AgentKit
     }
     public sealed class AgentDefinition : System.IEquatable<AgentKit.AgentDefinition>
     {
-        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
-        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, AgentKit.AgentInstructionSources instructionSources, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
-        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
+        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions) { }
+        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, AgentKit.AgentInstructionSources instructionSources, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
+        public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
         public string DisplayName { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
@@ -151,8 +151,6 @@ namespace AgentKit
         public AgentKit.SecurityProfileKey SecurityProfile { get; }
         public AgentKit.SessionProfileKey SessionProfile { get; }
         public AgentKit.LlmRequestSettings Settings { get; init; }
-        public AgentKit.LlmToolChoice ToolChoice { get; init; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> Tools { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> Toolsets { get; init; }
         public bool Equals(AgentKit.AgentDefinition? other) { }
         public override int GetHashCode() { }

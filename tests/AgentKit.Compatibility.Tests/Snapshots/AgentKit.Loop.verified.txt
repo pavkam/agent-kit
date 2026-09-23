@@ -14,6 +14,7 @@ namespace AgentKit.Loop
         public int AppendConflictRetryLimit { get; set; }
         public double ContextPressureThreshold { get; set; }
         public bool DisableToolsOnFinalTurn { get; set; }
+        public AgentKit.LlmToolChoice DefaultToolChoice { get; set; }
         public double EstimatedCharactersPerToken { get; set; }
         public int HistoryReadPageSize { get; set; }
         public int MaximumPromotionsPerBoundary { get; set; }

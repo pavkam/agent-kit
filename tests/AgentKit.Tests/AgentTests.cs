@@ -5,7 +5,6 @@ namespace AgentKit.Tests;
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Text.Json;
 
 using AgentKit.IO;
 using AgentKit.Observability;
@@ -96,7 +95,7 @@ public sealed class AgentTests
     [Fact]
     public async Task RunAsync_WhenReloadReconstructsEquivalentNestedArrays_AdmitsPinnedDefinition()
     {
-        var definition = DefinitionWithInstruction(includeTool: true);
+        var definition = DefinitionWithInstruction();
         var catalog = new MutableAgentDefinitionCatalog(definition);
         var effects = new AdmissionRunEffects();
         await using var engine = Build(catalog, effects, new CountingRunIdGenerator());
@@ -112,8 +111,6 @@ public sealed class AgentTests
                 new ExtensionData([.. definition.Models.Extensions.Values])),
             definition.ModelRequirements,
             new AgentInstructionSources([.. definition.InstructionSources]),
-            [.. definition.Tools.Select(CloneTool)],
-            definition.ToolChoice,
             definition.Settings,
             definition.RunDefaults,
             new ExtensionData([.. definition.Extensions.Values]),
@@ -281,15 +278,29 @@ public sealed class AgentTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenNestedToolContentChangesAtSameRevision_RejectsPinnedDefinition()
+    public async Task RunAsync_WhenNestedInstructionContentChangesAtSameRevision_RejectsPinnedDefinition()
     {
-        var definition = DefinitionWithInstruction(includeTool: true);
+        var definition = DefinitionWithInstruction();
         var catalog = new MutableAgentDefinitionCatalog(definition);
         var effects = new AdmissionRunEffects();
         await using var engine = Build(catalog, effects, new CountingRunIdGenerator());
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
-        var changedTool = new LlmToolDefinition(definition.Tools[0].Id, definition.Tools[0].Name, "changed description", definition.Tools[0].ParametersSchema);
-        var changed = new AgentDefinition(definition.Id, definition.Revision, definition.DisplayName, definition.Models, definition.ModelRequirements, definition.Instructions, [changedTool], definition.ToolChoice, definition.Settings, definition.RunDefaults, definition.Extensions, definition.SecurityProfile, definition.SessionProfile);
+        var changedInstruction = definition.Instructions[0] with
+        {
+            Parts = [new TextPart("changed instruction", TextSemantics.Plain, ExtensionData.Empty)],
+        };
+        var changed = new AgentDefinition(
+            definition.Id,
+            definition.Revision,
+            definition.DisplayName,
+            definition.Models,
+            definition.ModelRequirements,
+            [changedInstruction],
+            definition.Settings,
+            definition.RunDefaults,
+            definition.Extensions,
+            definition.SecurityProfile,
+            definition.SessionProfile);
         catalog.Publish(2, changed);
         _ = (await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken)).ShouldBeOfType<AgentRunRejected<string>>();
         effects.Requests.ShouldBeEmpty();
@@ -757,14 +768,7 @@ public sealed class AgentTests
     }
 
     private static ActivityCollector AdmissionActivities(AgentId agentId) => new(source => source.Name == AgentKitDiagnostics.ActivitySourceName, observation => observation.OperationName == AgentKitActivityNames.AgentAdmission && Equals(observation.GetTagItem(AgentKitTagNames.AgentId), agentId.ToString()));
-    private static AgentDefinition DefinitionWithInstruction(bool includeTool = false) => new(CompositionTestData.AgentId, new AgentDefinitionRevision(1), "test agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [new SystemMessage(new MessageId(Guid.Parse("d0000000-0000-0000-0000-000000000004")), CompositionTestData.AgentId, CompositionTestData.SessionId, conversationId: null, CompositionTestData.BranchId, runId: null, turnId: null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("keep this", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)], tools: includeTool ? [Tool()] : [], LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
-    private static LlmToolDefinition CloneTool(LlmToolDefinition tool) => new(tool.Id, tool.Name, tool.Description, ParseSchema(tool.ParametersSchema.GetRawText()));
-    private static LlmToolDefinition Tool() => new(new ToolId("test-tool"), "test_tool", "A test tool.", ParseSchema( /*lang=json,strict*/"{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}"));
-    private static JsonElement ParseSchema(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        return document.RootElement.Clone();
-    }
+    private static AgentDefinition DefinitionWithInstruction() => new(CompositionTestData.AgentId, new AgentDefinitionRevision(1), "test agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [new SystemMessage(new MessageId(Guid.Parse("d0000000-0000-0000-0000-000000000004")), CompositionTestData.AgentId, CompositionTestData.SessionId, conversationId: null, CompositionTestData.BranchId, runId: null, turnId: null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("keep this", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
 
     [Fact]
     public async Task RunAsync_WhenRuntimePublicationDiffersFromPinnedSnapshot_RejectsBeforeIdentifiersOrLoop()

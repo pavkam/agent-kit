@@ -554,7 +554,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         handler.Bodies.Single().ShouldContain("\"name\":\"read_file\"");
-        definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+        definition.Toolsets.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -579,7 +579,7 @@ public sealed class AgentEngineBuilderExtensionsTests
 
         handler.Bodies.Single().ShouldContain("\"name\":\"glob\"");
         handler.Bodies.Single().ShouldNotContain("read_file");
-        definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("glob");
+        definition.Toolsets.ShouldNotBeEmpty();
     }
 
     [Fact]

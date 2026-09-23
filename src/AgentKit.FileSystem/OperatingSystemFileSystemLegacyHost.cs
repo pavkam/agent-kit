@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 /// <summary>Keyed sandbox host exposing legacy narrow file capabilities for one OS profile.</summary>
+[Obsolete("Legacy host surface.")]
 internal sealed class OperatingSystemFileSystemLegacyHost:
     ILegacyDirectoryReader,
     IFileGlobber,
@@ -15,12 +16,14 @@ internal sealed class OperatingSystemFileSystemLegacyHost:
     IAtomicFileReplacer,
     IWorkspacePatchApplier
 {
+    [Obsolete]
     private readonly SandboxedFileSystem _inner;
 
     /// <summary>Creates a legacy host bound to one profile snapshot.</summary>
     /// <param name="provider">The root provider.</param>
     /// <param name="snapshot">The immutable profile snapshot.</param>
     /// <exception cref="InvalidOperationException">The snapshot declares no roots.</exception>
+    [Obsolete]
     public OperatingSystemFileSystemLegacyHost(IServiceProvider provider, OperatingSystemFileSystemOptionsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(provider);

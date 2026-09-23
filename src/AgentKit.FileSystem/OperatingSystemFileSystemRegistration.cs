@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Keyed dependency-injection registration for operating-system file capabilities.</summary>
 internal static class OperatingSystemFileSystemRegistration
 {
+    [Obsolete("Legacy host surface.")]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,
@@ -95,7 +96,9 @@ internal static class OperatingSystemFileSystemRegistration
         var profile = provider.GetRequiredKeyedService<OperatingSystemFileSystemOptionsSnapshot>(serviceKey);
         return profile.ProfileKey != profileKey
             ? throw new InvalidOperationException("The keyed file-system snapshot does not match the registration key.")
+#pragma warning disable CS0612 // Legacy host registration still constructs the transitional legacy host.
             : new OperatingSystemFileSystemLegacyHost(provider, profile);
+#pragma warning restore CS0612
     }
 
     private static OperatingSystemFileWriter CreateWriter(IServiceProvider provider, object serviceKey)

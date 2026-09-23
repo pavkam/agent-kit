@@ -73,21 +73,6 @@ public sealed class AgentDefinitionTests
     }
 
     [Fact]
-    public void With_WhenToolsContainsNull_ThrowsExactParameter()
-    {
-        var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));
-        ImmutableArray<LlmToolDefinition> tools = [null!];
-        Should.Throw<ArgumentException>(() => _ = definition with { Tools = tools }).ParamName.ShouldBe("Tools");
-    }
-
-    [Fact]
-    public void With_WhenToolChoiceIsNull_ThrowsExactParameter()
-    {
-        var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));
-        Should.Throw<ArgumentNullException>(() => _ = definition with { ToolChoice = null! }).ParamName.ShouldBe("ToolChoice");
-    }
-
-    [Fact]
     public void With_WhenSettingsIsNull_ThrowsExactParameter()
     {
         var definition = Definition(new SecurityProfileKey("security"), new SessionProfileKey("session"));
@@ -116,7 +101,6 @@ public sealed class AgentDefinitionTests
         var inputCoordinatorKey = new ComponentKey<IInputCoordinator>("input");
         var outputPublisherKey = new ComponentKey<IOutputPublisher>("output");
         var instructions = Instructions();
-        var tools = Tools();
         var changed = definition with
         {
             LoopKey = loopKey,
@@ -126,8 +110,6 @@ public sealed class AgentDefinitionTests
             Models = new ModelSelectionPolicy([new ModelAlias("other")]),
             ModelRequirements = ModelRequirements.None,
             Instructions = instructions,
-            Tools = tools,
-            ToolChoice = LlmToolChoice.None,
             Settings = LlmRequestSettings.Default,
             RunDefaults = new RunPolicyDefaults(4, TimeSpan.FromMinutes(2)),
             Extensions = ExtensionData.Empty,
@@ -138,8 +120,6 @@ public sealed class AgentDefinitionTests
         changed.DisplayName.ShouldBe("changed");
         changed.ModelRequirements.ShouldBe(ModelRequirements.None);
         changed.Instructions.ShouldBe(instructions);
-        changed.Tools.ShouldBe(tools);
-        changed.ToolChoice.ShouldBe(LlmToolChoice.None);
         changed.Settings.ShouldBe(LlmRequestSettings.Default);
         changed.RunDefaults.MaxTurns.ShouldBe(4);
         changed.Extensions.ShouldBe(ExtensionData.Empty);
@@ -198,8 +178,6 @@ public sealed class AgentDefinitionTests
             new ModelSelectionPolicy([new ModelAlias("chat")]),
             ModelRequirements.None,
             new AgentInstructionSources(sources),
-            [],
-            LlmToolChoice.Auto,
             LlmRequestSettings.Default,
             new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
             ExtensionData.Empty,
@@ -211,7 +189,7 @@ public sealed class AgentDefinitionTests
     }
 
     [Fact]
-    public void Equality_WhenInstructionsAndToolsAreNonEmpty_MatchesAndHashesEqually()
+    public void Equality_WhenInstructionsAreNonEmpty_MatchesAndHashesEqually()
     {
         var left = DefinitionWithContent(new SecurityProfileKey("security"), new SessionProfileKey("session"));
         var right = DefinitionWithContent(new SecurityProfileKey("security"), new SessionProfileKey("session"));
@@ -222,13 +200,9 @@ public sealed class AgentDefinitionTests
     private static ImmutableArray<AgentMessage> Instructions() =>
         [new SystemMessage(new MessageId(Guid.Parse("11111111-1111-1111-1111-111111111111")), new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new SessionId(Guid.Parse("33333333-3333-3333-3333-333333333333")), null, new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)];
 
-    private static ImmutableArray<LlmToolDefinition> Tools() => [new LlmToolDefinition(new ToolId("tool"), "tool", null, default)];
+    private static AgentDefinition Definition(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
 
-    private static AgentDefinition Definition(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
-
-    private static AgentDefinition DefinitionWithContent(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, SharedInstructions, SharedTools, LlmToolChoice.Auto, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
+    private static AgentDefinition DefinitionWithContent(SecurityProfileKey securityProfile, SessionProfileKey sessionProfile) => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, SharedInstructions, LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, securityProfile, sessionProfile);
 
     private static readonly ImmutableArray<AgentMessage> SharedInstructions = Instructions();
-
-    private static readonly ImmutableArray<LlmToolDefinition> SharedTools = Tools();
 }

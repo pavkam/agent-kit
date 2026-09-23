@@ -43,8 +43,6 @@ internal static class CompositionTestData
             new ModelSelectionPolicy([new ModelAlias("chat")]),
             ModelRequirements.None,
             instructions: [],
-            tools: [],
-            LlmToolChoice.Auto,
             LlmRequestSettings.Default,
             new RunPolicyDefaults(maxTurns, TimeSpan.FromMinutes(1)),
             ExtensionData.Empty,

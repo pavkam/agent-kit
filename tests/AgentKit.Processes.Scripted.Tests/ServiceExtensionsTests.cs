@@ -31,5 +31,5 @@ public sealed class ServiceExtensionsTests
     }
 
     private static ProcessResolveRequest Request() => new(_operationId, "tool", ["literal *", "$(never)"], new FileSystemPath("src"), [], [], new SandboxProfileId("scripted"), ProcessWorkspaceAccess.ReadOnly, ProcessSideEffectClass.ReadOnly, ProcessChildPolicy.Deny, new ProcessResourceLimits(TimeSpan.FromSeconds(1), 100, TimeSpan.Zero));
-    private static ProcessRunResult Success(string text) => new(ProcessRunStatus.Exited, 0, [.. Encoding.UTF8.GetBytes(text)], [], Encoding.UTF8.GetByteCount(text), 0, false, false, ProcessSideEffectCertainty.Completed, null);
+    private static ProcessRunResult Success(string text) => new(ProcessRunStatus.Exited, 0, [.. Encoding.UTF8.GetBytes(text)], [], Encoding.UTF8.GetByteCount(text), 0, false, false, SideEffectCertainty.DefinitelyPerformed, null);
 }
