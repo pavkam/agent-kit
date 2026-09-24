@@ -301,7 +301,11 @@ public sealed class McpToolClientTests
             var provider = services.BuildServiceProvider();
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
-            var server = McpServer.Create(new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()), provider.GetRequiredService<IOptions<McpServerOptions>>().Value, serviceProvider: provider);
+            var server = McpServer.Create(
+                new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()),
+                provider.GetRequiredService<IOptions<McpServerOptions>>().Value,
+                null,
+                provider);
             _ = server.RunAsync(cancellationToken);
             try
             {

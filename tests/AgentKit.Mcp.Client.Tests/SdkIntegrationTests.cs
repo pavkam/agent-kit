@@ -197,7 +197,8 @@ public sealed class SdkIntegrationTests
             var server = McpServer.Create(
                 new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()),
                 options,
-                serviceProvider: provider);
+                null,
+                provider);
             _ = server.RunAsync(cancellationToken);
             var clientTransport = new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream());
             return Task.FromResult((clientTransport, server, provider));

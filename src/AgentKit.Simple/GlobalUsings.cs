@@ -15,6 +15,8 @@ global using AgentKit.Goals;
 global using AgentKit.Hooks;
 global using AgentKit.Identity;
 global using AgentKit.Loop;
+global using AgentKit.Mcp;
+global using AgentKit.Mcp.Client;
 global using AgentKit.Output;
 global using AgentKit.Permissions;
 global using AgentKit.Permissions.InMemory;

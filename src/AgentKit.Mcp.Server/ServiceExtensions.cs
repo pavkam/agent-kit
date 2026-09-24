@@ -26,5 +26,12 @@ public static class ServiceExtensions
             var policy = versionPolicy ?? McpServerVersionPolicy.Compatible;
             return services.AddMcpServer(options => options.ProtocolVersion = policy.RequiredVersion?.ToString());
         }
+
+        /// <summary>Registers one AgentKit-hosted MCP server under a semantic key.</summary>
+        /// <param name="key">The server key.</param>
+        /// <param name="configure">The listener configuration callback.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        public IServiceCollection AddMcpServer(McpServerKey key, Action<McpServerListenerOptions> configure) =>
+            McpServerRegistration.Add(services, key, configure);
     }
 }

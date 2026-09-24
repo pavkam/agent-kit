@@ -410,16 +410,29 @@ public static class AgentEngineBuilderExtensions
             return builder;
         }
 
+        /// <summary>Registers one MCP endpoint as a remote tool source for the agent.</summary>
+        /// <param name="sourceId">The tool source identity used during discovery.</param>
+        /// <param name="endpointKey">The configured MCP endpoint key.</param>
+        /// <param name="capabilityProfileId">The MCP capability profile that lists the endpoint.</param>
+        /// <param name="configureClient">Optional MCP client mechanics configuration.</param>
+        /// <returns>The same builder.</returns>
+        public AgentEngineBuilder WithMcpServer(
+            ToolSourceId sourceId,
+            McpEndpointKey endpointKey,
+            CapabilityProfileId capabilityProfileId,
+            Action<McpClientOptions>? configureClient = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            _ = builder.Services.AddMcpClient(configureClient);
+            _ = builder.Services.AddMcpToolSource(sourceId, endpointKey, capabilityProfileId);
+            return builder;
+        }
+
         /// <summary>Selects one or more registered toolsets for run-bound discovery and the spec-shaped executor.</summary>
         /// <param name="toolsets">The non-empty toolset keys to resolve through the registration catalog.</param>
         /// <returns>The same builder.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="toolsets"/> is empty or contains a default key.</exception>
-        /// <remarks>
-        /// Each key must already be published through <see cref="Tools.ServiceExtensions.AddToolset"/> or a tool
-        /// package registration. Tool definitions advertised to the model still come from registered
-        /// registered tool invokers through toolset selection on the agent definition.
-        /// </remarks>
         public AgentEngineBuilder WithTools(params ToolsetKey[] toolsets)
         {
             ArgumentNullException.ThrowIfNull(builder);

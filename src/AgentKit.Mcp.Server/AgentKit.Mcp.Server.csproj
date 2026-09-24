@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Mcp/AgentKit.Mcp.csproj"/>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
   </ItemGroup>
 
   <ItemGroup>

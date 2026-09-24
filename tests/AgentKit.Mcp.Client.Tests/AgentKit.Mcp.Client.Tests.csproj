@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
   </ItemGroup>
 
   <ItemGroup>

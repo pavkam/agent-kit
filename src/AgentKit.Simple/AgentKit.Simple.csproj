@@ -48,6 +48,7 @@
     <ProjectReference Include="../AgentKit.Tools.List/AgentKit.Tools.List.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Patch/AgentKit.Tools.Patch.csproj"/>
     <ProjectReference Include="../AgentKit.Tools/AgentKit.Tools.csproj"/>
+    <ProjectReference Include="../AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
   </ItemGroup>
 
   <ItemGroup>

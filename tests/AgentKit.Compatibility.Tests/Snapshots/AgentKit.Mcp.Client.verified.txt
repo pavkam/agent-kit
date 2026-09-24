@@ -3,6 +3,17 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Mcp.Client
 {
+    public sealed class DefaultMcpTransportFactoryCatalog : AgentKit.Mcp.IMcpTransportFactoryCatalog
+    {
+        public DefaultMcpTransportFactoryCatalog(System.IServiceProvider services) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportFactoryResolution> ResolveAsync(AgentKit.Mcp.McpTransportProfile transportProfile, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class HttpMcpTransportFactory : AgentKit.Mcp.IMcpTransportFactory
+    {
+        public HttpMcpTransportFactory(AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher audit, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.IServiceProvider services, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) { }
+        public System.Type TransportProfileType { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken) { }
+    }
     public sealed class McpCapabilityProfileOptions
     {
         public McpCapabilityProfileOptions() { }
@@ -48,6 +59,11 @@ namespace AgentKit.Mcp.Client
         public AgentKit.Mcp.McpAuthenticationReference? Authentication { get; set; }
         public System.Uri? Endpoint { get; set; }
     }
+    public sealed class McpPromptSource : AgentKit.IContextContributor
+    {
+        public McpPromptSource(AgentKit.Mcp.McpCatalogSnapshot catalog) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     [System.Serializable]
     public sealed class McpProtocolVersionBelowMinimumException : System.Exception
     {
@@ -60,6 +76,11 @@ namespace AgentKit.Mcp.Client
         public McpRemoteToolDescriptor(AgentKit.Mcp.McpToolName name, AgentKit.ToolVersion version) { }
         public AgentKit.Mcp.McpToolName Name { get; }
         public AgentKit.ToolVersion Version { get; }
+    }
+    public sealed class McpResourceSource : AgentKit.IContextContributor
+    {
+        public McpResourceSource(AgentKit.Mcp.IMcpClientSession session, AgentKit.Mcp.McpCatalogSnapshot catalog) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class McpStdioEndpointOptions
     {
@@ -97,10 +118,37 @@ namespace AgentKit.Mcp.Client
         public McpToolInvocationException(AgentKit.Mcp.McpToolName toolName, string message) { }
         public AgentKit.Mcp.McpToolName ToolName { get; }
     }
+    public sealed class McpToolInvoker : AgentKit.IToolInvoker
+    {
+        public McpToolInvoker(AgentKit.Mcp.IMcpClientSession session, AgentKit.ToolDescriptor tool, AgentKit.IIdentifierGenerator<AgentKit.Mcp.McpRequestId> requestIds, AgentKit.ProtectedSemanticOperationContext operation) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpToolProvider : AgentKit.IToolProvider
+    {
+        public McpToolProvider(AgentKit.ToolSourceId sourceId, AgentKit.Mcp.McpEndpointKey endpointKey, AgentKit.Mcp.IMcpClientSessionFactory sessionFactory, AgentKit.Mcp.IMcpEndpointCatalog endpointCatalog, AgentKit.Mcp.IMcpCapabilityProfileCatalog profileCatalog, AgentKit.CapabilityProfileId capabilityProfileId, AgentKit.IIdentifierGenerator<AgentKit.Mcp.McpRequestId> requestIds, System.TimeProvider timeProvider) { }
+        public AgentKit.ToolSourceId SourceId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.IToolProviderCapture> DiscoverAsync(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class McpToolSourceRegistration { }
     public enum McpUnknownNotificationPolicy
     {
         IgnoreAndDiagnose = 0,
         FailSession = 1,
+    }
+    public sealed class PipeMcpTransportFactory : AgentKit.Mcp.IMcpTransportFactory
+    {
+        public PipeMcpTransportFactory(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<AgentKit.Mcp.Client.PipeMcpTransportPair>> pairFactory) { }
+        public System.Type TransportProfileType { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class PipeMcpTransportPair : System.IEquatable<AgentKit.Mcp.Client.PipeMcpTransportPair>
+    {
+        public PipeMcpTransportPair(System.IO.Stream ClientInput, System.IO.Stream ClientOutput, System.IO.Stream ServerInput, System.IO.Stream ServerOutput) { }
+        public System.IO.Stream ClientInput { get; init; }
+        public System.IO.Stream ClientOutput { get; init; }
+        public System.IO.Stream ServerInput { get; init; }
+        public System.IO.Stream ServerOutput { get; init; }
+        public static AgentKit.Mcp.Client.PipeMcpTransportPair CreateConnected() { }
     }
     public static class ServiceExtensions
     {
@@ -121,6 +169,13 @@ namespace AgentKit.Mcp.Client
                 where TCatalog :  class, AgentKit.Mcp.IMcpCapabilityProfileCatalog { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpToolClient<TTools>()
                 where TTools :  class { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpToolSource(AgentKit.ToolSourceId sourceId, AgentKit.Mcp.McpEndpointKey endpointKey, AgentKit.CapabilityProfileId capabilityProfileId) { }
         }
+    }
+    public sealed class StdioMcpTransportFactory : AgentKit.Mcp.IMcpTransportFactory
+    {
+        public StdioMcpTransportFactory(AgentKit.IProcessExecutorSelector processExecutors, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher audit, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
+        public System.Type TransportProfileType { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken) { }
     }
 }

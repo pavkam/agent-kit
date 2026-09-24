@@ -109,5 +109,16 @@ public static class ServiceExtensions
             services.TryAddSingleton<McpToolClientFactory<TTools>>();
             return services;
         }
+
+        /// <summary>Registers one MCP endpoint as a keyed tool source.</summary>
+        /// <param name="sourceId">The tool source identity.</param>
+        /// <param name="endpointKey">The MCP endpoint to connect for discovery.</param>
+        /// <param name="capabilityProfileId">The MCP capability profile that lists the endpoint.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        public IServiceCollection AddMcpToolSource(
+            ToolSourceId sourceId,
+            McpEndpointKey endpointKey,
+            CapabilityProfileId capabilityProfileId) =>
+            McpToolSourceRegistration.Add(services, sourceId, endpointKey, capabilityProfileId);
     }
 }

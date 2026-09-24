@@ -15,15 +15,15 @@ Owning documents: [MCP](../architecture/mcp.md),
 - [x] WS6-C1a identities, endpoint, profile values
 - [x] WS6-C1b session, request, response contracts
 - [x] WS6-C2 client options, catalogs, DI
-- [ ] WS6-C3 `McpClientSession` over the SDK client
-- [ ] WS6-C4 `HttpMcpTransportFactory` over `INetworkTransport`
-- [ ] WS6-C5 `StdioMcpTransportFactory` over `IProcessHandle`
-- [ ] WS6-C6 `McpToolProvider` and `McpToolInvoker`
-- [ ] WS6-C7 security and audit integration
-- [ ] WS6-C8 resource and prompt sources
-- [ ] WS6-C9a server runtime and tools primitive
-- [ ] WS6-C9b server resources, prompts, peer authentication
-- [ ] WS6-C10 Simple `WithMcpServer` and documentation
+- [x] WS6-C3 `McpClientSession` over the SDK client
+- [x] WS6-C4 `HttpMcpTransportFactory` over `INetworkTransport`
+- [x] WS6-C5 `StdioMcpTransportFactory` over `IProcessHandle`
+- [x] WS6-C6 `McpToolProvider` and `McpToolInvoker`
+- [x] WS6-C7 security and audit integration
+- [x] WS6-C8 resource and prompt sources
+- [x] WS6-C9a server runtime and tools primitive
+- [x] WS6-C9b server resources, prompts, peer authentication
+- [x] WS6-C10 Simple `WithMcpServer` and documentation
 
 ## Verified current state
 
@@ -180,7 +180,7 @@ No `IMcp*` test fakes exist.
   Size: L split in two.
 - C9a: `IMcpServer`, `McpServer`, `AgentKitPrimitiveHandler` mapping
   `tools/call` to `IToolExecutor` under the shared authority,
-  `McpServerOptions`, `AddMcpServer(McpServerKey, …)`; loopback client lists and
+  `McpServerListenerOptions`, `AddMcpServer(McpServerKey, …)`; loopback client lists and
   calls an engine tool. C9b: resources, prompts, `McpPeerContext`,
   `McpServerEndpoint`, peer authentication (NO-SPEC). Snapshot: Mcp.Server.
 

@@ -18,6 +18,13 @@ internal static class McpClientRegistration
         services.TryAddSingleton(static provider => provider.GetRequiredService<McpClientOptionsState>().Snapshot);
         services.TryAddSingleton<IMcpEndpointCatalog, DefaultMcpEndpointCatalog>();
         services.TryAddSingleton<IMcpCapabilityProfileCatalog, DefaultMcpCapabilityProfileCatalog>();
+        services.TryAddSingleton<IMcpTransportFactoryCatalog, DefaultMcpTransportFactoryCatalog>();
+        services.TryAddSingleton<IIdentifierGenerator<McpSessionId>, GuidMcpSessionIdGenerator>();
+        services.TryAddSingleton<IIdentifierGenerator<McpRequestId>, GuidMcpRequestIdGenerator>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IMcpClientSessionFactory, McpClientSessionFactory>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, StdioMcpTransportFactory>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, HttpMcpTransportFactory>());
         return services;
     }
 
