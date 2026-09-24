@@ -8,13 +8,13 @@ namespace AgentKit.Tools;
 /// Registration extensions add one marker per <c>AddToolInvoker</c> call. Markers are not resolved as services; they
 /// supply metadata for <see cref="ApplicationToolProvider"/> discovery only.
 /// </remarks>
-internal sealed record RegisteredToolInvoker
+public sealed record RegisteredToolInvoker
 {
     /// <summary>Initializes one registered invoker marker.</summary>
     /// <param name="descriptor">The complete immutable tool descriptor published for discovery.</param>
     /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The descriptor identity or version is default.</exception>
-    internal RegisteredToolInvoker(ToolDescriptor descriptor)
+    public RegisteredToolInvoker(ToolDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentOutOfRangeException.ThrowIfEqual(descriptor.Id, default);
@@ -24,8 +24,8 @@ internal sealed record RegisteredToolInvoker
     }
 
     /// <summary>Gets the published descriptor.</summary>
-    internal ToolDescriptor Descriptor { get; }
+    public ToolDescriptor Descriptor { get; }
 
     /// <summary>Gets the stable identity key used for keyed <see cref="IToolInvoker"/> resolution.</summary>
-    internal ToolIdentity Identity { get; }
+    public ToolIdentity Identity { get; }
 }

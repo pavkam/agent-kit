@@ -52,8 +52,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(GlobTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, GlobTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, GlobToolPresentationFormatter>());
             return services;
         }

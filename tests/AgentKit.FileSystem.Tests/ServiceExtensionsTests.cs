@@ -140,7 +140,6 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
     [Obsolete("Legacy AddSandboxedFileSystem narrow-capability replacement.")]
-    [Obsolete]
     public void AddSandboxedFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)

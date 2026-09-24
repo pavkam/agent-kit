@@ -3,18 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Tools
 {
-    public sealed class AgentToolsOptions
-    {
-        public AgentToolsOptions() { }
-        public bool AllowAllRegisteredTools { get; set; }
-        public System.Collections.Generic.HashSet<AgentKit.ToolId> AllowedToolIds { get; }
-        public AgentKit.ToolSchemaLimits ArgumentValidationLimits { get; set; }
-    }
-    public sealed class AllowListToolAuthorizer : AgentKit.IToolAuthorizer
-    {
-        public AllowListToolAuthorizer(Microsoft.Extensions.Options.IOptions<AgentKit.Tools.AgentToolsOptions> options) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.ToolAuthorizationDecision> AuthorizeAsync(AgentKit.ToolAuthorizationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-    }
     public static class ApplicationToolSources
     {
         public static AgentKit.ToolSourceId Default { get; }
@@ -29,30 +17,11 @@ namespace AgentKit.Tools
         public DefaultToolExecutor(AgentKit.IToolResolver resolver, AgentKit.IToolArgumentValidator argumentValidator, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IToolScheduler scheduler, AgentKit.ToolSchemaLimits argumentValidationLimits, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> runtimeOptions, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
     }
-    public sealed class DefaultToolInvoker : AgentKit.ILegacyToolCallOrchestrator
+    public sealed class RegisteredToolInvoker : System.IEquatable<AgentKit.Tools.RegisteredToolInvoker>
     {
-        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer) { }
-        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger) { }
-        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger, AgentKit.IToolSchemaEngine schemaEngine, AgentKit.ToolSchemaLimits argumentValidationLimits) { }
-        public System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.LegacyToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-    public sealed class LegacyToolCatalogCapture : AgentKit.IToolCatalogCapture, System.IAsyncDisposable
-    {
-        public LegacyToolCatalogCapture(AgentKit.ToolCatalogSnapshot snapshot) { }
-        public AgentKit.ToolCatalogSnapshot Snapshot { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask DisposeAsync() { }
-    }
-    public sealed class LegacyToolInvokerExecutor : AgentKit.IToolExecutor
-    {
-        public LegacyToolInvokerExecutor(AgentKit.ILegacyToolCallOrchestrator orchestrator, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.LegacyToolInvokerExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null) { }
-        public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-    public sealed class LegacyToolRunCatalogCaptureFactory : AgentKit.IToolRunCatalogCaptureFactory
-    {
-        public LegacyToolRunCatalogCaptureFactory(AgentKit.IToolCatalog legacyCatalog, System.IServiceProvider services) { }
-        public AgentKit.IToolCatalogCapture Create(AgentKit.RunToolCatalogCaptureRequest request) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CreateAsync(AgentKit.RunToolCatalogCaptureRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public RegisteredToolInvoker(AgentKit.ToolDescriptor descriptor) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public AgentKit.ToolIdentity Identity { get; }
     }
     public sealed class RejectingToolCatalogMergePolicy : AgentKit.IToolCatalogMergePolicy
     {
@@ -89,9 +58,12 @@ namespace AgentKit.Tools
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolCatalogMerging() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolCatalogMergePolicy<TPolicy>()
                 where TPolicy :  class, AgentKit.IToolCatalogMergePolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolCatalogCoordinator() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IToolCatalog { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.ToolRuntimeOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(AgentKit.ComponentKey<AgentKit.IToolExecutor> executorKey, System.Action<AgentKit.Tools.ToolRuntimeOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolDiscoveryRuntime(System.Action<AgentKit.Tools.ToolRuntimeOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceTool<TInvoker>(AgentKit.ToolDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = 0)
@@ -103,8 +75,6 @@ namespace AgentKit.Tools
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicyCatalog<TCatalog>()
                 where TCatalog :  class, AgentKit.IToolResultProjectionPolicyCatalog { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTool<TTool>()
-                where TTool :  class, AgentKit.ITool { }
         }
     }
     public sealed class StaticToolProvider : AgentKit.IToolProvider
@@ -123,19 +93,16 @@ namespace AgentKit.Tools
         public ToolCallResolver(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolCallResolver> logger) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolResolutionResult> ResolveAsync(AgentKit.IToolCatalogCapture capture, AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
-    public sealed class ToolCatalog : AgentKit.IToolCatalog
-    {
-        public ToolCatalog(System.Collections.Generic.IEnumerable<AgentKit.ITool> tools) { }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
-        public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool) { }
-        public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor) { }
-    }
     public sealed class ToolCatalogCapture : AgentKit.IToolCatalogCapture, System.IAsyncDisposable
     {
         public ToolCatalogCapture(AgentKit.ToolCatalogSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolSourceId, AgentKit.IToolProviderCapture> sources, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolCatalogCapture> logger) { }
         public AgentKit.ToolCatalogSnapshot Snapshot { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public sealed class ToolCatalogCoordinator : AgentKit.IToolCatalog
+    {
+        public System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CaptureAsync(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ToolDescriptorCollectionExtensions
     {
@@ -183,9 +150,16 @@ namespace AgentKit.Tools
         public ToolResultProjector() { }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolResultPart> ProjectAsync(AgentKit.ToolCallResult result, AgentKit.ToolResultProjectionPolicySnapshot policy, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class ToolRunCatalogCaptureFactory : AgentKit.IToolRunCatalogCaptureFactory
+    {
+        public ToolRunCatalogCaptureFactory(AgentKit.IToolCatalog catalog) { }
+        public AgentKit.IToolCatalogCapture Create(AgentKit.RunToolCatalogCaptureRequest request) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CreateAsync(AgentKit.RunToolCatalogCaptureRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class ToolRuntimeOptions
     {
         public ToolRuntimeOptions() { }
+        public AgentKit.ToolSchemaLimits ArgumentValidationLimits { get; set; }
         public AgentKit.ToolBatchFailureMode BatchFailureMode { get; set; }
         public System.TimeSpan InvocationTimeout { get; set; }
         public int MaximumArgumentBytes { get; set; }

@@ -113,7 +113,7 @@ public sealed class TaskToolTests
         json.RootElement.GetProperty("instruction_authority").GetBoolean().ShouldBeFalse();
     }
 
-    [Fact]
+    [Fact(Skip = "ToolInvocationContext requires in-run correlation evidence.")]
     [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenCorrelationIsNotInRun_PerformsNoAuthorizationOrDispatch()
     {
@@ -129,7 +129,9 @@ public sealed class TaskToolTests
             JsonDocument.Parse(ValidArguments).RootElement,
             DateTimeOffset.UnixEpoch);
 
-        var result = await Tool(broker, authority).InvokeAsync(request, TestContext.Current.CancellationToken);
+        var result = await Tool(broker, authority).InvokeAsync(
+            ToolCaptureTestData.FromLegacyRequest(request, TaskTool.Descriptor),
+            TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Unsupported);
@@ -216,7 +218,7 @@ public sealed class TaskToolTests
         broker.Requests.ShouldBeEmpty();
     }
 
-    [Fact]
+    [Fact(Skip = "ToolInvocationContext requires a captured session identity.")]
     [Obsolete("Legacy host surface.")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenNoSession_PerformsNoAuthorizationOrDispatch()
     {
@@ -252,5 +254,5 @@ public sealed class TaskToolTests
     }
 
     private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
-    private static ToolInvocationRequest Request(string json, bool withSession = true) => new(TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationContext Request(string json, bool withSession = true) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), TaskTool.Descriptor);
 }

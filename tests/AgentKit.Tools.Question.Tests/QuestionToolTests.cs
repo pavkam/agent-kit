@@ -45,9 +45,9 @@ public sealed class QuestionToolTests
     [Fact]
     public void Descriptor_WhenRead_ExposesStableIdentity()
     {
-        var tool = Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority());
+        _ = Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority());
 
-        ((ITool) tool).Descriptor.Id.ShouldBe(QuestionTool.Id);
+        QuestionTool.Descriptor.Id.ShouldBe(QuestionTool.Id);
     }
 
     [Fact]
@@ -184,5 +184,5 @@ public sealed class QuestionToolTests
 
     private static QuestionTool Tool(IHumanQuestionBroker broker, ISecurityAuthority authority, FixedQuestionIdGenerator? questionIds = null, QuestionToolOptions? options = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), questionIds ?? new FixedQuestionIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new QuestionToolOptions()));
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
-    private static ToolInvocationRequest Request(string json) => new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), QuestionTool.Descriptor);
 }

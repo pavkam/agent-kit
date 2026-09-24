@@ -33,7 +33,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddListTool();
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ListDirectoryTool>();
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(ListDirectoryTool.Id);
         var identity = new ToolIdentity(ListDirectoryTool.Id, ListDirectoryTool.Descriptor.Version);
         _ = provider.GetKeyedService<IToolInvoker>(identity).ShouldBeOfType<ListDirectoryTool>();
         services.Count(static descriptor =>

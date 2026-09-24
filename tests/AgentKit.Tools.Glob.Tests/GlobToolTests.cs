@@ -53,9 +53,9 @@ public sealed class GlobToolTests
     [Fact]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
-        var tool = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
+        _ = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
 
-        ((ITool) tool).Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
+        GlobTool.Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class GlobToolTests
     private static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority) =>
         TestGlobComposition.CreateTool(globber, authority);
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
@@ -188,6 +188,5 @@ public sealed class GlobToolTests
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
-
+        DateTimeOffset.UnixEpoch), GlobTool.Descriptor);
 }

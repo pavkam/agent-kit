@@ -36,4 +36,14 @@ public sealed class ToolRuntimeOptions
     /// parallel safety.
     /// </value>
     public UnknownSchedulingMode UnknownSchedulingMode { get; set; } = UnknownSchedulingMode.Sequential;
+
+    /// <summary>
+    /// Gets or sets the bounds used to compile each tool's declared input schema and to validate call arguments.
+    /// </summary>
+    /// <value>
+    /// 256 KiB of raw UTF-8 JSON, a maximum depth of 64, at most 10,000 total JSON values, and a work budget of
+    /// 100,000 deterministic units by default.
+    /// </value>
+    public ToolSchemaLimits ArgumentValidationLimits { get; set; } = new(
+        maximumUtf8Bytes: 262_144, maximumDepth: 64, maximumNodes: 10_000, maximumWork: 100_000);
 }

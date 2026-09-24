@@ -6,7 +6,7 @@ namespace AgentKit.Tools.WebSearch;
 using AgentKit.Tools;
 
 /// <summary>Executes one bounded query through an explicitly selected provider-backed search operation.</summary>
-public sealed class WebSearchTool: IToolInvoker, ITool
+public sealed class WebSearchTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -104,24 +104,10 @@ public sealed class WebSearchTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("web_search"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

@@ -59,8 +59,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(CommandTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, CommandTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, CommandToolPresentationFormatter>());
             return services;
         }

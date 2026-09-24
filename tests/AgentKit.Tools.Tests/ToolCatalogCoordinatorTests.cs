@@ -54,7 +54,7 @@ public sealed class ToolCatalogCoordinatorTests
         var (host, coordinator, request) = Compose([candidate.Toolset], [Provider(candidate.Source, source)]);
         await using var owningHost = host;
 
-        var result = await coordinator.CaptureAsync(request, TestContext.Current.CancellationToken);
+        var result = await coordinator.CaptureInternalAsync(request, TestContext.Current.CancellationToken);
 
         var captured = result.ShouldBeOfType<ToolCatalogCoordinatorCaptured>();
         source.Disposals.ShouldBe(0);
@@ -78,7 +78,7 @@ public sealed class ToolCatalogCoordinatorTests
         var (host, coordinator, request) = Compose([first.Toolset, second.Toolset], [Provider(first.Source, a), Provider(second.Source, b)]);
         await using var owningHost = host;
 
-        var result = await coordinator.CaptureAsync(request, TestContext.Current.CancellationToken);
+        var result = await coordinator.CaptureInternalAsync(request, TestContext.Current.CancellationToken);
 
         var rejected = result.ShouldBeOfType<ToolCatalogCoordinatorMergeRejected>();
         rejected.Context.Collisions.ShouldNotBeEmpty();
@@ -105,7 +105,7 @@ public sealed class ToolCatalogCoordinatorTests
         var (host, coordinator, request) = Compose([toolset], [Provider(source, capture)]);
         await using var owningHost = host;
 
-        var result = await coordinator.CaptureAsync(request, TestContext.Current.CancellationToken);
+        var result = await coordinator.CaptureInternalAsync(request, TestContext.Current.CancellationToken);
 
         var rejected = result.ShouldBeOfType<ToolCatalogCoordinatorSchemaRejected>();
         rejected.Tool.ShouldBe(tool);
@@ -134,7 +134,7 @@ public sealed class ToolCatalogCoordinatorTests
         await using var owningHost = host;
 
         var failure = await Should.ThrowAsync<OperationCanceledException>(
-            async () => await coordinator.CaptureAsync(request, cancellation.Token));
+            async () => await coordinator.CaptureInternalAsync(request, cancellation.Token));
 
         failure.CancellationToken.ShouldBe(cancellation.Token);
         source.Disposals.ShouldBe(1);
@@ -164,11 +164,11 @@ public sealed class ToolCatalogCoordinatorTests
         };
         _ = services.AddSingleton<IToolSchemaEngine>(scriptedEngine);
         await using var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-        var coordinator = host.GetRequiredService<ToolCatalogCoordinator>();
+        var coordinator = (ToolCatalogCoordinator) host.GetRequiredService<IToolCatalog>();
         var request = ToolCatalogMergeTestData.Request([candidate.Toolset]);
 
         var failure = await Should.ThrowAsync<OperationCanceledException>(
-            async () => await coordinator.CaptureAsync(request, cancellation.Token));
+            async () => await coordinator.CaptureInternalAsync(request, cancellation.Token));
 
         failure.CancellationToken.ShouldBe(cancellation.Token);
         source.Disposals.ShouldBe(1);
@@ -207,7 +207,7 @@ public sealed class ToolCatalogCoordinatorTests
         _ = services.AddToolCatalogCoordinator();
         _ = services.AddSingleton<ILogger<ToolCatalogCoordinator>>(logger);
         await using var observedHost = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-        var observedCoordinator = observedHost.GetRequiredService<ToolCatalogCoordinator>();
+        var observedCoordinator = (ToolCatalogCoordinator) observedHost.GetRequiredService<IToolCatalog>();
         var request = ToolCatalogMergeTestData.Request([toolset]);
 
         using var parent = new Activity("coordinate-catalog-test").Start();
@@ -219,14 +219,20 @@ public sealed class ToolCatalogCoordinatorTests
             ActivityStopped = activity => { if (activity.TraceId == parent.TraceId && activity.OperationName == AgentKitActivityNames.ToolCatalogCoordinate) { observed = activity; } },
         };
         ActivitySource.AddActivityListener(listener);
-        if (outcome is "captured" or "merge_rejected" or "schema_rejected")
+        if (outcome is "captured")
         {
-            var result = await observedCoordinator.CaptureAsync(request, TestContext.Current.CancellationToken);
-            if (result is ToolCatalogCoordinatorCaptured success) { await success.Catalog.DisposeAsync(); }
+            var catalogCapture = await observedCoordinator.CaptureAsync(request, TestContext.Current.CancellationToken);
+            await catalogCapture.DisposeAsync();
+        }
+        else if (outcome is "merge_rejected" or "schema_rejected")
+        {
+            _ = await Should.ThrowAsync<InvalidOperationException>(
+                async () => await observedCoordinator.CaptureAsync(request, TestContext.Current.CancellationToken));
         }
         else
         {
-            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await observedCoordinator.CaptureAsync(request, cancellation.Token));
+            _ = await Should.ThrowAsync<OperationCanceledException>(
+                async () => await observedCoordinator.CaptureAsync(request, cancellation.Token));
         }
 
         var activity = observed.ShouldNotBeNull();
@@ -256,6 +262,6 @@ public sealed class ToolCatalogCoordinatorTests
         if (policy is not null) { _ = services.AddSingleton(policy); }
         _ = services.AddToolCatalogCoordinator();
         var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-        return (host, host.GetRequiredService<ToolCatalogCoordinator>(), ToolCatalogMergeTestData.Request(toolsets));
+        return (host, (ToolCatalogCoordinator) host.GetRequiredService<IToolCatalog>(), ToolCatalogMergeTestData.Request(toolsets));
     }
 }

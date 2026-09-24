@@ -21,25 +21,18 @@ internal static class TestToolCallResults
         ToolResultProjectionTransformations.None,
         ExtensionData.Empty);
 
-    internal static ToolCallResult FromResolved(ToolCallRequest call, ResolvedToolInvocation resolved)
+    internal static ToolCallResult FromInvocation(ToolCallRequest call, ToolInvocationResult invocation)
     {
         ArgumentNullException.ThrowIfNull(call);
-        ArgumentNullException.ThrowIfNull(resolved);
-        var invocation = resolved.Invocation;
+        ArgumentNullException.ThrowIfNull(invocation);
         var outcome = invocation.Outcome;
         var succeeded = outcome.Kind == ToolCallOutcomeKind.Success;
-        var toolId = resolved.Tool.Id;
-        var toolVersion = resolved.Tool.Version;
-        var hasTool = toolId.HasValue && toolVersion.HasValue;
+        var hasTool = outcome.SourceStatus != ToolTerminalStatus.UnknownTool;
         ToolCallAcceptanceEvidence? acceptance = null;
         GrantId? grantId = null;
         DateTimeOffset? startedAt = null;
-        ToolEffects? effects = null;
-        if (hasTool)
-        {
-            effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
-        }
-        if (succeeded && hasTool)
+        var effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
+        if (succeeded)
         {
             grantId = new GrantId(call.CallId.Value);
             acceptance = new ToolCallAcceptanceEvidence(grantId.Value, new InputFingerprint("test"), call.RequestedAt);
@@ -62,6 +55,8 @@ internal static class TestToolCallResults
         }
 
         var normalization = NormalizationFor(hasTool);
+        ToolId? toolId = hasTool ? new ToolId(call.ProviderAlias.Value) : null;
+        ToolVersion? toolVersion = hasTool ? new ToolVersion("1") : null;
 
         return new ToolCallResult(
             call.AgentId,
@@ -74,8 +69,8 @@ internal static class TestToolCallResults
             grantId,
             acceptance,
             call.ProviderAlias,
-            hasTool ? toolId : null,
-            hasTool ? toolVersion : null,
+            toolId,
+            toolVersion,
             effects,
             null,
             new ToolCallAdmissionEvidence(call.CatalogVersion, call.SourceOrdinal, new InputFingerprint("test")),
@@ -87,9 +82,47 @@ internal static class TestToolCallResults
             outcome.Retryable,
             normalization,
             new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
-            resolved.ProjectionPolicy,
+            ToolResultProjectionPolicyReference.Default,
             call.RequestedAt,
             startedAt,
+            call.RequestedAt,
+            ExtensionData.Empty);
+    }
+
+    internal static ToolCallResult FromPreInvocation(
+        ToolCallRequest call,
+        ToolTerminalStatus status,
+        string safeReason)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeReason);
+        return new ToolCallResult(
+            call.AgentId,
+            call.SessionId,
+            call.RunId,
+            call.TurnId,
+            call.OperationId,
+            call.CallId,
+            call.Authorization,
+            grantId: null,
+            acceptance: null,
+            call.ProviderAlias,
+            toolId: null,
+            toolVersion: null,
+            effects: null,
+            externalIdempotencyKey: null,
+            admission: new ToolCallAdmissionEvidence(call.CatalogVersion, call.SourceOrdinal, new InputFingerprint("test")),
+            status,
+            content: [],
+            error: new ToolError(ToolErrorKind.Tool, safeReason, null, null, ExtensionData.Empty),
+            SideEffectCertainty.DefinitelyNotPerformed,
+            usage: null,
+            retryable: false,
+            NormalizationFor(resolvedTool: false),
+            new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
+            ToolResultProjectionPolicyReference.Default,
+            call.RequestedAt,
+            invocationStartedAt: null,
             call.RequestedAt,
             ExtensionData.Empty);
     }

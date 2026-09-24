@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Task;
 using AgentKit.Tools;
 
 /// <summary>Delegates one bounded objective to an explicitly selected child agent and waits for terminal settlement.</summary>
-public sealed class TaskTool: IToolInvoker, ITool
+public sealed class TaskTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -90,23 +90,10 @@ public sealed class TaskTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("task"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
-
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -119,7 +106,7 @@ public sealed class TaskTool: IToolInvoker, ITool
             context.InvocationGrant.Scope.Correlation,
             context.InvocationGrant.Identity,
             authorization,
-            sessionProfile: null);
+            sessionProfile: context.SessionProfile);
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(

@@ -130,7 +130,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
                     ToolExecutionHookDispatcher.ToRawArguments(before.Arguments));
             }
 
-            var preflight = await PreflightAsync(capture, request, cancellationToken).ConfigureAwait(false);
+            var preflight = await PreflightAsync(capture, request, capability, cancellationToken).ConfigureAwait(false);
             if (preflight.EarlyResult is { } early)
             {
                 orderedResults[index] = early;
@@ -189,6 +189,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
     private async Task<PreflightOutcome> PreflightAsync(
         IToolCatalogCapture capture,
         ToolCallRequest request,
+        ToolExecutionCapability capability,
         CancellationToken cancellationToken)
     {
         var completedAt = _timeProvider.GetUtcNow();
@@ -279,7 +280,8 @@ public sealed class DefaultToolExecutor: IToolExecutor
             validated.RequestedAt,
             invocationStartedAt,
             deadline,
-            NoopToolProgressReporter.Instance);
+            NoopToolProgressReporter.Instance,
+            capability.Session.Profile);
 
         var entry = new ToolBatchEntry(
             context,

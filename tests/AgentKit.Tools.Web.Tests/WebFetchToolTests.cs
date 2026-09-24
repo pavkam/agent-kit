@@ -557,7 +557,7 @@ public sealed class WebFetchToolTests
     private static JsonDocument ResultJson(ToolInvocationResult result) =>
         JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
@@ -571,8 +571,7 @@ public sealed class WebFetchToolTests
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
-
+        DateTimeOffset.UnixEpoch), WebFetchTool.Descriptor);
     private sealed class Fixture
     {
         internal Fixture(TimeProvider? clock = null, WebFetchToolOptions? options = null)

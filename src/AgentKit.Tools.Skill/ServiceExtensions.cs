@@ -43,8 +43,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(SkillTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, SkillTool>());
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IToolPresentationFormatter, SkillToolPresentationFormatter>());
             _ = services.AddContextContributor<SkillInventoryContextContributor>(

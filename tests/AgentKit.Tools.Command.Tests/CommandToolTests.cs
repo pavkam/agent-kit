@@ -327,9 +327,9 @@ public sealed class CommandToolTests
     [Fact]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
-        var tool = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());
+        _ = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());
 
-        ((ITool) tool).Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
+        CommandTool.Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
     }
 
     [Obsolete("Legacy host surface.")]
@@ -360,7 +360,7 @@ public sealed class CommandToolTests
         return options;
     }
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
@@ -374,5 +374,5 @@ public sealed class CommandToolTests
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+        DateTimeOffset.UnixEpoch), CommandTool.Descriptor);
 }

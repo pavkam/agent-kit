@@ -79,8 +79,7 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Removes every unkeyed executor descriptor without activation. Keyed executors and in-flight runs remain
-        /// unchanged. Call after the legacy <c>AddAgentTools(Action&lt;AgentToolsOptions&gt;?)</c> registration to opt
-        /// into the new runtime while legacy types remain registered for bridge scenarios. Spec-shaped executors
+        /// unchanged. Spec-shaped executors
         /// require <see cref="ISecurityAuthoritySelector"/> from the permissions stack; that registration does not
         /// register security authority.
         /// </remarks>
@@ -334,22 +333,22 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Idempotent default registration composes <see cref="AddToolRegistrationCatalog"/>, <see cref="AddToolCatalogMerging"/>,
-        /// and <see cref="AddToolSchemaEngine"/>, preserving host clock and logging choices. The default schema-preflight
-        /// bounds match the built-in argument-validation defaults and are a reduced stand-in pending workstream 4's
-        /// <c>ToolRuntimeOptions</c> (chunk C8). This coordinator is internal and not yet reachable through the public
-        /// <c>IToolCatalog</c> surface (chunk C10b); it activates no service and discovers no source at registration time.
+        /// and <see cref="AddToolSchemaEngine"/>, preserving host clock and logging choices. Schema preflight bounds come from
+        /// <see cref="ToolRuntimeOptions.ArgumentValidationLimits"/> when configured, otherwise the documented defaults.
         /// </remarks>
-        internal IServiceCollection AddToolCatalogCoordinator()
+        public IServiceCollection AddToolCatalogCoordinator()
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddToolRegistrationCatalog();
             _ = services.AddToolCatalogMerging();
             _ = services.AddToolSchemaEngine();
+            _ = services.AddOptions<ToolRuntimeOptions>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<ToolCatalogVersion>>(
                 static _ => new GuidIdentifierGenerator<ToolCatalogVersion>(static value => new ToolCatalogVersion(value.ToString())));
-            services.TryAddSingleton(new ToolSchemaLimits(maximumUtf8Bytes: 262_144, maximumDepth: 64, maximumNodes: 10_000, maximumWork: 100_000));
-            services.TryAddSingleton(static provider => new ToolCatalogCoordinator(
+            services.TryAddSingleton(static provider =>
+                provider.GetRequiredService<IOptions<ToolRuntimeOptions>>().Value.ArgumentValidationLimits);
+            services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalogCoordinator(
                 provider.GetRequiredService<ToolCatalogDiscovery>(),
                 provider.GetRequiredService<ToolCatalogMerger>(),
                 provider.GetRequiredService<IToolSchemaEngine>(),
@@ -357,6 +356,23 @@ public static class ServiceExtensions
                 provider.GetRequiredService<IIdentifierGenerator<ToolCatalogVersion>>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<ILogger<ToolCatalogCoordinator>>()));
+            return services;
+        }
+
+        /// <summary>Explicitly replaces the process-level <see cref="IToolCatalog"/> registration.</summary>
+        /// <typeparam name="TCatalog">The catalog implementation that performs discovery, merge, and preflight.</typeparam>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolCatalog<TCatalog>() where TCatalog : class, IToolCatalog
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddToolCatalogCoordinator();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolCatalog)).ToArray())
+            {
+                _ = services.Remove(descriptor);
+            }
+
+            _ = services.AddSingleton<IToolCatalog, TCatalog>();
             return services;
         }
 
@@ -408,32 +424,25 @@ public static class ServiceExtensions
         }
 
         /// <summary>
-        /// Registers the built-in tool catalog, allow-list authorizer, and
-        /// invoker, together with the exact-version projection-policy catalog.
+        /// Registers the spec-shaped tool runtime: catalog capture, executor pipeline, and projection-policy catalog.
         /// </summary>
-        /// <param name="configure">Optional configuration for <see cref="AgentToolsOptions"/>.</param>
+        /// <param name="configure">Optional configuration for <see cref="ToolRuntimeOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
-        /// Idempotent: every registration here uses <c>TryAdd</c>
-        /// semantics, so calling this more than once keeps the first
-        /// registration. This method does not register any concrete
-        /// <see cref="ITool"/>; use <see cref="AddTool{TInvoker}(IServiceCollection, ToolDescriptor, ServiceLifetime)"/> to add
-        /// each tool the application wants available.
-        /// The catalog receives only explicitly registered policy snapshots and
-        /// preserves a host clock, supplying <see cref="TimeProvider.System"/>
-        /// only when no clock is registered.
+        /// Idempotent through <c>TryAdd</c> semantics. Register concrete invokers with
+        /// <see cref="AddTool{TInvoker}(IServiceCollection, ToolDescriptor, ServiceLifetime)"/> and toolsets through
+        /// <see cref="AddToolset"/>. Requires <see cref="ISecurityAuthoritySelector"/> from the permissions stack and
+        /// optionally <see cref="IHookDispatcher"/> for tool lifecycle hooks.
         /// </remarks>
-        public IServiceCollection AddAgentTools(Action<AgentToolsOptions>? configure = null)
+        public IServiceCollection AddAgentTools(Action<ToolRuntimeOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddToolPresentation();
             _ = services.AddToolResultProjectionPolicyCatalog();
-            _ = services.AddToolSchemaEngine();
-            var optionsBuilder = services.AddOptions<AgentToolsOptions>();
             if (configure is not null)
             {
-                _ = optionsBuilder.Configure(configure);
+                _ = services.Configure(configure);
             }
 
             _ = services.AddOptions<ToolRuntimeOptions>();
@@ -445,79 +454,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IToolArgumentValidator, ToolArgumentValidator>();
             services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
             services.TryAddSingleton<IToolResultProjector, ToolResultProjector>();
-            services.TryAddSingleton(static provider =>
-                provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits);
-            services.TryAddSingleton<IToolAuthorizer, AllowListToolAuthorizer>();
-            services.TryAddSingleton<IToolCatalog>(static provider => new ToolCatalog(provider.GetServices<ITool>()));
-            services.TryAddSingleton<ILegacyToolCallOrchestrator>(static provider => new DefaultToolInvoker(
-                provider.GetRequiredService<IToolCatalog>(),
-                provider.GetRequiredService<IToolAuthorizer>(),
-                provider.GetRequiredService<ILogger<DefaultToolInvoker>>(),
-                provider.GetRequiredService<IToolSchemaEngine>(),
-                provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.ArgumentValidationLimits));
-            services.TryAddSingleton<IToolExecutor>(static provider => new LegacyToolInvokerExecutor(
-                provider.GetRequiredService<ILegacyToolCallOrchestrator>(),
-                provider.GetRequiredService<TimeProvider>(),
-                provider.GetRequiredService<ILogger<LegacyToolInvokerExecutor>>(),
-                provider.GetService<IHookDispatcher>()));
-            services.TryAddSingleton<IToolRunCatalogCaptureFactory>(static provider =>
-                new LegacyToolRunCatalogCaptureFactory(
-                    provider.GetRequiredService<IToolCatalog>(),
-                    provider));
-
-            return services;
-        }
-
-        /// <summary>
-        /// Registers the tool runtime for one keyed <see cref="IToolExecutor"/> while retaining the legacy catalog path.
-        /// </summary>
-        /// <param name="executorKey">The nondefault executor component key agents select through optional capabilities.</param>
-        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
-        /// <returns>The same service collection, for chaining.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> is default.</exception>
-        /// <remarks>
-        /// Chains legacy <c>AddAgentTools(Action&lt;AgentToolsOptions&gt;?)</c>, <see cref="AddToolRegistrationCatalog"/>,
-        /// <see cref="AddToolCatalogCoordinator"/>, and keyed <c>ReplaceToolExecutor&lt;TExecutor&gt;(ComponentKey&lt;IToolExecutor&gt;)</c>.
-        /// Requires <see cref="ISecurityAuthoritySelector"/> when the spec-shaped executor is selected.
-        /// </remarks>
-        public IServiceCollection AddAgentTools(
-            ComponentKey<IToolExecutor> executorKey,
-            Action<ToolRuntimeOptions>? configure = null)
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
-            _ = services.AddAgentTools();
-            if (configure is not null)
-            {
-                _ = services.Configure(configure);
-            }
-
-            _ = services.AddToolRegistrationCatalog();
             _ = services.AddToolCatalogCoordinator();
-            _ = services.ReplaceToolExecutor<DefaultToolExecutor>(executorKey);
-            return services;
-        }
-
-        /// <summary>Registers discovery capture, the registration catalog, and the spec-shaped executor stack.</summary>
-        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
-        /// <returns>The same service collection for chaining.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>
-        /// Call after tool invokers and toolsets are registered. Requires <see cref="ISecurityAuthoritySelector"/> from
-        /// the permissions stack and optionally <see cref="IHookDispatcher"/> for tool lifecycle hooks.
-        /// </remarks>
-        public IServiceCollection AddToolDiscoveryRuntime(Action<ToolRuntimeOptions>? configure = null)
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddAgentTools();
-            if (configure is not null)
-            {
-                _ = services.Configure(configure);
-            }
-
-            _ = services.AddToolRegistrationCatalog();
-            _ = services.AddToolCatalogCoordinator();
+            services.TryAddSingleton<IToolRunCatalogCaptureFactory, ToolRunCatalogCaptureFactory>();
             services.TryAddSingleton<IToolExecutor>(static provider => new DefaultToolExecutor(
                 provider.GetRequiredService<IToolResolver>(),
                 provider.GetRequiredService<IToolArgumentValidator>(),
@@ -529,8 +467,34 @@ public static class ServiceExtensions
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<ILogger<DefaultToolExecutor>>(),
                 provider.GetService<IHookDispatcher>()));
+
             return services;
         }
+
+        /// <summary>
+        /// Registers the tool runtime for one keyed <see cref="IToolExecutor"/> selected through optional capabilities.
+        /// </summary>
+        /// <param name="executorKey">The nondefault executor component key agents select through optional capabilities.</param>
+        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> is default.</exception>
+        public IServiceCollection AddAgentTools(
+            ComponentKey<IToolExecutor> executorKey,
+            Action<ToolRuntimeOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
+            _ = services.AddAgentTools(configure);
+            _ = services.ReplaceToolExecutor<DefaultToolExecutor>(executorKey);
+            return services;
+        }
+
+        /// <summary>Alias for registering the default tool runtime with optional <see cref="ToolRuntimeOptions"/> configuration.</summary>
+        /// <param name="configure">Optional <see cref="ToolRuntimeOptions"/> configuration.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        public IServiceCollection AddToolDiscoveryRuntime(Action<ToolRuntimeOptions>? configure = null) =>
+            services.AddAgentTools(configure);
 
         /// <summary>Explicitly replaces one registered tool invoker under the shared application tool source.</summary>
         /// <typeparam name="TInvoker">The replacement invoker implementation.</typeparam>
@@ -657,17 +621,6 @@ public static class ServiceExtensions
             return services;
         }
 
-        /// <summary>Adds <typeparamref name="TTool"/> to the additive set of registered tools.</summary>
-        /// <typeparam name="TTool">The tool implementation to register.</typeparam>
-        /// <returns>The same service collection, for chaining.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        public IServiceCollection AddTool<TTool>()
-            where TTool : class, ITool
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            _ = services.AddSingleton<ITool, TTool>();
-            return services;
-        }
     }
 
 }

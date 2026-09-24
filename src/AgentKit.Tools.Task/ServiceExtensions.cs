@@ -39,8 +39,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(TaskTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, TaskTool>());
             return services;
         }
     }

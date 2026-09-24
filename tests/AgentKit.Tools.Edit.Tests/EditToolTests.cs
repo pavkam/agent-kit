@@ -189,9 +189,9 @@ public sealed class EditToolTests
     [Fact]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
-        var tool = CreateTool(new FakeSnapshotReader(), new FakeAtomicFileReplacer(), new SequencedSecurityAuthority());
+        _ = CreateTool(new FakeSnapshotReader(), new FakeAtomicFileReplacer(), new SequencedSecurityAuthority());
 
-        ((ITool) tool).Descriptor.ShouldBeSameAs(EditTool.PresentationDescriptor);
+        EditTool.Descriptor.ShouldBeSameAs(EditTool.PresentationDescriptor);
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public sealed class EditToolTests
     private static string Status(ToolInvocationResult result) => Encoding.UTF8.GetString(
         result.Outcome.Extensions.Values["agentkit.edit.status"].CanonicalJson.AsSpan());
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
@@ -341,5 +341,5 @@ public sealed class EditToolTests
             TestExecutionIdentity.Create(
                 new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+        DateTimeOffset.UnixEpoch), EditTool.Descriptor);
 }

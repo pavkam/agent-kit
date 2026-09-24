@@ -17,7 +17,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSearchTool();
         _ = services.AddSearchTool();
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<SearchTool>();
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(SearchTool.Id);
     }
 
     [Fact]

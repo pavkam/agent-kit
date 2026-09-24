@@ -57,9 +57,9 @@ public sealed class WriteFileToolTests
         var tool = TestFactory.Tool();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => tool.InvokeAsync((ToolInvocationRequest) null!, TestContext.Current.CancellationToken));
+            async () => await tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
 
-        exception.ParamName.ShouldBe("request");
+        exception.ParamName.ShouldBe("context");
     }
 
     [Fact]

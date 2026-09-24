@@ -39,8 +39,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(PatchTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, PatchTool>());
             return services;
         }
     }

@@ -40,8 +40,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(QuestionTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, QuestionTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, QuestionToolPresentationFormatter>());
             return services;
         }

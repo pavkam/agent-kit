@@ -14,7 +14,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddLanguageTool();
         _ = services.AddLanguageTool();
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(LanguageTool)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(RegisteredToolInvoker) && descriptor.ImplementationInstance is RegisteredToolInvoker marker && marker.Descriptor.Id == LanguageTool.Id).ShouldBe(1);
     }
 
     [Fact]

@@ -34,8 +34,8 @@ Owning documents: [Tools](../architecture/tools.md),
 - [x] WS4-C9a migrate workspace file tools (List, Read, Write, Edit, Patch,
       Glob, Search)
 - [x] WS4-C9b/c migrate remaining tool packages
-- [ ] WS4-C10a delete legacy authorizer, catalog, invoker
-- [ ] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
+- [x] WS4-C10a delete legacy authorizer, catalog, invoker
+- [x] WS4-C10b promote coordinator to `IToolCatalog.CaptureAsync`
 - [x] WS4-C11 Simple over toolsets (`WithTools`, `UseWorkspace` toolset
       publication, keyed `DefaultToolExecutor`; model advertising still legacy
       until C7b)

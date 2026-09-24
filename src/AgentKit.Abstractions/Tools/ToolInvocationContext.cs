@@ -10,8 +10,7 @@ using System.Diagnostics;
 /// This context intentionally excludes the loop, the dependency container, raw credentials unrelated to the tool,
 /// and permission to append arbitrary messages. It carries only the final canonical arguments, the approved
 /// resource scope as a bounded <see cref="SecurityGrant"/>, identity, deadline, attempt count, and a bounded
-/// progress reporter. Ship note: this interim shape omits the optional <c>SessionProfileSnapshot</c> the tool-call
-/// lifecycle contract allows for session-backed tools; that field lands with the session-aware executor pipeline.
+/// progress reporter, and optional captured session profile for session-backed tools.
 /// This type is an immutable value object with structural equality over its fields and is safe to share across
 /// threads without synchronization.
 /// </remarks>
@@ -33,6 +32,7 @@ public sealed record ToolInvocationContext
     /// <param name="invocationStartedAt">The timestamp this attempt started.</param>
     /// <param name="deadline">The instant by which this attempt must settle.</param>
     /// <param name="progress">The nonnull bounded live-progress reporter for this attempt.</param>
+    /// <param name="sessionProfile">Optional captured session profile for session-backed invokers; null when not required.</param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// An identity or <paramref name="toolVersion"/> is default, or <paramref name="attempt"/> is not positive.
     /// </exception>
@@ -58,7 +58,8 @@ public sealed record ToolInvocationContext
         DateTimeOffset requestedAt,
         DateTimeOffset invocationStartedAt,
         DateTimeOffset deadline,
-        IToolProgressReporter progress)
+        IToolProgressReporter progress,
+        SessionProfileSnapshot? sessionProfile = null)
     {
         AcceptedToolCall.ValidateIdentities(agentId, sessionId, runId, turnId, operationId, callId);
         ArgumentNullException.ThrowIfNull(tool);
@@ -79,7 +80,12 @@ public sealed record ToolInvocationContext
         InvocationStartedAt = invocationStartedAt;
         Deadline = deadline;
         Progress = progress;
+        SessionProfile = sessionProfile;
     }
+
+    /// <summary>Gets the optional captured session profile.</summary>
+    /// <value>Session-backed tools use this evidence; null when the invoker does not require it.</value>
+    public SessionProfileSnapshot? SessionProfile { get; }
 
     /// <summary>Gets the owning agent.</summary>
     /// <value>Read through <see cref="InvocationGrant"/>'s bound scope, which the constructor validates against the supplied identity; never a second stored copy.</value>
@@ -155,12 +161,16 @@ public sealed record ToolInvocationContext
         && RequestedAt == other.RequestedAt
         && InvocationStartedAt == other.InvocationStartedAt
         && Deadline == other.Deadline
-        && ReferenceEquals(Progress, other.Progress);
+        && ReferenceEquals(Progress, other.Progress)
+        && SessionProfile == other.SessionProfile;
 
     /// <summary>Returns a hash compatible with complete structural equality.</summary>
     /// <returns>A hash over every scalar/reference field.</returns>
-    public override int GetHashCode() => HashCode.Combine(
-        CallId, Tool, ToolVersion, InvocationGrant, Attempt, RequestedAt, InvocationStartedAt, Deadline);
+    public override int GetHashCode()
+    {
+        var hash = HashCode.Combine(CallId, Tool, ToolVersion, InvocationGrant, Attempt, RequestedAt, InvocationStartedAt, Deadline);
+        return SessionProfile is null ? hash : HashCode.Combine(hash, SessionProfile);
+    }
 
     /// <summary>Validates that a grant's scope is bound to the supplied identity and in-run correlation.</summary>
     /// <param name="agentId">The expected agent.</param>

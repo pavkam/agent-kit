@@ -238,9 +238,9 @@ public sealed class PatchToolTests
     [Fact]
     public void Descriptor_WhenRead_ExposesStableIdentity()
     {
-        var tool = CreateTool(new FakeSnapshotReader(), new FakePatchApplier(), new SequencedSecurityAuthority());
+        _ = CreateTool(new FakeSnapshotReader(), new FakePatchApplier(), new SequencedSecurityAuthority());
 
-        var descriptor = ((ITool) tool).Descriptor;
+        var descriptor = PatchTool.Descriptor;
         descriptor.Id.ShouldBe(PatchTool.Id);
         descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
     }
@@ -535,7 +535,7 @@ public sealed class PatchToolTests
     private static string Status(ToolInvocationResult result) => Encoding.UTF8.GetString(
         result.Outcome.Extensions.Values["agentkit.patch.status"].CanonicalJson.AsSpan());
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("51000000-0000-0000-0000-000000000005")),
@@ -549,5 +549,5 @@ public sealed class PatchToolTests
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+        DateTimeOffset.UnixEpoch), PatchTool.Descriptor);
 }

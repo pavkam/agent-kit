@@ -38,8 +38,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(EditTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, EditTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, EditToolPresentationFormatter>());
             return services;
         }

@@ -141,7 +141,7 @@ internal static class AgentRuntime
         });
         _ = services.AddPlanTool();
         _ = services.AddQuestionTool();
-        _ = services.AddAgentTools(o => o.AllowAllRegisteredTools = true);
+        _ = services.AddAgentTools();
 
         _ = services.AddSandboxedFileSystem(workspaceRoot);
         _ = services.AddOperatingSystemProcesses(workspaceRoot, o =>
@@ -208,13 +208,10 @@ internal static class AgentRuntime
             o.AttemptTimeout = TimeSpan.FromMinutes(3);
         });
 
-        // Populates the model-facing tool list from whatever ITool instances the container resolves, without
-        // an intermediate "probe" provider build: OptionsBuilder<T>.Configure<TDep> resolves TDep lazily, the
-        // first time ConversationSessionOptions itself is materialized (when IConversationSession is resolved).
         _ = services.AddOptions<ConversationSessionOptions>()
-            .Configure<IEnumerable<ITool>>(static (options, tools) =>
+            .Configure<IEnumerable<RegisteredToolInvoker>>(static (options, registrations) =>
             {
-                var descriptors = tools.Select(static tool => tool.Descriptor).ToImmutableArray();
+                var descriptors = registrations.Select(static registration => registration.Descriptor).ToImmutableArray();
                 var definitions = descriptors.ToLlmToolDefinitions();
                 for (var index = 0; index < descriptors.Length; index++)
                 {

@@ -18,8 +18,7 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Registers the spec-shaped <see cref="IToolInvoker"/>, publishes <see cref="WriteFileTool.DefaultToolset"/>,
-        /// and retains legacy <see cref="ITool"/> registration until workstream 4 chunk C10.
-        /// </remarks>
+        /// and /// </remarks>
         public IServiceCollection AddWriteTool(Action<WriteFileToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -43,8 +42,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(WriteFileTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WriteFileTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, WriteFileToolPresentationFormatter>());
             return services;
         }

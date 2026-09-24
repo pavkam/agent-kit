@@ -15,37 +15,32 @@ public sealed class SimpleAgentPlanTests
         Should.Throw<ArgumentException>(() => new SimpleAgentPlan().SelectSugarModel(method!)).ParamName.ShouldBe("method");
 
     [Fact]
-    public void AdvertisedTools_WhenAllAreAllowed_ReturnsEveryDescriptorInOrder()
+    public void AdvertisedTools_WhenRegistrationsExist_ReturnsEveryDescriptorInOrder()
     {
-        var tools = new ITool[] { new NamedTool("a"), new NamedTool("b") };
+        var registrations = new[] { Registration("a"), Registration("b") };
 
-        var advertised = SimpleAgentPlan.AdvertisedTools(tools, new AgentToolsOptions { AllowAllRegisteredTools = true });
+        var advertised = SimpleAgentPlan.AdvertisedTools(registrations);
 
         advertised.Select(static d => d.Id.Value).ShouldBe(["a", "b"]);
     }
 
     [Fact]
-    public void AdvertisedTools_WhenAnAllowListIsSet_ReturnsOnlyListedDescriptors()
+    public void AdvertisedTools_WhenRegistrationsNull_ThrowsArgumentNullException() => Should.Throw<ArgumentNullException>(() => SimpleAgentPlan.AdvertisedTools(null!)).ParamName.ShouldBe("registrations");
+
+    private static RegisteredToolInvoker Registration(string id)
     {
-        var tools = new ITool[] { new NamedTool("a"), new NamedTool("b"), new NamedTool("c") };
-        var options = new AgentToolsOptions();
-        _ = options.AllowedToolIds.Add(new ToolId("c"));
-        _ = options.AllowedToolIds.Add(new ToolId("a"));
-
-        var advertised = SimpleAgentPlan.AdvertisedTools(tools, options);
-
-        advertised.Select(static d => d.Id.Value).ShouldBe(["a", "c"]);
-    }
-
-    [Fact]
-    public void AdvertisedTools_WhenNothingIsAllowed_ReturnsEmpty() =>
-        SimpleAgentPlan.AdvertisedTools([new NamedTool("a")], new AgentToolsOptions()).ShouldBeEmpty();
-
-    [Fact]
-    public void AdvertisedTools_WhenAnArgumentIsNull_ThrowsArgumentNullException()
-    {
-        Should.Throw<ArgumentNullException>(() => SimpleAgentPlan.AdvertisedTools(null!, new AgentToolsOptions())).ParamName.ShouldBe("tools");
-        Should.Throw<ArgumentNullException>(() => SimpleAgentPlan.AdvertisedTools([], null!)).ParamName.ShouldBe("toolOptions");
+        using var document = JsonDocument.Parse("{}");
+        return new RegisteredToolInvoker(new ToolDescriptor(
+            new ToolId(id),
+            new ToolVersion("1"),
+            id,
+            id,
+            new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), document.RootElement),
+            null,
+            new ToolEffects(ToolEffect.ReadOnly, null, null),
+            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
+            new ToolSourceId("test"),
+            ExtensionData.Empty));
     }
 
     [Fact]
@@ -136,17 +131,4 @@ public sealed class SimpleAgentPlanTests
         first.ShouldBe(second);
     }
 
-    private sealed class NamedTool(string name): ITool
-    {
-        public ToolDescriptor Descriptor { get; } = new(
-            new ToolId(name), new ToolVersion("1.0"), name, $"Tool {name}.",
-            new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), JsonDocument.Parse("{}").RootElement),
-            outputSchema: null,
-            new ToolEffects(ToolEffect.ReadOnly, null, null),
-            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
-            new ToolSourceId("test"), ExtensionData.Empty);
-
-        public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-    }
 }

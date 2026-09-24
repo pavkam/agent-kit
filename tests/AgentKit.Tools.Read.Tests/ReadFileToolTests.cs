@@ -76,9 +76,9 @@ public sealed class ReadFileToolTests
         var tool = TestFactory.Tool();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => ((ITool) tool).InvokeAsync(null!, TestContext.Current.CancellationToken));
+            async () => await tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
 
-        exception.ParamName.ShouldBe("request");
+        exception.ParamName.ShouldBe("context");
     }
 
     [Fact]

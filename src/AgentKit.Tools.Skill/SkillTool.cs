@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Skill;
 using AgentKit.Tools;
 
 /// <summary>Lists a captured skill catalog or activates one skill through an exact protected file snapshot.</summary>
-public sealed class SkillTool: IToolInvoker, ITool
+public sealed class SkillTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -90,23 +90,10 @@ public sealed class SkillTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("skill"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
-
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

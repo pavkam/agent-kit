@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Resource;
 using AgentKit.Tools;
 
 /// <summary>Lists host-approved resource metadata and reads exact protected file snapshots by stable identity.</summary>
-public sealed class ResourceTool: IToolInvoker, ITool
+public sealed class ResourceTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -102,24 +102,10 @@ public sealed class ResourceTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("resource"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

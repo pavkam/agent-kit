@@ -13,8 +13,6 @@ using AgentKit.Providers.AzureOpenAI;
 using AgentKit.Providers.Ollama;
 using AgentKit.Providers.OpenAI;
 using AgentKit.Session.InMemory;
-using AgentKit.Tools;
-using AgentKit.Tools.Glob;
 using AgentKit.Tools.Read;
 
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -357,8 +355,8 @@ public sealed class AgentEngineBuilderExtensionsTests
         agents.Length.ShouldBe(2);
         reviewerAgent.Definition.DisplayName.ShouldBe("reviewer");
         reviewerAgent.Definition.RunDefaults.MaxTurns.ShouldBe(3);
-        reviewerAgent.Definition.Tools.ShouldBeEmpty();
-        defaultAgent.Definition.Tools.ShouldHaveSingleItem().Name.ShouldBe("read_file");
+        reviewerAgent.Definition.Toolsets.ShouldBeEmpty();
+        defaultAgent.Definition.Toolsets.ShouldNotBeEmpty();
         _ = first.Outcome.ShouldBeOfType<RunSucceeded>();
         second.SessionId.ShouldBe(first.SessionId);
         other.SessionId.ShouldNotBe(first.SessionId);
@@ -554,31 +552,6 @@ public sealed class AgentEngineBuilderExtensionsTests
         var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
 
         handler.Bodies.Single().ShouldContain("\"name\":\"read_file\"");
-        definition.Toolsets.ShouldNotBeEmpty();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task Build_WhenTheAllowListExcludesARegisteredTool_DoesNotAdvertiseItToTheModelOrTheDefinition()
-    {
-        var handler = new StubOpenAIHandler("done");
-        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
-        RegisterInMemoryReadTool(builder.Services);
-        _ = builder.Services.AddGlobTool();
-        _ = builder.Services.Configure<AgentToolsOptions>(static o =>
-        {
-            o.AllowAllRegisteredTools = false;
-            _ = o.AllowedToolIds.Add(new ToolId("glob"));
-        });
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
-        await using var engine = builder.Build();
-
-        _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
-        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single();
-
-        handler.Bodies.Single().ShouldContain("\"name\":\"glob\"");
-        handler.Bodies.Single().ShouldNotContain("read_file");
         definition.Toolsets.ShouldNotBeEmpty();
     }
 

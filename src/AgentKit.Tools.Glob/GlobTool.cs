@@ -8,7 +8,7 @@ using AgentKit.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>Matches paths using AgentKit simple-glob v1 through an authorized no-follow host traversal.</summary>
-public sealed class GlobTool: IToolInvoker, ITool
+public sealed class GlobTool: IToolInvoker
 {
     private const int _maximumExcludedPathPatterns = 100;
     /// <summary>The stable identity under which the tool is registered.</summary>
@@ -91,9 +91,6 @@ public sealed class GlobTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("glob"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
@@ -102,21 +99,6 @@ public sealed class GlobTool: IToolInvoker, ITool
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
         return InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(
-            request.Context.Authorization,
-            request.Context.ToolCallId,
-            request.Arguments,
-            cancellationToken).AsTask();
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(

@@ -10,7 +10,7 @@ using AgentKit.Tools;
 /// This tool deliberately delegates to <see cref="PlanTool"/> so a harness exposing both names does not create
 /// two competing mutable task lists. IDs, revisions, security evidence, and durable entries remain identical.
 /// </remarks>
-public sealed class TodoTool: IToolInvoker, ITool
+public sealed class TodoTool: IToolInvoker
 {
     private readonly PlanTool _planTool;
 
@@ -62,22 +62,8 @@ public sealed class TodoTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("todo"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         _planTool.InvokeAsync(context, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return _planTool.InvokeAsync(request, cancellationToken);
-    }
 }

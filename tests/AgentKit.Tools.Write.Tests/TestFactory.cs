@@ -45,9 +45,8 @@ internal static class TestFactory
             null);
     }
 
-    public static ToolInvocationRequest Request(string json) => new(
-        ExecutionContext(), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
-
+    public static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+        ExecutionContext(), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), WriteFileTool.Descriptor);
     public static string ReadText(ToolInvocationResult result) => ((TextPart) result.Content[0]).Text;
 
     private static SecurityAuthorizationContext Authorization(SecurityAuthorizationScope scope, ExecutionIdentity identity) => new(

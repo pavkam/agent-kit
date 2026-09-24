@@ -562,16 +562,20 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddAgentTools_WhenCalled_RegistersCatalogAuthorizerAndInvoker()
+    public void AddAgentTools_WhenCalled_RegistersCatalogCoordinatorAndExecutor()
     {
         var services = new ServiceCollection();
+        _ = services.AddLogging();
+        _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
+            new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
 
         _ = services.AddAgentTools();
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetRequiredService<IToolCatalog>().ShouldBeOfType<ToolCatalog>();
-        _ = provider.GetRequiredService<IToolAuthorizer>().ShouldBeOfType<AllowListToolAuthorizer>();
-        _ = provider.GetRequiredService<ILegacyToolCallOrchestrator>().ShouldBeOfType<DefaultToolInvoker>();
+        _ = provider.GetRequiredService<IToolCatalog>().ShouldBeOfType<ToolCatalogCoordinator>();
+        _ = provider.GetRequiredService<IToolExecutor>().ShouldBeOfType<DefaultToolExecutor>();
+        _ = provider.GetRequiredService<IToolRunCatalogCaptureFactory>().ShouldBeOfType<ToolRunCatalogCaptureFactory>();
         _ = provider.GetRequiredService<IToolResultProjectionPolicyCatalog>().ShouldBeOfType<ToolResultProjectionPolicyCatalog>();
     }
 
@@ -581,18 +585,22 @@ public sealed class ServiceExtensionsTests
 
     [Fact]
     public void AddTool_WhenServicesIsNull_ThrowsArgumentNullException() =>
-        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddTool<AlphaTool>()).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddTool<AlphaInvoker>(TestFactory.Descriptor("alpha"))).ParamName.ShouldBe("services");
 
     [Fact]
     public void AddAgentTools_WhenCalledTwice_KeepsFirstRegistration()
     {
         var services = new ServiceCollection();
+        _ = services.AddLogging();
+        _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
+            new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
 
         _ = services.AddAgentTools();
         _ = services.AddAgentTools();
         using var provider = services.BuildServiceProvider();
 
-        provider.GetServices<ILegacyToolCallOrchestrator>().Count().ShouldBe(1);
+        provider.GetServices<IToolExecutor>().Count().ShouldBe(1);
     }
 
     [Fact]
@@ -600,11 +608,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
 
-        _ = services.AddAgentTools(o => o.AllowedToolIds.Add(new ToolId("configured")));
+        _ = services.AddAgentTools(o => o.MaximumParallelInvocations = 9);
         using var provider = services.BuildServiceProvider();
 
-        provider.GetRequiredService<IOptions<AgentToolsOptions>>().Value.AllowedToolIds
-            .ShouldContain(new ToolId("configured"));
+        provider.GetRequiredService<IOptions<ToolRuntimeOptions>>().Value.MaximumParallelInvocations.ShouldBe(9);
     }
 
     [Fact]
@@ -628,12 +635,13 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
 
         _ = services.AddAgentTools();
-        _ = services.AddTool<AlphaTool>();
-        _ = services.AddTool<BetaTool>();
+        _ = services.AddTool<AlphaInvoker>(TestFactory.Descriptor("alpha"));
+        _ = services.AddTool<BetaInvoker>(TestFactory.Descriptor("beta"));
         using var provider = services.BuildServiceProvider();
 
-        var catalog = provider.GetRequiredService<IToolCatalog>();
-        catalog.Descriptors.Select(static d => d.Id).ShouldBe([new ToolId("alpha"), new ToolId("beta")], ignoreOrder: true);
+        provider.GetServices<RegisteredToolInvoker>()
+            .Select(static registration => registration.Descriptor.Id)
+            .ShouldBe([new ToolId("alpha"), new ToolId("beta")], ignoreOrder: true);
     }
 
     [Fact]
@@ -855,19 +863,15 @@ public sealed class ServiceExtensionsTests
         services.ShouldBeEmpty();
     }
 
-    private sealed class AlphaTool: ITool
+    private sealed class AlphaInvoker: IToolInvoker
     {
-        public ToolDescriptor Descriptor { get; } = TestFactory.Descriptor("alpha");
-
-        public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default) =>
+        public ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 
-    private sealed class BetaTool: ITool
+    private sealed class BetaInvoker: IToolInvoker
     {
-        public ToolDescriptor Descriptor { get; } = TestFactory.Descriptor("beta");
-
-        public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default) =>
+        public ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

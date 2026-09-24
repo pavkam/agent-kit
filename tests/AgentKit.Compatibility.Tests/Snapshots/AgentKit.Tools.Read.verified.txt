@@ -3,7 +3,7 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Tools.Read
 {
-    public sealed class ReadFileTool : AgentKit.ITool, AgentKit.IToolInvoker
+    public sealed class ReadFileTool : AgentKit.IToolInvoker
     {
         public const string CompleteExtensionKey = "agentkit.read.complete";
         public static readonly AgentKit.ToolId Id;
@@ -11,8 +11,6 @@ namespace AgentKit.Tools.Read
         public static AgentKit.ToolsetPublication DefaultToolset { get; }
         public static AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationContext context, System.Threading.CancellationToken cancellationToken = default) { }
-        [System.Obsolete("Legacy host surface.")]
-        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ReadFileToolOptions
     {

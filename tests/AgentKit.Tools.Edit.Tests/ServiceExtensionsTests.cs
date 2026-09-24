@@ -15,7 +15,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddEditTool();
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<EditTool>();
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(EditTool.Id);
         _ = provider.GetRequiredService<IIdentifierGenerator<WorkspaceMutationId>>();
     }
 

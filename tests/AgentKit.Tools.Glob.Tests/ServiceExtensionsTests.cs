@@ -16,7 +16,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGlobTool();
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<GlobTool>();
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(GlobTool.Id);
     }
 
     [Fact]

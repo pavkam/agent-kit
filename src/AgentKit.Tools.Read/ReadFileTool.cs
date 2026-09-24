@@ -8,7 +8,7 @@ using System.Text;
 using AgentKit.Tools;
 
 /// <summary>Reads a text file through a keyed <see cref="IFileReader"/> with optional line-range selection.</summary>
-public sealed class ReadFileTool: IToolInvoker, ITool
+public sealed class ReadFileTool: IToolInvoker
 {
     /// <summary>The stable identity this tool registers under.</summary>
     public static readonly ToolId Id = new("read_file");
@@ -106,9 +106,6 @@ public sealed class ReadFileTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("read_file"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
@@ -118,21 +115,6 @@ public sealed class ReadFileTool: IToolInvoker, ITool
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
         return InvokeCoreAsync(authorization, context.AgentId, context.CallId, context.Arguments, cancellationToken);
     }
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(
-            request.Context.Authorization,
-            request.Context.AgentId,
-            request.Context.ToolCallId,
-            request.Arguments,
-            cancellationToken).AsTask();
-    }
-
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
         SecurityAuthorizationContext authorization,
         AgentId agentId,

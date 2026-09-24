@@ -13,8 +13,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddPlanTool().AddPlanTool();
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(PlanTool)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(TodoTool)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(RegisteredToolInvoker) && descriptor.ImplementationInstance is RegisteredToolInvoker marker && marker.Descriptor.Id == PlanTool.Id).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(RegisteredToolInvoker) && descriptor.ImplementationInstance is RegisteredToolInvoker marker && marker.Descriptor.Id == TodoTool.Id).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IPlanStateStore)).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<PlanId>)).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<SessionEntryId>)).ShouldBe(1);

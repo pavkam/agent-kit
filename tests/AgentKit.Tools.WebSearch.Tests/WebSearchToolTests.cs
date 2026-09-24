@@ -222,6 +222,6 @@ public sealed class WebSearchToolTests
     }
 
     private static WebSearchTool Tool(IWebSearchProvider provider, ISecurityAuthority authority, FixedSearchRequestIdGenerator? searchIds = null, WebSearchToolOptions? options = null) => new(provider, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), searchIds ?? new FixedSearchRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new WebSearchToolOptions()));
-    private static ToolInvocationRequest Request(string json) => new(TestData.Context, JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestData.Context, JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), WebSearchTool.Descriptor);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 }

@@ -16,7 +16,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddPatchTool();
         using var provider = services.BuildServiceProvider();
 
-        provider.GetServices<ITool>().Count(static tool => tool is PatchTool).ShouldBe(1);
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(PatchTool.Id);
         provider.GetServices<IIdentifierGenerator<WorkspaceMutationId>>().Count().ShouldBe(1);
     }
 

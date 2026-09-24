@@ -268,24 +268,14 @@ internal sealed class SimpleAgentPlan
         }
     }
 
-    /// <summary>
-    /// Selects the tools the model is offered: every registered tool when the tool runtime allows all of them,
-    /// otherwise only those on the allow-list, so the model never sees a tool whose call is certain to be rejected.
-    /// </summary>
-    /// <param name="tools">Every tool registered on the service collection.</param>
-    /// <param name="toolOptions">The tool runtime's authorization options.</param>
+    /// <summary>Selects every application-registered tool descriptor for conversation presentation bindings.</summary>
+    /// <param name="registrations">Every invoker registration marker on the service collection.</param>
     /// <returns>The advertised descriptors, in registration order.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="tools"/> or <paramref name="toolOptions"/> is null.</exception>
-    public static ImmutableArray<ToolDescriptor> AdvertisedTools(IEnumerable<ITool> tools, AgentToolsOptions toolOptions)
+    /// <exception cref="ArgumentNullException"><paramref name="registrations"/> is null.</exception>
+    public static ImmutableArray<ToolDescriptor> AdvertisedTools(IEnumerable<RegisteredToolInvoker> registrations)
     {
-        ArgumentNullException.ThrowIfNull(tools);
-        ArgumentNullException.ThrowIfNull(toolOptions);
-        return
-        [
-            .. tools
-                .Select(static tool => tool.Descriptor)
-                .Where(descriptor => toolOptions.AllowAllRegisteredTools || toolOptions.AllowedToolIds.Contains(descriptor.Id)),
-        ];
+        ArgumentNullException.ThrowIfNull(registrations);
+        return [.. registrations.Select(static registration => registration.Descriptor)];
     }
 
     /// <summary>Builds the immutable definition of one additional agent over the plan's shared model and profiles.</summary>

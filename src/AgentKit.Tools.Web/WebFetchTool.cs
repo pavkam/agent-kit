@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Web;
 using AgentKit.Tools;
 
 /// <summary>Fetches bounded untrusted textual web content through separately authorized resolution and send phases.</summary>
-public sealed class WebFetchTool: IToolInvoker, ITool
+public sealed class WebFetchTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -91,24 +91,10 @@ public sealed class WebFetchTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("web_fetch"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

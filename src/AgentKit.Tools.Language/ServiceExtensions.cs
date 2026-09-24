@@ -43,8 +43,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(LanguageTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, LanguageTool>());
             return services;
         }
     }

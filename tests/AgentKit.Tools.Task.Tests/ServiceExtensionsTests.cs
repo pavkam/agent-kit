@@ -13,7 +13,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddTaskTool().AddTaskTool();
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(TaskTool)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(RegisteredToolInvoker) && descriptor.ImplementationInstance is RegisteredToolInvoker marker && marker.Descriptor.Id == TaskTool.Id).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<DelegationId>)).ShouldBe(1);
     }
 

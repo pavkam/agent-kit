@@ -24,7 +24,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddWebFetchTool();
         using var provider = services.BuildServiceProvider();
 
-        provider.GetServices<ITool>().Count(static tool => tool is WebFetchTool).ShouldBe(1);
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(WebFetchTool.Id);
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddWebFetchTool();
         using var provider = services.BuildServiceProvider();
 
-        var tool = provider.GetServices<ITool>().OfType<WebFetchTool>().ShouldHaveSingleItem();
-        ((ITool) tool).Descriptor.Id.ShouldBe(WebFetchTool.Id);
+        _ = provider.GetRequiredKeyedService<IToolInvoker>(new ToolIdentity(WebFetchTool.Id, WebFetchTool.Descriptor.Version))
+            .ShouldBeOfType<WebFetchTool>();
     }
 
     private static void Apply(WebFetchToolOptions options, string property, int value)

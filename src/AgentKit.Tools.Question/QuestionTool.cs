@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Question;
 using AgentKit.Tools;
 
 /// <summary>Asks one bounded multiple-choice question through an application-owned human interaction broker.</summary>
-public sealed class QuestionTool: IToolInvoker, ITool
+public sealed class QuestionTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
@@ -113,24 +113,10 @@ public sealed class QuestionTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("question"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

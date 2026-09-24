@@ -303,7 +303,7 @@ public sealed class SkillToolPresentationFormatterTests
             captured);
     }
 
-    private static ToolInvocationRequest Request(string json) => new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
@@ -317,5 +317,5 @@ public sealed class SkillToolPresentationFormatterTests
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+        DateTimeOffset.UnixEpoch), SkillTool.Descriptor);
 }

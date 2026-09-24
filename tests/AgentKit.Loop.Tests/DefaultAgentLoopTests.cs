@@ -1887,7 +1887,7 @@ public sealed class DefaultAgentLoopTests
 
         _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
         toolInvoker.ReceivedRequests.Count.ShouldBe(1);
-        toolInvoker.ReceivedRequests[0].Context.ToolCallId.ShouldBe(callId);
+        toolInvoker.ReceivedRequests[0].CallId.ShouldBe(callId);
 
         // user message, assistant tool-call message, tool result message, final assistant message.
         result.NewMessages.Length.ShouldBe(3);
@@ -1925,18 +1925,15 @@ public sealed class DefaultAgentLoopTests
                     ? TestFactory.CompletedWithToolCall(requestId, callId, "hallucinated_tool")
                     : TestFactory.CompletedWithText(secondRequestId);
             },
-            resolvedToolHandler: static request => new ResolvedToolInvocation(
-                request.Tool,
-                ToolResultProjectionPolicyReference.Default,
-                new ToolInvocationResult(
-                    new ToolCallOutcome(
-                        ToolCallOutcomeKind.Rejected,
-                        ToolTerminalStatus.UnknownTool,
-                        SideEffectCertainty.DefinitelyNotPerformed,
-                        retryable: false,
-                        $"Tool '{request.Tool.ProviderAlias}' is not registered.",
-                        ExtensionData.Empty),
-                    [])));
+            toolHandler: static call => new ToolInvocationResult(
+                new ToolCallOutcome(
+                    ToolCallOutcomeKind.Rejected,
+                    ToolTerminalStatus.UnknownTool,
+                    SideEffectCertainty.DefinitelyNotPerformed,
+                    retryable: false,
+                    $"Tool '{call.ProviderAlias}' is not registered.",
+                    ExtensionData.Empty),
+                []));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var result = await loop.RunAsync(
@@ -2366,7 +2363,7 @@ public sealed class DefaultAgentLoopTests
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
-        invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
+        invoker.ReceivedRequests.ShouldHaveSingleItem().CallId.ShouldBe(callId);
         var terminal = observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem();
         terminal.Result.CallId.ShouldBe(callId);
         observer.Events.OfType<AgentRunToolCallStarted>().ShouldHaveSingleItem().Call.CallId.ShouldBe(callId);
@@ -2428,7 +2425,7 @@ public sealed class DefaultAgentLoopTests
         _ = result.Outcome.ShouldBeOfType<RunCancelled>();
         result.NewMessages.Length.ShouldBe(2);
         result.FinalVersion.ShouldBe(coordinator.Version);
-        invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
+        invoker.ReceivedRequests.ShouldHaveSingleItem().CallId.ShouldBe(callId);
         observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem()
             .Result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var committed = coordinator.Entries.OfType<MessageSessionEntry>()
@@ -2709,7 +2706,7 @@ public sealed class DefaultAgentLoopTests
 
         _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
-        invoker.ReceivedRequests.Count(request => request.Context.ToolCallId == callId).ShouldBeLessThanOrEqualTo(1);
+        invoker.ReceivedRequests.Count(request => request.CallId == callId).ShouldBeLessThanOrEqualTo(1);
     }
 
     [Fact]
@@ -3121,7 +3118,7 @@ public sealed class DefaultAgentLoopTests
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.NewGuid());
         var modelCalls = 0;
-        LegacyToolCallRequest? invoked = null;
+        ToolCallRequest? invoked = null;
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
@@ -3133,7 +3130,9 @@ public sealed class DefaultAgentLoopTests
         var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
-        invoked.ShouldNotBeNull().Arguments.GetProperty("rewritten").GetBoolean().ShouldBeTrue();
+        _ = invoked.ShouldNotBeNull();
+        using var arguments = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(invoked.RawArguments.AsSpan()));
+        arguments.RootElement.GetProperty("rewritten").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -3992,12 +3991,11 @@ public sealed class DefaultAgentLoopTests
 
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
-        out FakeToolInvoker toolInvoker,
+        out FakeToolExecutor toolExecutor,
         Func<LlmModelRequest, ModelAttemptResult> respond,
         int maxTurns = 8,
         ToolInvocationResult? toolResult = null,
-        Func<LegacyToolCallRequest, ToolInvocationResult>? toolHandler = null,
-        Func<LegacyToolCallRequest, ResolvedToolInvocation>? resolvedToolHandler = null,
+        Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
         ModelResponseEvent? modelEvent = null,
         IContextAssembler? contextAssembler = null,
         IRunContinuationPolicy? continuationPolicy = null,
@@ -4021,11 +4019,9 @@ public sealed class DefaultAgentLoopTests
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
-        var fakeInvoker = resolvedToolHandler is not null
-            ? new FakeToolInvoker(resolvedToolHandler)
-            : new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
-        toolInvoker = fakeInvoker;
-        var toolExecutor = new FakeToolExecutor(fakeInvoker);
+        toolExecutor = new FakeToolExecutor(
+            toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()),
+            hookDispatcher);
         var toolCatalogCaptures = new FakeToolRunCatalogCaptureFactory();
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
@@ -4093,7 +4089,7 @@ public sealed class DefaultAgentLoopTests
             coordinator,
             new FakeSecurityProfileSelector(),
             contextAssembler ?? ContextAssemblerTestSupport.CreateDefault(),
-            new FakeToolExecutor(new FakeToolInvoker(_ => TestFactory.SuccessResult())),
+            new FakeToolExecutor(_ => TestFactory.SuccessResult()),
             new FakeToolRunCatalogCaptureFactory(),
             catalog,
             selector,

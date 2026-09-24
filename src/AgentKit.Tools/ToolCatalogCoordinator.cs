@@ -11,9 +11,8 @@ namespace AgentKit.Tools;
 /// transferring ownership to a validated <see cref="ToolCatalogCapture"/>. A merge rejection or schema/capability
 /// rejection releases every discovered source before returning; only a successful capture keeps the source graph alive,
 /// now owned by the returned catalog. This type performs no alias policy, activation lookup, or tool invocation, and it
-/// is not yet the public <c>IToolCatalog.CaptureAsync</c> surface (workstream 4, chunk C10b promotes it).
 /// </remarks>
-internal sealed class ToolCatalogCoordinator
+public sealed class ToolCatalogCoordinator: IToolCatalog
 {
     private readonly ToolCatalogDiscovery _discovery;
     private readonly ToolCatalogMerger _merger;
@@ -63,8 +62,26 @@ internal sealed class ToolCatalogCoordinator
     /// <returns>A captured catalog, a merge rejection, or a schema/capability rejection; the first two release every discovered source before returning.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="OperationCanceledException">The caller cancels before a terminal result is produced; every discovered source is released first.</exception>
+    /// <inheritdoc/>
+    public async ValueTask<IToolCatalogCapture> CaptureAsync(ToolDiscoveryRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = await CaptureInternalAsync(request, cancellationToken).ConfigureAwait(false);
+        return result switch
+        {
+            ToolCatalogCoordinatorCaptured captured => captured.Catalog,
+            ToolCatalogCoordinatorMergeRejected => throw new InvalidOperationException("Tool catalog merge rejected the discovered contributions."),
+            ToolCatalogCoordinatorSchemaRejected schemaRejected => throw new InvalidOperationException(
+                $"Tool schema preflight rejected '{schemaRejected.Tool.Id}'."),
+            _ => throw new InvalidOperationException("Tool catalog capture returned an unsupported result."),
+        };
+    }
+
+    /// <summary>Discovers, merges, and preflights one complete catalog attempt for the supplied request.</summary>
+    /// <param name="request">The nonnull coherent run-bound discovery request.</param>
+    /// <param name="cancellationToken">Cancellation checked between stages; already-owned sources are always released before the token's exception propagates.</param>
+    /// <returns>A captured catalog, a merge rejection, or a schema/capability rejection; the first two release every discovered source before returning.</returns>
     /// <remarks>A successful capture's sole owner is the returned <see cref="ToolCatalogCoordinatorCaptured.Catalog"/>; this coordinator retains nothing afterward.</remarks>
-    internal async ValueTask<ToolCatalogCoordinatorResult> CaptureAsync(ToolDiscoveryRequest request, CancellationToken cancellationToken = default)
+    internal async ValueTask<ToolCatalogCoordinatorResult> CaptureInternalAsync(ToolDiscoveryRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         using var observation = new ToolCatalogCoordinationObservation(request, _timeProvider, _logger);

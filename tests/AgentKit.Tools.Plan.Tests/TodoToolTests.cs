@@ -18,11 +18,11 @@ public sealed class TodoToolTests
         var authority = new RecordingSecurityAuthority();
         var tool = new TodoTool(store, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
         var result = await tool.InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
-        ((ITool) tool).Descriptor.Id.ShouldBe(TodoTool.Id);
+        TodoTool.Descriptor.Id.ShouldBe(TodoTool.Id);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         _ = store.Reads.ShouldHaveSingleItem();
         authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(PlanSecurityBinding.ReadFingerprint(TestData.Context.ToAddress()));
     }
 
-    private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static ToolInvocationContext Request(string json, bool includeSession = true) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), TodoTool.Descriptor);
 }

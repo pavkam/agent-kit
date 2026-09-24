@@ -8,7 +8,7 @@ using AgentKit.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>Lists one deterministic, snapshot-bound page of child paths from an authorized directory.</summary>
-public sealed class ListDirectoryTool: IToolInvoker, ITool
+public sealed class ListDirectoryTool: IToolInvoker
 {
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("list_directory");
@@ -107,10 +107,6 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
     }
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public ValueTask<ToolInvocationResult> InvokeAsync(
             ToolInvocationContext context,
             CancellationToken cancellationToken = default)
@@ -121,21 +117,6 @@ public sealed class ListDirectoryTool: IToolInvoker, ITool
         return InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
     }
 
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(
-            request.Context.Authorization,
-            request.Context.ToolCallId,
-            request.Arguments,
-            cancellationToken).AsTask();
-    }
-
-    [Obsolete("Legacy host surface.")]
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
             SecurityAuthorizationContext authorization,
             ToolCallId callId,

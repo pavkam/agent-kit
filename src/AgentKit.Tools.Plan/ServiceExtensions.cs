@@ -52,10 +52,7 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(TodoTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, PlanTool>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, PlanToolPresentationFormatter>());
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, TodoTool>());
             return services;
         }
     }

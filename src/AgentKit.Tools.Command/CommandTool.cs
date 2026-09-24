@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Command;
 using AgentKit.Tools;
 
 /// <summary>Runs one explicitly declared shell command through exact authorization and a required sandbox.</summary>
-public sealed class CommandTool: IToolInvoker, ITool
+public sealed class CommandTool: IToolInvoker
 {
     private static readonly UTF8Encoding _strictUtf8 = new(false, true);
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
@@ -56,7 +56,6 @@ public sealed class CommandTool: IToolInvoker, ITool
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
-    [Obsolete("Legacy host surface.")]
     public CommandTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,
@@ -118,24 +117,10 @@ public sealed class CommandTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("command"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

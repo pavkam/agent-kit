@@ -110,7 +110,7 @@ public sealed class ListDirectoryToolTests
 
         var result = await InvokeAsync(
             tool,
-            /*lang=json,strict*/ """{"cursor":{"snapshot":"sha256:x","next_index":3}}""",
+            /*lang=json,strict*/ """{"path":null,"cursor":{"snapshot":"sha256:x","next_index":3}}""",
             TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
@@ -179,7 +179,7 @@ public sealed class ListDirectoryToolTests
         };
         var tool = CreateTool(reader, new RecordingSecurityAuthority());
 
-        var result = await InvokeAsync(tool, "{}", TestContext.Current.CancellationToken);
+        var result = await InvokeAsync(tool, /*lang=json,strict*/ """{"path":null}""", TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         var status = result.Outcome.Extensions.Values["agentkit.directory.status"];

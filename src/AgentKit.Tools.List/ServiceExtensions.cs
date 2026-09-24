@@ -16,7 +16,7 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Registers the spec-shaped <see cref="IToolInvoker"/> through <see cref="Tools.ServiceExtensions.AddToolInvoker{TInvoker}"/>,
-        /// publishes <see cref="ListDirectoryTool.DefaultToolset"/>, and retains a legacy <see cref="ITool"/> registration until workstream 4
+        /// publishes <see cref="ListDirectoryTool.DefaultToolset"/>.
         /// chunk C10 removes the reduced catalog path.
         /// </remarks>
         public IServiceCollection AddListTool(Action<ListDirectoryToolOptions>? configure = null)
@@ -47,8 +47,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(ListDirectoryTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, ListDirectoryTool>());
             return services;
         }
     }

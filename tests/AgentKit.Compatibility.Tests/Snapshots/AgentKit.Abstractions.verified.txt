@@ -4989,10 +4989,6 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface ILegacyToolCallOrchestrator
-    {
-        System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.LegacyToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
-    }
     public interface ILlmModel
     {
         AgentKit.ModelAlias Alias { get; }
@@ -5333,24 +5329,13 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.ITemporaryFileLease> CreateAsync(AgentKit.AuthorizedTemporaryFileCreation operation, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface ITool
-    {
-        AgentKit.ToolDescriptor Descriptor { get; }
-        System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default);
-    }
     public interface IToolArgumentValidator
     {
         System.Threading.Tasks.ValueTask<AgentKit.ToolArgumentValidationResult> ValidateAsync(AgentKit.ResolvedToolCall resolvedCall, AgentKit.ToolSchemaLimits limits, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IToolAuthorizer
-    {
-        System.Threading.Tasks.ValueTask<AgentKit.ToolAuthorizationDecision> AuthorizeAsync(AgentKit.ToolAuthorizationRequest request, System.Threading.CancellationToken cancellationToken = default);
-    }
     public interface IToolCatalog
     {
-        System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
-        bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool);
-        bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor);
+        System.Threading.Tasks.ValueTask<AgentKit.IToolCatalogCapture> CaptureAsync(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolCatalogCapture : System.IAsyncDisposable
     {
@@ -5991,14 +5976,6 @@ namespace AgentKit
     {
         public LegacyFileWritten(long bytesWritten) { }
         public long BytesWritten { get; init; }
-    }
-    public sealed class LegacyToolCallRequest : System.IEquatable<AgentKit.LegacyToolCallRequest>
-    {
-        public LegacyToolCallRequest(AgentKit.ToolReference tool, AgentKit.ToolExecutionContext context, System.Text.Json.JsonElement arguments, System.DateTimeOffset requestedAt) { }
-        public System.Text.Json.JsonElement Arguments { get; init; }
-        public AgentKit.ToolExecutionContext Context { get; init; }
-        public System.DateTimeOffset RequestedAt { get; init; }
-        public AgentKit.ToolReference Tool { get; init; }
     }
     public sealed class LiteralInstructionSource : AgentKit.InstructionSource, System.IEquatable<AgentKit.LiteralInstructionSource>
     {
@@ -7469,10 +7446,10 @@ namespace AgentKit
     }
     public sealed class ProcessRunResult : System.IEquatable<AgentKit.ProcessRunResult>
     {
-        public ProcessRunResult(AgentKit.ProcessRunStatus status, int? exitCode, System.Collections.Immutable.ImmutableArray<byte> standardOutputTail, System.Collections.Immutable.ImmutableArray<byte> standardErrorTail, long totalStandardOutputBytes, long totalStandardErrorBytes, bool standardOutputTruncated, bool standardErrorTruncated, AgentKit.ProcessSideEffectCertainty effectCertainty, string? safeMessage, AgentKit.ArtifactReference? standardOutputArtifact = null, AgentKit.ArtifactReference? standardErrorArtifact = null) { }
-        public AgentKit.ProcessSideEffectCertainty EffectCertainty { get; }
+        public ProcessRunResult(AgentKit.ProcessRunStatus status, int? exitCode, System.Collections.Immutable.ImmutableArray<byte> standardOutputTail, System.Collections.Immutable.ImmutableArray<byte> standardErrorTail, long totalStandardOutputBytes, long totalStandardErrorBytes, bool standardOutputTruncated, bool standardErrorTruncated, AgentKit.SideEffectCertainty sideEffectCertainty, string? safeMessage, AgentKit.ArtifactReference? standardOutputArtifact = null, AgentKit.ArtifactReference? standardErrorArtifact = null) { }
         public int? ExitCode { get; }
         public string? SafeMessage { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
         public AgentKit.ArtifactReference? StandardErrorArtifact { get; }
         public System.Collections.Immutable.ImmutableArray<byte> StandardErrorTail { get; }
         public bool StandardErrorTruncated { get; }
@@ -7548,12 +7525,6 @@ namespace AgentKit
         public static AgentKit.ContentHash FingerprintBytes(System.ReadOnlySpan<byte> content) { }
         public static string FingerprintText(string value) { }
         public static System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> Resources(AgentKit.ResolvedProcessIntent intent) { }
-    }
-    public enum ProcessSideEffectCertainty
-    {
-        NotStarted = 0,
-        MayHaveOccurred = 1,
-        Completed = 2,
     }
     public enum ProcessSideEffectClass
     {
@@ -8123,13 +8094,6 @@ namespace AgentKit
         public AgentKit.TurnId TurnId { get; }
         public bool Equals(AgentKit.ResolvedToolCall? other) { }
         public override int GetHashCode() { }
-    }
-    public sealed class ResolvedToolInvocation : System.IEquatable<AgentKit.ResolvedToolInvocation>
-    {
-        public ResolvedToolInvocation(AgentKit.ToolReference tool, AgentKit.ToolResultProjectionPolicyReference projectionPolicy, AgentKit.ToolInvocationResult invocation) { }
-        public AgentKit.ToolInvocationResult Invocation { get; init; }
-        public AgentKit.ToolResultProjectionPolicyReference ProjectionPolicy { get; init; }
-        public AgentKit.ToolReference Tool { get; init; }
     }
     public sealed class RetryContinuationBoundary : AgentKit.RunContinuationBoundary, System.IEquatable<AgentKit.RetryContinuationBoundary>
     {
@@ -10042,22 +10006,6 @@ namespace AgentKit
         public ToolArgumentsContentDelta(AgentKit.ToolCallId toolCallId, string jsonFragment) { }
         public string JsonFragment { get; init; }
         public AgentKit.ToolCallId ToolCallId { get; init; }
-    }
-    public abstract class ToolAuthorizationDecision : System.IEquatable<AgentKit.ToolAuthorizationDecision> { }
-    public sealed class ToolAuthorizationDenied : AgentKit.ToolAuthorizationDecision, System.IEquatable<AgentKit.ToolAuthorizationDenied>
-    {
-        public ToolAuthorizationDenied(string safeMessage) { }
-        public string SafeMessage { get; init; }
-    }
-    public sealed class ToolAuthorizationGranted : AgentKit.ToolAuthorizationDecision, System.IEquatable<AgentKit.ToolAuthorizationGranted>
-    {
-        public ToolAuthorizationGranted() { }
-    }
-    public sealed class ToolAuthorizationRequest : System.IEquatable<AgentKit.ToolAuthorizationRequest>
-    {
-        public ToolAuthorizationRequest(AgentKit.ToolExecutionContext context, AgentKit.ToolDescriptor descriptor) { }
-        public AgentKit.ToolExecutionContext Context { get; init; }
-        public AgentKit.ToolDescriptor Descriptor { get; init; }
     }
     public sealed class ToolBatch : System.IEquatable<AgentKit.ToolBatch>
     {

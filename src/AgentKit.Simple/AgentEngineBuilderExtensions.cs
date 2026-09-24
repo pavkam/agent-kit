@@ -67,7 +67,7 @@ public static class AgentEngineBuilderExtensions
             _ = builder.Services.AddAllowAllSecurityPolicy();
             _ = builder.Services.AddInMemorySessionStore();
             _ = builder.Services.AddInMemorySessionDirectory(new ComponentId("agentkit.simple.session"));
-            _ = builder.Services.AddAgentTools(static o => o.AllowAllRegisteredTools = true);
+            _ = builder.Services.AddAgentTools();
             _ = builder.Services.Configure<AgentPermissionOptions>(static o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
             return builder;
         }
@@ -418,7 +418,7 @@ public static class AgentEngineBuilderExtensions
         /// <remarks>
         /// Each key must already be published through <see cref="Tools.ServiceExtensions.AddToolset"/> or a tool
         /// package registration. Tool definitions advertised to the model still come from registered
-        /// <see cref="ITool"/> instances until workstream 4 chunk C7b removes the legacy surface.
+        /// registered tool invokers through toolset selection on the agent definition.
         /// </remarks>
         public AgentEngineBuilder WithTools(params ToolsetKey[] toolsets)
         {
@@ -646,7 +646,7 @@ public static class AgentEngineBuilderExtensions
         /// Every agent the tool is advertised to may delegate to any agent published on the engine (the default one
         /// and each <see cref="AddAgent"/>). To keep a specialist from delegating further, give it
         /// <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> <c>false</c> or exclude <c>task</c> through
-        /// <c>AgentToolsOptions.AllowedToolIds</c>. The child's turn budget is the narrower of the request and the
+        /// toolset membership on the child definition. The child's turn budget is the narrower of the request and the
         /// target's own limit, and only its final answer, bounded, flows back to the parent.
         /// </remarks>
         public AgentEngineBuilder WithDelegation(Action<TaskToolOptions>? configure = null)
@@ -842,10 +842,10 @@ public static class AgentEngineBuilderExtensions
         // One conversation over the same plan, advertising every registered tool with its captured descriptor.
         _ = services.AddConversationSession(static _ => { });
         _ = services.AddOptions<ConversationSessionOptions>()
-            .Configure<SimpleAgentPlan, IEnumerable<ITool>, IOptions<AgentToolsOptions>>(static (options, current, tools, toolOptions) =>
+            .Configure<SimpleAgentPlan, IEnumerable<RegisteredToolInvoker>>(static (options, current, registrations) =>
             {
                 current.Apply(options);
-                var descriptors = SimpleAgentPlan.AdvertisedTools(tools, toolOptions.Value);
+                var descriptors = SimpleAgentPlan.AdvertisedTools(registrations);
                 var definitions = descriptors.ToLlmToolDefinitions();
                 for (var index = 0; index < descriptors.Length; index++)
                 {

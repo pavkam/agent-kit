@@ -8,7 +8,7 @@ using AgentKit.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>Performs exact, version-conditional UTF-8 text replacement with atomic target visibility.</summary>
-public sealed class EditTool: IToolInvoker, ITool
+public sealed class EditTool: IToolInvoker
 {
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("edit");
@@ -103,24 +103,10 @@ public sealed class EditTool: IToolInvoker, ITool
         [new ToolAliasAssignment(new ToolAlias("edit"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    ToolDescriptor ITool.Descriptor => Descriptor;
-
-    /// <inheritdoc/>
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
         InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-
-    /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
-    public Task<ToolInvocationResult> InvokeAsync(
-        ToolInvocationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return InvokeCoreAsync(request.Context, request.Arguments, cancellationToken).AsTask();
-    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

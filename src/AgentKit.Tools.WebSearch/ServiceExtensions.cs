@@ -42,8 +42,6 @@ public static class ServiceExtensions
             {
                 _ = services.AddToolset(WebSearchTool.DefaultToolset);
             }
-
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WebSearchTool>());
             return services;
         }
 

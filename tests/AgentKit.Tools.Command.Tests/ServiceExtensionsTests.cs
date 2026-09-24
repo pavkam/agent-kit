@@ -16,7 +16,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCommandTool();
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<CommandTool>();
+        provider.GetServices<RegisteredToolInvoker>().ShouldHaveSingleItem().Descriptor.Id.ShouldBe(CommandTool.Id);
     }
 
     [Fact]

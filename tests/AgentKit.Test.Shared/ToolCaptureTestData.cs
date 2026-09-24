@@ -83,6 +83,72 @@ public static class ToolCaptureTestData
             new ModelCapabilities(true, true, true, true, false, false, false, ExtensionData.Empty));
     }
 
+    /// <summary>Maps a legacy <see cref="ToolInvocationRequest"/> test shape onto a spec <see cref="ToolInvocationContext"/>.</summary>
+    /// <param name="request">The legacy request whose execution context and arguments are preserved.</param>
+    /// <param name="tool">The resolved descriptor for the invoker under test.</param>
+    /// <returns>A structurally valid context whose grant retains authorization evidence.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="tool"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The request correlation is not in-run.</exception>
+    public static ToolInvocationContext FromLegacyRequest(ToolInvocationRequest request, ToolDescriptor tool)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(tool);
+        var execution = request.Context;
+        var correlation = execution.Correlation as InRunOperationCorrelation
+            ?? throw new InvalidOperationException("Legacy tool tests require in-run operation correlation.");
+        var turnId = correlation.TurnId ?? new TurnId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        var invocationCorrelation = correlation.TurnId.HasValue
+            ? correlation
+            : new InRunOperationCorrelation(correlation.OperationId, correlation.RunId, turnId);
+        var invocationScope = new SecurityAuthorizationScope(
+            execution.AgentId,
+            execution.SessionId,
+            invocationCorrelation);
+        var authorization = execution.Authorization;
+        var alignedAuthorization = new SecurityAuthorizationContext(
+            authorization.ProfileKey,
+            authorization.ProfileVersion,
+            authorization.PolicySnapshot,
+            authorization.AuthorityKey,
+            authorization.AgentDefinitionRevision,
+            authorization.ConfigurationVersion,
+            invocationScope,
+            authorization.Identity);
+        var grant = new SecurityGrant(
+            new GrantId(Guid.Parse("77777777-7777-7777-7777-777777777777")),
+            new SecurityRequestId(Guid.Parse("88888888-8888-8888-8888-888888888888")),
+            invocationScope,
+            execution.Identity,
+            alignedAuthorization,
+            new ComponentId("tool"),
+            SecurityOperationKind.StateRead,
+            SecurityEffect.Observe,
+            [new ProtectedResource(ProtectedResourceKind.ApplicationState, $"tool:{tool.Id}")],
+            new InputFingerprint("sha256:input"),
+            execution.Authorization.PolicySnapshot.Version,
+            new SecurityRevocationVersion(1),
+            request.RequestedAt,
+            request.RequestedAt.AddMinutes(1),
+            1);
+        return new ToolInvocationContext(
+            execution.AgentId,
+            execution.SessionId ?? throw new InvalidOperationException("Legacy tool tests require a session id."),
+            correlation.RunId,
+            turnId,
+            correlation.OperationId,
+            execution.ToolCallId,
+            tool,
+            tool.Version,
+            request.Arguments,
+            grant,
+            attempt: 1,
+            request.RequestedAt,
+            request.RequestedAt,
+            request.RequestedAt.AddMinutes(1),
+            NoopProgressReporter.Instance,
+            execution.SessionProfile);
+    }
+
     /// <summary>Builds a minimal spec-shaped invocation context for capture and lease tests.</summary>
     /// <param name="tool">The resolved descriptor, or a deterministic default when null.</param>
     /// <returns>A structurally valid context whose grant retains authorization evidence.</returns>
@@ -98,6 +164,7 @@ public static class ToolCaptureTestData
         var correlation = new InRunOperationCorrelation(operationId, runId, turnId);
         var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var authorization = TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
+        var sessionProfile = TestSecurityEvidence.SessionProfile();
         using var arguments = JsonDocument.Parse("{}");
         var grant = new SecurityGrant(
             new GrantId(Guid.Parse("77777777-7777-7777-7777-777777777777")),
@@ -130,7 +197,8 @@ public static class ToolCaptureTestData
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch.AddMinutes(1),
-            NoopProgressReporter.Instance);
+            NoopProgressReporter.Instance,
+            sessionProfile);
     }
 
     private sealed class NoopProgressReporter: IToolProgressReporter
