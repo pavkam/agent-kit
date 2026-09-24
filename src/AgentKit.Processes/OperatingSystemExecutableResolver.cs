@@ -43,6 +43,7 @@ internal sealed class OperatingSystemExecutableResolver: IExecutableResolver
         return new ExecutableResolved(new ResolvedProcessStart(
             request,
             new ResolvedExecutable(intent.AbsoluteExecutablePath, intent.ExecutableFingerprint),
+            intent.AbsoluteWorkspaceRoot,
             intent.AbsoluteWorkingDirectory,
             intent.EnvironmentFingerprint,
             intent.StandardInputFingerprint));

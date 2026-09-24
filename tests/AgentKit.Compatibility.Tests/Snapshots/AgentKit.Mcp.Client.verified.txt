@@ -3,6 +3,27 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Mcp.Client
 {
+    public sealed class McpCapabilityProfileOptions
+    {
+        public McpCapabilityProfileOptions() { }
+        public System.Collections.Generic.IList<AgentKit.Mcp.McpEndpointKey> EndpointKeys { get; }
+    }
+    public sealed class McpCapabilityProfileRegistration : System.IEquatable<AgentKit.Mcp.Client.McpCapabilityProfileRegistration>
+    {
+        public McpCapabilityProfileRegistration(AgentKit.CapabilityProfileId profileId) { }
+        public AgentKit.CapabilityProfileId ProfileId { get; }
+    }
+    public sealed class McpClientOptions
+    {
+        public McpClientOptions() { }
+        public System.TimeSpan HandshakeTimeout { get; set; }
+        public int MaximumFrameBytes { get; set; }
+        public int MaximumInFlightRequests { get; set; }
+        public int MaximumMessageBytes { get; set; }
+        public System.TimeSpan RequestTimeout { get; set; }
+        public System.TimeSpan ShutdownTimeout { get; set; }
+        public AgentKit.Mcp.Client.McpUnknownNotificationPolicy UnknownNotificationPolicy { get; set; }
+    }
     public sealed class McpClientToolCatalogSnapshot : System.IEquatable<AgentKit.Mcp.Client.McpClientToolCatalogSnapshot>
     {
         public McpClientToolCatalogSnapshot(AgentKit.Mcp.McpCatalogVersion version, AgentKit.Mcp.McpProtocolVersion protocolVersion, System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.Client.McpRemoteToolDescriptor> tools) { }
@@ -16,6 +37,17 @@ namespace AgentKit.Mcp.Client
         public static AgentKit.Mcp.Client.McpClientVersionPolicy Automatic { get; }
         public static AgentKit.Mcp.Client.McpClientVersionPolicy RequireAtLeast(AgentKit.Mcp.McpProtocolVersion version) { }
     }
+    public sealed class McpEndpointRegistration : System.IEquatable<AgentKit.Mcp.Client.McpEndpointRegistration>
+    {
+        public McpEndpointRegistration(AgentKit.Mcp.McpEndpointKey key) { }
+        public AgentKit.Mcp.McpEndpointKey Key { get; }
+    }
+    public sealed class McpHttpEndpointOptions
+    {
+        public McpHttpEndpointOptions() { }
+        public AgentKit.Mcp.McpAuthenticationReference? Authentication { get; set; }
+        public System.Uri? Endpoint { get; set; }
+    }
     [System.Serializable]
     public sealed class McpProtocolVersionBelowMinimumException : System.Exception
     {
@@ -28,6 +60,12 @@ namespace AgentKit.Mcp.Client
         public McpRemoteToolDescriptor(AgentKit.Mcp.McpToolName name, AgentKit.ToolVersion version) { }
         public AgentKit.Mcp.McpToolName Name { get; }
         public AgentKit.ToolVersion Version { get; }
+    }
+    public sealed class McpStdioEndpointOptions
+    {
+        public McpStdioEndpointOptions() { }
+        public System.Collections.Generic.IList<string> Arguments { get; }
+        public string Command { get; set; }
     }
     public sealed class McpToolClientFactory<TTools>
         where TTools :  class
@@ -59,10 +97,28 @@ namespace AgentKit.Mcp.Client
         public McpToolInvocationException(AgentKit.Mcp.McpToolName toolName, string message) { }
         public AgentKit.Mcp.McpToolName ToolName { get; }
     }
+    public enum McpUnknownNotificationPolicy
+    {
+        IgnoreAndDiagnose = 0,
+        FailSession = 1,
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpClient(System.Action<AgentKit.Mcp.Client.McpClientOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpStdioEndpoint(AgentKit.Mcp.McpEndpointKey key, System.Action<AgentKit.Mcp.Client.McpStdioEndpointOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpStdioEndpoint(AgentKit.Mcp.McpEndpointKey key, System.Action<AgentKit.Mcp.Client.McpStdioEndpointOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpHttpEndpoint(AgentKit.Mcp.McpEndpointKey key, System.Action<AgentKit.Mcp.Client.McpHttpEndpointOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpHttpEndpoint(AgentKit.Mcp.McpEndpointKey key, System.Action<AgentKit.Mcp.Client.McpHttpEndpointOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpCapabilityProfile(AgentKit.CapabilityProfileId profileId, System.Action<AgentKit.Mcp.Client.McpCapabilityProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpCapabilityProfile(AgentKit.CapabilityProfileId profileId, System.Action<AgentKit.Mcp.Client.McpCapabilityProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpClientSessionFactory<TFactory>()
+                where TFactory :  class, AgentKit.Mcp.IMcpClientSessionFactory { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpEndpointCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.Mcp.IMcpEndpointCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMcpCapabilityProfileCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.Mcp.IMcpCapabilityProfileCatalog { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpToolClient<TTools>()
                 where TTools :  class { }
         }

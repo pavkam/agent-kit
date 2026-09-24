@@ -28,6 +28,7 @@ namespace AgentKit.Tools.Web
         public int MaximumHeaderCharacters { get; set; }
         public int MaximumHeaderCount { get; set; }
         public int MaximumRedirects { get; set; }
+        public long MaximumRequestBytes { get; set; }
         public long MaximumResponseBytes { get; set; }
         public System.TimeSpan MaximumTimeout { get; set; }
         public int MaximumUrlCharacters { get; set; }

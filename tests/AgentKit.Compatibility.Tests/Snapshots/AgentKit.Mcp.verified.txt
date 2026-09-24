@@ -2,11 +2,53 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Mcp
 {
+    public sealed class AuthorizedMcpRequest : System.IEquatable<AgentKit.Mcp.AuthorizedMcpRequest>
+    {
+        public AuthorizedMcpRequest(AgentKit.Mcp.McpRequest request, AgentKit.SecurityGrant grant) { }
+        public AgentKit.SecurityGrant Grant { get; }
+        public AgentKit.Mcp.McpRequest Request { get; }
+    }
+    public interface IMcpCapabilityProfileCatalog
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpCapabilityProfileResolution> ResolveAsync(AgentKit.AgentCapabilityReference capability, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IMcpClientSession : System.IAsyncDisposable
+    {
+        AgentKit.Mcp.McpSessionId Id { get; }
+        AgentKit.Mcp.McpSessionState State { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpCatalogSnapshot> GetCatalogAsync(System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpInitializeResult> InitializeAsync(System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpResponse> InvokeAsync(AgentKit.Mcp.AuthorizedMcpRequest request, System.Threading.CancellationToken cancellationToken);
+        System.Collections.Generic.IAsyncEnumerable<AgentKit.Mcp.McpNotification> ReadNotificationsAsync(System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IMcpClientSessionFactory
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.IMcpClientSession> OpenAsync(AgentKit.Mcp.McpClientOpenRequest request, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IMcpEndpointCatalog
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpEndpointResolution> ResolveAsync(AgentKit.Mcp.McpEndpointKey key, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IMcpTransport : System.IAsyncDisposable { }
+    public interface IMcpTransportFactory
+    {
+        System.Type TransportProfileType { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IMcpTransportFactoryCatalog
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportFactoryResolution> ResolveAsync(AgentKit.Mcp.McpTransportProfile transportProfile, System.Threading.CancellationToken cancellationToken);
+    }
     public sealed class McpAuthenticationReference : System.IEquatable<AgentKit.Mcp.McpAuthenticationReference>
     {
         public McpAuthenticationReference(string credentialProfileKey, string audience) { }
         public string Audience { get; }
         public string CredentialProfileKey { get; }
+    }
+    public sealed class McpCancelledNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpCancelledNotification>
+    {
+        public McpCancelledNotification(AgentKit.Mcp.McpSessionId sessionId, AgentKit.Mcp.McpRequestId requestId) { }
+        public AgentKit.Mcp.McpRequestId RequestId { get; }
     }
     public static class McpCapabilityIds
     {
@@ -22,11 +64,54 @@ namespace AgentKit.Mcp
         public bool Equals(AgentKit.Mcp.McpCapabilityProfile? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class McpCapabilityProfileNotFound : AgentKit.Mcp.McpCapabilityProfileResolution, System.IEquatable<AgentKit.Mcp.McpCapabilityProfileNotFound>
+    {
+        public McpCapabilityProfileNotFound(AgentKit.CapabilityProfileId profileId) { }
+        public AgentKit.CapabilityProfileId ProfileId { get; }
+    }
+    public sealed class McpCapabilityProfileNotSupported : AgentKit.Mcp.McpCapabilityProfileResolution, System.IEquatable<AgentKit.Mcp.McpCapabilityProfileNotSupported>
+    {
+        public McpCapabilityProfileNotSupported(AgentKit.CapabilityId capabilityId) { }
+        public AgentKit.CapabilityId CapabilityId { get; }
+    }
+    public abstract class McpCapabilityProfileResolution : System.IEquatable<AgentKit.Mcp.McpCapabilityProfileResolution> { }
+    public sealed class McpCapabilityProfileResolutionFailed : AgentKit.Mcp.McpCapabilityProfileResolution, System.IEquatable<AgentKit.Mcp.McpCapabilityProfileResolutionFailed>
+    {
+        public McpCapabilityProfileResolutionFailed(AgentKit.CapabilityProfileId profileId, string safeMessage) { }
+        public AgentKit.CapabilityProfileId ProfileId { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpCapabilityProfileResolved : AgentKit.Mcp.McpCapabilityProfileResolution, System.IEquatable<AgentKit.Mcp.McpCapabilityProfileResolved>
+    {
+        public McpCapabilityProfileResolved(AgentKit.Mcp.McpCapabilityProfile profile) { }
+        public AgentKit.Mcp.McpCapabilityProfile Profile { get; }
+    }
     public readonly struct McpCapabilityProfileRevision : System.IEquatable<AgentKit.Mcp.McpCapabilityProfileRevision>
     {
         public McpCapabilityProfileRevision(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class McpCapabilitySet : System.IEquatable<AgentKit.Mcp.McpCapabilitySet>
+    {
+        public McpCapabilitySet(bool tools = false, bool resources = false, bool prompts = false, bool roots = false, bool sampling = false, bool elicitation = false, bool logging = false) { }
+        public bool Elicitation { get; }
+        public bool Logging { get; }
+        public bool Prompts { get; }
+        public bool Resources { get; }
+        public bool Roots { get; }
+        public bool Sampling { get; }
+        public bool Tools { get; }
+    }
+    public sealed class McpCatalogSnapshot : System.IEquatable<AgentKit.Mcp.McpCatalogSnapshot>
+    {
+        public McpCatalogSnapshot(AgentKit.Mcp.McpSessionId sessionId, AgentKit.Mcp.McpCatalogVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> tools, System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpResourceDescriptor> resources, System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpPromptDescriptor> prompts, AgentKit.Mcp.McpCapabilitySet capabilities) { }
+        public AgentKit.Mcp.McpCapabilitySet Capabilities { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpPromptDescriptor> Prompts { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpResourceDescriptor> Resources { get; }
+        public AgentKit.Mcp.McpSessionId SessionId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Tools { get; }
+        public AgentKit.Mcp.McpCatalogVersion Version { get; }
     }
     public readonly struct McpCatalogVersion : System.IEquatable<AgentKit.Mcp.McpCatalogVersion>
     {
@@ -40,6 +125,11 @@ namespace AgentKit.Mcp
         public AgentKit.Mcp.McpCapabilityProfile CapabilityProfile { get; }
         public AgentKit.Mcp.McpEndpoint Endpoint { get; }
         public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+    }
+    public sealed class McpElicitationCreateRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpElicitationCreateRequest>
+    {
+        public McpElicitationCreateRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, System.Text.Json.JsonDocument payload) { }
+        public System.Text.Json.JsonDocument Payload { get; }
     }
     public sealed class McpEndpoint : System.IEquatable<AgentKit.Mcp.McpEndpoint>
     {
@@ -66,6 +156,23 @@ namespace AgentKit.Mcp
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class McpEndpointNotFound : AgentKit.Mcp.McpEndpointResolution, System.IEquatable<AgentKit.Mcp.McpEndpointNotFound>
+    {
+        public McpEndpointNotFound(AgentKit.Mcp.McpEndpointKey key) { }
+        public AgentKit.Mcp.McpEndpointKey Key { get; }
+    }
+    public abstract class McpEndpointResolution : System.IEquatable<AgentKit.Mcp.McpEndpointResolution> { }
+    public sealed class McpEndpointResolutionFailed : AgentKit.Mcp.McpEndpointResolution, System.IEquatable<AgentKit.Mcp.McpEndpointResolutionFailed>
+    {
+        public McpEndpointResolutionFailed(AgentKit.Mcp.McpEndpointKey key, string safeMessage) { }
+        public AgentKit.Mcp.McpEndpointKey Key { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpEndpointResolved : AgentKit.Mcp.McpEndpointResolution, System.IEquatable<AgentKit.Mcp.McpEndpointResolved>
+    {
+        public McpEndpointResolved(AgentKit.Mcp.McpEndpoint endpoint) { }
+        public AgentKit.Mcp.McpEndpoint Endpoint { get; }
+    }
     public readonly struct McpEndpointRevision : System.IEquatable<AgentKit.Mcp.McpEndpointRevision>
     {
         public McpEndpointRevision(long value) { }
@@ -77,9 +184,57 @@ namespace AgentKit.Mcp
         public McpHttpTransportProfile(System.Uri endpoint) { }
         public System.Uri Endpoint { get; }
     }
+    public sealed class McpInitializeResult : System.IEquatable<AgentKit.Mcp.McpInitializeResult>
+    {
+        public McpInitializeResult(AgentKit.Mcp.McpProtocolVersion negotiatedVersion, AgentKit.Mcp.McpCapabilitySet serverCapabilities, string? serverName = null, string? serverVersion = null) { }
+        public AgentKit.Mcp.McpProtocolVersion NegotiatedVersion { get; }
+        public AgentKit.Mcp.McpCapabilitySet ServerCapabilities { get; }
+        public string? ServerName { get; }
+        public string? ServerVersion { get; }
+    }
+    public sealed class McpLoggingMessageNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpLoggingMessageNotification>
+    {
+        public McpLoggingMessageNotification(AgentKit.Mcp.McpSessionId sessionId, string level, string message, string? loggerName = null) { }
+        public string Level { get; }
+        public string? LoggerName { get; }
+        public string Message { get; }
+    }
     public static class McpMetadataKeys
     {
         public const string ToolContractVersion = "com.agentkit/toolContractVersion";
+    }
+    public abstract class McpNotification : System.IEquatable<AgentKit.Mcp.McpNotification>
+    {
+        public AgentKit.Mcp.McpSessionId SessionId { get; }
+    }
+    public sealed class McpProgressNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpProgressNotification>
+    {
+        public McpProgressNotification(AgentKit.Mcp.McpSessionId sessionId, string progressToken, double progress, double? total = default) { }
+        public double Progress { get; }
+        public string ProgressToken { get; }
+        public double? Total { get; }
+    }
+    public sealed class McpPromptDescriptor : System.IEquatable<AgentKit.Mcp.McpPromptDescriptor>
+    {
+        public McpPromptDescriptor(string name, string? description = null, System.Collections.Immutable.ImmutableArray<string>? argumentNames = default) { }
+        public System.Collections.Immutable.ImmutableArray<string> ArgumentNames { get; }
+        public string? Description { get; }
+        public string Name { get; }
+    }
+    public sealed class McpPromptsGetRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpPromptsGetRequest>
+    {
+        public McpPromptsGetRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string name, System.Collections.Generic.IReadOnlyDictionary<string, string>? arguments = null) { }
+        public System.Collections.Immutable.ImmutableDictionary<string, string>? Arguments { get; }
+        public string Name { get; }
+    }
+    public sealed class McpPromptsListChangedNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpPromptsListChangedNotification>
+    {
+        public McpPromptsListChangedNotification(AgentKit.Mcp.McpSessionId SessionId) { }
+    }
+    public sealed class McpPromptsListRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpPromptsListRequest>
+    {
+        public McpPromptsListRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string? cursor = null) { }
+        public string? Cursor { get; }
     }
     public enum McpProtocolEra
     {
@@ -108,11 +263,99 @@ namespace AgentKit.Mcp
         public static AgentKit.Mcp.McpProtocolVersion November2025 { get; }
         public static System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpProtocolVersion> SupportedBySdk { get; }
     }
+    public abstract class McpRequest : System.IEquatable<AgentKit.Mcp.McpRequest>
+    {
+        public AgentKit.Mcp.McpRequestId Id { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+        public AgentKit.ToolCallId? ToolCallId { get; }
+    }
     public readonly struct McpRequestId : System.IEquatable<AgentKit.Mcp.McpRequestId>
     {
         public McpRequestId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
+    }
+    public sealed class McpResourceDescriptor : System.IEquatable<AgentKit.Mcp.McpResourceDescriptor>
+    {
+        public McpResourceDescriptor(string uri, string? name = null, string? description = null, string? mimeType = null) { }
+        public string? Description { get; }
+        public string? MimeType { get; }
+        public string? Name { get; }
+        public string Uri { get; }
+    }
+    public sealed class McpResourcesListChangedNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpResourcesListChangedNotification>
+    {
+        public McpResourcesListChangedNotification(AgentKit.Mcp.McpSessionId SessionId) { }
+    }
+    public sealed class McpResourcesListRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpResourcesListRequest>
+    {
+        public McpResourcesListRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string? cursor = null) { }
+        public string? Cursor { get; }
+    }
+    public sealed class McpResourcesReadRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpResourcesReadRequest>
+    {
+        public McpResourcesReadRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string uri) { }
+        public string Uri { get; }
+    }
+    public sealed class McpResourcesSubscribeRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpResourcesSubscribeRequest>
+    {
+        public McpResourcesSubscribeRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string uri) { }
+        public string Uri { get; }
+    }
+    public sealed class McpResourcesUnsubscribeRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpResourcesUnsubscribeRequest>
+    {
+        public McpResourcesUnsubscribeRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string uri) { }
+        public string Uri { get; }
+    }
+    public abstract class McpResponse : System.IEquatable<AgentKit.Mcp.McpResponse>
+    {
+        public AgentKit.Mcp.McpRequestId RequestId { get; }
+    }
+    public sealed class McpResponseCancelled : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseCancelled>
+    {
+        public McpResponseCancelled(AgentKit.Mcp.McpRequestId RequestId, AgentKit.SideEffectCertainty SideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class McpResponseDenied : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseDenied>
+    {
+        public McpResponseDenied(AgentKit.Mcp.McpRequestId requestId, string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpResponseProtocolFailed : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseProtocolFailed>
+    {
+        public McpResponseProtocolFailed(AgentKit.Mcp.McpRequestId requestId, string safeMessage, int? errorCode = default) { }
+        public int? ErrorCode { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpResponseSucceeded : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseSucceeded>
+    {
+        public McpResponseSucceeded(AgentKit.Mcp.McpRequestId requestId, System.Text.Json.JsonDocument result) { }
+        public System.Text.Json.JsonDocument Result { get; }
+    }
+    public sealed class McpResponseUnknownEffect : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseUnknownEffect>
+    {
+        public McpResponseUnknownEffect(AgentKit.Mcp.McpRequestId requestId, string safeMessage, AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public string SafeMessage { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+    }
+    public sealed class McpResponseUnsupportedCapability : AgentKit.Mcp.McpResponse, System.IEquatable<AgentKit.Mcp.McpResponseUnsupportedCapability>
+    {
+        public McpResponseUnsupportedCapability(AgentKit.Mcp.McpRequestId requestId, string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpRootsListRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpRootsListRequest>
+    {
+        public McpRootsListRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation) { }
+    }
+    public sealed class McpRootsSetRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpRootsSetRequest>
+    {
+        public McpRootsSetRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, System.Collections.Immutable.ImmutableArray<string> roots) { }
+        public System.Collections.Immutable.ImmutableArray<string> Roots { get; }
+    }
+    public sealed class McpSamplingCreateMessageRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpSamplingCreateMessageRequest>
+    {
+        public McpSamplingCreateMessageRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, System.Text.Json.JsonDocument payload) { }
+        public System.Text.Json.JsonDocument Payload { get; }
     }
     public readonly struct McpServerKey : System.IEquatable<AgentKit.Mcp.McpServerKey>
     {
@@ -125,6 +368,14 @@ namespace AgentKit.Mcp
         public McpSessionId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
+    }
+    public enum McpSessionState
+    {
+        Created = 0,
+        Initializing = 1,
+        Ready = 2,
+        Faulted = 3,
+        Disposed = 4,
     }
     public sealed class McpStdioTransportProfile : AgentKit.Mcp.McpTransportProfile, System.IEquatable<AgentKit.Mcp.McpStdioTransportProfile>
     {
@@ -172,6 +423,59 @@ namespace AgentKit.Mcp
         public McpToolName(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class McpToolsCallRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpToolsCallRequest>
+    {
+        public McpToolsCallRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, AgentKit.ToolCallId toolCallId, string toolName, System.Text.Json.JsonDocument? arguments = null) { }
+        public System.Text.Json.JsonDocument? Arguments { get; }
+        public string ToolName { get; }
+    }
+    public sealed class McpToolsListChangedNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpToolsListChangedNotification>
+    {
+        public McpToolsListChangedNotification(AgentKit.Mcp.McpSessionId SessionId) { }
+    }
+    public sealed class McpToolsListRequest : AgentKit.Mcp.McpRequest, System.IEquatable<AgentKit.Mcp.McpToolsListRequest>
+    {
+        public McpToolsListRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, string? cursor = null) { }
+        public string? Cursor { get; }
+    }
+    public sealed class McpTransportFactoryNotFound : AgentKit.Mcp.McpTransportFactoryResolution, System.IEquatable<AgentKit.Mcp.McpTransportFactoryNotFound>
+    {
+        public McpTransportFactoryNotFound(System.Type transportProfileType) { }
+        public System.Type TransportProfileType { get; }
+    }
+    public abstract class McpTransportFactoryResolution : System.IEquatable<AgentKit.Mcp.McpTransportFactoryResolution> { }
+    public sealed class McpTransportFactoryResolved : AgentKit.Mcp.McpTransportFactoryResolution, System.IEquatable<AgentKit.Mcp.McpTransportFactoryResolved>
+    {
+        public McpTransportFactoryResolved(AgentKit.Mcp.IMcpTransportFactory factory) { }
+        public AgentKit.Mcp.IMcpTransportFactory Factory { get; }
+    }
+    public sealed class McpTransportOpenCancelled : AgentKit.Mcp.McpTransportOpenResult, System.IEquatable<AgentKit.Mcp.McpTransportOpenCancelled>
+    {
+        public McpTransportOpenCancelled(AgentKit.SideEffectCertainty SideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class McpTransportOpenDenied : AgentKit.Mcp.McpTransportOpenResult, System.IEquatable<AgentKit.Mcp.McpTransportOpenDenied>
+    {
+        public McpTransportOpenDenied(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpTransportOpenFailed : AgentKit.Mcp.McpTransportOpenResult, System.IEquatable<AgentKit.Mcp.McpTransportOpenFailed>
+    {
+        public McpTransportOpenFailed(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class McpTransportOpenRequest : System.IEquatable<AgentKit.Mcp.McpTransportOpenRequest>
+    {
+        public McpTransportOpenRequest(AgentKit.Mcp.McpClientOpenRequest sessionOpenRequest, AgentKit.Mcp.McpEndpoint endpoint) { }
+        public AgentKit.Mcp.McpEndpoint Endpoint { get; }
+        public AgentKit.Mcp.McpClientOpenRequest SessionOpenRequest { get; }
+    }
+    public abstract class McpTransportOpenResult : System.IEquatable<AgentKit.Mcp.McpTransportOpenResult> { }
+    public sealed class McpTransportOpened : AgentKit.Mcp.McpTransportOpenResult, System.IEquatable<AgentKit.Mcp.McpTransportOpened>
+    {
+        public McpTransportOpened(AgentKit.Mcp.IMcpTransport transport) { }
+        public AgentKit.Mcp.IMcpTransport Transport { get; }
     }
     public abstract class McpTransportProfile : System.IEquatable<AgentKit.Mcp.McpTransportProfile> { }
     public static class ServiceExtensions

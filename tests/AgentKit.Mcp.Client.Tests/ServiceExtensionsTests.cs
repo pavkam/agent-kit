@@ -9,6 +9,17 @@ namespace AgentKit.Mcp.Client.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    public void AddMcpClient_WhenCalledTwice_RegistersOneCatalogPair()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMcpClient();
+        _ = services.AddMcpClient();
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetServices<IMcpEndpointCatalog>().ShouldHaveSingleItem();
+        _ = provider.GetServices<IMcpCapabilityProfileCatalog>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public void AddMcpToolClient_WhenServicesAreNull_ThrowsForServices()
     {
         IServiceCollection services = null!;

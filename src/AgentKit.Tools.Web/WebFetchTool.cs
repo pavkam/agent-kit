@@ -133,11 +133,11 @@ public sealed class WebFetchTool: IToolInvoker
                 return Failure("The web fetch exceeded its overall deadline.", "TimedOut", ToolTerminalStatus.TimedOut, priorEffects);
             }
 
+            var connectTimeout = remaining < _options.ConnectTimeout ? remaining : _options.ConnectTimeout;
             var bounds = new NetworkBounds(
-                remaining < _options.ConnectTimeout ? remaining : _options.ConnectTimeout,
-                remaining,
-                _options.MaximumResponseBytes,
-                _options.MaximumRedirects);
+                new NetworkResolutionBounds(connectTimeout),
+                new NetworkRequestBounds(connectTimeout, _options.MaximumRequestBytes),
+                new NetworkResponseBounds(remaining, _options.MaximumResponseBytes, _options.MaximumRedirects));
             var operationId = _operationIds.Create();
             var resolutionGrant = await AuthorizeAsync(
                 executionContext,

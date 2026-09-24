@@ -33,15 +33,6 @@ namespace AgentKit.Processes
         public System.Collections.Generic.Dictionary<string, string> ReadOnlyToolchainRoots { get; }
         public string RootDirectory { get; set; }
     }
-    [System.Obsolete("Use IProcessExecutor selected through ProcessExecutorKey after WS5-C13.")]
-    public sealed class OperatingSystemProcessRunner : AgentKit.IProcessRunner, System.IDisposable
-    {
-        public OperatingSystemProcessRunner(AgentKit.IProcessIntentResolver resolver, System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> sandboxes, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessRunner>? logger = null, AgentKit.IProcessOutputArtifactSink? outputArtifacts = null) { }
-        public OperatingSystemProcessRunner(AgentKit.IProcessIntentResolver resolver, System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> sandboxes, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessRunner>? logger, AgentKit.IProcessOutputArtifactSink? outputArtifacts, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
-        public AgentKit.ComponentId SecurityAudience { get; }
-        public void Dispose() { }
-        public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-    }
     public sealed class PlatformProcessSandboxProvider : AgentKit.IProcessSandboxProvider
     {
         public static readonly AgentKit.SandboxProfileId WorkspaceNoNetworkProfile;
@@ -54,8 +45,6 @@ namespace AgentKit.Processes
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProcesses(AgentKit.ProcessExecutorKey key, System.Action<AgentKit.Processes.AgentProcessOptions> configure) { }
-            [System.Obsolete("Legacy host surface.")]
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOperatingSystemProcesses(string rootDirectory, System.Action<AgentKit.Processes.OperatingSystemProcessOptions> configure) { }
         }
     }
 }

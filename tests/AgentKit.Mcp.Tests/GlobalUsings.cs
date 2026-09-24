@@ -3,6 +3,7 @@
 
 global using System.Collections.Immutable;
 global using System.ComponentModel;
+global using System.Text.Json;
 
 global using AgentKit;
 global using AgentKit.Conformance;

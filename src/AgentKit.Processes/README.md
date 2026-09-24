@@ -8,10 +8,10 @@ part of the result contract.
 
 ## Use this project
 
-Start with `AddOperatingSystemProcesses` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior.
+Register keyed executors with `AddAgentProcesses(ProcessExecutorKey, …)` in
+[ServiceExtensions.cs](ServiceExtensions.cs). Applications must register
+`ISecurityGrantStore` before starting processes. Read the XML documentation for
+profile options, sandbox requirements, and duplicate-registration behavior.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

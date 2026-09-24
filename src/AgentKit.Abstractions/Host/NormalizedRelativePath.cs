@@ -34,6 +34,12 @@ public readonly record struct NormalizedRelativePath
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         ArgumentException.ThrowIfContainsNul(value);
 
+        if (string.Equals(value, ".", StringComparison.Ordinal))
+        {
+            Value = ".";
+            return;
+        }
+
         if (Path.IsPathRooted(value))
         {
             throw new ArgumentException("Path must be relative, not rooted.", nameof(value));

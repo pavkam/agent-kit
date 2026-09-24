@@ -10,6 +10,11 @@ namespace AgentKit.Processes.Scripted
         public AgentKit.ContentHash Fingerprint { get; }
         public string Reference { get; }
     }
+    public sealed class ScriptedProcessExecutor : AgentKit.IProcessExecutor
+    {
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessStartResult> StartAsync(AgentKit.ResolvedProcessStart request, AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class ScriptedProcessIntentResolver : AgentKit.IProcessIntentResolver
     {
         public ScriptedProcessIntentResolver(Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessIntentResolver>? logger = null) { }
@@ -23,27 +28,24 @@ namespace AgentKit.Processes.Scripted
         public System.Collections.Generic.List<AgentKit.Processes.Scripted.ScriptedProcessScenario> Scenarios { get; }
         public string WorkspaceRoot { get; set; }
     }
-    [System.Obsolete("Legacy host surface.")]
-    public sealed class ScriptedProcessRunner : AgentKit.IProcessRunner
-    {
-        public ScriptedProcessRunner(AgentKit.IProcessIntentResolver resolver, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessRunner>? logger = null) { }
-        public ScriptedProcessRunner(AgentKit.IProcessIntentResolver resolver, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessRunner>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
-        public AgentKit.ComponentId SecurityAudience { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-    }
     public sealed class ScriptedProcessScenario : System.IEquatable<AgentKit.Processes.Scripted.ScriptedProcessScenario>
     {
-        public ScriptedProcessScenario(AgentKit.ProcessOperationId operationId, AgentKit.ProcessRunResult result, System.TimeSpan delayAfterStart) { }
+        public ScriptedProcessScenario(AgentKit.ProcessOperationId operationId, AgentKit.ProcessExitResult exit, System.Collections.Immutable.ImmutableArray<byte> standardOutput, System.Collections.Immutable.ImmutableArray<byte> standardError, System.TimeSpan delayAfterStart, bool standardOutputTruncated = false, bool standardErrorTruncated = false, long? totalStandardOutputBytes = default, long? totalStandardErrorBytes = default) { }
         public System.TimeSpan DelayAfterStart { get; }
+        public AgentKit.ProcessExitResult Exit { get; }
         public AgentKit.ProcessOperationId OperationId { get; }
-        public AgentKit.ProcessRunResult Result { get; }
+        public System.Collections.Immutable.ImmutableArray<byte> StandardError { get; }
+        public bool StandardErrorTruncated { get; }
+        public System.Collections.Immutable.ImmutableArray<byte> StandardOutput { get; }
+        public bool StandardOutputTruncated { get; }
+        public long TotalStandardErrorBytes { get; }
+        public long TotalStandardOutputBytes { get; }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            [System.Obsolete("Legacy host surface.")]
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddScriptedProcesses(System.Action<AgentKit.Processes.Scripted.ScriptedProcessOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentScriptedProcesses(AgentKit.ProcessExecutorKey key, System.Action<AgentKit.Processes.Scripted.ScriptedProcessOptions> configure) { }
         }
     }
 }

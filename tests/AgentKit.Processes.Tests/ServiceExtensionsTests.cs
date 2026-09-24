@@ -6,56 +6,26 @@ namespace AgentKit.Processes.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
-    public void AddOperatingSystemProcesses_WhenRegistered_ProvidesResolverSandboxAndOperationIds()
+    public void AddAgentProcesses_WhenRegistered_ProvidesKeyedExecutorResolverAndOperationIds()
     {
         var services = new ServiceCollection();
         var intentIds = new SequenceSecurityEnforcementIntentIdGenerator(
             Guid.Parse("82000000-0000-0000-0000-000000000008"));
         _ = services.AddSingleton<ISecurityGrantStore>(new TestGrantStore());
         _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(intentIds);
-        _ = services.AddOperatingSystemProcesses(
-            Path.GetTempPath(),
-            static options => options.AllowedExecutablePaths.Add("/bin/sh"));
+        _ = services.AddAgentProcesses(new ProcessExecutorKey("default"), static options =>
+        {
+            options.OperatingSystem.RootDirectory = Path.GetTempPath();
+            options.OperatingSystem.AllowedExecutablePaths.Add("/bin/sh");
+        });
         using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetRequiredService<IProcessIntentResolver>().ShouldBeOfType<OperatingSystemProcessIntentResolver>();
+        _ = provider.GetRequiredKeyedService<IExecutableResolver>("default");
+        _ = provider.GetRequiredKeyedService<IProcessExecutor>("default");
         _ = provider.GetServices<IProcessSandboxProvider>().ShouldHaveSingleItem()
             .ShouldBeOfType<PlatformProcessSandboxProvider>();
         provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>().Create().Value.ShouldNotBe(Guid.Empty);
         provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>().ShouldBeSameAs(intentIds);
-        _ = provider.GetRequiredService<IProcessRunner>().ShouldBeOfType<OperatingSystemProcessRunner>();
-    }
-
-    [Fact]
-    [Obsolete("Legacy IProcessRunner surface.")]
-    public void AddOperatingSystemProcesses_WhenForcedTerminationWaitInvalid_FailsOptionsValidation()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddOperatingSystemProcesses(Path.GetTempPath(), static options =>
-        {
-            options.AllowedExecutablePaths.Add("/bin/sh");
-            options.ForcedTerminationWait = TimeSpan.Zero;
-        });
-        using var provider = services.BuildServiceProvider();
-
-        _ = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IOptions<OperatingSystemProcessOptions>>().Value);
-    }
-
-    [Fact]
-    [Obsolete("Legacy IProcessRunner surface.")]
-    public void AddOperatingSystemProcesses_WhenReadOnlyToolchainRootPathIsRelative_FailsOptionsValidation()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddOperatingSystemProcesses(Path.GetTempPath(), static options =>
-        {
-            options.AllowedExecutablePaths.Add("/bin/sh");
-            options.ReadOnlyToolchainRoots.Add("relative", "not-absolute");
-        });
-        using var provider = services.BuildServiceProvider();
-
-        _ = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IOptions<OperatingSystemProcessOptions>>().Value);
+        _ = provider.GetRequiredService<IProcessExecutorSelector>();
     }
 }

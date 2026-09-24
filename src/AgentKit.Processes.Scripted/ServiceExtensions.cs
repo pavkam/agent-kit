@@ -8,32 +8,18 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        /// <summary>Registers one scripted resolver and runner while preserving earlier replacements.</summary>
+        /// <summary>Registers one keyed scripted executable resolver and process executor profile.</summary>
+        /// <param name="key">The executor profile key authored by the application.</param>
         /// <param name="configure">The required executable mappings and operation scenarios.</param>
         /// <returns>The same service collection.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
-        [Obsolete("Legacy host surface.")]
-        public IServiceCollection AddScriptedProcesses(Action<ScriptedProcessOptions> configure)
+        public IServiceCollection AddAgentScriptedProcesses(
+            ProcessExecutorKey key,
+            Action<ScriptedProcessOptions> configure)
         {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configure);
-            _ = services.AddAgentKitObservability();
-            _ = services.AddOptions<ScriptedProcessOptions>()
-                .Configure(configure)
-                .Validate(static options => Path.IsPathRooted(options.WorkspaceRoot), "WorkspaceRoot must be absolute.")
-                .Validate(static options => options.Executables.Count > 0, "At least one executable mapping is required.")
-                .ValidateOnStart();
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IProcessIntentResolver, ScriptedProcessIntentResolver>();
-            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
-            services.TryAddSingleton<IProcessRunner>(static provider => new ScriptedProcessRunner(
-                provider.GetRequiredService<IProcessIntentResolver>(),
-                provider.GetRequiredService<ISecurityGrantStore>(),
-                provider.GetRequiredService<TimeProvider>(),
-                provider.GetRequiredService<IOptions<ScriptedProcessOptions>>(),
-                provider.GetService<ILogger<ScriptedProcessRunner>>(),
-                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
-            return services;
+            return AgentScriptedProcessRegistration.Add(services, key, configure);
         }
     }
 }

@@ -5115,12 +5115,6 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ProcessOutputArtifactResult> StoreAsync(AgentKit.ProcessOutputArtifactRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
-    [System.Obsolete("Use IProcessExecutor and IProcessHandle for handle-based process execution.")]
-    public interface IProcessRunner
-    {
-        AgentKit.ComponentId SecurityAudience { get; }
-        System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default);
-    }
     public interface IProcessSandboxProvider
     {
         AgentKit.SandboxDescriptor Descriptor { get; }
@@ -7557,6 +7551,11 @@ namespace AgentKit
         public ProcessStandardOutputTruncated(long sequence, long bytesObserved) { }
         public long BytesObserved { get; init; }
     }
+    public static class ProcessStartBinding
+    {
+        public static AgentKit.ProcessResolveRequest ToResolveRequest(AgentKit.ProcessStartRequest start) { }
+        public static AgentKit.ResolvedProcessIntent ToResolvedProcessIntent(AgentKit.ResolvedProcessStart resolved) { }
+    }
     public sealed class ProcessStartCancelled : AgentKit.ProcessStartResult, System.IEquatable<AgentKit.ProcessStartCancelled>
     {
         public ProcessStartCancelled(AgentKit.SideEffectCertainty SideEffectCertainty) { }
@@ -8050,7 +8049,8 @@ namespace AgentKit
     }
     public sealed class ResolvedProcessStart : System.IEquatable<AgentKit.ResolvedProcessStart>
     {
-        public ResolvedProcessStart(AgentKit.ProcessStartRequest request, AgentKit.ResolvedExecutable executable, string workingDirectory, AgentKit.ContentHash environmentFingerprint, AgentKit.ContentHash? standardInputFingerprint = default) { }
+        public ResolvedProcessStart(AgentKit.ProcessStartRequest request, AgentKit.ResolvedExecutable executable, string absoluteWorkspaceConfinementRoot, string workingDirectory, AgentKit.ContentHash environmentFingerprint, AgentKit.ContentHash? standardInputFingerprint = default) { }
+        public string AbsoluteWorkspaceConfinementRoot { get; init; }
         public AgentKit.ContentHash EnvironmentFingerprint { get; init; }
         public AgentKit.ResolvedExecutable Executable { get; init; }
         public AgentKit.ProcessStartRequest Request { get; init; }

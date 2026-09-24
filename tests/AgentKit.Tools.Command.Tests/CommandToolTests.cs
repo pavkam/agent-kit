@@ -14,6 +14,7 @@ public sealed class CommandToolTests
 
         options.ShellArguments.ShouldBe(["-c"]);
         options.EnvironmentVariables.ShouldBeEmpty();
+        options.ProcessExecutorKey.Value.ShouldBe("default");
     }
 
     [Theory]
@@ -22,14 +23,13 @@ public sealed class CommandToolTests
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"working_directory\":\"../escape\"}")]
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"workspace_access\":\"surprise\"}")]
     [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"timeout_ms\":600001}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoResolutionAuthorizationOrExecution(string json)
     {
-        var resolver = new RecordingProcessResolver();
-        var runner = new RecordingProcessRunner();
+        var resolver = new RecordingExecutableResolver();
+        var executor = new RecordingProcessExecutor();
         var authority = new RecordingSecurityAuthority();
 
-        var result = await CreateTool(resolver, runner, authority).InvokeAsync(
+        var result = await CreateTool(resolver, executor, authority).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
@@ -37,17 +37,16 @@ public sealed class CommandToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         resolver.Requests.ShouldBeEmpty();
         authority.Requests.ShouldBeEmpty();
-        runner.Requests.ShouldBeEmpty();
+        executor.Starts.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCommandContainsNul_RejectsWithoutResolution()
     {
-        var resolver = new RecordingProcessResolver();
+        var resolver = new RecordingExecutableResolver();
         var json = JsonSerializer.Serialize(new { command = "echo\0hi" });
 
-        var result = await CreateTool(resolver, new RecordingProcessRunner(), new RecordingSecurityAuthority()).InvokeAsync(
+        var result = await CreateTool(resolver, new RecordingProcessExecutor(), new RecordingSecurityAuthority()).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
@@ -56,15 +55,14 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCommandExceedsMaximumBytes_RejectsWithoutResolution()
     {
-        var resolver = new RecordingProcessResolver();
+        var resolver = new RecordingExecutableResolver();
         var options = OptionsForTool();
         options.MaximumCommandBytes = 4;
         var json = JsonSerializer.Serialize(new { command = "a very long command" });
 
-        var result = await CreateTool(resolver, new RecordingProcessRunner(), new RecordingSecurityAuthority(), options).InvokeAsync(
+        var result = await CreateTool(resolver, new RecordingProcessExecutor(), new RecordingSecurityAuthority(), options).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
@@ -73,90 +71,76 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionFails_DoesNotRequestAuthorityOrExecute()
     {
-        var resolver = new RecordingProcessResolver
+        var resolver = new RecordingExecutableResolver
         {
-            Result = new ProcessResolutionResult(
-                ProcessResolutionStatus.WorkingDirectoryRejected,
-                null,
-                "Working directory rejected."),
+            Result = new ExecutableResolutionFailed("Working directory rejected."),
         };
-        var runner = new RecordingProcessRunner();
+        var executor = new RecordingProcessExecutor();
         var authority = new RecordingSecurityAuthority();
 
-        var result = await CreateTool(resolver, runner, authority).InvokeAsync(
+        var result = await CreateTool(resolver, executor, authority).InvokeAsync(
             Request(/*lang=json,strict*/ """{"command":"pwd"}"""),
             TestContext.Current.CancellationToken);
 
         result.Outcome.FailureReason.ShouldBe("Working directory rejected.");
         authority.Requests.ShouldBeEmpty();
-        runner.Requests.ShouldBeEmpty();
+        executor.Starts.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_DoesNotExecuteResolvedProcess()
     {
-        var resolver = new RecordingProcessResolver();
-        var runner = new RecordingProcessRunner();
+        var resolver = new RecordingExecutableResolver();
+        var executor = new RecordingProcessExecutor();
 
-        var result = await CreateTool(resolver, runner, new RecordingSecurityAuthority(allow: false)).InvokeAsync(
+        var result = await CreateTool(resolver, executor, new RecordingSecurityAuthority(allow: false)).InvokeAsync(
             Request(/*lang=json,strict*/ """{"command":"touch nope"}"""),
             TestContext.Current.CancellationToken);
 
         result.Outcome.FailureReason.ShouldBe("Denied.");
         _ = resolver.Requests.ShouldHaveSingleItem();
-        runner.Requests.ShouldBeEmpty();
+        executor.Starts.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_UsesExplicitShellAndExactResolvedSecurityEvidence()
     {
-        var resolver = new RecordingProcessResolver();
-        var runner = new RecordingProcessRunner
+        var resolver = new RecordingExecutableResolver();
+        var handle = new TestProcessHandle
         {
-            Result = new ProcessRunResult(
-                ProcessRunStatus.Exited,
-                0,
-                [.. "out"u8],
-                [.. "warn"u8],
-                3,
-                4,
-                false,
-                false,
-                SideEffectCertainty.DefinitelyPerformed,
-                null),
+            StandardOutput = [.. "out"u8],
+            StandardError = [.. "warn"u8],
         };
+        var executor = new RecordingProcessExecutor { Result = new ProcessHandleStarted(handle) };
         var authority = new RecordingSecurityAuthority();
 
-        var result = await CreateTool(resolver, runner, authority).InvokeAsync(
+        var result = await CreateTool(resolver, executor, authority).InvokeAsync(
             Request(
                 /*lang=json,strict*/
                 """{"command":"printf '%s' hi","working_directory":"src","workspace_access":"read_only","timeout_ms":500,"maximum_output_bytes":12}"""),
             TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-        var unresolved = resolver.Requests.ShouldHaveSingleItem();
-        unresolved.Executable.ShouldBe("/configured/shell");
-        unresolved.Arguments.ShouldBe(["--fixed", "printf '%s' hi"]);
-        unresolved.WorkingDirectory.ShouldBe(new FileSystemPath("src"));
-        unresolved.WorkspaceAccess.ShouldBe(ProcessWorkspaceAccess.ReadOnly);
-        unresolved.SideEffectClass.ShouldBe(ProcessSideEffectClass.ReadOnly);
-        unresolved.Environment.ShouldBe(
+        var startRequest = resolver.Requests.ShouldHaveSingleItem();
+        startRequest.Executable.Value.ShouldBe("/configured/shell");
+        startRequest.Arguments.Select(static argument => argument.Value).ShouldBe(["--fixed", "printf '%s' hi"]);
+        startRequest.WorkingDirectory.Path.ShouldBe(new NormalizedRelativePath("src"));
+        startRequest.Effect.ShouldBe(ProcessEffectClass.ReadOnlyObservation);
+        startRequest.Environment.Variables.ShouldBe(
             [new ProcessEnvironmentVariable("LANG", "C.UTF-8"), new ProcessEnvironmentVariable("PATH", "/toolchain/bin")]);
-        unresolved.Limits.Timeout.ShouldBe(TimeSpan.FromMilliseconds(500));
-        unresolved.Limits.MaximumOutputBytes.ShouldBe(12);
+        startRequest.Limits.Timeout.ShouldBe(TimeSpan.FromMilliseconds(500));
+        startRequest.Limits.MaximumOutputBytes.ShouldBe(12);
 
-        var host = _ = runner.Requests.ShouldHaveSingleItem();
+        var host = executor.Starts.ShouldHaveSingleItem();
+        var intent = ProcessStartBinding.ToResolvedProcessIntent(host.Request);
         var security = authority.Requests.ShouldHaveSingleItem();
-        security.Audience.ShouldBe(runner.SecurityAudience);
+        security.Audience.ShouldBe(executor.SecurityAudience);
         security.Kind.ShouldBe(SecurityOperationKind.Process);
         security.Effect.ShouldBe(SecurityEffect.Execute);
-        security.Resources.ShouldBe(ProcessSecurityBinding.Resources(host.Intent));
-        security.InputFingerprint.ShouldBe(ProcessSecurityBinding.Fingerprint(host.Intent));
+        security.Resources.ShouldBe(ProcessSecurityBinding.Resources(intent));
+        security.InputFingerprint.ShouldBe(ProcessSecurityBinding.Fingerprint(intent));
         host.Grant.RequestId.ShouldBe(security.Id);
 
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
@@ -166,26 +150,17 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExitCodeNonzero_ReturnsFailedOutcomeWithTypedOutput()
     {
-        var runner = new RecordingProcessRunner
+        var handle = new TestProcessHandle
         {
-            Result = new ProcessRunResult(
-                ProcessRunStatus.Exited,
-                7,
-                [],
-                [.. "bad"u8],
-                0,
-                3,
-                false,
-                false,
-                SideEffectCertainty.DefinitelyPerformed,
-                null),
+            Exit = new ProcessExited(7, SideEffectCertainty.DefinitelyPerformed),
+            StandardError = [.. "bad"u8],
         };
+        var executor = new RecordingProcessExecutor { Result = new ProcessHandleStarted(handle) };
 
         var result = await CreateTool(
-            new RecordingProcessResolver(), runner, new RecordingSecurityAuthority()).InvokeAsync(
+            new RecordingExecutableResolver(), executor, new RecordingSecurityAuthority()).InvokeAsync(
             Request(/*lang=json,strict*/ """{"command":"false"}"""),
             TestContext.Current.CancellationToken);
 
@@ -197,26 +172,13 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOutputIsNotUtf8_PreservesExactBase64WithoutLossyText()
     {
-        var runner = new RecordingProcessRunner
-        {
-            Result = new ProcessRunResult(
-                ProcessRunStatus.Exited,
-                0,
-                [0xff, 0x00],
-                [],
-                2,
-                0,
-                false,
-                false,
-                SideEffectCertainty.DefinitelyPerformed,
-                null),
-        };
+        var handle = new TestProcessHandle { StandardOutput = [0xff, 0x00] };
+        var executor = new RecordingProcessExecutor { Result = new ProcessHandleStarted(handle) };
 
         var result = await CreateTool(
-            new RecordingProcessResolver(), runner, new RecordingSecurityAuthority()).InvokeAsync(
+            new RecordingExecutableResolver(), executor, new RecordingSecurityAuthority()).InvokeAsync(
             Request(/*lang=json,strict*/ """{"command":"binary"}"""),
             TestContext.Current.CancellationToken);
 
@@ -227,124 +189,116 @@ public sealed class CommandToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenOutputSpilled_ProjectsPortableArtifactIdentity()
+    public async Task InvokeAsync_WhenOutputTruncated_ProjectsTruncationFlagsWithoutArtifacts()
     {
-        var reference = ArtifactReference();
-        var runner = new RecordingProcessRunner
+        var handle = new TestProcessHandle
         {
-            Result = new ProcessRunResult(
-                ProcessRunStatus.Exited,
-                0,
-                [.. "tail"u8],
-                [],
-                100,
-                0,
-                true,
-                false,
-                SideEffectCertainty.DefinitelyPerformed,
-                null,
-                reference),
+            StandardOutput = [.. "tail"u8],
         };
+        var executor = new RecordingProcessExecutor { Result = new ProcessHandleStarted(handle) };
 
         var result = await CreateTool(
-            new RecordingProcessResolver(), runner, new RecordingSecurityAuthority()).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"command":"large"}"""),
+            new RecordingExecutableResolver(), executor, new RecordingSecurityAuthority()).InvokeAsync(
+            Request(/*lang=json,strict*/ """{"command":"large","maximum_output_bytes":2}"""),
             TestContext.Current.CancellationToken);
 
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
-        json.RootElement.GetProperty("stdout_artifact_id").GetString().ShouldBe(reference.Id.ToString());
-        json.RootElement.GetProperty("stdout_artifact_version").GetString().ShouldBe("1");
-        json.RootElement.GetProperty("stdout_artifact_hash").GetString().ShouldBe("hash");
+        json.RootElement.GetProperty("stdout_truncated").GetBoolean().ShouldBeTrue();
+        json.RootElement.GetProperty("stdout_artifact_id").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
-    private static ArtifactReference ArtifactReference() => new(
-        new ArtifactId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
-        new ArtifactVersion("1"),
-        new ArtifactDirectoryId("process-output"),
-        new ArtifactProfileKey("test"),
-        new ArtifactProfileVersion(1),
-        new TenantId("tenant"),
-        new ArtifactOwnerId("session:owner"),
-        new PrincipalId("principal"),
-        "application/octet-stream",
-        100,
-        new ArtifactIntegrity(new ContentHash("hash"), DateTimeOffset.UnixEpoch),
-        ArtifactDataClassification.Internal,
-        ArtifactOwnershipKind.Session,
-        ArtifactMutability.Immutable,
-        new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false),
-        DateTimeOffset.UnixEpoch);
-
     [Theory]
-    [InlineData(ProcessRunStatus.Exited, SideEffectCertainty.DefinitelyPerformed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
-    [InlineData(ProcessRunStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.SandboxUnavailable, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.ResolutionFailed, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.LimitExceeded, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
-    [InlineData(ProcessRunStatus.TimedOut, SideEffectCertainty.Unknown, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
-    [InlineData(ProcessRunStatus.Cancelled, SideEffectCertainty.Unknown, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
-    [InlineData(ProcessRunStatus.Failed, SideEffectCertainty.Unknown, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
-    [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenHostSettles_PreservesStageAndEffectEvidence(ProcessRunStatus status, SideEffectCertainty hostCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
+    [InlineData(ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
+    [InlineData(ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
+    [InlineData(ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
+    public async Task InvokeAsync_WhenStartSettles_PreservesStageAndEffectEvidence(
+        ToolTerminalStatus startStatus,
+        SideEffectCertainty hostCertainty,
+        ToolTerminalStatus expectedStatus,
+        SideEffectCertainty expectedCertainty)
     {
-        // Arrange
-        var runner = new RecordingProcessRunner
+        var executor = new RecordingProcessExecutor
         {
-            Result = new ProcessRunResult(status, status is ProcessRunStatus.Exited ? 0 : null, [], [], 0, 0, false, false, hostCertainty, "Host settlement."),
+            Result = startStatus switch
+            {
+                ToolTerminalStatus.Succeeded => new ProcessHandleStarted(new TestProcessHandle()),
+                ToolTerminalStatus.Denied => new ProcessStartDenied("Host settlement."),
+                ToolTerminalStatus.Unsupported => new ProcessStartSandboxUnavailable("Host settlement."),
+                ToolTerminalStatus.InvocationFailed => new ProcessStartFailed("Host settlement."),
+                ToolTerminalStatus.TimedOut => new ProcessHandleStarted(new TestProcessHandle
+                {
+                    Exit = new ProcessTimedOut(hostCertainty),
+                }),
+                ToolTerminalStatus.Cancelled => new ProcessHandleStarted(new TestProcessHandle
+                {
+                    Exit = new ProcessCancelled(hostCertainty),
+                }),
+                ToolTerminalStatus.UnknownTool => throw new NotImplementedException(),
+                ToolTerminalStatus.InvalidArguments => throw new NotImplementedException(),
+                ToolTerminalStatus.ApprovalDenied => throw new NotImplementedException(),
+                ToolTerminalStatus.ApprovalExpired => throw new NotImplementedException(),
+                ToolTerminalStatus.Interrupted => throw new NotImplementedException(),
+                ToolTerminalStatus.ResultNormalizationFailed => throw new NotImplementedException(),
+                ToolTerminalStatus.ResultSerializationFailed => throw new NotImplementedException(),
+                ToolTerminalStatus.ProtocolFailed => throw new NotImplementedException(),
+                ToolTerminalStatus.ResourceLimitExceeded => throw new NotImplementedException(),
+                _ => new ProcessStartFailed("Host settlement."),
+            },
         };
 
-        // Act
-        var result = await CreateTool(new RecordingProcessResolver(), runner, new RecordingSecurityAuthority()).InvokeAsync(
+        var result = await CreateTool(new RecordingExecutableResolver(), executor, new RecordingSecurityAuthority()).InvokeAsync(
             Request(/*lang=json,strict*/ """{"command":"work"}"""), TestContext.Current.CancellationToken);
 
-        // Assert
         result.Outcome.SourceStatus.ShouldBe(expectedStatus);
         result.Outcome.SideEffectCertainty.ShouldBe(expectedCertainty);
         result.Outcome.Retryable.ShouldBeFalse();
-        _ = runner.Requests.ShouldHaveSingleItem();
-    }
-
-    [Theory]
-    [InlineData(ProcessResolutionStatus.ExecutableRejected, ToolTerminalStatus.Unsupported)]
-    [InlineData(ProcessResolutionStatus.WorkingDirectoryRejected, ToolTerminalStatus.Unsupported)]
-    [InlineData(ProcessResolutionStatus.InvalidIntent, ToolTerminalStatus.InvalidArguments)]
-    [InlineData(ProcessResolutionStatus.Failed, ToolTerminalStatus.InvocationFailed)]
-    [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenResolutionDoesNotProduceIntent_PreservesStageWithoutStartingProcess(ProcessResolutionStatus status, ToolTerminalStatus expectedStatus)
-    {
-        var resolver = new RecordingProcessResolver { Result = new ProcessResolutionResult(status, null, "Unavailable.") };
-        var runner = new RecordingProcessRunner();
-        var authority = new RecordingSecurityAuthority();
-        var result = await CreateTool(resolver, runner, authority).InvokeAsync(Request(/*lang=json,strict*/ """{"command":"work"}"""), TestContext.Current.CancellationToken);
-        result.Outcome.SourceStatus.ShouldBe(expectedStatus);
-        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
-        result.Outcome.Retryable.ShouldBeFalse();
-        authority.Requests.ShouldBeEmpty();
-        runner.Requests.ShouldBeEmpty();
+        if (startStatus is ToolTerminalStatus.Succeeded or ToolTerminalStatus.TimedOut or ToolTerminalStatus.Cancelled)
+        {
+            _ = executor.Starts.ShouldHaveSingleItem();
+        }
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
+    public async Task InvokeAsync_WhenResolutionDoesNotProduceFacts_PreservesStageWithoutStartingProcess()
+    {
+        var resolver = new RecordingExecutableResolver { Result = new ExecutableResolutionFailed("Unavailable.") };
+        var executor = new RecordingProcessExecutor();
+        var authority = new RecordingSecurityAuthority();
+        var result = await CreateTool(resolver, executor, authority).InvokeAsync(
+            Request(/*lang=json,strict*/ """{"command":"work"}"""), TestContext.Current.CancellationToken);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
+        authority.Requests.ShouldBeEmpty();
+        executor.Starts.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
-        _ = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());
+        _ = CreateTool(new RecordingExecutableResolver(), new RecordingProcessExecutor(), new RecordingSecurityAuthority());
 
         CommandTool.Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
     }
 
-    [Obsolete("Legacy host surface.")]
     private static CommandTool CreateTool(
-            IProcessIntentResolver resolver,
-            IProcessRunner runner,
-            ISecurityAuthority authority,
-            CommandToolOptions? options = null) => new(
-                resolver,
-                runner, new FixedSecurityAuthoritySelector(authority),
-                new FixedSecurityRequestIdGenerator(),
-                new FixedProcessOperationIdGenerator(),
-                new FixedTimeProvider(),
-                Options.Create(options ?? OptionsForTool()));
+        RecordingExecutableResolver resolver,
+        RecordingProcessExecutor executor,
+        ISecurityAuthority authority,
+        CommandToolOptions? options = null)
+    {
+        var selector = new FixedProcessExecutorSelector(resolver, executor);
+        return new CommandTool(
+            selector,
+            new FixedSecurityAuthoritySelector(authority),
+            new FixedSecurityRequestIdGenerator(),
+            new FixedProcessOperationIdGenerator(),
+            new FixedTimeProvider(),
+            Options.Create(options ?? OptionsForTool()));
+    }
 
     private static CommandToolOptions OptionsForTool()
     {
@@ -353,6 +307,7 @@ public sealed class CommandToolTests
             ShellExecutable = "/configured/shell",
             DefaultTimeout = TimeSpan.FromSeconds(30),
             MaximumTimeout = TimeSpan.FromMinutes(10),
+            ProcessExecutorKey = new ProcessExecutorKey("test"),
         };
         options.ShellArguments.Clear();
         options.ShellArguments.Add("--fixed");

@@ -8,7 +8,6 @@ using AgentKit.TestSupport;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public void AddCommandTool_WhenCalledTwice_RegistersOneTool()
     {
         var services = Dependencies();
@@ -20,7 +19,6 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public void AddCommandTool_WhenOptionsInvalid_FailsValidation()
     {
         var services = Dependencies();
@@ -32,7 +30,6 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public void AddCommandTool_WhenDefaultOptionsWithValidEnvironmentVariable_PassesValidation()
     {
         var services = Dependencies();
@@ -46,7 +43,6 @@ public sealed class ServiceExtensionsTests
     [InlineData("", "value")]
     [InlineData("KEY=BAD", "value")]
     [InlineData("KEY\0BAD", "value")]
-    [Obsolete("Legacy host surface.")]
     public void AddCommandTool_WhenEnvironmentVariableKeyIsInvalid_FailsValidation(string key, string value)
     {
         var services = Dependencies();
@@ -58,7 +54,6 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public void AddCommandTool_WhenEnvironmentVariableValueContainsNul_FailsValidation()
     {
         var services = Dependencies();
@@ -69,12 +64,12 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IOptions<CommandToolOptions>>().Value);
     }
 
-    [Obsolete("Legacy host surface.")]
     private static ServiceCollection Dependencies()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IProcessIntentResolver, RecordingProcessResolver>();
-        _ = services.AddSingleton<IProcessRunner, RecordingProcessRunner>();
+        var resolver = new RecordingExecutableResolver();
+        var executor = new RecordingProcessExecutor();
+        _ = services.AddSingleton<IProcessExecutorSelector>(new FixedProcessExecutorSelector(resolver, executor));
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
         _ = services.AddSingleton<ISecurityAuthoritySelector>(sp => new FixedSecurityAuthoritySelector(sp.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddSingleton<IIdentifierGenerator<SecurityRequestId>, FixedSecurityRequestIdGenerator>();

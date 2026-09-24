@@ -9,21 +9,29 @@ public sealed record ResolvedProcessStart
     /// <summary>Initializes a resolved start request.</summary>
     /// <param name="request">The original start request.</param>
     /// <param name="executable">The resolved executable.</param>
+    /// <param name="absoluteWorkspaceConfinementRoot">The resolved absolute workspace confinement root.</param>
     /// <param name="workingDirectory">The resolved absolute working directory path.</param>
     /// <param name="environmentFingerprint">The canonical environment fingerprint.</param>
     /// <param name="standardInputFingerprint">The optional standard-input fingerprint.</param>
     /// <exception cref="ArgumentNullException">A required reference is null.</exception>
-    /// <exception cref="ArgumentException">The working directory path is blank or not rooted.</exception>
+    /// <exception cref="ArgumentException">A path is blank or not rooted.</exception>
     public ResolvedProcessStart(
         ProcessStartRequest request,
         ResolvedExecutable executable,
+        string absoluteWorkspaceConfinementRoot,
         string workingDirectory,
         ContentHash environmentFingerprint,
         ContentHash? standardInputFingerprint = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(executable);
+        ArgumentException.ThrowIfNullOrWhiteSpace(absoluteWorkspaceConfinementRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        if (!Path.IsPathRooted(absoluteWorkspaceConfinementRoot))
+        {
+            throw new ArgumentException("The resolved workspace confinement root must be absolute.", nameof(absoluteWorkspaceConfinementRoot));
+        }
+
         if (!Path.IsPathRooted(workingDirectory))
         {
             throw new ArgumentException("The resolved working directory must be absolute.", nameof(workingDirectory));
@@ -32,6 +40,7 @@ public sealed record ResolvedProcessStart
         ArgumentOutOfRangeException.ThrowIfEqual(environmentFingerprint, default);
         Request = request;
         Executable = executable;
+        AbsoluteWorkspaceConfinementRoot = absoluteWorkspaceConfinementRoot;
         WorkingDirectory = workingDirectory;
         EnvironmentFingerprint = environmentFingerprint;
         StandardInputFingerprint = standardInputFingerprint;
@@ -42,6 +51,9 @@ public sealed record ResolvedProcessStart
 
     /// <summary>Gets the resolved executable.</summary>
     public ResolvedExecutable Executable { get; init; }
+
+    /// <summary>Gets the resolved absolute workspace confinement root.</summary>
+    public string AbsoluteWorkspaceConfinementRoot { get; init; }
 
     /// <summary>Gets the resolved absolute working directory path.</summary>
     public string WorkingDirectory { get; init; }

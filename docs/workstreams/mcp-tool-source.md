@@ -13,8 +13,8 @@ Owning documents: [MCP](../architecture/mcp.md),
 ## Progress
 
 - [x] WS6-C1a identities, endpoint, profile values
-- [ ] WS6-C1b session, request, response contracts
-- [ ] WS6-C2 client options, catalogs, DI
+- [x] WS6-C1b session, request, response contracts
+- [x] WS6-C2 client options, catalogs, DI
 - [ ] WS6-C3 `McpClientSession` over the SDK client
 - [ ] WS6-C4 `HttpMcpTransportFactory` over `INetworkTransport`
 - [ ] WS6-C5 `StdioMcpTransportFactory` over `IProcessHandle`

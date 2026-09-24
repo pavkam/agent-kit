@@ -3,53 +3,106 @@
 
 namespace AgentKit.Tools.Command.Tests;
 
-internal sealed class RecordingProcessResolver: IProcessIntentResolver
+internal sealed class RecordingExecutableResolver: IExecutableResolver
 {
-    internal List<ProcessResolveRequest> Requests { get; } = [];
-    internal ProcessResolutionResult? Result { get; set; }
+    internal List<ProcessStartRequest> Requests { get; } = [];
+    internal ExecutableResolutionResult? Result { get; set; }
 
-    public ValueTask<ProcessResolutionResult> ResolveAsync(
-        ProcessResolveRequest request,
+    public ComponentId SecurityAudience { get; } = new("test.executable-resolver");
+
+    public ValueTask<ExecutableResolutionResult> ResolveAsync(
+        ProcessStartRequest request,
         CancellationToken cancellationToken = default)
     {
         Requests.Add(request);
+        if (Result is not null)
+        {
+            return ValueTask.FromResult(Result);
+        }
+
+        var resolveRequest = ProcessStartBinding.ToResolveRequest(request);
         var intent = new ResolvedProcessIntent(
-            request,
+            resolveRequest,
             "/canonical/sh",
             new ContentHash("sha256:executable"),
             "/workspace",
-            request.WorkingDirectory is null ? "/workspace" : $"/workspace/{request.WorkingDirectory.Value.Value}",
+            request.WorkingDirectory.Path.Value is "." or ""
+                ? "/workspace"
+                : $"/workspace/{request.WorkingDirectory.Path.Value}",
             new ContentHash("sha256:environment"),
-            new ContentHash(ProcessSecurityBinding.FingerprintBytes(request.StandardInput.AsSpan()).Value));
-        return ValueTask.FromResult(Result ?? new ProcessResolutionResult(ProcessResolutionStatus.Resolved, intent, null));
+            new ContentHash(ProcessSecurityBinding.FingerprintBytes([]).Value));
+        var resolved = new ResolvedProcessStart(
+            request,
+            new ResolvedExecutable(intent.AbsoluteExecutablePath, intent.ExecutableFingerprint),
+            intent.AbsoluteWorkspaceRoot,
+            intent.AbsoluteWorkingDirectory,
+            intent.EnvironmentFingerprint,
+            intent.StandardInputFingerprint);
+        return ValueTask.FromResult<ExecutableResolutionResult>(new ExecutableResolved(resolved));
     }
 }
 
-[Obsolete("Legacy host surface.")]
-internal sealed class RecordingProcessRunner: IProcessRunner
+internal sealed class RecordingProcessExecutor: IProcessExecutor
 {
-    internal List<ProcessRunRequest> Requests { get; } = [];
-    internal ProcessRunResult Result { get; set; } = new(
-        ProcessRunStatus.Exited,
-        0,
-        [],
-        [],
-        0,
-        0,
-        false,
-        false,
-        SideEffectCertainty.DefinitelyPerformed,
-        null);
+    internal List<(ResolvedProcessStart Request, SecurityGrant Grant)> Starts { get; } = [];
+    internal ProcessStartResult Result { get; set; } = new ProcessHandleStarted(new TestProcessHandle());
 
-    public ComponentId SecurityAudience { get; } = new("test.process-runner");
+    public ComponentId SecurityAudience { get; } = new("test.process-executor");
 
-    public ValueTask<ProcessRunResult> RunAsync(
-        ProcessRunRequest request,
+    public ValueTask<ProcessStartResult> StartAsync(
+        ResolvedProcessStart request,
+        SecurityGrant grant,
         CancellationToken cancellationToken = default)
     {
-        Requests.Add(request);
+        Starts.Add((request, grant));
         return ValueTask.FromResult(Result);
     }
+}
+
+internal sealed class TestProcessHandle: IProcessHandle
+{
+    internal ProcessExitResult Exit { get; set; } = new ProcessExited(0, SideEffectCertainty.DefinitelyPerformed);
+    internal ImmutableArray<byte> StandardOutput { get; set; } = [];
+    internal ImmutableArray<byte> StandardError { get; set; } = [];
+
+    public ProcessOperationId Id { get; } = new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
+
+    public Task<ProcessExitResult> Completion => Task.FromResult(Exit);
+
+    public async IAsyncEnumerable<ProcessOutputEvent> ReadOutputAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (StandardOutput.Length > 0)
+        {
+            yield return new ProcessStandardOutputBytes(0, StandardOutput.AsMemory());
+        }
+
+        if (StandardError.Length > 0)
+        {
+            yield return new ProcessStandardErrorBytes(1, StandardError.AsMemory());
+        }
+
+        yield return new ProcessOutputStreamsCompleted(2);
+        await Task.CompletedTask;
+    }
+
+    public ValueTask<ProcessTerminationResult> TerminateAsync(
+        ProcessTerminationRequest request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new ProcessTerminationResult(true, SideEffectCertainty.DefinitelyPerformed));
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+internal sealed class FixedProcessExecutorSelector(
+    IExecutableResolver resolver,
+    IProcessExecutor executor): IProcessExecutorSelector
+{
+    public ValueTask<ProcessExecutorSelectionResult> SelectAsync(
+        ProcessExecutorKey key,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<ProcessExecutorSelectionResult>(
+            new ProcessExecutorSelected(new ProcessExecutorKey("test"), resolver, executor));
 }
 
 internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAuthority

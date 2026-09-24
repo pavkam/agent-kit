@@ -26,8 +26,8 @@ hours, L three to six hours.
 | 2   | [Hook kernel](hook-kernel.md)                                         | –           | 13     | C1–C13 |
 | 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2           | 15     | C1–C13 |
 | 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3        | 13     | C1–C13 |
-| 5   | [Host access](host-access.md)                                         | 3           | 18     | C1–C12 |
-| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13     | C1a    |
+| 5   | [Host access](host-access.md)                                         | 3           | 18     | C1–C17 |
+| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13     | C1a–C2 |
 | 7   | [Provider runtime](provider-runtime.md)                               | 2           | 15     | C1     |
 | 8   | [Structured output](structured-output.md)                             | 2, 7        | 12     | –      |
 | 9   | [Context assembly](context-assembly.md)                               | 2           | 8      | C1–C8  |

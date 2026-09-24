@@ -5,12 +5,11 @@ namespace AgentKit.Tools.Command;
 
 using AgentKit.Tools;
 
-#pragma warning disable CS0618 // WS5-C15 migrates this tool to IProcessExecutor.
-
 /// <summary>Runs one explicitly declared shell command through exact authorization and a required sandbox.</summary>
 public sealed class CommandTool: IToolInvoker
 {
     private static readonly UTF8Encoding _strictUtf8 = new(false, true);
+    private static readonly FileRootId _workspaceRoot = new("workspace");
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
         """
         {
@@ -27,8 +26,8 @@ public sealed class CommandTool: IToolInvoker
         }
         """).RootElement;
 
-    private readonly IProcessIntentResolver _resolver;
-    private readonly IProcessRunner _runner;
+    private readonly IProcessExecutorSelector _executorSelector;
+    private readonly ProcessExecutorKey _executorKey;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
     private readonly IIdentifierGenerator<ProcessOperationId> _processOperationIds;
@@ -48,8 +47,7 @@ public sealed class CommandTool: IToolInvoker
     public static readonly ToolId Id = new("command");
 
     /// <summary>Initializes the explicit shell tool over provider-neutral process and security contracts.</summary>
-    /// <param name="resolver">The resolver that canonicalizes the shell, working directory, and bounds before authorization.</param>
-    /// <param name="runner">The effecting process boundary that revalidates intent and consumes the exact grant.</param>
+    /// <param name="executorSelector">The selector that resolves the keyed process executor profile.</param>
     /// <param name="authoritySelector">The security authority selector for the resolved process effect.</param>
     /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
     /// <param name="processOperationIds">The replaceable process-operation identity source.</param>
@@ -59,24 +57,22 @@ public sealed class CommandTool: IToolInvoker
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public CommandTool(
-        IProcessIntentResolver resolver,
-        IProcessRunner runner,
+        IProcessExecutorSelector executorSelector,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<ProcessOperationId> processOperationIds,
         TimeProvider timeProvider,
         IOptions<CommandToolOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(resolver);
-        ArgumentNullException.ThrowIfNull(runner);
+        ArgumentNullException.ThrowIfNull(executorSelector);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(processOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options.Value);
-        _resolver = resolver;
-        _runner = runner;
+        _executorSelector = executorSelector;
+        _executorKey = options.Value.ProcessExecutorKey;
         _authoritySelector = authoritySelector;
         _securityRequestIds = securityRequestIds;
         _processOperationIds = processOperationIds;
@@ -149,40 +145,51 @@ public sealed class CommandTool: IToolInvoker
             return Failure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var shellArguments = _shellArguments.Add(parsed.Command);
-        var unresolved = new ProcessResolveRequest(
-            _processOperationIds.Create(),
-            _shellExecutable,
-            shellArguments,
-            parsed.WorkingDirectory,
-            _environment,
-            [],
-            _sandboxProfile,
-            parsed.WorkspaceAccess,
-            parsed.WorkspaceAccess == ProcessWorkspaceAccess.ReadOnly
-                ? ProcessSideEffectClass.ReadOnly
-                : ProcessSideEffectClass.WorkspaceMutation,
-            ProcessChildPolicy.AllowSandboxed,
-            new ProcessResourceLimits(parsed.Timeout, parsed.MaximumOutputBytes, _terminationGracePeriod));
-        var resolution = await _resolver.ResolveAsync(unresolved, cancellationToken).ConfigureAwait(false);
-        if (resolution.Status != ProcessResolutionStatus.Resolved || resolution.Intent is null)
+        var selection = await _executorSelector.SelectAsync(_executorKey, cancellationToken).ConfigureAwait(false);
+        if (selection is ProcessExecutorMissing)
         {
             return Failure(
-                resolution.SafeMessage ?? "The command intent could not be resolved safely.",
-                resolution.Status.ToString(),
-                [], resolution.Status switch
-                {
-                    ProcessResolutionStatus.InvalidIntent => ToolTerminalStatus.InvalidArguments,
-                    ProcessResolutionStatus.ExecutableRejected or ProcessResolutionStatus.WorkingDirectoryRejected => ToolTerminalStatus.Unsupported,
-                    ProcessResolutionStatus.Failed => ToolTerminalStatus.InvocationFailed,
-                    ProcessResolutionStatus.Resolved => ToolTerminalStatus.ProtocolFailed,
-                    _ => ToolTerminalStatus.ProtocolFailed,
-                }, SideEffectCertainty.DefinitelyNotPerformed);
+                "The configured process executor profile is not registered.",
+                "Unsupported",
+                [],
+                ToolTerminalStatus.Unsupported,
+                SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var intent = resolution.Intent;
-        var context = executionContext;
-        var authorization = context.Authorization;
+        if (selection is not ProcessExecutorSelected selectedExecutor)
+        {
+            return Failure(
+                "The process executor profile could not be selected.",
+                "ProtocolFailed",
+                [],
+                ToolTerminalStatus.ProtocolFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var startRequest = CreateStartRequest(executionContext, parsed);
+        var resolution = await selectedExecutor.Resolver.ResolveAsync(startRequest, cancellationToken).ConfigureAwait(false);
+        if (resolution is ExecutableResolutionFailed failed)
+        {
+            return Failure(
+                failed.SafeMessage,
+                ProcessResolutionStatus.Failed.ToString(),
+                [],
+                ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (resolution is not ExecutableResolved { Resolved: var resolved })
+        {
+            return Failure(
+                "The command intent could not be resolved safely.",
+                ProcessResolutionStatus.Failed.ToString(),
+                [],
+                ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        var intent = ProcessStartBinding.ToResolvedProcessIntent(resolved);
+        var authorization = executionContext.Authorization;
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
         {
@@ -193,10 +200,10 @@ public sealed class CommandTool: IToolInvoker
             new SecurityRequest(
                 _securityRequestIds.Create(),
                 authorization.Scope,
-                context.ToolCallId,
+                executionContext.ToolCallId,
                 authorization.Identity,
                 authorization,
-                _runner.SecurityAudience,
+                selectedExecutor.Executor.SecurityAudience,
                 SecurityOperationKind.Process,
                 SecurityEffect.Execute,
                 ProcessSecurityBinding.Resources(intent),
@@ -214,24 +221,178 @@ public sealed class CommandTool: IToolInvoker
             return Failure("The security authority returned an unsupported decision.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await _runner.RunAsync(new ProcessRunRequest(intent, allowed.Grant), cancellationToken)
-            .ConfigureAwait(false);
-        var content = Project(result);
-        return result.Status == ProcessRunStatus.Exited && result.ExitCode == 0
+        var start = await selectedExecutor.Executor.StartAsync(resolved, allowed.Grant, cancellationToken).ConfigureAwait(false);
+        if (start is ProcessStartDenied deniedStart)
+        {
+            return Failure(
+                deniedStart.SafeMessage,
+                "Denied",
+                [],
+                ToolTerminalStatus.Denied,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (start is ProcessStartResolutionFailed resolutionFailed)
+        {
+            return Failure(
+                resolutionFailed.SafeMessage,
+                ProcessResolutionStatus.Failed.ToString(),
+                [],
+                ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (start is ProcessStartSandboxUnavailable sandboxUnavailable)
+        {
+            return Failure(
+                sandboxUnavailable.SafeMessage,
+                ProcessRunStatus.SandboxUnavailable.ToString(),
+                [],
+                ToolTerminalStatus.Unsupported,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (start is ProcessStartCancelled cancelledStart)
+        {
+            return Failure(
+                "The command was cancelled before it started.",
+                ProcessRunStatus.Cancelled.ToString(),
+                [],
+                ToolTerminalStatus.Cancelled,
+                cancelledStart.SideEffectCertainty);
+        }
+
+        if (start is ProcessStartFailed failedStart)
+        {
+            return Failure(
+                failedStart.SafeMessage,
+                ProcessRunStatus.Failed.ToString(),
+                [],
+                ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        if (start is not ProcessHandleStarted started)
+        {
+            return Failure(
+                "The process host returned an unsupported start outcome.",
+                ProcessRunStatus.Failed.ToString(),
+                [],
+                ToolTerminalStatus.ProtocolFailed,
+                SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
+        await using var handle = started.Handle;
+        var settlement = await ReadSettlementAsync(handle, parsed.MaximumOutputBytes, cancellationToken).ConfigureAwait(false);
+        var content = Project(settlement);
+        return settlement.IsSuccess
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, result.SideEffectCertainty, false, null, Status(result.Status.ToString())), content)
+                new ToolCallOutcome(
+                    ToolCallOutcomeKind.Success,
+                    ToolTerminalStatus.Succeeded,
+                    settlement.SideEffectCertainty,
+                    false,
+                    null,
+                    Status(settlement.StatusLabel)), content)
             : Failure(
-                result.SafeMessage ?? ExitFailure(result),
-                result.Status.ToString(),
-                content, result.Status switch
-                {
-                    ProcessRunStatus.Denied => ToolTerminalStatus.Denied,
-                    ProcessRunStatus.SandboxUnavailable => ToolTerminalStatus.Unsupported,
-                    ProcessRunStatus.TimedOut => ToolTerminalStatus.TimedOut,
-                    ProcessRunStatus.Cancelled => ToolTerminalStatus.Cancelled,
-                    ProcessRunStatus.Exited or ProcessRunStatus.ResolutionFailed or ProcessRunStatus.LimitExceeded or ProcessRunStatus.Failed => ToolTerminalStatus.InvocationFailed,
-                    _ => ToolTerminalStatus.InvocationFailed,
-                }, result.SideEffectCertainty);
+                settlement.Message ?? ExitFailure(settlement),
+                settlement.StatusLabel,
+                content,
+                settlement.ToolStatus,
+                settlement.SideEffectCertainty);
+    }
+
+    private ProcessStartRequest CreateStartRequest(ToolExecutionContext context, ParsedArguments parsed)
+    {
+        var shellArguments = _shellArguments.Add(parsed.Command);
+        var relativeWorkingDirectory = parsed.WorkingDirectory is null
+            ? new NormalizedRelativePath(".")
+            : new NormalizedRelativePath(parsed.WorkingDirectory.Value.Value);
+        RunId? runId = context.Correlation is InRunOperationCorrelation inRun ? inRun.RunId : null;
+        return new ProcessStartRequest(
+            _processOperationIds.Create(),
+            context.Correlation.OperationId,
+            context.AgentId,
+            runId,
+            new ProcessExecutableReference(_shellExecutable),
+            [.. shellArguments.Select(static argument => new ProcessArgument(argument))],
+            new FileTarget(_workspaceRoot, relativeWorkingDirectory),
+            new EnvironmentProjection(_environment),
+            null,
+            _sandboxProfile,
+            new ProcessResourceLimits(parsed.Timeout, parsed.MaximumOutputBytes, _terminationGracePeriod),
+            parsed.WorkspaceAccess == ProcessWorkspaceAccess.ReadOnly
+                ? ProcessEffectClass.ReadOnlyObservation
+                : ProcessEffectClass.WorkspaceMutation);
+    }
+
+    private static async ValueTask<CommandSettlement> ReadSettlementAsync(
+        IProcessHandle handle,
+        long maximumOutputBytes,
+        CancellationToken cancellationToken)
+    {
+        var stdoutTail = new List<byte>();
+        var stderrTail = new List<byte>();
+        long totalStdout = 0;
+        long totalStderr = 0;
+        var stdoutTruncated = false;
+        var stderrTruncated = false;
+        var outputLimit = checked((int) maximumOutputBytes);
+        await foreach (var evt in handle.ReadOutputAsync(cancellationToken).ConfigureAwait(false))
+        {
+            switch (evt)
+            {
+                case ProcessStandardOutputBytes stdout:
+                    totalStdout += stdout.Bytes.Length;
+                    AppendBounded(stdoutTail, stdout.Bytes.Span, outputLimit, ref stdoutTruncated);
+                    break;
+                case ProcessStandardErrorBytes stderr:
+                    totalStderr += stderr.Bytes.Length;
+                    AppendBounded(stderrTail, stderr.Bytes.Span, outputLimit, ref stderrTruncated);
+                    break;
+                case ProcessStandardOutputTruncated truncated:
+                    stdoutTruncated = true;
+                    totalStdout = Math.Max(totalStdout, truncated.BytesObserved);
+                    break;
+                case ProcessStandardErrorTruncated truncated:
+                    stderrTruncated = true;
+                    totalStderr = Math.Max(totalStderr, truncated.BytesObserved);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        var exit = await handle.Completion.ConfigureAwait(false);
+        return CommandSettlement.FromExit(
+            exit,
+            [.. stdoutTail],
+            [.. stderrTail],
+            totalStdout,
+            totalStderr,
+            stdoutTruncated,
+            stderrTruncated);
+    }
+
+    private static void AppendBounded(List<byte> tail, ReadOnlySpan<byte> chunk, int limit, ref bool truncated)
+    {
+        if (limit <= 0)
+        {
+            truncated = chunk.Length > 0 || truncated;
+            return;
+        }
+
+        foreach (var value in chunk)
+        {
+            if (tail.Count < limit)
+            {
+                tail.Add(value);
+            }
+            else
+            {
+                truncated = true;
+            }
+        }
     }
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed, out string? error)
@@ -288,32 +449,32 @@ public sealed class CommandTool: IToolInvoker
         }
     }
 
-    private static ImmutableArray<ContentPart> Project(ProcessRunResult result)
+    private static ImmutableArray<ContentPart> Project(CommandSettlement settlement)
     {
-        var stdout = Decode(result.StandardOutputTail);
-        var stderr = Decode(result.StandardErrorTail);
+        var stdout = Decode(settlement.StandardOutputTail);
+        var stderr = Decode(settlement.StandardErrorTail);
         var json = JsonSerializer.Serialize(new
         {
-            status = result.Status.ToString(),
-            exit_code = result.ExitCode,
+            status = settlement.StatusLabel,
+            exit_code = settlement.ExitCode,
             stdout = stdout.Text,
             stdout_base64 = stdout.Base64,
             stdout_valid_utf8 = stdout.ValidUtf8,
             stderr = stderr.Text,
             stderr_base64 = stderr.Base64,
             stderr_valid_utf8 = stderr.ValidUtf8,
-            total_stdout_bytes = result.TotalStandardOutputBytes,
-            total_stderr_bytes = result.TotalStandardErrorBytes,
-            stdout_truncated = result.StandardOutputTruncated,
-            stderr_truncated = result.StandardErrorTruncated,
-            stdout_artifact_id = result.StandardOutputArtifact?.Id.ToString(),
-            stdout_artifact_version = result.StandardOutputArtifact?.Version.Value,
-            stdout_artifact_hash = result.StandardOutputArtifact?.Integrity.ContentHash.Value,
-            stderr_artifact_id = result.StandardErrorArtifact?.Id.ToString(),
-            stderr_artifact_version = result.StandardErrorArtifact?.Version.Value,
-            stderr_artifact_hash = result.StandardErrorArtifact?.Integrity.ContentHash.Value,
-            effect_certainty = result.SideEffectCertainty.ToString(),
-            message = result.SafeMessage,
+            total_stdout_bytes = settlement.TotalStandardOutputBytes,
+            total_stderr_bytes = settlement.TotalStandardErrorBytes,
+            stdout_truncated = settlement.StandardOutputTruncated,
+            stderr_truncated = settlement.StandardErrorTruncated,
+            stdout_artifact_id = (string?) null,
+            stdout_artifact_version = (string?) null,
+            stdout_artifact_hash = (string?) null,
+            stderr_artifact_id = (string?) null,
+            stderr_artifact_version = (string?) null,
+            stderr_artifact_hash = (string?) null,
+            effect_certainty = settlement.SideEffectCertainty.ToString(),
+            message = settlement.Message,
         });
         return [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)];
     }
@@ -413,6 +574,7 @@ public sealed class CommandTool: IToolInvoker
             _ = new ProcessEnvironmentVariable(name, environmentValue);
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(value.SandboxProfile.Value, nameof(value.SandboxProfile));
+        ArgumentOutOfRangeException.ThrowIfEqual(value.ProcessExecutorKey, default, nameof(value.ProcessExecutorKey));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value.DefaultTimeout, TimeSpan.Zero, nameof(value.DefaultTimeout));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value.MaximumTimeout, TimeSpan.Zero, nameof(value.MaximumTimeout));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(value.DefaultTimeout, value.MaximumTimeout, nameof(value.DefaultTimeout));
@@ -424,8 +586,8 @@ public sealed class CommandTool: IToolInvoker
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value.MaximumCommandBytes, nameof(value.MaximumCommandBytes));
     }
 
-    private static string ExitFailure(ProcessRunResult result) => result.Status == ProcessRunStatus.Exited
-        ? $"The command exited with code {result.ExitCode}."
+    private static string ExitFailure(CommandSettlement settlement) => settlement.ExitCode is int code
+        ? $"The command exited with code {code}."
         : "The command did not settle successfully.";
 
     private static ExtensionData Status(string status) => new(
@@ -436,7 +598,9 @@ public sealed class CommandTool: IToolInvoker
     private static ToolInvocationResult Failure(
         string reason,
         string status,
-        ImmutableArray<ContentPart> content, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        ImmutableArray<ContentPart> content,
+        ToolTerminalStatus sourceStatus,
+        SideEffectCertainty certainty) => new(
             new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), content);
 
     private readonly record struct ParsedArguments(
@@ -447,6 +611,108 @@ public sealed class CommandTool: IToolInvoker
         long MaximumOutputBytes);
 
     private readonly record struct DecodedOutput(string? Text, string? Base64, bool ValidUtf8);
-}
 
-#pragma warning restore CS0618
+    private readonly record struct CommandSettlement(
+        string StatusLabel,
+        int? ExitCode,
+        ImmutableArray<byte> StandardOutputTail,
+        ImmutableArray<byte> StandardErrorTail,
+        long TotalStandardOutputBytes,
+        long TotalStandardErrorBytes,
+        bool StandardOutputTruncated,
+        bool StandardErrorTruncated,
+        SideEffectCertainty SideEffectCertainty,
+        string? Message,
+        ToolTerminalStatus ToolStatus,
+        bool IsSuccess)
+    {
+        internal static CommandSettlement FromExit(
+            ProcessExitResult exit,
+            ImmutableArray<byte> stdoutTail,
+            ImmutableArray<byte> stderrTail,
+            long totalStdout,
+            long totalStderr,
+            bool stdoutTruncated,
+            bool stderrTruncated) => exit switch
+            {
+                ProcessExited exited => new CommandSettlement(
+                    ProcessRunStatus.Exited.ToString(),
+                    exited.ExitCode,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    exited.SideEffectCertainty,
+                    null,
+                    exited.ExitCode == 0 ? ToolTerminalStatus.Succeeded : ToolTerminalStatus.InvocationFailed,
+                    exited.ExitCode == 0),
+                ProcessCancelled cancelled => new CommandSettlement(
+                    ProcessRunStatus.Cancelled.ToString(),
+                    null,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    cancelled.SideEffectCertainty,
+                    "The command was cancelled.",
+                    ToolTerminalStatus.Cancelled,
+                    false),
+                ProcessTimedOut timedOut => new CommandSettlement(
+                    ProcessRunStatus.TimedOut.ToString(),
+                    null,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    timedOut.SideEffectCertainty,
+                    "The command timed out.",
+                    ToolTerminalStatus.TimedOut,
+                    false),
+                ProcessSignalled signalled => new CommandSettlement(
+                    ProcessRunStatus.Failed.ToString(),
+                    null,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    signalled.SideEffectCertainty,
+                    $"The command terminated with signal {signalled.Signal}.",
+                    ToolTerminalStatus.InvocationFailed,
+                    false),
+                ProcessKilled killed => new CommandSettlement(
+                    ProcessRunStatus.Failed.ToString(),
+                    null,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    killed.SideEffectCertainty,
+                    "The command was forcibly killed.",
+                    ToolTerminalStatus.InvocationFailed,
+                    false),
+                _ => new CommandSettlement(
+                    ProcessRunStatus.Failed.ToString(),
+                    null,
+                    stdoutTail,
+                    stderrTail,
+                    totalStdout,
+                    totalStderr,
+                    stdoutTruncated,
+                    stderrTruncated,
+                    exit.SideEffectCertainty,
+                    "The command did not settle successfully.",
+                    ToolTerminalStatus.InvocationFailed,
+                    false),
+            };
+    }
+}

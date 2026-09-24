@@ -4,6 +4,7 @@
 global using System.Collections.Immutable;
 global using System.Diagnostics;
 global using System.Diagnostics.Metrics;
+global using System.Runtime.CompilerServices;
 global using System.Text.Json;
 
 global using AgentKit.Observability;

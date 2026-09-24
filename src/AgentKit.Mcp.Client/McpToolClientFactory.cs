@@ -64,7 +64,7 @@ public sealed class McpToolClientFactory<TTools>
         // would fail the connection, and a server that only supports an older-but-still-acceptable
         // revision could never be reached). Always negotiate automatically, then enforce the floor
         // below by comparing the actually negotiated revision against MinimumVersion.
-        var options = new McpClientOptions { ProtocolVersion = null };
+        var options = new ModelContextProtocol.Client.McpClientOptions { ProtocolVersion = null };
         var effectiveLoggerFactory = loggerFactory ?? _loggerFactory;
         var logger = effectiveLoggerFactory.CreateLogger<McpToolClientFactory<TTools>>();
         using var activity = AgentKitDiagnostics.Activities.StartActivity(

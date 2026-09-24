@@ -15,6 +15,9 @@ public sealed class WebFetchToolOptions
     /// <summary>Gets or sets the maximum compressed wire/body bytes admitted by the transport.</summary>
     public long MaximumResponseBytes { get; set; } = 2 * 1_024 * 1_024;
 
+    /// <summary>Gets or sets the maximum request body bytes admitted for non-idempotent uploads.</summary>
+    public long MaximumRequestBytes { get; set; } = NetworkBounds.DefaultMaximumRequestBytes;
+
     /// <summary>Gets or sets the default overall fetch duration across every redirect hop.</summary>
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(20);
 

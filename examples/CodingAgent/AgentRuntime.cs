@@ -144,13 +144,14 @@ internal static class AgentRuntime
         _ = services.AddAgentTools();
 
         _ = services.AddSandboxedFileSystem(workspaceRoot);
-        _ = services.AddOperatingSystemProcesses(workspaceRoot, o =>
+        _ = services.AddAgentProcesses(new ProcessExecutorKey("default"), o =>
         {
-            o.AllowedExecutablePaths.Add("/bin/sh");
-            o.AllowedEnvironmentVariableNames.Add("PATH");
+            o.OperatingSystem.RootDirectory = workspaceRoot;
+            o.OperatingSystem.AllowedExecutablePaths.Add("/bin/sh");
+            o.OperatingSystem.AllowedEnvironmentVariableNames.Add("PATH");
             for (var index = 0; index < toolchainRoots.Length; index++)
             {
-                o.ReadOnlyToolchainRoots[$"toolchain-{index}"] = toolchainRoots[index];
+                o.OperatingSystem.ReadOnlyToolchainRoots[$"toolchain-{index}"] = toolchainRoots[index];
             }
         });
 

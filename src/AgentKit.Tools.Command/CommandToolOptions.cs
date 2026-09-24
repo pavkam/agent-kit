@@ -38,4 +38,7 @@ public sealed class CommandToolOptions
 
     /// <summary>Gets or sets the maximum strict UTF-8 bytes accepted in one command string.</summary>
     public long MaximumCommandBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>Gets or sets the keyed process executor profile used for command execution.</summary>
+    public ProcessExecutorKey ProcessExecutorKey { get; set; } = new("default");
 }

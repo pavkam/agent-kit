@@ -50,16 +50,8 @@ internal static class ProcessLegacyIntentMapping
     {
         ArgumentNullException.ThrowIfNull(resolved);
         ArgumentNullException.ThrowIfNull(snapshot);
-        var request = ToResolveRequest(resolved.Request, snapshot);
-        var workspaceRoot = snapshot.OperatingSystem.RootDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return new ResolvedProcessIntent(
-            request,
-            resolved.Executable.AbsolutePath,
-            resolved.Executable.Fingerprint,
-            workspaceRoot,
-            resolved.WorkingDirectory,
-            resolved.EnvironmentFingerprint,
-            resolved.StandardInputFingerprint ?? ProcessSecurityBinding.FingerprintBytes([]));
+        _ = snapshot;
+        return ProcessStartBinding.ToResolvedProcessIntent(resolved);
     }
 
     private static FileSystemPath? ToWorkingDirectory(FileTarget target)
