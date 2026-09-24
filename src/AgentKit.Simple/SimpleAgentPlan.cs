@@ -302,8 +302,8 @@ internal sealed class SimpleAgentPlan
             SessionProfileKey)
         {
             Output = options.Output,
-            Toolsets = AuthoredToolsets(),
-            OptionalCapabilities = ToolOptionalCapabilities(),
+            Toolsets = options.IncludeRegisteredTools ? AuthoredToolsets() : [],
+            OptionalCapabilities = options.IncludeRegisteredTools ? ToolOptionalCapabilities() : AgentOptionalCapabilitySelection.None,
         };
     }
 

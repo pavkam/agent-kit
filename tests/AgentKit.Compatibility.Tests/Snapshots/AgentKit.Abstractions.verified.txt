@@ -10412,7 +10412,23 @@ namespace AgentKit
     }
     public sealed class ToolInvocationContext : System.IEquatable<AgentKit.ToolInvocationContext>
     {
-        public ToolInvocationContext(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.TurnId turnId, AgentKit.OperationId operationId, AgentKit.ToolCallId callId, AgentKit.ToolDescriptor tool, AgentKit.ToolVersion toolVersion, System.Text.Json.JsonElement arguments, AgentKit.SecurityGrant invocationGrant, int attempt, System.DateTimeOffset requestedAt, System.DateTimeOffset invocationStartedAt, System.DateTimeOffset deadline, AgentKit.IToolProgressReporter progress) { }
+        public ToolInvocationContext(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.RunId runId,
+                    AgentKit.TurnId turnId,
+                    AgentKit.OperationId operationId,
+                    AgentKit.ToolCallId callId,
+                    AgentKit.ToolDescriptor tool,
+                    AgentKit.ToolVersion toolVersion,
+                    System.Text.Json.JsonElement arguments,
+                    AgentKit.SecurityGrant invocationGrant,
+                    int attempt,
+                    System.DateTimeOffset requestedAt,
+                    System.DateTimeOffset invocationStartedAt,
+                    System.DateTimeOffset deadline,
+                    AgentKit.IToolProgressReporter progress,
+                    AgentKit.SessionProfileSnapshot? sessionProfile = null) { }
         public AgentKit.AgentId AgentId { get; }
         public System.Text.Json.JsonElement Arguments { get; }
         public int Attempt { get; }
@@ -10425,6 +10441,7 @@ namespace AgentKit
         public System.DateTimeOffset RequestedAt { get; }
         public AgentKit.RunId RunId { get; }
         public AgentKit.SessionId SessionId { get; }
+        public AgentKit.SessionProfileSnapshot? SessionProfile { get; }
         public AgentKit.ToolDescriptor Tool { get; }
         public AgentKit.ToolVersion ToolVersion { get; }
         public AgentKit.TurnId TurnId { get; }

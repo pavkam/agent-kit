@@ -8,7 +8,7 @@ public sealed class NetworkBoundsTests
 {
     [Fact]
     public void Constructor_WhenConnectTimeoutIsNotPositive_ThrowsExactParameter() =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new NetworkBounds(TimeSpan.Zero, TimeSpan.FromSeconds(1), 1, 1)).ParamName.ShouldBe("connectTimeout");
+        Should.Throw<ArgumentOutOfRangeException>(() => new NetworkBounds(TimeSpan.Zero, TimeSpan.FromSeconds(1), 1, 1)).ParamName.ShouldBe("resolutionTimeout");
 
     [Fact]
     public void Constructor_WhenResponseTimeoutIsNotPositive_ThrowsExactParameter() =>

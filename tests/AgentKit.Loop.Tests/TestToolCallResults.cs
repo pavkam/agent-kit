@@ -31,7 +31,9 @@ internal static class TestToolCallResults
         ToolCallAcceptanceEvidence? acceptance = null;
         GrantId? grantId = null;
         DateTimeOffset? startedAt = null;
-        var effects = new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []);
+        var effects = hasTool
+            ? new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, [])
+            : null;
         if (succeeded)
         {
             grantId = new GrantId(call.CallId.Value);

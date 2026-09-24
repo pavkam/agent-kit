@@ -339,7 +339,7 @@ public sealed class AgentEngineBuilderExtensionsTests
                 o.MaxTurns = 3;
                 o.IncludeRegisteredTools = false;
             });
-        RegisterInMemoryReadTool(builder.Services);
+        RegisterInMemoryReadTool(builder);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -544,7 +544,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     {
         var handler = new StubOpenAIHandler("done");
         var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
-        RegisterInMemoryReadTool(builder.Services);
+        RegisterInMemoryReadTool(builder);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
 
@@ -562,7 +562,7 @@ public sealed class AgentEngineBuilderExtensionsTests
     {
         var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"secret.txt\"}", "understood");
         var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
-        RegisterInMemoryReadTool(builder.Services);
+        RegisterInMemoryReadTool(builder);
         _ = builder.Services.AddBeforeToolInvocationHook<VetoSecretsHook>(
             HookRegistrationDescriptors.ForPoint(
                 new HookId("test.veto-secrets"),
@@ -668,7 +668,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithBudget(static o => o.MaxToolCalls = 1);
-        RegisterInMemoryReadTool(builder.Services);
+        RegisterInMemoryReadTool(builder);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
         engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
@@ -696,7 +696,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithBudget(static o => o.MaxTurns = 1);
-        RegisterInMemoryReadTool(builder.Services);
+        RegisterInMemoryReadTool(builder);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
         await using var engine = builder.Build();
         engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("a.txt"), "A");
@@ -966,8 +966,9 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Obsolete]
-    private static void RegisterInMemoryReadTool(IServiceCollection services)
+    private static void RegisterInMemoryReadTool(AgentEngineBuilder builder)
     {
+        var services = builder.Services;
         var workspaceProfile = new FileSystemProfileKey("workspace");
         var workspaceRoot = new FileRootId("workspace");
         _ = services.AddInMemoryFileSystem(workspaceProfile);
@@ -978,6 +979,7 @@ public sealed class AgentEngineBuilderExtensionsTests
             o.RootId = workspaceRoot;
             o.HostRootPath = Path.GetTempPath();
         });
+        _ = builder.WithTools(ReadFileTool.DefaultToolset.Key);
     }
 
     private sealed class VetoSecretsHook: IBeforeToolInvocationHook

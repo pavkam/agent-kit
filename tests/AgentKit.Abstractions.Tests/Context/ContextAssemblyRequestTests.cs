@@ -72,7 +72,7 @@ public sealed class ContextAssemblyRequestTests
     [Fact]
     public void Constructor_WhenSettingsIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], null!, LlmRequestSettings.Default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, null!, ExtensionData.Empty));
         exception.ParamName.ShouldBe("settings");
     }
 
