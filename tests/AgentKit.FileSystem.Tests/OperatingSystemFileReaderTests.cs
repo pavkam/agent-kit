@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 public sealed class OperatingSystemFileReaderTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task OpenReadAsync_WhenAuditUnavailable_DeniesBeforeOpening()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -28,6 +29,7 @@ public sealed class OperatingSystemFileReaderTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task OpenReadAsync_WhenFileExceedsBound_TruncatesAtAuthorizedLimit()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -61,6 +63,7 @@ public sealed class OperatingSystemFileReaderTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task OpenReadAsync_WhenSymlinkEscapesRoot_Denies()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -98,6 +101,7 @@ public sealed class OperatingSystemFileReaderTests
         return root;
     }
 
+    [Obsolete("Legacy host surface.")]
     private static IFileReader CreateReader(string root, ISecurityAuditDispatcher? audit = null)
     {
         var services = new ServiceCollection();

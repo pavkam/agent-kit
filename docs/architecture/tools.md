@@ -468,7 +468,9 @@ select a winner by order. `ReplaceToolCatalogMergePolicy<TPolicy>` explicitly
 replaces unkeyed policies while preserving keyed registrations, host clocks, and
 old hosts. The merge coordinator borrows source snapshots and owns no capture;
 catalog capture still owns discovery, cleanup, schema/capability preflight, and
-model exposure. The legacy `AddAgentTools` coordinator is not yet migrated.
+model exposure. `AddAgentTools` registers `ToolCatalogCoordinator` as the
+unkeyed `IToolCatalog`, chains discovery through merge and schema preflight, and
+composes `DefaultToolExecutor` as the unkeyed `IToolExecutor`.
 
 Merge and policy operations use `tool.catalog.merge` and
 `tool.catalog.merge.policy`, with safe run correlation and bounded
@@ -947,11 +949,10 @@ and each source cleanup emit shared `tool.catalog.discover*` /
 correlation. Metrics use only bounded operation/outcome dimensions. Observer
 failures are isolated and missing or reversed duration is omitted.
 
-This source-acquisition boundary is implemented. The combined canonical catalog
-still needs integration of canonical schema compilation,
-provider/model-capability preflight, and migration from the legacy
-`IToolCatalog`/loop path. Neither source discovery nor handoff skips those
-requirements or claims model-ready schema support.
+This source-acquisition boundary is implemented. `ToolCatalogCoordinator`
+integrates canonical schema compilation and provider/model-capability preflight
+before transferring ownership to `IToolCatalogCapture`. Neither source discovery
+nor handoff skips those requirements or claims model-ready schema support.
 
 The local schema boundary is separately implemented by `IToolSchemaEngine` and
 `ICompiledToolSchema` in `AgentKit.Abstractions`, with the first-party bounded
@@ -1001,8 +1002,8 @@ missing/reversed diagnostic time cannot alter validation.
 Canonical compilation does not select a provider translation profile or expose
 tools to a model. Catalog integration must compile every retained input/output
 schema, validate returned exact evidence, preflight model-visible translation,
-and retain canonical handles through execution. Those integration and legacy
-catalog/loop migration steps remain open.
+and retain canonical handles through execution. The loop invokes `IToolExecutor`
+with run-bound captures from `IToolRunCatalogCaptureFactory`.
 
 The first-party `StaticToolProvider` implements `IToolProvider` over a
 host-supplied `ToolProviderSnapshot` and complete exact invoker map. It

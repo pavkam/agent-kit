@@ -9,5 +9,7 @@ using AgentKit.Conformance;
 public sealed class OperatingSystemFileSystemConformanceTests: FileSystemConformanceTests<OperatingSystemFileSystemConformanceFixture>
 {
     /// <inheritdoc/>
+#pragma warning disable CS0618 // Fixture constructor exercises legacy host wiring under test.
     protected override OperatingSystemFileSystemConformanceFixture CreateFixture() => new();
+#pragma warning restore CS0618
 }

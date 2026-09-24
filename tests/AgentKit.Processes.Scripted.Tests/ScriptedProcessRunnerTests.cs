@@ -43,6 +43,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenResolverRevalidationChangesTheIntent_ReturnsResolutionFailedWithoutStartingTheScenario()
     {
         var resolver = Resolver();
@@ -71,6 +72,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenResolverThrowsUnexpectedException_PropagatesWithoutStartingTheScenario()
     {
         var resolver = Resolver();
@@ -114,6 +116,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenScenarioConfigured_ConsumesExactGrantAndReturnsDeclaredResult()
     {
         var resolver = Resolver();
@@ -129,6 +132,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenGrantDenied_ReturnsNotStartedInsteadOfScenario()
     {
         var resolver = Resolver();
@@ -144,6 +148,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotStartTheScenario()
     {
         var resolver = Resolver();
@@ -161,6 +166,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenConsumedResultLacksExactReceipt_DoesNotStartTheScenario()
     {
         var resolver = Resolver();
@@ -177,6 +183,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenReceiptDoesNotMatchFreshIntent_DoesNotStartTheScenario()
     {
         var resolver = Resolver();
@@ -192,6 +199,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         var resolver = Resolver();
@@ -206,6 +214,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCallerAlreadyCancelled_DoesNotConsumeOrStartTheScenario()
     {
         var resolver = Resolver();
@@ -221,6 +230,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotStartTheScenario()
     {
         var resolver = Resolver();
@@ -237,6 +247,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenReceiptAccepted_UsesInjectedFreshIntentId()
     {
         var resolver = Resolver();
@@ -249,6 +260,7 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCancelledAfterSimulatedStart_ReturnsUncertainCancellation()
     {
         var resolver = Resolver();
@@ -272,6 +284,7 @@ public sealed class ScriptedProcessRunnerTests
         return new ScriptedProcessIntentResolver(Options.Create(options));
     }
 
+    [Obsolete("Legacy host surface.")]
     private static ScriptedProcessRunner Runner(IProcessIntentResolver resolver, ISecurityGrantStore store, ProcessRunResult result, TimeSpan delay, TimeProvider timeProvider, IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null)
     {
         var options = new ScriptedProcessOptions();

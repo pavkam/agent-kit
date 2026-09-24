@@ -15,6 +15,7 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
     private ServiceProvider? _provider;
 
     /// <summary>Initializes a new isolated temporary root.</summary>
+    [Obsolete("Legacy host surface.")]
     public OperatingSystemFileSystemConformanceFixture()
     {
         _root = Path.Combine(Path.GetTempPath(), $"agentkit-fs-conformance-{Guid.NewGuid():N}");
@@ -116,6 +117,7 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
     }
 
     /// <inheritdoc/>
+    [Obsolete("Legacy host surface.")]
     public void UseRejectingAudit()
     {
         _audit = new RejectingAuditDispatcher();
@@ -134,6 +136,7 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
         return ValueTask.CompletedTask;
     }
 
+    [Obsolete("Legacy host surface.")]
     private void RebuildProvider()
     {
         _provider?.Dispose();

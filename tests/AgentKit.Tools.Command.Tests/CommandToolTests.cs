@@ -325,6 +325,7 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
     {
         _ = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());

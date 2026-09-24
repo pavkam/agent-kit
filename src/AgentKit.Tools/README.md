@@ -8,16 +8,16 @@ the appropriate backing services.
 
 ## Use this project
 
-Start with `AddAgentTools`, `AddTool` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior. `AllowListToolAuthorizer` (registered by `AddAgentTools`) fails closed
-by default: every call is denied until its `ToolId` is added to
-`AgentToolsOptions.AllowedToolIds`, or
-`AgentToolsOptions.AllowAllRegisteredTools` is set to grant every registered
-tool at once. Build the model-facing `LlmToolDefinition` for a resolved
-`ToolDescriptor` (or a whole `IToolCatalog.Descriptors` sequence) with
-`ToLlmToolDefinition`/ `ToLlmToolDefinitions` in
+Start with `AddAgentTools` (or `AddToolDiscoveryRuntime`) in
+[ServiceExtensions.cs](ServiceExtensions.cs). That registers
+`ToolCatalogCoordinator` as `IToolCatalog`, `DefaultToolExecutor` as
+`IToolExecutor`, and the resolver, validator, scheduler, and run capture factory
+the executor requires. Feature packages register `IToolInvoker` implementations
+through their own `Add*Tool` extensions and publish toolsets with `AddToolset`.
+Tool invocation authorization flows through the configured `ISecurityAuthority`;
+there is no allow-list authorizer in this runtime. Build model-facing
+`LlmToolDefinition` values from captured `ToolDescriptor` evidence with
+`ToLlmToolDefinition` / `ToLlmToolDefinitions` in
 [ToolDescriptorExtensions.cs](ToolDescriptorExtensions.cs) and
 [ToolDescriptorCollectionExtensions.cs](ToolDescriptorCollectionExtensions.cs).
 

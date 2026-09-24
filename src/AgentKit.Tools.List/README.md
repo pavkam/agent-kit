@@ -29,11 +29,11 @@ Direct project references:
 [AgentKit.Tools](../AgentKit.Tools/README.md). Other related projects above are
 composition collaborators, not necessarily dependencies.
 
-`AddListTool` registers a spec-shaped `IToolInvoker`, publishes
-`ListDirectoryTool.DefaultToolset`, and retains legacy `ITool` registration
-until workstream 4 chunk C10. Opt into the new executor with
-`ReplaceToolExecutor<DefaultToolExecutor>()` and register
-`ISecurityAuthoritySelector` from the permissions stack.
+`AddListTool` registers a spec-shaped `IToolInvoker` and publishes
+`ListDirectoryTool.DefaultToolset`. Compose `AddAgentTools()` (or
+`AddToolDiscoveryRuntime()`) so discovery, merge, and `DefaultToolExecutor`
+invoke the tool through `ToolInvocationContext` and the permissions stack's
+`ISecurityAuthoritySelector`.
 
 ## Tests and reference
 

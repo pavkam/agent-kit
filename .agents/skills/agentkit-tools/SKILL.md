@@ -35,6 +35,11 @@ network, or process enforcement.
   invokers, normalizers, recorders, and event sinks as separate contracts.
 - AgentKit.Tools owns the optional first-party runtime. Feature packages use
   AgentKit.Tools.ToolName and depend only on abstractions for host effects.
+- `AddAgentTools()` registers `ToolCatalogCoordinator` as `IToolCatalog`,
+  `DefaultToolExecutor` as `IToolExecutor`, and `IToolRunCatalogCaptureFactory`
+  for run-bound captures. Applications replace individual pieces with
+  `ReplaceToolCatalog<T>()`, `ReplaceToolExecutor<T>()`, or keyed registrations;
+  there is no legacy `ITool` / allow-list authorizer path.
 - Resolve calls against the immutable catalog snapshot sent to the model. Bound
   and validate canonical arguments before authorization or invocation.
 - Compile complete canonical schemas through `IToolSchemaEngine` before exposure

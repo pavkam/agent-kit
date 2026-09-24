@@ -161,7 +161,9 @@ public sealed class ListDirectoryTool: IToolInvoker
             return Failed("The file-system profile could not resolve directory enumeration.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
+#pragma warning disable CS0618 // Legacy paging reader until ListDirectoryTool adopts spec IDirectoryReader paging.
         var directoryReader = _serviceProvider.GetRequiredKeyedService<ILegacyDirectoryReader>(_options.ProfileKey.Value);
+#pragma warning restore CS0618
 
         FileSystemPath? legacyPath = string.IsNullOrEmpty(normalizedPath.Path.Value)
             ? null

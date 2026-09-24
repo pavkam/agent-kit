@@ -7,7 +7,7 @@ namespace AgentKit.FileSystem;
 [Obsolete("Legacy host surface.")]
 internal sealed class OperatingSystemDirectoryReader(ILegacyDirectoryReader legacyReader): IDirectoryReader
 {
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
     private readonly ILegacyDirectoryReader _legacyReader = legacyReader;
 
     /// <inheritdoc/>

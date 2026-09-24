@@ -965,7 +965,7 @@ public sealed class AgentEngineBuilderExtensionsTests
         }
     }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
     private static void RegisterInMemoryReadTool(AgentEngineBuilder builder)
     {
         var services = builder.Services;

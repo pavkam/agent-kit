@@ -231,6 +231,12 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
                 await parallelLimiter.WaitAsync(segmentToken).ConfigureAwait(false);
                 acquiredParallelSlot = true;
+                if (segmentToken.IsCancellationRequested)
+                {
+                    results[resultIndex] = ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                    await ReleaseLeaseWithoutInvokeAsync(entry).ConfigureAwait(false);
+                    return;
+                }
             }
             finally
             {

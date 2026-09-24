@@ -41,7 +41,7 @@ Owning documents: [Tools](../architecture/tools.md),
       until C7b)
 - [x] WS4-C12 first-party `IWebSearchProvider` (`NetworkWebSearchProvider` over
       `HttpClient` + grant fingerprint; full `INetworkTransport` alignment open)
-- [ ] WS4-C13 documentation
+- [x] WS4-C13 documentation
 
 ## Verified current state
 

@@ -27,7 +27,7 @@ concept specifications for access bounds, egress, and sandboxing.
 - [x] WS5-C10a route-partitioned pooling
 - [x] WS5-C10b network audit, keyed profiles, stream upload
 - [x] WS5-C11 network conformance suite
-- [ ] WS5-C12 process contracts (handle-based)
+- [x] WS5-C12 process contracts (handle-based)
 - [ ] WS5-C13a `OperatingSystemProcessExecutor` start and streamed output
 - [ ] WS5-C13b terminate, exit status, audit, reevaluation
 - [ ] WS5-C14 scripted executor and process conformance suite

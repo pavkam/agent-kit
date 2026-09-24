@@ -81,6 +81,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     /// <param name="workspaceRoot">The absolute workspace root every tool is confined to.</param>
     /// <param name="themeSlug">The bundled theme slug the host applied at startup; null means the default.</param>
     /// <exception cref="ArgumentException"><paramref name="workspaceRoot"/> is blank.</exception>
+    [Obsolete("Legacy host surface.")]
     public ChatScreen(string workspaceRoot, string? themeSlug = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
@@ -272,6 +273,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
     private Menu BuildMenuBar()
     {
         var menu = MenuBuilder.Horizontal(spacing: 0)
@@ -727,6 +729,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         ];
     }
 
+    [Obsolete("Legacy host surface.")]
     private void OnCommandPaletteItemInvoked(object? sender, ItemInvokedEventArgs e)
     {
         _ = sender;
@@ -846,6 +849,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
+    [Obsolete("Legacy host surface.")]
     private void OnPromptPreviewKey(object? sender, KeyEventArgs e)
     {
         _ = sender;
@@ -1311,6 +1315,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         return entries.ToImmutable();
     }
 
+    [Obsolete("Legacy host surface.")]
     private void ExecuteSlashCommand(string commandLine)
     {
         var name = commandLine.Split(' ', 2)[0];

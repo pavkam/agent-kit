@@ -192,7 +192,7 @@ public sealed class ListDirectoryToolTests
             ISecurityAuthority authority) =>
             TestListComposition.CreateTool(reader, authority);
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
     private static Task<ToolInvocationResult> InvokeAsync(
         ListDirectoryTool tool,
         string json,

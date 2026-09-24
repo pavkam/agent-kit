@@ -137,7 +137,13 @@ public sealed class BarrierSegmentToolSchedulerTests
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var executeTask = scheduler.ExecuteAsync(batch, cts.Token);
-        await Task.Delay(50, TestContext.Current.CancellationToken);
+        var deadline = TimeProvider.System.GetUtcNow().AddSeconds(5);
+        while (running.StartedAt is null && TimeProvider.System.GetUtcNow() < deadline)
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        _ = running.StartedAt.ShouldNotBeNull();
         await cts.CancelAsync();
 
         var result = await executeTask;

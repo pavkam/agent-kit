@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 public sealed class OperatingSystemFileWriterTests
 {
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_WhenAuditUnavailable_DeniesBeforeMutation()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -37,6 +38,7 @@ public sealed class OperatingSystemFileWriterTests
     [InlineData(FileWriteDisposition.ReplaceExisting, true, typeof(FileWriteSuccess))]
     [InlineData(FileWriteDisposition.Append, false, typeof(FileWriteNotFound))]
     [InlineData(FileWriteDisposition.Append, true, typeof(FileWriteSuccess))]
+    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_DispositionMatrix_ReturnsExpectedOutcome(
         FileWriteDisposition disposition,
         bool seedExisting,
@@ -81,6 +83,7 @@ public sealed class OperatingSystemFileWriterTests
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_WhenExpectedFingerprintMismatch_ReturnsConflict()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -118,6 +121,7 @@ public sealed class OperatingSystemFileWriterTests
         return root;
     }
 
+    [Obsolete("Legacy host surface.")]
     private static IFileWriter CreateWriter(string root, ISecurityAuditDispatcher? audit = null)
     {
         var services = new ServiceCollection();

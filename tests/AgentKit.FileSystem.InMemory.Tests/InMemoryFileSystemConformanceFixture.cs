@@ -11,22 +11,27 @@ using Microsoft.Extensions.Options;
 public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformanceFixture
 {
     private ISecurityAuditDispatcher _audit = new AcceptingAuditDispatcher();
-    [Obsolete("Legacy host surface.")] private InMemoryFileSystem _fileSystem;
+    [Obsolete("Legacy host surface.")]
+    private InMemoryFileSystem _fileSystem;
 
     /// <summary>Initializes a fresh in-memory volume with host capabilities.</summary>
-    [Obsolete("Legacy host surface.")] public InMemoryFileSystemConformanceFixture() => _fileSystem = CreateFileSystem();
+    [Obsolete("Legacy host surface.")]
+    public InMemoryFileSystemConformanceFixture() => _fileSystem = CreateFileSystem();
 
     /// <inheritdoc/>
     public bool SupportsSymlinkRejection => false;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")] public IFileReader Reader => _fileSystem;
+    [Obsolete("Legacy host surface.")]
+    public IFileReader Reader => _fileSystem;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")] public IFileWriter Writer => _fileSystem;
+    [Obsolete("Legacy host surface.")]
+    public IFileWriter Writer => _fileSystem;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")] public IDirectoryCreator? DirectoryCreator => _fileSystem;
+    [Obsolete("Legacy host surface.")]
+    public IDirectoryCreator? DirectoryCreator => _fileSystem;
 
     /// <inheritdoc/>
     public ISecurityGrantStore GrantStore { get; } = TestSecurity.GrantStore();

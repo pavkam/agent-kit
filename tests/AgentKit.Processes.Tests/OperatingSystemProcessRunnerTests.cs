@@ -62,6 +62,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenResolverRevalidationFails_ReturnsResolutionFailedWithoutConsumingGrant()
     {
         if (!IsSupported())
@@ -141,6 +142,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenResolverThrowsUnexpectedException_PropagatesWithoutStartingAProcess()
     {
         if (!IsSupported())
@@ -207,6 +209,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenOutputArtifactSinkThrows_ReportsLossWithoutPropagating()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -224,6 +227,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenProcessIgnoresTermination_IsForciblyKilledAfterGracePeriod()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -246,6 +250,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenStandardInputIsProvided_DeliversItCompletelyBeforeClosingTheStream()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -275,6 +280,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenStandardInputCannotBeDeliveredToAnAlreadyExitedProcess_ReportsFailureAndTerminatesCleanly()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -305,6 +311,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenTerminationGracePeriodIsZeroAndProcessExitsCleanly_ReportsExitedNotFailed()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -327,6 +334,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenChildNeverReadsLargeStandardInput_TimesOutInsteadOfBlockingIndefinitely()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -362,6 +370,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenOrphanedChildKeepsOutputStreamsOpenAfterExit_ForciblyClosesThemWithinTheDrainBound()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -381,6 +390,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenGrantDenied_StartsNothingAndUsesExactEnforcement()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -407,6 +417,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheProcess()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -431,6 +442,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenConsumedResultLacksExactReceipt_DoesNotCreateTheProcess()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -452,6 +464,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -471,6 +484,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheProcess()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -493,6 +507,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenArgumentsContainShellSyntax_PassesThemLiterallyWithoutInterpretation()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -513,6 +528,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenAmbientEnvironmentExists_DoesNotInheritIt()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -535,6 +551,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenChildAttemptsOutsideWriteAndNetwork_BothRemainDenied()
     {
         if (!IsSupported() || !SandboxAvailable() || !File.Exists("/usr/bin/curl"))
@@ -561,6 +578,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenHomebrewPythonRootExplicitlyCaptured_StartsRuntimeReadOnly()
     {
         const string homebrewRoot = "/opt/homebrew";
@@ -601,6 +619,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenSandboxProfileIsMissing_DoesNotConsumeGrantOrStart()
     {
         if (!IsSupported())
@@ -623,6 +642,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenExecutableBytesChangeAfterAuthorization_RejectsBeforeGrantConsumption()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -645,6 +665,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenOutputExceedsBound_RetainsExactTailPerStream()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -663,6 +684,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenOutputTailTruncates_PreservesCompleteStreamAsArtifact()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -682,6 +704,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenCompleteOutputExceedsArtifactBound_ReportsLossWithoutCallingSink()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -701,6 +724,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenBothStreamsProduceOutput_PreservesTheirIdentity()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -718,6 +742,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenWorkspaceIsReadOnly_SandboxPreventsMutation()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -735,6 +760,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenChildProcessesDenied_EnforcesOrFailsClosedBeforeGrant()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -762,6 +788,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    [Obsolete("Legacy host surface.")]
     public async Task RunAsync_WhenTimeoutElapses_TerminatesOwnedProcessAndReportsPossibleEffects()
     {
         if (!IsSupported() || !SandboxAvailable())
@@ -778,6 +805,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     private OperatingSystemProcessIntentResolver CreateResolver(string executable, long maximumOutputBytes = 1024) => new(Options.Create(OptionsFor(executable, maximumOutputBytes)));
+    [Obsolete("Legacy host surface.")]
     private OperatingSystemProcessRunner CreateRunner(IProcessIntentResolver resolver, ISecurityGrantStore store, long maximumOutputBytes = 1024, long maximumArtifactOutputBytes = 64 * 1024 * 1024, IProcessOutputArtifactSink? outputArtifacts = null, IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null) => intentIds is null ? new OperatingSystemProcessRunner(resolver, [new PlatformProcessSandboxProvider()], store, TimeProvider.System, Options.Create(OptionsFor("/bin/sh", maximumOutputBytes, maximumArtifactOutputBytes)), outputArtifacts: outputArtifacts) : new OperatingSystemProcessRunner(resolver, [new PlatformProcessSandboxProvider()], store, TimeProvider.System, Options.Create(OptionsFor("/bin/sh", maximumOutputBytes, maximumArtifactOutputBytes)), null, outputArtifacts, intentIds);
     private OperatingSystemProcessOptions OptionsFor(string executable, long maximumOutputBytes, long maximumArtifactOutputBytes = 64 * 1024 * 1024)
     {

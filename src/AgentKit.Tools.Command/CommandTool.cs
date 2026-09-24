@@ -5,6 +5,8 @@ namespace AgentKit.Tools.Command;
 
 using AgentKit.Tools;
 
+#pragma warning disable CS0618 // WS5-C15 migrates this tool to IProcessExecutor.
+
 /// <summary>Runs one explicitly declared shell command through exact authorization and a required sandbox.</summary>
 public sealed class CommandTool: IToolInvoker
 {
@@ -446,3 +448,5 @@ public sealed class CommandTool: IToolInvoker
 
     private readonly record struct DecodedOutput(string? Text, string? Base64, bool ValidUtf8);
 }
+
+#pragma warning restore CS0618

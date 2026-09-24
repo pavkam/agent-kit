@@ -90,7 +90,7 @@ internal static class OperatingSystemFileSystemRegistration
             profile);
     }
 
-    [Obsolete]
+    [Obsolete("Legacy host surface.")]
     private static OperatingSystemFileSystemLegacyHost CreateLegacyHost(IServiceProvider provider, object serviceKey)
     {
         var profileKey = new FileSystemProfileKey((string) serviceKey);

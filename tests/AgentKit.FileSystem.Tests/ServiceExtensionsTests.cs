@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public sealed class ServiceExtensionsTests
 {
-    [Obsolete("Legacy IFileSystem surface.")]
+#pragma warning disable CS0618 // Legacy narrow-capability DI surface under test.
+
     private static readonly Type[] _narrowCapabilityTypes =
     [
         typeof(ILegacyDirectoryReader),
@@ -19,7 +20,6 @@ public sealed class ServiceExtensionsTests
     ];
 
     /// <summary>Gets every narrow capability in both registration orders.</summary>
-    [Obsolete("Legacy host surface.")]
     public static TheoryData<Type, bool> NarrowCapabilityReplacementCases { get; } = new()
     {
         { typeof(ILegacyDirectoryReader), false },
@@ -139,7 +139,6 @@ public sealed class ServiceExtensionsTests
 
     [Theory]
     [MemberData(nameof(NarrowCapabilityReplacementCases))]
-    [Obsolete("Legacy AddSandboxedFileSystem narrow-capability replacement.")]
     public void AddSandboxedFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
         Type capabilityType,
         bool replaceAfterRegistration)
@@ -247,4 +246,6 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<OptionsValidationException>(
             () => provider.GetRequiredService<IOptions<SandboxedFileSystemOptions>>().Value);
     }
+
+#pragma warning restore CS0618
 }
