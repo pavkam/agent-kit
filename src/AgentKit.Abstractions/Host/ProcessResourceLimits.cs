@@ -10,18 +10,22 @@ public sealed record ProcessResourceLimits
     /// <param name="timeout">The finite positive total operation timeout.</param>
     /// <param name="maximumOutputBytes">The positive retained-byte bound across each output stream.</param>
     /// <param name="terminationGracePeriod">The non-negative graceful termination window before forced tree kill.</param>
+    /// <param name="standardInputDelivery">When the host closes standard input relative to the initial payload.</param>
     /// <exception cref="ArgumentOutOfRangeException">A duration or byte bound is invalid.</exception>
     public ProcessResourceLimits(
         TimeSpan timeout,
         long maximumOutputBytes,
-        TimeSpan terminationGracePeriod)
+        TimeSpan terminationGracePeriod,
+        ProcessStandardInputDelivery standardInputDelivery = ProcessStandardInputDelivery.AfterInitialPayload)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumOutputBytes);
         ArgumentOutOfRangeException.ThrowIfLessThan(terminationGracePeriod, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfUndefined(standardInputDelivery);
         Timeout = timeout;
         MaximumOutputBytes = maximumOutputBytes;
         TerminationGracePeriod = terminationGracePeriod;
+        StandardInputDelivery = standardInputDelivery;
     }
 
     /// <summary>Gets the finite total operation timeout.</summary>
@@ -32,4 +36,7 @@ public sealed record ProcessResourceLimits
 
     /// <summary>Gets the graceful termination window before forced process-tree kill.</summary>
     public TimeSpan TerminationGracePeriod { get; }
+
+    /// <summary>Gets when the host closes standard input relative to the initial payload.</summary>
+    public ProcessStandardInputDelivery StandardInputDelivery { get; }
 }

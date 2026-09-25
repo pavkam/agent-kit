@@ -10,6 +10,8 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
     private readonly IExecutableResolver _executableResolver;
     private readonly IProcessSandboxSelector _sandboxes;
     private readonly ISecurityGrantStore _grantStore;
+    private readonly ISecurityAuditDispatcher _auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly SemaphoreSlim _capacity;
@@ -20,6 +22,8 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
         IExecutableResolver executableResolver,
         IProcessSandboxSelector sandboxes,
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
         TimeProvider timeProvider,
         IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
@@ -27,12 +31,16 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
         ArgumentNullException.ThrowIfNull(executableResolver);
         ArgumentNullException.ThrowIfNull(sandboxes);
         ArgumentNullException.ThrowIfNull(grantStore);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(intentIds);
         _snapshot = snapshot;
         _executableResolver = executableResolver;
         _sandboxes = sandboxes;
         _grantStore = grantStore;
+        _auditDispatcher = auditDispatcher;
+        _auditRecordIds = auditRecordIds;
         _timeProvider = timeProvider;
         _intentIds = intentIds;
         var maximumConcurrent = snapshot.OperatingSystem.MaximumConcurrentProcesses;
@@ -116,19 +124,20 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
                 ProcessSecurityBinding.Resources(intent),
                 ProcessSecurityBinding.Fingerprint(intent));
             var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-            var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            var auditFailure = await ProcessHostGuard.ConsumeWithRequiredAuditAsync(
                 grant,
                 enforcement,
                 enforcementIntent,
+                _grantStore,
+                _auditDispatcher,
+                _auditRecordIds,
+                _timeProvider,
                 cancellationToken).ConfigureAwait(false);
-            if (!ProcessEnforcementReceipt.IsFreshExact(grantResult, grant, enforcement, enforcementIntent))
+            if (auditFailure is not null)
             {
                 ReleaseCapacity();
                 capacityReleased = true;
-                return new ProcessStartDenied(
-                    grantResult.Status == GrantConsumptionStatus.Consumed
-                        ? "The grant store did not retain a fresh exact enforcement-intent receipt."
-                        : grantResult.SafeMessage ?? "The process start grant was not accepted.");
+                return new ProcessStartDenied(auditFailure);
             }
 
             try
@@ -138,6 +147,7 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
                     sandboxResult.Launch,
                     _timeProvider,
                     _snapshot.OperatingSystem.ForcedTerminationWait,
+                    _snapshot.OperatingSystem.MaximumInputBytes,
                     ReleaseCapacity);
                 return new ProcessHandleStarted(handle);
             }

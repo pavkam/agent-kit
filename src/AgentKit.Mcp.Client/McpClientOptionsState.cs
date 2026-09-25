@@ -23,5 +23,7 @@ internal sealed class McpClientOptionsState
         options.MaximumFrameBytes,
         options.MaximumMessageBytes,
         options.MaximumInFlightRequests,
-        options.UnknownNotificationPolicy);
+        options.UnknownNotificationPolicy,
+        options.StdioProcessExecutorKey,
+        options.StdioSandboxProfileId);
 }

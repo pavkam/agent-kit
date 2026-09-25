@@ -425,6 +425,7 @@ public static class AgentEngineBuilderExtensions
             ArgumentNullException.ThrowIfNull(builder);
             _ = builder.Services.AddMcpClient(configureClient);
             _ = builder.Services.AddMcpToolSource(sourceId, endpointKey, capabilityProfileId);
+            _ = builder.Services.AddMcpContextContributors(new McpEndpointContextBinding(endpointKey, capabilityProfileId));
             return builder;
         }
 

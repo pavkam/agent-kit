@@ -37,6 +37,8 @@ public sealed class OperatingSystemProcessExecutorTests
             resolver,
             new DefaultProcessSandboxSelector(sandboxes),
             new TestGrantStore(),
+            new NoOpSecurityAuditDispatcher(),
+            new GuidSecurityAuditRecordIdGenerator(),
             TimeProvider.System,
             new GuidSecurityEnforcementIntentIdGenerator());
     }
@@ -84,5 +86,13 @@ public sealed class OperatingSystemProcessExecutorTests
         internal AgentProcessOptionsSnapshot Snapshot { get; }
 
         public void Dispose() => Directory.Delete(Path, recursive: true);
+    }
+
+    private sealed class NoOpSecurityAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
     }
 }

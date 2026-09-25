@@ -21,4 +21,20 @@ internal static class McpDiscoveryOperationContext
             correlation,
             request.Authorization);
     }
+
+    internal static ProtectedSemanticOperationContext FromContextRequest(ContextContributionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var correlation = new InRunOperationCorrelation(
+            new OperationId(request.ModelRequestId.Value),
+            request.RunId,
+            request.TurnId);
+        return new ProtectedSemanticOperationContext(
+            request.Agent.Id,
+            request.SessionId,
+            request.ConversationId,
+            request.Identity,
+            correlation,
+            request.Authorization);
+    }
 }

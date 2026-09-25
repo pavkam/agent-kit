@@ -17,7 +17,12 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
     private readonly Channel<ProcessOutputEvent> _events;
     private Task<ProcessExitResult> RunCompletion { get; }
     private readonly Action? _releaseCapacity;
+    private readonly long _maximumInputBytes;
+    private readonly ProcessStandardInputDelivery _standardInputDelivery;
+    private readonly Lock _stdinGate = new();
     private long _nextSequence;
+    private long _stdinBytesWritten;
+    private int _stdinCompleted;
     private int _disposed;
 
     /// <summary>Starts one sandboxed child and begins streaming output.</summary>
@@ -26,15 +31,19 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
         ProcessSandboxLaunch launch,
         TimeProvider timeProvider,
         TimeSpan forcedTerminationWait,
+        long maximumInputBytes,
         Action? releaseCapacity = null)
     {
         ArgumentNullException.ThrowIfNull(intent);
         ArgumentNullException.ThrowIfNull(launch);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(forcedTerminationWait, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumInputBytes);
         Id = intent.Request.Id;
         _timeProvider = timeProvider;
         _forcedTerminationWait = forcedTerminationWait;
+        _maximumInputBytes = maximumInputBytes;
+        _standardInputDelivery = intent.Request.Limits.StandardInputDelivery;
         _releaseCapacity = releaseCapacity;
         _events = Channel.CreateUnbounded<ProcessOutputEvent>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
         _process = new Process { StartInfo = CreateStartInfo(intent, launch) };
@@ -78,6 +87,61 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
     }
 
     /// <inheritdoc/>
+    public ValueTask<ProcessStandardInputWriteResult> WriteStandardInputAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_standardInputDelivery != ProcessStandardInputDelivery.Streaming)
+        {
+            return ValueTask.FromResult<ProcessStandardInputWriteResult>(
+                new ProcessStandardInputWriteUnavailable("Standard input is not open for streaming on this handle."));
+        }
+
+        if (Volatile.Read(ref _stdinCompleted) != 0)
+        {
+            return ValueTask.FromResult<ProcessStandardInputWriteResult>(
+                new ProcessStandardInputWriteUnavailable("Standard input is already completed."));
+        }
+
+        if (data.IsEmpty)
+        {
+            return ValueTask.FromResult<ProcessStandardInputWriteResult>(new ProcessStandardInputWriteSucceeded(0));
+        }
+
+        lock (_stdinGate)
+        {
+            if (Volatile.Read(ref _stdinCompleted) != 0)
+            {
+                return ValueTask.FromResult<ProcessStandardInputWriteResult>(
+                    new ProcessStandardInputWriteUnavailable("Standard input is already completed."));
+            }
+
+            if (_stdinBytesWritten + data.Length > _maximumInputBytes)
+            {
+                return ValueTask.FromResult<ProcessStandardInputWriteResult>(
+                    new ProcessStandardInputWriteLimitExceeded("Standard input exceeds the configured maximum."));
+            }
+        }
+
+        return WriteStandardInputCoreAsync(data, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask CompleteStandardInputAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_standardInputDelivery != ProcessStandardInputDelivery.Streaming)
+        {
+            return;
+        }
+
+        await CloseStandardInputAsync().ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
@@ -85,6 +149,7 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
             return;
         }
 
+        await CloseStandardInputAsync().ConfigureAwait(false);
         _ = await TerminateProcessAsync(_process, intentGrace: TimeSpan.FromMilliseconds(250)).ConfigureAwait(false);
         _ = _events.Writer.TryComplete();
         _process.Dispose();
@@ -103,7 +168,7 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
         using var timeout = new CancellationTokenSource(intent.Request.Limits.Timeout, _timeProvider);
         try
         {
-            await WriteInputAsync(_process, intent.Request.StandardInput, timeout.Token).ConfigureAwait(false);
+            await WriteInitialStandardInputAsync(intent.Request.StandardInput, timeout.Token).ConfigureAwait(false);
             await _process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -216,15 +281,66 @@ internal sealed partial class OperatingSystemProcessHostSession: IProcessHandle
         return startInfo;
     }
 
-    private static async Task WriteInputAsync(Process process, ImmutableArray<byte> input, CancellationToken cancellationToken)
+    private async Task WriteInitialStandardInputAsync(
+        ImmutableArray<byte> input,
+        CancellationToken cancellationToken)
     {
         if (!input.IsEmpty)
         {
-            await process.StandardInput.BaseStream.WriteAsync(input.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            var write = await WriteStandardInputCoreAsync(input.AsMemory(), cancellationToken).ConfigureAwait(false);
+            if (write is not ProcessStandardInputWriteSucceeded)
+            {
+                throw new InvalidOperationException("The initial standard-input payload could not be written.");
+            }
         }
 
-        process.StandardInput.Close();
+        if (_standardInputDelivery == ProcessStandardInputDelivery.AfterInitialPayload)
+        {
+            await CloseStandardInputAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask<ProcessStandardInputWriteResult> WriteStandardInputCoreAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _process.StandardInput.BaseStream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
+            await _process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            _ = Interlocked.Add(ref _stdinBytesWritten, data.Length);
+            return new ProcessStandardInputWriteSucceeded(data.Length);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new ProcessStandardInputWriteUnavailable("Standard input is no longer writable.");
+        }
+    }
+
+    private ValueTask CloseStandardInputAsync()
+    {
+        if (Interlocked.CompareExchange(ref _stdinCompleted, 1, 0) != 0)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        lock (_stdinGate)
+        {
+            try
+            {
+                _process.StandardInput.Close();
+            }
+            catch (Exception)
+            {
+                // Closing stdin is best-effort once the process has already exited.
+            }
+        }
+
+        return ValueTask.CompletedTask;
     }
 
     private async Task<bool> TerminateProcessAsync(Process process, TimeSpan intentGrace)

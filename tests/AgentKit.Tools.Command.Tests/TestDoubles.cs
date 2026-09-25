@@ -91,6 +91,13 @@ internal sealed class TestProcessHandle: IProcessHandle
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(new ProcessTerminationResult(true, SideEffectCertainty.DefinitelyPerformed));
 
+    public ValueTask<ProcessStandardInputWriteResult> WriteStandardInputAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<ProcessStandardInputWriteResult>(new ProcessStandardInputWriteSucceeded(data.Length));
+
+    public ValueTask CompleteStandardInputAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 

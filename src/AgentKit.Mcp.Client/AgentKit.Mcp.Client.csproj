@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
     <ProjectReference Include="../AgentKit.Mcp/AgentKit.Mcp.csproj"/>
     <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj"/>
   </ItemGroup>

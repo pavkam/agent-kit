@@ -63,6 +63,25 @@ internal sealed class ScriptedProcessHandle: IProcessHandle
     }
 
     /// <inheritdoc/>
+    public ValueTask<ProcessStandardInputWriteResult> WriteStandardInputAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<ProcessStandardInputWriteResult>(
+            new ProcessStandardInputWriteSucceeded(data.Length));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask CompleteStandardInputAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)

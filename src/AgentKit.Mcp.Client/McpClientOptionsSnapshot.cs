@@ -13,7 +13,9 @@ internal sealed record McpClientOptionsSnapshot
         int maximumFrameBytes,
         int maximumMessageBytes,
         int maximumInFlightRequests,
-        McpUnknownNotificationPolicy unknownNotificationPolicy)
+        McpUnknownNotificationPolicy unknownNotificationPolicy,
+        ProcessExecutorKey stdioProcessExecutorKey,
+        SandboxProfileId stdioSandboxProfileId)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(handshakeTimeout, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(requestTimeout, TimeSpan.Zero);
@@ -30,6 +32,10 @@ internal sealed record McpClientOptionsSnapshot
         MaximumMessageBytes = maximumMessageBytes;
         MaximumInFlightRequests = maximumInFlightRequests;
         UnknownNotificationPolicy = unknownNotificationPolicy;
+        ArgumentException.ThrowIfNullOrWhiteSpace(stdioProcessExecutorKey.Value, nameof(stdioProcessExecutorKey));
+        ArgumentException.ThrowIfNullOrWhiteSpace(stdioSandboxProfileId.Value, nameof(stdioSandboxProfileId));
+        StdioProcessExecutorKey = stdioProcessExecutorKey;
+        StdioSandboxProfileId = stdioSandboxProfileId;
     }
 
     internal TimeSpan HandshakeTimeout { get; }
@@ -45,6 +51,10 @@ internal sealed record McpClientOptionsSnapshot
     internal int MaximumInFlightRequests { get; }
 
     internal McpUnknownNotificationPolicy UnknownNotificationPolicy { get; }
+
+    internal ProcessExecutorKey StdioProcessExecutorKey { get; }
+
+    internal SandboxProfileId StdioSandboxProfileId { get; }
 
     internal McpEndpointBounds CreateEndpointBounds() => new(
         HandshakeTimeout,

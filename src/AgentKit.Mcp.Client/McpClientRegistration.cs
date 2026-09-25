@@ -21,10 +21,20 @@ internal static class McpClientRegistration
         services.TryAddSingleton<IMcpTransportFactoryCatalog, DefaultMcpTransportFactoryCatalog>();
         services.TryAddSingleton<IIdentifierGenerator<McpSessionId>, GuidMcpSessionIdGenerator>();
         services.TryAddSingleton<IIdentifierGenerator<McpRequestId>, GuidMcpRequestIdGenerator>();
+        services.TryAddSingleton<IIdentifierGenerator<ProcessOperationId>, GuidProcessOperationIdGenerator>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IMcpClientSessionFactory, McpClientSessionFactory>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, StdioMcpTransportFactory>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, HttpMcpTransportFactory>());
+        services.TryAddSingleton<IMcpTransportFactory>(static provider => new StdioMcpTransportFactory(
+            provider.GetRequiredService<IProcessExecutorSelector>(),
+            provider.GetRequiredService<ISecurityAuthoritySelector>(),
+            provider.GetRequiredService<ISecurityGrantStore>(),
+            provider.GetRequiredService<ISecurityAuditDispatcher>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>(),
+            provider.GetRequiredService<McpClientOptionsSnapshot>(),
+            provider.GetRequiredService<TimeProvider>()));
         return services;
     }
 

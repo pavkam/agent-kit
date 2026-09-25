@@ -16,6 +16,17 @@ public sealed class StdioMcpTransportFactoryTests
             audit: null!,
             securityRequestIds: null!,
             auditRecordIds: null!,
+            processOperationIds: null!,
+            clientOptions: new McpClientOptionsSnapshot(
+                TimeSpan.FromSeconds(15),
+                TimeSpan.FromSeconds(60),
+                TimeSpan.FromSeconds(10),
+                1_048_576,
+                4_194_304,
+                16,
+                McpUnknownNotificationPolicy.IgnoreAndDiagnose,
+                new ProcessExecutorKey("default"),
+                new SandboxProfileId("workspace-no-network-v1")),
             timeProvider: TimeProvider.System);
         var endpoint = new McpEndpoint(
             new McpEndpointKey("local"),
@@ -39,8 +50,7 @@ public sealed class StdioMcpTransportFactoryTests
         var result = await factory.OpenAsync(
             new McpTransportOpenRequest(sessionOpen, endpoint),
             TestContext.Current.CancellationToken);
-        var failure = result.ShouldBeOfType<McpTransportOpenFailed>();
-        failure.SafeMessage.ShouldContain("stdin");
+        _ = result.ShouldBeOfType<McpTransportOpenFailed>();
     }
 
     private static ProtectedSemanticOperationContext CreateOperation()

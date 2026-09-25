@@ -17,6 +17,7 @@ internal static class AgentProcessRegistration
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IIdentifierGenerator<ProcessOperationId>, GuidProcessOperationIdGenerator>();
         services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+        services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>, GuidSecurityAuditRecordIdGenerator>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IProcessSandboxProvider, PlatformProcessSandboxProvider>());
         services.TryAddSingleton<IProcessSandboxSelector>(static provider =>
             new DefaultProcessSandboxSelector(provider.GetServices<IProcessSandboxProvider>()));
@@ -97,6 +98,8 @@ internal static class AgentProcessRegistration
             provider.GetRequiredKeyedService<IExecutableResolver>(serviceKey),
             provider.GetRequiredService<IProcessSandboxSelector>(),
             provider.GetRequiredService<ISecurityGrantStore>(),
+            provider.GetRequiredService<ISecurityAuditDispatcher>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>());
     }

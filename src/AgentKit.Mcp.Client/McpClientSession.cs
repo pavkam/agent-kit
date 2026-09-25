@@ -97,7 +97,13 @@ internal sealed class McpClientSession: IMcpClientSession
             throw new InvalidOperationException("MCP transport failed to open.");
         }
 
-        if (opened.Transport is not SdkMcpClientTransport sdkTransport)
+        var clientTransport = opened.Transport switch
+        {
+            SdkMcpClientTransport sdkTransport => sdkTransport.ClientTransport,
+            StdioMcpClientTransport stdioTransport => stdioTransport.ClientTransport,
+            _ => null,
+        };
+        if (clientTransport is null)
         {
             await opened.Transport.DisposeAsync().ConfigureAwait(false);
             throw new InvalidOperationException("The opened MCP transport is not an SDK client transport.");
@@ -106,7 +112,7 @@ internal sealed class McpClientSession: IMcpClientSession
         var sessionId = sessionIds.Create();
         var logger = loggerFactory.CreateLogger<McpClientSession>();
         var sdkClient = await McpClient.CreateAsync(
-            sdkTransport.ClientTransport,
+            clientTransport,
             new ModelContextProtocol.Client.McpClientOptions { ProtocolVersion = null },
             loggerFactory,
             cancellationToken).ConfigureAwait(false);

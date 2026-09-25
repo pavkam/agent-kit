@@ -120,5 +120,14 @@ public static class ServiceExtensions
             McpEndpointKey endpointKey,
             CapabilityProfileId capabilityProfileId) =>
             McpToolSourceRegistration.Add(services, sourceId, endpointKey, capabilityProfileId);
+
+        /// <summary>Registers MCP resource and prompt context contributors for one endpoint binding.</summary>
+        /// <param name="binding">The endpoint and profile binding.</param>
+        /// <param name="assemblerKey">The assembler profile that receives the contributors.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        public IServiceCollection AddMcpContextContributors(
+            McpEndpointContextBinding binding,
+            ComponentKey<IContextAssembler>? assemblerKey = null) =>
+            McpContextContributorRegistration.AddMcpContextContributors(services, binding, assemblerKey);
     }
 }
