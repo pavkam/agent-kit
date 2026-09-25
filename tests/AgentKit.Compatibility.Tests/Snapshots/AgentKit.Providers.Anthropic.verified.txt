@@ -5,7 +5,7 @@ namespace AgentKit.Providers.Anthropic
 {
     public sealed class AnthropicLlmModel : AgentKit.ILlmModel
     {
-        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -27,11 +27,17 @@ namespace AgentKit.Providers.Anthropic
         public const string DefaultMessagesPath = "v1/messages";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ProviderEndpointId DefaultEndpointId { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static System.Uri BuildMessagesUri(AgentKit.Providers.Anthropic.AnthropicProviderOptions options) { }
+        public static System.Uri BuildMessagesUri(AgentKit.Providers.Anthropic.AnthropicProviderOptions options, System.Uri? baseAddressOverride) { }
     }
     public sealed class AnthropicProviderOptions
     {

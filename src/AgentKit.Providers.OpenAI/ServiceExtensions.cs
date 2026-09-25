@@ -193,23 +193,6 @@ public static class ServiceExtensions
             };
         }
 
-        private static EmbeddingModelDescriptor WithOpenAIEmbeddingBinding(EmbeddingModelDescriptor descriptor)
-        {
-            var binding = new ProviderOperationBinding(
-                new ProviderEndpointProfileReference(
-                    OpenAIProviderDefaults.EmbeddingEndpointProfileKey,
-                    new ProviderEndpointProfileVersion(1)),
-                new ProviderCredentialProfileReference(
-                    OpenAIProviderDefaults.EmbeddingCredentialProfileKey,
-                    new ProviderCredentialProfileVersion(1)));
-            return descriptor with
-            {
-                ServiceSurface = OpenAIProviderDefaults.EmbeddingServiceSurface,
-                EndpointId = new ProviderEndpointId("default"),
-                Binding = binding,
-            };
-        }
-
         /// <summary>
         /// Registers one named OpenAI chat model as an additional
         /// <see cref="ILlmModel"/> implementation.
@@ -403,16 +386,21 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
 
-                var descriptor = WithOpenAIEmbeddingBinding(new EmbeddingModelDescriptor(
-                    alias,
-                    OpenAIProviderDefaults.ProviderId,
-                    OpenAIProviderDefaults.EmbeddingApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? OpenAIProviderDefaults.DefaultEmbeddingCapabilities,
-                    limits ?? OpenAIProviderDefaults.DefaultEmbeddingLimits,
-                    pricing: null,
-                    ExtensionData.Empty));
+                var descriptor = ProviderOperationDescriptorBinding.ApplyEmbeddingBinding(
+                    new EmbeddingModelDescriptor(
+                        alias,
+                        OpenAIProviderDefaults.ProviderId,
+                        OpenAIProviderDefaults.EmbeddingApiFamily,
+                        modelId,
+                        deploymentId: null,
+                        capabilities ?? OpenAIProviderDefaults.DefaultEmbeddingCapabilities,
+                        limits ?? OpenAIProviderDefaults.DefaultEmbeddingLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                    OpenAIProviderDefaults.EmbeddingServiceSurface,
+                    OpenAIProviderDefaults.EmbeddingEndpointProfileKey,
+                    OpenAIProviderDefaults.EmbeddingCredentialProfileKey,
+                    new ProviderEndpointId("default"));
 
                 return new OpenAIEmbeddingModel(
                     descriptor,
@@ -421,7 +409,8 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

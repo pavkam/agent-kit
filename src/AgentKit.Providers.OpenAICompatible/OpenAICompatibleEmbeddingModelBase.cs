@@ -6,6 +6,8 @@ namespace AgentKit.Providers.OpenAICompatible;
 using System.Diagnostics;
 using System.Net.Http;
 
+using AgentKit.Observability;
+using AgentKit.Providers;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
@@ -57,6 +59,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     private readonly IOpenAIEmbeddingRequestTranslator _translator;
     private readonly IOpenAIEmbeddingResponseParser _responseParser;
     private readonly IProviderCredentialSource _credentials;
+    private readonly IProviderProfileRuntimeSelector? _profileSelector;
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
 
@@ -75,6 +78,9 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">
+    /// The optional profile runtime selector used when <see cref="EmbeddingModelDescriptor.Binding"/> is configured.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     protected OpenAICompatibleEmbeddingModelBase(
         EmbeddingModelDescriptor descriptor,
@@ -83,7 +89,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(profile);
@@ -99,6 +106,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         _translator = translator;
         _responseParser = responseParser;
         _credentials = credentials;
+        _profileSelector = profileSelector;
         _httpClient = httpClient;
         _timeProvider = timeProvider;
     }
@@ -213,10 +221,33 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 "The request deadline had already elapsed before the attempt could be sent.");
         }
 
+        var sendStarted = _timeProvider.GetTimestamp();
+        using var sendActivity = ProviderRequestObservability.StartEmbeddingSend(Descriptor.ProviderId);
+        IProviderProfileRuntimeLease? profileLease = null;
         ProviderCredential credential;
+        Uri? endpointOverride = null;
         try
         {
-            credential = await _credentials.GetCredentialAsync(Descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+            var credentialBinding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
+                    Descriptor.Binding,
+                    request.Operation,
+                    _credentials,
+                    _profileSelector,
+                    Descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!credentialBinding.IsSuccess)
+            {
+                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
+                ProviderRequestObservability.RecordRequest("embedding", "failed", _timeProvider.GetElapsedTime(sendStarted));
+                return Fail(credentialBinding.Failure!);
+            }
+
+            profileLease = credentialBinding.Lease;
+            endpointOverride = credentialBinding.EndpointBaseAddress;
+            credential = await credentialBinding.CredentialSource!
+                .GetCredentialAsync(Descriptor.ProviderId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -224,8 +255,6 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         }
         catch (OperationCanceledException exception)
         {
-            // The credential source's own internal timeout (e.g. a token provider's HTTP call), not the
-            // caller's cancellation: the same distinction the transport path below already makes.
             return FailWithKind(
                 ProviderFailureKind.Timeout,
                 "The credential source did not resolve a credential before its own deadline.",
@@ -233,11 +262,6 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         }
         catch (Exception exception)
         {
-            // IProviderCredentialSource.GetCredentialAsync is user-supplied and routinely fails with
-            // provider-specific exceptions (e.g. an Entra/Azure.Identity token provider's
-            // AuthenticationFailedException). Every other auth failure in this class reports
-            // Authentication; an uncaught exception here would break the "terminal outcome equals last
-            // event" contract instead.
             return FailWithKind(
                 ProviderFailureKind.Authentication,
                 "The request credential could not be resolved.",
@@ -271,85 +295,19 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
 
         AdjustRequestPayload(payload, request);
 
-        using var httpRequest = CreateHttpRequest(payload, granted);
-        using var deadlineSource = new CancellationTokenSource(
-            remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
-        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
-
-        HttpResponseMessage response;
         try
         {
-            response = await _httpClient
-                .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return Cancel(Descriptor.ProviderId);
-        }
-        catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Timeout,
-                "The request did not complete before its deadline.",
-                exception);
-        }
-        catch (OperationCanceledException exception)
-        {
-            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
-            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
-            return FailWithKind(
-                ProviderFailureKind.Timeout,
-                "The transport timed out before the provider responded.",
-                exception);
-        }
-        catch (HttpRequestException exception)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Unavailable,
-                "The provider could not be reached.",
-                exception);
-        }
+            using var httpRequest = CreateHttpRequest(payload, granted, endpointOverride);
+            using var deadlineSource = new CancellationTokenSource(
+                remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
+            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-        using (response)
-        {
-            if (!response.IsSuccessStatusCode)
-            {
-                try
-                {
-                    return Fail(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false));
-                }
-                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
-                {
-                    return new EmbeddingAttemptCancelled(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception));
-                }
-                catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-                {
-                    return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception));
-                }
-                catch (OperationCanceledException exception)
-                {
-                    return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception));
-                }
-            }
-
-            var parseContext = new EmbeddingResponseParseContext(
-                request.Context.RequestId,
-                Descriptor.ProviderId,
-                Descriptor.ApiFamily,
-                Descriptor.ModelId,
-                Descriptor.DeploymentId,
-                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
-
+            HttpResponseMessage response;
             try
             {
-                var body = await response.Content.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
-                await using (body.ConfigureAwait(false))
-                {
-                    return await _responseParser
-                        .ParseAsync(body, parseContext, request.Context.Request.Inputs, linkedSource.Token)
-                        .ConfigureAwait(false);
-                }
+                response = await _httpClient
+                    .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -359,30 +317,109 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
             {
                 return FailWithKind(
                     ProviderFailureKind.Timeout,
-                    "The response was not fully received before the request's deadline.",
+                    "The request did not complete before its deadline.",
                     exception);
             }
             catch (OperationCanceledException exception)
             {
                 return FailWithKind(
                     ProviderFailureKind.Timeout,
-                    "The transport timed out while the response body was being received.",
+                    "The transport timed out before the provider responded.",
                     exception);
             }
-            catch (IOException exception)
+            catch (HttpRequestException exception)
             {
-                // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
                 return FailWithKind(
                     ProviderFailureKind.Unavailable,
-                    "The connection failed while the response body was being received.",
+                    "The provider could not be reached.",
                     exception);
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        return Fail(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false));
+                    }
+                    catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return new EmbeddingAttemptCancelled(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception));
+                    }
+                    catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+                    {
+                        return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception));
+                    }
+                    catch (OperationCanceledException exception)
+                    {
+                        return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception));
+                    }
+                }
+
+                var parseContext = new EmbeddingResponseParseContext(
+                    request.Context.RequestId,
+                    Descriptor.ProviderId,
+                    Descriptor.ApiFamily,
+                    Descriptor.ModelId,
+                    Descriptor.DeploymentId,
+                    ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
+
+                try
+                {
+                    var body = await response.Content.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
+                    await using (body.ConfigureAwait(false))
+                    {
+                        return await _responseParser
+                            .ParseAsync(body, parseContext, request.Context.Request.Inputs, linkedSource.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return Cancel(Descriptor.ProviderId);
+                }
+                catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+                {
+                    return FailWithKind(
+                        ProviderFailureKind.Timeout,
+                        "The response was not fully received before the request's deadline.",
+                        exception);
+                }
+                catch (OperationCanceledException exception)
+                {
+                    return FailWithKind(
+                        ProviderFailureKind.Timeout,
+                        "The transport timed out while the response body was being received.",
+                        exception);
+                }
+                catch (IOException exception)
+                {
+                    return FailWithKind(
+                        ProviderFailureKind.Unavailable,
+                        "The connection failed while the response body was being received.",
+                        exception);
+                }
+            }
+        }
+        finally
+        {
+            if (profileLease is not null)
+            {
+                await profileLease.DisposeAsync().ConfigureAwait(false);
             }
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(
+        JsonObject payload,
+        ProviderAuthorizationGranted authorization,
+        Uri? endpointBaseOverride)
     {
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _profile.EmbeddingsUri)
+        var targetUri = endpointBaseOverride is null
+            ? _profile.EmbeddingsUri
+            : new Uri(ProviderProfileAttemptBinding.NormalizeBaseAddress(endpointBaseOverride), _profile.EmbeddingsPath);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, targetUri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };

@@ -5,13 +5,13 @@ namespace AgentKit.Providers.AzureOpenAI
 {
     public sealed class AzureOpenAIEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
     {
-        public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         protected override AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected override void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.EmbeddingModelRequest request) { }
     }
     public sealed class AzureOpenAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         protected override AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected override void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.LlmModelRequest request) { }
     }
@@ -21,11 +21,19 @@ namespace AgentKit.Providers.AzureOpenAI
         public const string DefaultEmbeddingsPath = "openai/v1/embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
+        public static AgentKit.ProviderEndpointId DefaultEndpointId { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
         public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId EmbeddingServiceSurface { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions options) { }
     }

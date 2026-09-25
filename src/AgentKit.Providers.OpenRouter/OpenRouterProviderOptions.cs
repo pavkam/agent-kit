@@ -29,6 +29,9 @@ public sealed class OpenRouterProviderOptions
     /// <summary>Gets or sets the embeddings operation path, relative to <see cref="BaseAddress"/>.</summary>
     public string EmbeddingsPath { get; set; } = OpenRouterProviderDefaults.DefaultEmbeddingsPath;
 
+    /// <summary>Gets or sets the rerank operation path, relative to <see cref="BaseAddress"/>.</summary>
+    public string RerankPath { get; set; } = OpenRouterProviderDefaults.DefaultRerankPath;
+
     /// <summary>
     /// Gets or sets whether a request should prefer the streaming
     /// (<c>stream: true</c>) operation when the selected model supports

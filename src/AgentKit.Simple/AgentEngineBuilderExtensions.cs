@@ -3,6 +3,8 @@
 
 namespace AgentKit.Simple;
 
+using AgentKit.Providers;
+
 /// <summary>
 /// The shortest path to a working agent on the real <see cref="AgentEngineBuilder"/>: fluent <c>Use*</c> and
 /// <c>With*</c> calls that compose the loop, context, output, session, security, tool, and provider packages
@@ -165,16 +167,21 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseOllama));
-            var descriptor = new ModelDescriptor(
-                DefaultAlias,
-                OllamaProviderDefaults.ProviderId,
-                OllamaProviderDefaults.ApiFamily,
-                new ModelId(modelId),
-                deploymentId: null,
-                OllamaProviderDefaults.DefaultCapabilities,
-                OllamaProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    DefaultAlias,
+                    OllamaProviderDefaults.ProviderId,
+                    OllamaProviderDefaults.ApiFamily,
+                    new ModelId(modelId),
+                    deploymentId: null,
+                    OllamaProviderDefaults.DefaultCapabilities,
+                    OllamaProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                OllamaProviderDefaults.ChatServiceSurface,
+                OllamaProviderDefaults.ChatEndpointProfileKey,
+                OllamaProviderDefaults.ChatCredentialProfileKey,
+                OllamaProviderDefaults.DefaultEndpointId);
             _ = builder.Services.AddOllama(configure);
             _ = builder.Services.AddOllamaApiKeyCredential(apiKey ?? OllamaPlaceholderApiKey);
             _ = builder.Services.AddOllamaLlmModel(descriptor);
@@ -208,16 +215,21 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseOpenRouter));
-            var descriptor = new ModelDescriptor(
-                DefaultAlias,
-                OpenRouterProviderDefaults.ProviderId,
-                OpenRouterProviderDefaults.ApiFamily,
-                new ModelId(modelId),
-                deploymentId: null,
-                OpenRouterProviderDefaults.DefaultCapabilities,
-                OpenRouterProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    DefaultAlias,
+                    OpenRouterProviderDefaults.ProviderId,
+                    OpenRouterProviderDefaults.ApiFamily,
+                    new ModelId(modelId),
+                    deploymentId: null,
+                    OpenRouterProviderDefaults.DefaultCapabilities,
+                    OpenRouterProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                OpenRouterProviderDefaults.ChatServiceSurface,
+                OpenRouterProviderDefaults.ChatEndpointProfileKey,
+                OpenRouterProviderDefaults.ChatCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
             _ = builder.Services.AddOpenRouter(configure);
             _ = builder.Services.AddOpenRouterApiKeyCredential(apiKey);
             _ = builder.Services.AddOpenRouterLlmModel(descriptor);
@@ -260,22 +272,27 @@ public static class AgentEngineBuilderExtensions
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseAzureOpenAI));
             var typedModelId = new ModelId(modelId);
-            var descriptor = KnownModelCatalog.Default.TryFind(OpenAIProviderDefaults.ProviderId, typedModelId, out var known)
-                ? known.ToDescriptor(DefaultAlias, AzureOpenAIProviderDefaults.ApiFamily, AzureOpenAIProviderDefaults.DefaultCapabilities) with
-                {
-                    ProviderId = AzureOpenAIProviderDefaults.ProviderId,
-                    DeploymentId = new DeploymentId(deploymentId),
-                }
-                : new ModelDescriptor(
-                    DefaultAlias,
-                    AzureOpenAIProviderDefaults.ProviderId,
-                    AzureOpenAIProviderDefaults.ApiFamily,
-                    typedModelId,
-                    new DeploymentId(deploymentId),
-                    AzureOpenAIProviderDefaults.DefaultCapabilities,
-                    AzureOpenAIProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                KnownModelCatalog.Default.TryFind(OpenAIProviderDefaults.ProviderId, typedModelId, out var known)
+                    ? known.ToDescriptor(DefaultAlias, AzureOpenAIProviderDefaults.ApiFamily, AzureOpenAIProviderDefaults.DefaultCapabilities) with
+                    {
+                        ProviderId = AzureOpenAIProviderDefaults.ProviderId,
+                        DeploymentId = new DeploymentId(deploymentId),
+                    }
+                    : new ModelDescriptor(
+                        DefaultAlias,
+                        AzureOpenAIProviderDefaults.ProviderId,
+                        AzureOpenAIProviderDefaults.ApiFamily,
+                        typedModelId,
+                        new DeploymentId(deploymentId),
+                        AzureOpenAIProviderDefaults.DefaultCapabilities,
+                        AzureOpenAIProviderDefaults.DefaultLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                AzureOpenAIProviderDefaults.ChatServiceSurface,
+                AzureOpenAIProviderDefaults.ChatEndpointProfileKey,
+                AzureOpenAIProviderDefaults.ChatCredentialProfileKey,
+                AzureOpenAIProviderDefaults.DefaultEndpointId);
             _ = builder.Services.AddAzureOpenAI(o =>
             {
                 o.ResourceEndpoint = resourceEndpoint;

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AwsBedrock;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -62,6 +64,21 @@ public static class ServiceExtensions
             services.TryAddSingleton<IAwsBedrockRequestTranslator, AwsBedrockRequestTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IAwsBedrockResponseParser, AwsBedrockResponseParser>();
+            services.TryAddSingleton<AwsBedrockProfileCredentialSource>();
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                AwsBedrockProviderDefaults.CredentialSourceKey,
+                static (provider, _) => provider.GetRequiredService<AwsBedrockProfileCredentialSource>());
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfilesFromServices(
+                services,
+                AwsBedrockProviderDefaults.ProviderId,
+                AwsBedrockProviderDefaults.ChatServiceSurface,
+                static sp => AwsBedrockProviderDefaults.BuildBaseAddress(sp.GetRequiredService<IOptions<AwsBedrockProviderOptions>>().Value.Region),
+                AwsBedrockProviderDefaults.CredentialSourceKey,
+                AwsBedrockProviderDefaults.ChatEndpointProfileKey,
+                AwsBedrockProviderDefaults.ChatCredentialProfileKey,
+                AwsBedrockProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -204,16 +221,22 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            return services.AddAwsBedrockLlmModel(new ModelDescriptor(
-                alias,
-                AwsBedrockProviderDefaults.ProviderId,
-                AwsBedrockProviderDefaults.ApiFamily,
-                modelId,
-                deploymentId,
-                capabilities ?? AwsBedrockProviderDefaults.DefaultCapabilities,
-                limits ?? AwsBedrockProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty));
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    alias,
+                    AwsBedrockProviderDefaults.ProviderId,
+                    AwsBedrockProviderDefaults.ApiFamily,
+                    modelId,
+                    deploymentId,
+                    capabilities ?? AwsBedrockProviderDefaults.DefaultCapabilities,
+                    limits ?? AwsBedrockProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                AwsBedrockProviderDefaults.ChatServiceSurface,
+                AwsBedrockProviderDefaults.ChatEndpointProfileKey,
+                AwsBedrockProviderDefaults.ChatCredentialProfileKey,
+                AwsBedrockProviderDefaults.DefaultEndpointId);
+            return services.AddAwsBedrockLlmModel(descriptor);
         }
 
         /// <summary>
@@ -240,18 +263,27 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the AWS Bedrock provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                AwsBedrockProviderDefaults.ChatServiceSurface,
+                AwsBedrockProviderDefaults.ChatEndpointProfileKey,
+                AwsBedrockProviderDefaults.ChatCredentialProfileKey,
+                AwsBedrockProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<AwsBedrockProviderOptions>>().Value;
 
                 return new AwsBedrockLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<IAwsBedrockRequestTranslator>(),
                     provider.GetRequiredService<IAwsBedrockResponseParser>(),
                     provider.GetRequiredKeyedService<IAwsCredentialSource>(AwsBedrockProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<AwsBedrockProfileCredentialSource>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

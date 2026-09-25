@@ -360,16 +360,21 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<XAIProviderOptions>>().Value;
 
-                var descriptor = new EmbeddingModelDescriptor(
-                    alias,
-                    XAIProviderDefaults.ProviderId,
-                    XAIProviderDefaults.EmbeddingApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? XAIProviderDefaults.DefaultEmbeddingCapabilities,
-                    limits ?? XAIProviderDefaults.DefaultEmbeddingLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
+                var descriptor = ProviderOperationDescriptorBinding.ApplyEmbeddingBinding(
+                    new EmbeddingModelDescriptor(
+                        alias,
+                        XAIProviderDefaults.ProviderId,
+                        XAIProviderDefaults.EmbeddingApiFamily,
+                        modelId,
+                        deploymentId: null,
+                        capabilities ?? XAIProviderDefaults.DefaultEmbeddingCapabilities,
+                        limits ?? XAIProviderDefaults.DefaultEmbeddingLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                    XAIProviderDefaults.EmbeddingServiceSurface,
+                    XAIProviderDefaults.EmbeddingEndpointProfileKey,
+                    XAIProviderDefaults.EmbeddingCredentialProfileKey,
+                    XAIProviderDefaults.DefaultEndpointId);
 
                 return new XAIEmbeddingModel(
                     descriptor,
@@ -378,7 +383,8 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(XAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

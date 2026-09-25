@@ -62,11 +62,11 @@ public static class ServiceExtensions
             }
 
 
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfilesFromServices(
                 services,
                 OllamaProviderDefaults.ProviderId,
                 OllamaProviderDefaults.ChatServiceSurface,
-                OllamaProviderDefaults.DefaultBaseAddress,
+                static provider => provider.GetRequiredService<IOptions<OllamaProviderOptions>>().Value.BaseAddress,
                 OllamaProviderDefaults.CredentialSourceKey,
                 OllamaProviderDefaults.ChatEndpointProfileKey,
                 OllamaProviderDefaults.ChatCredentialProfileKey,
@@ -314,16 +314,21 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OllamaProviderOptions>>().Value;
 
-                var descriptor = new EmbeddingModelDescriptor(
-                    alias,
-                    OllamaProviderDefaults.ProviderId,
-                    OllamaProviderDefaults.EmbeddingApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? OllamaProviderDefaults.DefaultEmbeddingCapabilities,
-                    limits ?? OllamaProviderDefaults.DefaultEmbeddingLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
+                var descriptor = ProviderOperationDescriptorBinding.ApplyEmbeddingBinding(
+                    new EmbeddingModelDescriptor(
+                        alias,
+                        OllamaProviderDefaults.ProviderId,
+                        OllamaProviderDefaults.EmbeddingApiFamily,
+                        modelId,
+                        deploymentId: null,
+                        capabilities ?? OllamaProviderDefaults.DefaultEmbeddingCapabilities,
+                        limits ?? OllamaProviderDefaults.DefaultEmbeddingLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                    OllamaProviderDefaults.EmbeddingServiceSurface,
+                    OllamaProviderDefaults.EmbeddingEndpointProfileKey,
+                    OllamaProviderDefaults.EmbeddingCredentialProfileKey,
+                    OllamaProviderDefaults.DefaultEndpointId);
 
                 return new OllamaEmbeddingModel(
                     descriptor,
@@ -332,7 +337,8 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OllamaProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

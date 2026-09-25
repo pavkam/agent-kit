@@ -20,6 +20,7 @@ public sealed class OllamaEmbeddingModel: OpenAICompatibleEmbeddingModelBase
     /// <param name="credentials">Resolves the current Ollama credential.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector"></param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public OllamaEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
@@ -28,8 +29,9 @@ public sealed class OllamaEmbeddingModel: OpenAICompatibleEmbeddingModelBase
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
-        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
+        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider, profileSelector)
     {
     }
 }

@@ -3421,6 +3421,7 @@ namespace AgentKit
         public int Attempt { get; init; }
         public AgentKit.EmbeddingRequestContext Context { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.ProtectedSemanticOperationContext? Operation { get; init; }
         public AgentKit.ProviderRequestOptions Options { get; init; }
     }
     public sealed class EmbeddingModelSelected : AgentKit.EmbeddingSelectionResult, System.IEquatable<AgentKit.EmbeddingModelSelected>

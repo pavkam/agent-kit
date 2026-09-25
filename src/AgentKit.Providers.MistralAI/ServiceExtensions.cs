@@ -213,16 +213,22 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            return services.AddMistralAILlmModel(new ModelDescriptor(
-                alias,
-                MistralAIProviderDefaults.ProviderId,
-                MistralAIProviderDefaults.ApiFamily,
-                modelId,
-                deploymentId: null,
-                capabilities ?? MistralAIProviderDefaults.DefaultCapabilities,
-                limits ?? MistralAIProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty));
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    alias,
+                    MistralAIProviderDefaults.ProviderId,
+                    MistralAIProviderDefaults.ApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? MistralAIProviderDefaults.DefaultCapabilities,
+                    limits ?? MistralAIProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                MistralAIProviderDefaults.ChatServiceSurface,
+                MistralAIProviderDefaults.ChatEndpointProfileKey,
+                MistralAIProviderDefaults.ChatCredentialProfileKey,
+                MistralAIProviderDefaults.DefaultEndpointId);
+            return services.AddMistralAILlmModel(descriptor);
         }
 
         /// <summary>
@@ -249,18 +255,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Mistral AI provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                MistralAIProviderDefaults.ChatServiceSurface,
+                MistralAIProviderDefaults.ChatEndpointProfileKey,
+                MistralAIProviderDefaults.ChatCredentialProfileKey,
+                MistralAIProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<MistralAIProviderOptions>>().Value;
 
                 return new MistralAILlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<IMistralAIRequestTranslator>(),
                     provider.GetRequiredService<IMistralAIResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

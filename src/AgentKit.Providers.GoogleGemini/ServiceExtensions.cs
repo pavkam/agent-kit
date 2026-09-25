@@ -213,16 +213,22 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            return services.AddGoogleGeminiLlmModel(new ModelDescriptor(
-                alias,
-                GoogleGeminiProviderDefaults.ProviderId,
-                GoogleGeminiProviderDefaults.ApiFamily,
-                modelId,
-                deploymentId: null,
-                capabilities ?? GoogleGeminiProviderDefaults.DefaultCapabilities,
-                limits ?? GoogleGeminiProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty));
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    alias,
+                    GoogleGeminiProviderDefaults.ProviderId,
+                    GoogleGeminiProviderDefaults.ApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? GoogleGeminiProviderDefaults.DefaultCapabilities,
+                    limits ?? GoogleGeminiProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                GoogleGeminiProviderDefaults.ChatServiceSurface,
+                GoogleGeminiProviderDefaults.ChatEndpointProfileKey,
+                GoogleGeminiProviderDefaults.ChatCredentialProfileKey,
+                GoogleGeminiProviderDefaults.DefaultEndpointId);
+            return services.AddGoogleGeminiLlmModel(descriptor);
         }
 
         /// <summary>
@@ -249,18 +255,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Google Gemini provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                GoogleGeminiProviderDefaults.ChatServiceSurface,
+                GoogleGeminiProviderDefaults.ChatEndpointProfileKey,
+                GoogleGeminiProviderDefaults.ChatCredentialProfileKey,
+                GoogleGeminiProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GoogleGeminiProviderOptions>>().Value;
 
                 return new GoogleGeminiLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -310,7 +324,12 @@ public static class ServiceExtensions
                     nameof(modelId));
             }
 
-            var descriptor = known.ToDescriptor(alias, GoogleGeminiProviderDefaults.ApiFamily, GoogleGeminiProviderDefaults.DefaultCapabilities);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                known.ToDescriptor(alias, GoogleGeminiProviderDefaults.ApiFamily, GoogleGeminiProviderDefaults.DefaultCapabilities),
+                GoogleGeminiProviderDefaults.ChatServiceSurface,
+                GoogleGeminiProviderDefaults.ChatEndpointProfileKey,
+                GoogleGeminiProviderDefaults.ChatCredentialProfileKey,
+                GoogleGeminiProviderDefaults.DefaultEndpointId);
             _ = services.AddGoogleGeminiLlmModel(descriptor);
             _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"googlegemini.known/{alias.Value}"), [descriptor]);
             return services;

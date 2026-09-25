@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
+using AgentKit.Providers;
 using AgentKit.Providers.AwsBedrock.Wire;
 using AgentKit.Providers.Http;
 
@@ -38,6 +39,8 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     private readonly IAwsCredentialSource _credentials;
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
+    private readonly IProviderProfileRuntimeSelector? _profileSelector;
+    private readonly IProviderCredentialSource _profileCredentialPlaceholder;
 
     /// <summary>Initializes a new instance of the <see cref="AwsBedrockLlmModel"/> class.</summary>
     /// <param name="descriptor">
@@ -53,6 +56,10 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     /// <param name="credentials">Resolves the current AWS credential to sign a request with.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and request-signing timestamps.</param>
+    /// <param name="profileCredentialPlaceholder">
+    /// The profile-runtime placeholder credential source; SigV4 signing uses <paramref name="credentials"/> instead.
+    /// </param>
+    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public AwsBedrockLlmModel(
         ModelDescriptor descriptor,
@@ -61,7 +68,9 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         IAwsBedrockResponseParser responseParser,
         IAwsCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderCredentialSource profileCredentialPlaceholder,
+        IProviderProfileRuntimeSelector? profileSelector = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
@@ -70,6 +79,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(profileCredentialPlaceholder);
 
         Alias = descriptor.Alias;
         _descriptor = descriptor;
@@ -79,6 +89,8 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         _credentials = credentials;
         _httpClient = httpClient;
         _timeProvider = timeProvider;
+        _profileCredentialPlaceholder = profileCredentialPlaceholder;
+        _profileSelector = profileSelector;
     }
 
     /// <inheritdoc/>
@@ -162,6 +174,19 @@ public sealed class AwsBedrockLlmModel: ILlmModel
                 "The request deadline had already elapsed before the attempt could be sent.").ConfigureAwait(false);
         }
 
+        await using var sendContext = await NativeProviderChatSend.BeginAsync(
+                _descriptor,
+                request,
+                _profileCredentialPlaceholder,
+                _profileSelector,
+                _timeProvider,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!sendContext.IsSuccess)
+        {
+            return await FailAsync(sendContext.Failure!).ConfigureAwait(false);
+        }
+
         AwsSigV4Credential credential;
         try
         {
@@ -187,7 +212,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
                 exception).ConfigureAwait(false);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, credential, useStreaming);
+        using var httpRequest = CreateHttpRequest(payload, credential, useStreaming, sendContext.EndpointBaseOverride);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
@@ -302,14 +327,18 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, AwsSigV4Credential credential, bool useStreaming)
+    private HttpRequestMessage CreateHttpRequest(
+        JsonObject payload,
+        AwsSigV4Credential credential,
+        bool useStreaming,
+        Uri? endpointBaseOverride)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(_options.Region);
 
         var modelId = _descriptor.DeploymentId?.Value ?? _descriptor.ModelId.Value;
         var uri = useStreaming
-            ? AwsBedrockProviderDefaults.BuildConverseStreamUri(_options, modelId)
-            : AwsBedrockProviderDefaults.BuildConverseUri(_options, modelId);
+            ? AwsBedrockProviderDefaults.BuildConverseStreamUri(_options, modelId, endpointBaseOverride)
+            : AwsBedrockProviderDefaults.BuildConverseUri(_options, modelId, endpointBaseOverride);
 
         var body = Encoding.UTF8.GetBytes(payload.ToJsonString());
 

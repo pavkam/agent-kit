@@ -51,7 +51,7 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel
     {
-        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.EmbeddingModelDescriptor Descriptor { get; }
@@ -71,6 +71,14 @@ namespace AgentKit.Providers.OpenAICompatible
         protected AgentKit.ModelDescriptor Descriptor { get; }
         protected virtual void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.LlmModelRequest request) { }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class OpenAICompatibleProviderProfileRegistration
+    {
+        public static AgentKit.ProviderOperationBinding RegisterChatProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId chatServiceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey chatEndpointProfileKey, AgentKit.ProviderCredentialProfileKey chatCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.ProviderOperationBinding RegisterChatProfilesFromServices(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId chatServiceSurface, System.Func<System.IServiceProvider, System.Uri> baseAddressFactory, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey chatEndpointProfileKey, AgentKit.ProviderCredentialProfileKey chatCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterDualKeyCredentialSource(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderId providerId, AgentKit.IProviderCredentialSource credentialSource) { }
+        public static AgentKit.ProviderOperationBinding RegisterEmbeddingProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId embeddingServiceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey embeddingEndpointProfileKey, AgentKit.ProviderCredentialProfileKey embeddingCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.ProviderOperationBinding RegisterEmbeddingProfilesFromServices(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId embeddingServiceSurface, System.Func<System.IServiceProvider, System.Uri> baseAddressFactory, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey embeddingEndpointProfileKey, AgentKit.ProviderCredentialProfileKey embeddingCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
     }
     public sealed class OpenAIEmbeddingRequestTranslator : AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator
     {

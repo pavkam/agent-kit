@@ -18,15 +18,20 @@ namespace AgentKit.Providers.ZAI
     }
     public sealed class ZAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public ZAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public ZAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public static class ZAIProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "chat/completions";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
         public static System.Uri CodingPlanBaseAddress { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ProviderEndpointId DefaultEndpointId { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.ZAI.ZAIProviderOptions options) { }

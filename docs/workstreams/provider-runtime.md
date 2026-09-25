@@ -17,15 +17,16 @@ Owning documents:
 - [x] WS7-C3 loop consumes the executor
 - [x] WS7-C4 profile runtime selector and lease
 - [x] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible LLM bind
-- [ ] WS7-C5b remaining leaves bind
+- [x] WS7-C5b remaining leaves bind (OpenAI-compatible chat and embedding paths,
+      native chat for Anthropic, Cohere, Gemini, Vertex, Mistral, Bedrock)
 - [x] WS7-C6 embedding selector and executor
-- [ ] WS7-C7 `EmbeddingSpaceIdentity` growth (Abstractions + OpenAI-compatible
-      parser; four native parsers pending)
+- [x] WS7-C7 `EmbeddingSpaceIdentity` stamping (factory + native parsers)
 - [x] WS7-C8a rerank contracts and defaults
-- [ ] WS7-C8b Cohere reranker
-- [ ] WS7-C8c OpenRouter reranker
+- [x] WS7-C8b Cohere reranker
+- [x] WS7-C8c OpenRouter reranker
 - [x] WS7-C9a provider observability names and OpenAICompatible LLM base
-- [ ] WS7-C9b six native leaves instrumented
+- [x] WS7-C9b six native leaves instrumented via `NativeProviderChatSend` or
+      rerank send helpers
 - [x] WS7-C10 validator
 
 ## Verified current state

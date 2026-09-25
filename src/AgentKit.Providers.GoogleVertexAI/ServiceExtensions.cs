@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -73,6 +75,27 @@ public static class ServiceExtensions
             services.TryAddSingleton<IGoogleGeminiResponseParser, GoogleGeminiResponseParser>();
             services.TryAddSingleton<IGoogleVertexAIEmbeddingRequestTranslator, GoogleVertexAIEmbeddingRequestTranslator>();
             services.TryAddSingleton<IGoogleVertexAIEmbeddingResponseParser, GoogleVertexAIEmbeddingResponseParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfilesFromServices(
+                services,
+                GoogleVertexAIProviderDefaults.ProviderId,
+                GoogleVertexAIProviderDefaults.ChatServiceSurface,
+                static sp => GoogleVertexAIProviderDefaults.ResolveBaseAddress(sp.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value),
+                GoogleVertexAIProviderDefaults.CredentialSourceKey,
+                GoogleVertexAIProviderDefaults.ChatEndpointProfileKey,
+                GoogleVertexAIProviderDefaults.ChatCredentialProfileKey,
+                GoogleVertexAIProviderDefaults.DefaultEndpointId);
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfilesFromServices(
+                services,
+                GoogleVertexAIProviderDefaults.ProviderId,
+                GoogleVertexAIProviderDefaults.EmbeddingServiceSurface,
+                static sp => GoogleVertexAIProviderDefaults.ResolveBaseAddress(sp.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value),
+                GoogleVertexAIProviderDefaults.CredentialSourceKey,
+                GoogleVertexAIProviderDefaults.EmbeddingEndpointProfileKey,
+                GoogleVertexAIProviderDefaults.EmbeddingCredentialProfileKey,
+                GoogleVertexAIProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -169,16 +192,22 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            return services.AddGoogleVertexAILlmModel(new ModelDescriptor(
-                alias,
-                GoogleVertexAIProviderDefaults.ProviderId,
-                GoogleVertexAIProviderDefaults.ApiFamily,
-                modelId,
-                deploymentId,
-                capabilities ?? GoogleVertexAIProviderDefaults.DefaultCapabilities,
-                limits ?? GoogleVertexAIProviderDefaults.DefaultLimits,
-                pricing: null,
-                ExtensionData.Empty));
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                new ModelDescriptor(
+                    alias,
+                    GoogleVertexAIProviderDefaults.ProviderId,
+                    GoogleVertexAIProviderDefaults.ApiFamily,
+                    modelId,
+                    deploymentId,
+                    capabilities ?? GoogleVertexAIProviderDefaults.DefaultCapabilities,
+                    limits ?? GoogleVertexAIProviderDefaults.DefaultLimits,
+                    pricing: null,
+                    ExtensionData.Empty),
+                GoogleVertexAIProviderDefaults.ChatServiceSurface,
+                GoogleVertexAIProviderDefaults.ChatEndpointProfileKey,
+                GoogleVertexAIProviderDefaults.ChatCredentialProfileKey,
+                GoogleVertexAIProviderDefaults.DefaultEndpointId);
+            return services.AddGoogleVertexAILlmModel(descriptor);
         }
 
         /// <summary>
@@ -205,18 +234,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Google Vertex AI provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                GoogleVertexAIProviderDefaults.ChatServiceSurface,
+                GoogleVertexAIProviderDefaults.ChatEndpointProfileKey,
+                GoogleVertexAIProviderDefaults.ChatCredentialProfileKey,
+                GoogleVertexAIProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
 
                 return new GoogleVertexAILlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleVertexAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -336,16 +336,21 @@ public static class ServiceExtensions
                 var options = provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value;
                 var profile = AzureOpenAIProviderDefaults.CreateProfile(options);
 
-                var descriptor = new EmbeddingModelDescriptor(
-                    alias,
-                    AzureOpenAIProviderDefaults.ProviderId,
-                    AzureOpenAIProviderDefaults.EmbeddingApiFamily,
-                    modelId,
-                    deploymentId,
-                    capabilities ?? AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities,
-                    limits ?? AzureOpenAIProviderDefaults.DefaultEmbeddingLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
+                var descriptor = ProviderOperationDescriptorBinding.ApplyEmbeddingBinding(
+                    new EmbeddingModelDescriptor(
+                        alias,
+                        AzureOpenAIProviderDefaults.ProviderId,
+                        AzureOpenAIProviderDefaults.EmbeddingApiFamily,
+                        modelId,
+                        deploymentId,
+                        capabilities ?? AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities,
+                        limits ?? AzureOpenAIProviderDefaults.DefaultEmbeddingLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                    AzureOpenAIProviderDefaults.EmbeddingServiceSurface,
+                    AzureOpenAIProviderDefaults.EmbeddingEndpointProfileKey,
+                    AzureOpenAIProviderDefaults.EmbeddingCredentialProfileKey,
+                    AzureOpenAIProviderDefaults.DefaultEndpointId);
 
                 return new AzureOpenAIEmbeddingModel(
                     descriptor,
@@ -354,7 +359,8 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -27,7 +27,7 @@ namespace AgentKit.Providers.Cohere
     }
     public sealed class CohereLlmModel : AgentKit.ILlmModel
     {
-        public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -35,17 +35,35 @@ namespace AgentKit.Providers.Cohere
     {
         public const string DefaultChatPath = "v2/chat";
         public const string DefaultEmbedPath = "v2/embed";
+        public const string DefaultRerankPath = "v2/rerank";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
+        public static AgentKit.ProviderEndpointId DefaultEndpointId { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.RerankerCapabilities DefaultRerankCapabilities { get; }
+        public static AgentKit.RerankerLimits DefaultRerankLimits { get; }
         public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId EmbeddingServiceSurface { get; }
         public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.ApiFamilyId RerankApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey RerankCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey RerankEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId RerankServiceSurface { get; }
         public static System.Uri BuildChatUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+        public static System.Uri BuildChatUri(AgentKit.Providers.Cohere.CohereProviderOptions options, System.Uri? baseAddressOverride) { }
         public static System.Uri BuildEmbedUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+        public static System.Uri BuildRerankUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+        public static System.Uri BuildRerankUri(AgentKit.Providers.Cohere.CohereProviderOptions options, System.Uri? baseAddressOverride) { }
     }
     public sealed class CohereProviderOptions
     {
@@ -55,6 +73,7 @@ namespace AgentKit.Providers.Cohere
         public string? ClientName { get; set; }
         public string EmbedPath { get; set; }
         public bool PreferStreaming { get; set; }
+        public string RerankPath { get; set; }
     }
     public sealed class CohereProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.Cohere.CohereProviderOptions>
     {
@@ -65,6 +84,22 @@ namespace AgentKit.Providers.Cohere
     {
         public CohereRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming) { }
+    }
+    public sealed class CohereRerankRequestTranslator : AgentKit.Providers.Cohere.ICohereRerankRequestTranslator
+    {
+        public CohereRerankRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.RerankModelRequest request, AgentKit.RerankerDescriptor descriptor) { }
+    }
+    public sealed class CohereRerankResponseParser : AgentKit.Providers.Cohere.ICohereRerankResponseParser
+    {
+        public CohereRerankResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.RerankModelResult> ParseAsync(System.IO.Stream responseBody, System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> documents, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class CohereReranker : AgentKit.IReranker
+    {
+        public CohereReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRerankRequestTranslator translator, AgentKit.Providers.Cohere.ICohereRerankResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AgentKit.RerankerAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.RerankModelResult> RerankAsync(AgentKit.RerankModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class CohereResponseParser : AgentKit.Providers.Cohere.ICohereResponseParser
     {
@@ -84,6 +119,14 @@ namespace AgentKit.Providers.Cohere
     {
         System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming);
     }
+    public interface ICohereRerankRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.RerankModelRequest request, AgentKit.RerankerDescriptor descriptor);
+    }
+    public interface ICohereRerankResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.RerankModelResult> ParseAsync(System.IO.Stream responseBody, System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> documents, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ICohereResponseParser
     {
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
@@ -101,6 +144,7 @@ namespace AgentKit.Providers.Cohere
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereLlmModel(AgentKit.ModelDescriptor descriptor) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereKnownLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.Providers.KnownModelCatalog? catalog = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereReranker(AgentKit.RerankerAlias alias, AgentKit.ModelId modelId, AgentKit.RerankerCapabilities? capabilities = null, AgentKit.RerankerLimits? limits = null) { }
         }
     }
 }

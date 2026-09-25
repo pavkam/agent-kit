@@ -84,6 +84,19 @@ public static class ServiceExtensions
                 OpenRouterProviderDefaults.EmbeddingCredentialProfileKey,
                 OpenRouterProviderDefaults.DefaultEndpointId);
 
+            services.TryAddSingleton<IOpenRouterRerankRequestTranslator, OpenRouterRerankRequestTranslator>();
+            services.TryAddSingleton<IOpenRouterRerankResponseParser, OpenRouterRerankResponseParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                OpenRouterProviderDefaults.ProviderId,
+                OpenRouterProviderDefaults.RerankServiceSurface,
+                OpenRouterProviderDefaults.DefaultBaseAddress,
+                OpenRouterProviderDefaults.CredentialSourceKey,
+                OpenRouterProviderDefaults.RerankEndpointProfileKey,
+                OpenRouterProviderDefaults.RerankCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -316,16 +329,21 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
 
-                var descriptor = new EmbeddingModelDescriptor(
-                    alias,
-                    OpenRouterProviderDefaults.ProviderId,
-                    OpenRouterProviderDefaults.EmbeddingApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    capabilities ?? OpenRouterProviderDefaults.DefaultEmbeddingCapabilities,
-                    limits ?? OpenRouterProviderDefaults.DefaultEmbeddingLimits,
-                    pricing: null,
-                    ExtensionData.Empty);
+                var descriptor = ProviderOperationDescriptorBinding.ApplyEmbeddingBinding(
+                    new EmbeddingModelDescriptor(
+                        alias,
+                        OpenRouterProviderDefaults.ProviderId,
+                        OpenRouterProviderDefaults.EmbeddingApiFamily,
+                        modelId,
+                        deploymentId: null,
+                        capabilities ?? OpenRouterProviderDefaults.DefaultEmbeddingCapabilities,
+                        limits ?? OpenRouterProviderDefaults.DefaultEmbeddingLimits,
+                        pricing: null,
+                        ExtensionData.Empty),
+                    OpenRouterProviderDefaults.EmbeddingServiceSurface,
+                    OpenRouterProviderDefaults.EmbeddingEndpointProfileKey,
+                    OpenRouterProviderDefaults.EmbeddingCredentialProfileKey,
+                    OpenRouterProviderDefaults.DefaultEndpointId);
 
                 return new OpenRouterEmbeddingModel(
                     descriptor,
@@ -334,7 +352,54 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
+            });
+
+            return services;
+        }
+
+        /// <summary>Registers one named OpenRouter reranker as an additional <see cref="IReranker"/> implementation.</summary>
+        /// <param name="alias">The application-facing selection key.</param>
+        /// <param name="modelId">The OpenRouter rerank model slug.</param>
+        /// <param name="capabilities">Optional capability overrides.</param>
+        /// <param name="limits">Optional limit overrides.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        public IServiceCollection AddOpenRouterReranker(
+            RerankerAlias alias,
+            ModelId modelId,
+            RerankerCapabilities? capabilities = null,
+            RerankerLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            var descriptor = ProviderOperationDescriptorBinding.ApplyRerankBinding(
+                new RerankerDescriptor(
+                    alias,
+                    OpenRouterProviderDefaults.ProviderId,
+                    OpenRouterProviderDefaults.RerankApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? OpenRouterProviderDefaults.DefaultRerankCapabilities,
+                    limits ?? OpenRouterProviderDefaults.DefaultRerankLimits,
+                    ExtensionData.Empty),
+                OpenRouterProviderDefaults.RerankServiceSurface,
+                OpenRouterProviderDefaults.RerankEndpointProfileKey,
+                OpenRouterProviderDefaults.RerankCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
+
+            _ = services.AddSingleton<IReranker>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
+                return new OpenRouterReranker(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<IOpenRouterRerankRequestTranslator>(),
+                    provider.GetRequiredService<IOpenRouterRerankResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

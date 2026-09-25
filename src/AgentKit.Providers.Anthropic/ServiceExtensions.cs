@@ -310,7 +310,12 @@ public static class ServiceExtensions
                     nameof(modelId));
             }
 
-            var descriptor = known.ToDescriptor(alias, AnthropicProviderDefaults.ApiFamily, AnthropicProviderDefaults.DefaultCapabilities);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                known.ToDescriptor(alias, AnthropicProviderDefaults.ApiFamily, AnthropicProviderDefaults.DefaultCapabilities),
+                AnthropicProviderDefaults.ChatServiceSurface,
+                AnthropicProviderDefaults.ChatEndpointProfileKey,
+                AnthropicProviderDefaults.ChatCredentialProfileKey,
+                AnthropicProviderDefaults.DefaultEndpointId);
             _ = services.AddAnthropicLlmModel(descriptor);
             _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"anthropic.known/{alias.Value}"), [descriptor]);
             return services;

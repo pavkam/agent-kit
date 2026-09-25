@@ -3,26 +3,51 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.OpenRouter
 {
+    public interface IOpenRouterRerankRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.RerankModelRequest request, AgentKit.RerankerDescriptor descriptor);
+    }
+    public interface IOpenRouterRerankResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.RerankModelResult> ParseAsync(System.IO.Stream responseBody, System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> documents, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default);
+    }
     public sealed class OpenRouterEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
     {
-        public OpenRouterEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public OpenRouterEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public sealed class OpenRouterLlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public OpenRouterLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public OpenRouterLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public static class OpenRouterProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "chat/completions";
         public const string DefaultEmbeddingsPath = "embeddings";
+        public const string DefaultRerankPath = "rerank";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
+        public static AgentKit.ProviderEndpointId DefaultEndpointId { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.RerankerCapabilities DefaultRerankCapabilities { get; }
+        public static AgentKit.RerankerLimits DefaultRerankLimits { get; }
         public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId EmbeddingServiceSurface { get; }
         public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.ApiFamilyId RerankApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey RerankCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey RerankEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId RerankServiceSurface { get; }
+        public static System.Uri BuildRerankUri(AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options) { }
+        public static System.Uri BuildRerankUri(AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options, System.Uri? baseAddressOverride) { }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options) { }
     }
     public sealed class OpenRouterProviderOptions
@@ -36,11 +61,28 @@ namespace AgentKit.Providers.OpenRouter
         public bool IncludeRoutingMetadata { get; set; }
         public bool IncludeStreamUsage { get; set; }
         public bool PreferStreaming { get; set; }
+        public string RerankPath { get; set; }
     }
     public sealed class OpenRouterProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.OpenRouter.OpenRouterProviderOptions>
     {
         public OpenRouterProviderOptionsValidator() { }
         public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options) { }
+    }
+    public sealed class OpenRouterRerankRequestTranslator : AgentKit.Providers.OpenRouter.IOpenRouterRerankRequestTranslator
+    {
+        public OpenRouterRerankRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.RerankModelRequest request, AgentKit.RerankerDescriptor descriptor) { }
+    }
+    public sealed class OpenRouterRerankResponseParser : AgentKit.Providers.OpenRouter.IOpenRouterRerankResponseParser
+    {
+        public OpenRouterRerankResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.RerankModelResult> ParseAsync(System.IO.Stream responseBody, System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> documents, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class OpenRouterReranker : AgentKit.IReranker
+    {
+        public OpenRouterReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options, AgentKit.Providers.OpenRouter.IOpenRouterRerankRequestTranslator translator, AgentKit.Providers.OpenRouter.IOpenRouterRerankResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AgentKit.RerankerAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.RerankModelResult> RerankAsync(AgentKit.RerankModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
@@ -53,6 +95,7 @@ namespace AgentKit.Providers.OpenRouter
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterLlmModel(AgentKit.ModelDescriptor descriptor) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterReranker(AgentKit.RerankerAlias alias, AgentKit.ModelId modelId, AgentKit.RerankerCapabilities? capabilities = null, AgentKit.RerankerLimits? limits = null) { }
         }
     }
 }

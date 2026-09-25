@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AwsBedrock;
 
+using AgentKit.Providers;
+
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Amazon
 /// Bedrock Runtime Converse integration.
@@ -99,12 +101,25 @@ public static class AwsBedrockProviderDefaults
     /// <returns>The absolute URI of the buffered Converse operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="modelId"/> is null, empty, or whitespace.</exception>
-    public static Uri BuildConverseUri(AwsBedrockProviderOptions options, string modelId)
+    public static Uri BuildConverseUri(AwsBedrockProviderOptions options, string modelId) =>
+        BuildConverseUri(options, modelId, baseAddressOverride: null);
+
+    /// <summary>Builds the Converse URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated Bedrock provider options.</param>
+    /// <param name="modelId">The Bedrock model ID, inference profile ID, or ARN to invoke.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the buffered Converse operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="modelId"/> is null, empty, or whitespace.</exception>
+    public static Uri BuildConverseUri(AwsBedrockProviderOptions options, string modelId, Uri? baseAddressOverride)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
 
-        return new Uri(BuildBaseAddress(options.Region), $"/model/{EscapeModelId(modelId)}/converse");
+        var baseAddress = baseAddressOverride is null
+            ? BuildBaseAddress(options.Region)
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, $"/model/{EscapeModelId(modelId)}/converse");
     }
 
     /// <summary>
@@ -120,12 +135,25 @@ public static class AwsBedrockProviderDefaults
     /// <returns>The absolute URI of the streaming ConverseStream operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="modelId"/> is null, empty, or whitespace.</exception>
-    public static Uri BuildConverseStreamUri(AwsBedrockProviderOptions options, string modelId)
+    public static Uri BuildConverseStreamUri(AwsBedrockProviderOptions options, string modelId) =>
+        BuildConverseStreamUri(options, modelId, baseAddressOverride: null);
+
+    /// <summary>Builds the ConverseStream URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated Bedrock provider options.</param>
+    /// <param name="modelId">The Bedrock model ID, inference profile ID, or ARN to invoke.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the streaming ConverseStream operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="modelId"/> is null, empty, or whitespace.</exception>
+    public static Uri BuildConverseStreamUri(AwsBedrockProviderOptions options, string modelId, Uri? baseAddressOverride)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
 
-        return new Uri(BuildBaseAddress(options.Region), $"/model/{EscapeModelId(modelId)}/converse-stream");
+        var baseAddress = baseAddressOverride is null
+            ? BuildBaseAddress(options.Region)
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, $"/model/{EscapeModelId(modelId)}/converse-stream");
     }
 
     /// <summary>

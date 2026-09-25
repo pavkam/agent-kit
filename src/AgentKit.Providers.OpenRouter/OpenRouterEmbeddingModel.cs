@@ -20,6 +20,7 @@ public sealed class OpenRouterEmbeddingModel: OpenAICompatibleEmbeddingModelBase
     /// <param name="credentials">Resolves the current OpenRouter credential.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">The optional profile runtime selector.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public OpenRouterEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
@@ -28,8 +29,9 @@ public sealed class OpenRouterEmbeddingModel: OpenAICompatibleEmbeddingModelBase
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
-        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
+        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider, profileSelector)
     {
     }
 }

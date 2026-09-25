@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.MistralAI;
 
+using AgentKit.Providers;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -136,11 +137,22 @@ public static class MistralAIProviderDefaults
     /// <param name="options">The validated Mistral AI provider options.</param>
     /// <returns>The absolute URI of the chat completions operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-    public static Uri BuildChatCompletionsUri(MistralAIProviderOptions options)
+    public static Uri BuildChatCompletionsUri(MistralAIProviderOptions options) =>
+        BuildChatCompletionsUri(options, baseAddressOverride: null);
+
+    /// <summary>Builds the chat URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated Mistral AI provider options.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the chat completions operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildChatCompletionsUri(MistralAIProviderOptions options, Uri? baseAddressOverride)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return new Uri(options.BaseAddress, options.ChatCompletionsPath);
+        var baseAddress = baseAddressOverride is null
+            ? options.BaseAddress
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, options.ChatCompletionsPath);
     }
 
     /// <summary>Builds the absolute embeddings operation URI for the given options.</summary>

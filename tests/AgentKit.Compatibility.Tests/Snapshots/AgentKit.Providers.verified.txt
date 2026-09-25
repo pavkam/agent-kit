@@ -16,11 +16,20 @@ namespace AgentKit.Providers
         public EmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
         public AgentKit.ApiFamilyId ApiFamily { get; init; }
         public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderEndpointId? EndpointId { get; init; }
+        public AgentKit.ProviderModelRevision? ModelRevision { get; init; }
+        public AgentKit.EmbeddingNormalization Normalization { get; init; }
         public AgentKit.ProviderId ProviderId { get; init; }
         public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
         public AgentKit.EmbeddingRequestId RequestId { get; init; }
         public AgentKit.ModelId RequestedModelId { get; init; }
+        public AgentKit.ProviderServiceSurfaceId? ServiceSurface { get; init; }
+        public AgentKit.EmbeddingTruncation Truncation { get; init; }
         public AgentKit.ProviderResponseIdentity CreateResponseIdentity(string? resolvedModel = null) { }
+    }
+    public static class EmbeddingSpaceIdentityFactory
+    {
+        public static AgentKit.EmbeddingSpaceIdentity Create(AgentKit.ProviderResponseIdentity provider, int dimensions, AgentKit.EmbeddingElementType elementType, AgentKit.EmbeddingPurpose purpose, AgentKit.ExtensionData extensions, AgentKit.Providers.EmbeddingResponseParseContext context) { }
     }
     public sealed class KnownModel : System.IEquatable<AgentKit.Providers.KnownModel>
     {
@@ -79,6 +88,21 @@ namespace AgentKit.Providers
         public static AgentKit.ProviderFailure? Validate(AgentKit.EmbeddingModelRequest request, AgentKit.EmbeddingModelDescriptor descriptor) { }
         public static AgentKit.ProviderFailure? Validate(AgentKit.LlmModelRequest request, AgentKit.ModelDescriptor descriptor) { }
     }
+    public static class NativeProviderChatSend
+    {
+        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.NativeProviderChatSend.AttemptContext> BeginAsync(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, AgentKit.IProviderCredentialSource fallbackCredentials, AgentKit.IProviderProfileRuntimeSelector? profileSelector, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
+        public sealed class AttemptContext : System.IAsyncDisposable
+        {
+            public System.Diagnostics.Activity? Activity { get; }
+            public AgentKit.IProviderCredentialSource? CredentialSource { get; }
+            public System.Uri? EndpointBaseOverride { get; }
+            public AgentKit.ProviderFailure? Failure { get; }
+            public bool IsSuccess { get; }
+            public AgentKit.IProviderProfileRuntimeLease? Lease { get; }
+            public System.Threading.Tasks.ValueTask DisposeAsync() { }
+            public void RecordFailed() { }
+        }
+    }
     public sealed class ProviderCredentialProfileOptions
     {
         public ProviderCredentialProfileOptions() { }
@@ -88,6 +112,10 @@ namespace AgentKit.Providers
         public AgentKit.ProviderServiceSurfaceId? ServiceSurface { get; set; }
         public AgentKit.ProviderCredentialSourceKey? SourceKey { get; set; }
         public AgentKit.ProviderCredentialProfileVersion Version { get; set; }
+    }
+    public static class ProviderCredentialSourceRegistration
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterDualKeyCredentialSource(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderId providerId, AgentKit.IProviderCredentialSource credentialSource) { }
     }
     public sealed class ProviderEndpointProfileOptions
     {
@@ -105,9 +133,17 @@ namespace AgentKit.Providers
         public static System.Text.Json.JsonElement ParseArguments(string? json) { }
         public static System.Text.Json.JsonElement ParseEmptyObject() { }
     }
+    public static class ProviderOperationDescriptorBinding
+    {
+        public static AgentKit.ModelDescriptor ApplyChatBinding(AgentKit.ModelDescriptor descriptor, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointProfileKey endpointProfileKey, AgentKit.ProviderCredentialProfileKey credentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.EmbeddingModelDescriptor ApplyEmbeddingBinding(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointProfileKey endpointProfileKey, AgentKit.ProviderCredentialProfileKey credentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.RerankerDescriptor ApplyRerankBinding(AgentKit.RerankerDescriptor descriptor, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointProfileKey endpointProfileKey, AgentKit.ProviderCredentialProfileKey credentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.ProviderOperationBinding CreateBinding(AgentKit.ProviderEndpointProfileKey endpointProfileKey, AgentKit.ProviderCredentialProfileKey credentialProfileKey) { }
+    }
     public static class ProviderOperationProfileRegistration
     {
         public static AgentKit.ProviderOperationBinding RegisterDefaultOperationProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId serviceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey endpointKey, AgentKit.ProviderCredentialProfileKey credentialKey, AgentKit.ProviderEndpointId endpointId) { }
+        public static AgentKit.ProviderOperationBinding RegisterDefaultOperationProfilesFromServices(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId serviceSurface, System.Func<System.IServiceProvider, System.Uri> baseAddressFactory, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey endpointKey, AgentKit.ProviderCredentialProfileKey credentialKey, AgentKit.ProviderEndpointId endpointId) { }
     }
     public static class ProviderProfileAttemptBinding
     {
@@ -162,6 +198,7 @@ namespace AgentKit.Providers
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
                 where TSource :  class, AgentKit.IModelDescriptorSource { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderEndpointProfile(AgentKit.ProviderEndpointProfileKey key, System.Action<AgentKit.Providers.ProviderEndpointProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderEndpointProfileFromServices(AgentKit.ProviderEndpointProfileKey key, System.Action<AgentKit.Providers.ProviderEndpointProfileOptions, System.IServiceProvider> configure) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderEndpointProfile(AgentKit.ProviderEndpointProfileKey key, System.Action<AgentKit.Providers.ProviderEndpointProfileOptions> configure) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderCredentialProfile(AgentKit.ProviderCredentialProfileKey key, System.Action<AgentKit.Providers.ProviderCredentialProfileOptions> configure) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderCredentialProfile(AgentKit.ProviderCredentialProfileKey key, System.Action<AgentKit.Providers.ProviderCredentialProfileOptions> configure) { }

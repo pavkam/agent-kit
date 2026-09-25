@@ -44,6 +44,7 @@ public sealed class AzureOpenAIEmbeddingModel: OpenAICompatibleEmbeddingModelBas
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">The optional profile runtime selector.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public AzureOpenAIEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
@@ -52,7 +53,8 @@ public sealed class AzureOpenAIEmbeddingModel: OpenAICompatibleEmbeddingModelBas
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
         : base(
             descriptor,
             profile,
@@ -60,7 +62,8 @@ public sealed class AzureOpenAIEmbeddingModel: OpenAICompatibleEmbeddingModelBas
             responseParser,
             credentials,
             httpClient,
-            timeProvider)
+            timeProvider,
+            profileSelector)
     {
     }
 

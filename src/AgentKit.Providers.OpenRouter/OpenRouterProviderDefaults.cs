@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenRouter;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 /// <summary>
@@ -13,10 +14,9 @@ using AgentKit.Providers.OpenAICompatible;
 /// This package covers OpenRouter's Chat Completions dialect (the
 /// "extended OpenAI Chat Completions" skin documented for
 /// <c>POST /chat/completions</c>) and its OpenAI-compatible embeddings
-/// dialect (<c>POST /embeddings</c>). OpenRouter's Responses and Anthropic
-/// Messages skins and reranking are separate wire contracts and separate
-/// <see cref="ILlmModel"/>/semantic-operation implementations not covered
-/// by this package.
+/// dialect (<c>POST /embeddings</c>) and OpenAI-compatible reranking
+/// (<c>POST /rerank</c>). OpenRouter's Responses and Anthropic Messages
+/// skins are separate wire contracts not covered by this package.
 /// </remarks>
 public static class OpenRouterProviderDefaults
 {
@@ -60,6 +60,21 @@ public static class OpenRouterProviderDefaults
 
     /// <summary>Gets the default embeddings operation path.</summary>
     public const string DefaultEmbeddingsPath = "embeddings";
+
+    /// <summary>Gets the rerank service surface identity.</summary>
+    public static ProviderServiceSurfaceId RerankServiceSurface { get; } = new("openrouter-rerank");
+
+    /// <summary>Gets the default endpoint profile key for reranking.</summary>
+    public static ProviderEndpointProfileKey RerankEndpointProfileKey { get; } = new("openrouter/rerank");
+
+    /// <summary>Gets the default credential profile key for reranking.</summary>
+    public static ProviderCredentialProfileKey RerankCredentialProfileKey { get; } = new("openrouter/rerank");
+
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for OpenRouter's rerank wire format.</summary>
+    public static ApiFamilyId RerankApiFamily { get; } = new("openrouter-rerank");
+
+    /// <summary>Gets the default rerank operation path.</summary>
+    public const string DefaultRerankPath = "rerank";
 
     /// <summary>
     /// Gets the default capability set applied to a registered OpenRouter
@@ -117,6 +132,34 @@ public static class OpenRouterProviderDefaults
     /// </summary>
     public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
         new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
+
+    /// <summary>Gets the default capability set applied to a registered OpenRouter reranker unless overridden.</summary>
+    public static RerankerCapabilities DefaultRerankCapabilities { get; } = new(supportsTopCount: true, ExtensionData.Empty);
+
+    /// <summary>Gets the default rerank limits applied to a registered OpenRouter reranker unless overridden.</summary>
+    public static RerankerLimits DefaultRerankLimits { get; } = new(maxDocumentsPerRequest: null, maxDocumentCharacters: null);
+
+    /// <summary>Builds the absolute rerank operation URI for the given options.</summary>
+    /// <param name="options">The validated OpenRouter provider options.</param>
+    /// <returns>The absolute URI of the rerank operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildRerankUri(OpenRouterProviderOptions options) =>
+        BuildRerankUri(options, baseAddressOverride: null);
+
+    /// <summary>Builds the rerank URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated OpenRouter provider options.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the rerank operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildRerankUri(OpenRouterProviderOptions options, Uri? baseAddressOverride)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var baseAddress = baseAddressOverride is null
+            ? options.BaseAddress
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, options.RerankPath);
+    }
 
     /// <summary>
     /// Creates the <see cref="OpenAICompatibilityProfile"/> for the current
