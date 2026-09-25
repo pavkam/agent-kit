@@ -19,6 +19,7 @@ public sealed class OpenAILlmModel: OpenAICompatibleLlmModelBase
     /// <param name="credentials">Resolves the current OpenAI credential.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector"></param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public OpenAILlmModel(
         ModelDescriptor descriptor,
@@ -27,7 +28,8 @@ public sealed class OpenAILlmModel: OpenAICompatibleLlmModelBase
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
         : base(
             descriptor,
             profile,
@@ -35,7 +37,8 @@ public sealed class OpenAILlmModel: OpenAICompatibleLlmModelBase
             streamParser,
             credentials,
             httpClient,
-            timeProvider)
+            timeProvider,
+            profileSelector)
     {
     }
 }

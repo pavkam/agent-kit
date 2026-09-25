@@ -169,6 +169,7 @@ internal static class AgentCompositionValidator
         ValidateSingularRegistration<TimeProvider>(snapshot, diagnostics, "agentkit.time");
         ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");
         ValidateSingularRegistration<IIdentifierGenerator<OperationId>>(snapshot, diagnostics, "agentkit.operationid");
+        ValidateSingularRegistration<IProviderProfileRuntimeSelector>(snapshot, diagnostics, "agentkit.provider-profile-selector");
         HookCompositionValidator.ValidateRegistrations(snapshot, diagnostics);
         ValidateAgentLoopRegistered(snapshot, diagnostics);
         return diagnostics.ToImmutable();
@@ -347,6 +348,7 @@ internal static class AgentCompositionValidator
 
             RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
             RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);
+            RequireKeyedOrUnkeyed<IModelRequestExecutor>(componentRegistrations, loopKey, definition.Id, diagnostics);
 
             // IInputCoordinator and IOutputPublisher are optional collaborators: a definition that never sets
             // these keys may run without either, and no diagnostic is raised. An explicit key, however, states

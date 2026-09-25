@@ -276,6 +276,15 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for executing one captured model selection, including same-model retry.</summary>
     public const string ModelExecute = "model.execute";
 
+    /// <summary>Gets the name for one provider HTTP send attempt.</summary>
+    public const string ProviderSend = "provider.send";
+
+    /// <summary>Gets the name for one embedding provider HTTP send attempt.</summary>
+    public const string ProviderEmbeddingSend = "provider.embedding.send";
+
+    /// <summary>Gets the name for one rerank provider HTTP send attempt.</summary>
+    public const string ProviderRerankSend = "provider.rerank.send";
+
     /// <summary>Gets the name for one bounded language-intelligence query.</summary>
     public const string LanguageQuery = "language.query";
 

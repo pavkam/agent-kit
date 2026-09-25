@@ -6,6 +6,8 @@ namespace AgentKit.Providers.OpenAICompatible;
 using System.Diagnostics;
 using System.Net.Http;
 
+using AgentKit.Observability;
+using AgentKit.Providers;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
@@ -59,6 +61,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     private readonly IOpenAIRequestTranslator _translator;
     private readonly IOpenAIStreamParser _streamParser;
     private readonly IProviderCredentialSource _credentials;
+    private readonly IProviderProfileRuntimeSelector? _profileSelector;
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
 
@@ -73,6 +76,9 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">
+    /// The optional profile runtime selector used when <see cref="ModelDescriptor.Binding"/> is configured.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     protected OpenAICompatibleLlmModelBase(
         ModelDescriptor descriptor,
@@ -81,7 +87,8 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(profile);
@@ -97,6 +104,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         _translator = translator;
         _streamParser = streamParser;
         _credentials = credentials;
+        _profileSelector = profileSelector;
         _httpClient = httpClient;
         _timeProvider = timeProvider;
     }
@@ -246,10 +254,33 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 "The request deadline had already elapsed before the attempt could be sent.").ConfigureAwait(false);
         }
 
+        var sendStarted = _timeProvider.GetTimestamp();
+        using var sendActivity = ProviderRequestObservability.StartChatSend(Descriptor.ProviderId);
+        IProviderProfileRuntimeLease? profileLease = null;
         ProviderCredential credential;
+        Uri? endpointOverride = null;
         try
         {
-            credential = await _credentials.GetCredentialAsync(Descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+            var credentialBinding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
+                    Descriptor.Binding,
+                    request.Operation,
+                    _credentials,
+                    _profileSelector,
+                    Descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!credentialBinding.IsSuccess)
+            {
+                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
+                ProviderRequestObservability.RecordRequest("chat", "failed", _timeProvider.GetElapsedTime(sendStarted));
+                return await FailAsync(credentialBinding.Failure!).ConfigureAwait(false);
+            }
+
+            profileLease = credentialBinding.Lease;
+            endpointOverride = credentialBinding.EndpointBaseAddress;
+            credential = await credentialBinding.CredentialSource!
+                .GetCredentialAsync(Descriptor.ProviderId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -306,7 +337,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
         AdjustRequestPayload(payload, request);
 
-        using var httpRequest = CreateHttpRequest(payload, granted);
+        using var httpRequest = CreateHttpRequest(payload, granted, endpointOverride);
         using var deadlineSource = new CancellationTokenSource(
             remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
@@ -346,85 +377,101 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 exception).ConfigureAwait(false);
         }
 
-        using (response)
+        try
         {
-            if (!response.IsSuccessStatusCode)
+            using (response)
             {
-                ProviderFailure failure;
+                if (!response.IsSuccessStatusCode)
+                {
+                    ProviderFailure failure;
+                    try
+                    {
+                        failure = await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return await CancelAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception)).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+                    {
+                        return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException exception)
+                    {
+                        return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                    }
+
+                    return await FailAsync(failure).ConfigureAwait(false);
+                }
+
+                var parseContext = new ProviderResponseParseContext(
+                    requestId,
+                    Descriptor.ProviderId,
+                    Descriptor.ApiFamily,
+                    Descriptor.ModelId,
+                    Descriptor.DeploymentId,
+                    ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
+
                 try
                 {
-                    failure = await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false);
+                    var body = await response.Content.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
+                    await using (body.ConfigureAwait(false))
+                    {
+                        return useStreaming
+                            ? await _streamParser
+                                .ParseStreamingAsync(body, parseContext, sequencing, linkedSource.Token)
+                                .ConfigureAwait(false)
+                            : await _streamParser
+                                .ParseBufferedAsync(body, parseContext, sequencing, linkedSource.Token)
+                                .ConfigureAwait(false);
+                    }
                 }
-                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    return await CancelAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception)).ConfigureAwait(false);
+                    return await CancelAsync().ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
+                    return await FailWithKindAsync(
+                        ProviderFailureKind.Timeout,
+                        "The response was not fully received before the request's deadline.",
+                        exception).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                    return await FailWithKindAsync(
+                        ProviderFailureKind.Timeout,
+                        "The transport timed out while the response body was being received.",
+                        exception).ConfigureAwait(false);
                 }
-
-                return await FailAsync(failure).ConfigureAwait(false);
-            }
-
-            var parseContext = new ProviderResponseParseContext(
-                requestId,
-                Descriptor.ProviderId,
-                Descriptor.ApiFamily,
-                Descriptor.ModelId,
-                Descriptor.DeploymentId,
-                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
-
-            try
-            {
-                var body = await response.Content.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
-                await using (body.ConfigureAwait(false))
+                catch (IOException exception)
                 {
-                    return useStreaming
-                        ? await _streamParser
-                            .ParseStreamingAsync(body, parseContext, sequencing, linkedSource.Token)
-                            .ConfigureAwait(false)
-                        : await _streamParser
-                            .ParseBufferedAsync(body, parseContext, sequencing, linkedSource.Token)
-                            .ConfigureAwait(false);
+                    // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
+                    return await FailWithKindAsync(
+                        ProviderFailureKind.Unavailable,
+                        "The connection failed while the response body was being received.",
+                        exception).ConfigureAwait(false);
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        }
+        finally
+        {
+            if (profileLease is not null)
             {
-                return await CancelAsync().ConfigureAwait(false);
-            }
-            catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-            {
-                return await FailWithKindAsync(
-                    ProviderFailureKind.Timeout,
-                    "The response was not fully received before the request's deadline.",
-                    exception).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException exception)
-            {
-                return await FailWithKindAsync(
-                    ProviderFailureKind.Timeout,
-                    "The transport timed out while the response body was being received.",
-                    exception).ConfigureAwait(false);
-            }
-            catch (IOException exception)
-            {
-                // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
-                return await FailWithKindAsync(
-                    ProviderFailureKind.Unavailable,
-                    "The connection failed while the response body was being received.",
-                    exception).ConfigureAwait(false);
+                await profileLease.DisposeAsync().ConfigureAwait(false);
             }
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(
+        JsonObject payload,
+        ProviderAuthorizationGranted authorization,
+        Uri? endpointBaseOverride)
     {
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _profile.ChatCompletionsUri)
+        var targetUri = endpointBaseOverride is null
+            ? _profile.ChatCompletionsUri
+            : new Uri(ProviderProfileAttemptBinding.NormalizeBaseAddress(endpointBaseOverride), _profile.ChatCompletionsPath);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, targetUri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };

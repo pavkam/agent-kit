@@ -126,7 +126,11 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                 DimensionsOf(vector),
                 EmbeddingElementType.Float32,
                 EmbeddingPurpose.Unspecified,
-                ExtensionData.Empty);
+                ExtensionData.Empty)
+            {
+                Normalization = EmbeddingNormalization.Unspecified,
+                Truncation = EmbeddingTruncation.ProviderDefault,
+            };
 
             items[entry.Index] = new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty);
         }

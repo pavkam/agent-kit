@@ -80,6 +80,9 @@ public static class AgentKitTagNames
     /// <summary>Gets the OpenTelemetry GenAI provider-name attribute.</summary>
     public const string ProviderName = "gen_ai.provider.name";
 
+    /// <summary>Gets the bounded provider-operation attribute for traces and metrics.</summary>
+    public const string ProviderOperation = "agentkit.provider.operation";
+
     /// <summary>Gets the OpenTelemetry GenAI tool-name attribute.</summary>
     public const string ToolName = "gen_ai.tool.name";
 

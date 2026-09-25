@@ -97,4 +97,18 @@ public sealed record EmbeddingModelDescriptor
 
     /// <summary>Gets provider-specific descriptor data.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <summary>Gets the service surface this descriptor is bound to, when published.</summary>
+    public ProviderServiceSurfaceId ServiceSurface { get; init; }
+
+    /// <summary>Gets the endpoint identity this descriptor targets, when published.</summary>
+    public ProviderEndpointId EndpointId { get; init; }
+
+    /// <summary>
+    /// Gets the endpoint and credential profile references used before each attempt, when configured.
+    /// </summary>
+    public ProviderOperationBinding? Binding { get; init; }
+
+    /// <summary>Gets the provider model revision, when tracked.</summary>
+    public ProviderModelRevision? ModelRevision { get; init; }
 }

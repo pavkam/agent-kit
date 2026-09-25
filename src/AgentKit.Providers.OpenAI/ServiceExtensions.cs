@@ -61,6 +61,25 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                OpenAIProviderDefaults.ProviderId,
+                OpenAIProviderDefaults.ChatServiceSurface,
+                OpenAIProviderDefaults.DefaultBaseAddress,
+                OpenAIProviderDefaults.CredentialSourceKey,
+                OpenAIProviderDefaults.ChatEndpointProfileKey,
+                OpenAIProviderDefaults.ChatCredentialProfileKey,
+                new ProviderEndpointId("default"));
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                OpenAIProviderDefaults.ProviderId,
+                OpenAIProviderDefaults.EmbeddingServiceSurface,
+                OpenAIProviderDefaults.DefaultBaseAddress,
+                OpenAIProviderDefaults.CredentialSourceKey,
+                OpenAIProviderDefaults.EmbeddingEndpointProfileKey,
+                OpenAIProviderDefaults.EmbeddingCredentialProfileKey,
+                new ProviderEndpointId("default"));
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -110,6 +129,9 @@ public static class ServiceExtensions
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenAIProviderDefaults.CredentialSourceKey,
+                credentialSource);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 OpenAIProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -143,11 +165,49 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 OpenAIProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenAIProviderDefaults.CredentialSourceKey,
+                static (provider, key) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 OpenAIProviderDefaults.ProviderId,
                 static (provider, key) => new DelegatingOAuthCredentialSource(
                     provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
 
             return services;
+        }
+
+        private static ModelDescriptor WithOpenAIChatBinding(ModelDescriptor descriptor)
+        {
+            var binding = new ProviderOperationBinding(
+                new ProviderEndpointProfileReference(
+                    OpenAIProviderDefaults.ChatEndpointProfileKey,
+                    new ProviderEndpointProfileVersion(1)),
+                new ProviderCredentialProfileReference(
+                    OpenAIProviderDefaults.ChatCredentialProfileKey,
+                    new ProviderCredentialProfileVersion(1)));
+            return descriptor with
+            {
+                ServiceSurface = OpenAIProviderDefaults.ChatServiceSurface,
+                EndpointId = new ProviderEndpointId("default"),
+                Binding = binding,
+            };
+        }
+
+        private static EmbeddingModelDescriptor WithOpenAIEmbeddingBinding(EmbeddingModelDescriptor descriptor)
+        {
+            var binding = new ProviderOperationBinding(
+                new ProviderEndpointProfileReference(
+                    OpenAIProviderDefaults.EmbeddingEndpointProfileKey,
+                    new ProviderEndpointProfileVersion(1)),
+                new ProviderCredentialProfileReference(
+                    OpenAIProviderDefaults.EmbeddingCredentialProfileKey,
+                    new ProviderCredentialProfileVersion(1)));
+            return descriptor with
+            {
+                ServiceSurface = OpenAIProviderDefaults.EmbeddingServiceSurface,
+                EndpointId = new ProviderEndpointId("default"),
+                Binding = binding,
+            };
         }
 
         /// <summary>
@@ -187,7 +247,7 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
 
-                var descriptor = new ModelDescriptor(
+                var descriptor = WithOpenAIChatBinding(new ModelDescriptor(
                     alias,
                     OpenAIProviderDefaults.ProviderId,
                     OpenAIProviderDefaults.ApiFamily,
@@ -196,7 +256,7 @@ public static class ServiceExtensions
                     capabilities ?? OpenAIProviderDefaults.DefaultCapabilities,
                     limits ?? OpenAIProviderDefaults.DefaultLimits,
                     pricing: null,
-                    ExtensionData.Empty);
+                    ExtensionData.Empty));
 
                 return new OpenAILlmModel(
                     descriptor,
@@ -205,7 +265,8 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -287,13 +348,14 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
                 return new OpenAILlmModel(
-                    descriptor,
+                    WithOpenAIChatBinding(descriptor),
                     OpenAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -340,7 +402,7 @@ public static class ServiceExtensions
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
 
-                var descriptor = new EmbeddingModelDescriptor(
+                var descriptor = WithOpenAIEmbeddingBinding(new EmbeddingModelDescriptor(
                     alias,
                     OpenAIProviderDefaults.ProviderId,
                     OpenAIProviderDefaults.EmbeddingApiFamily,
@@ -349,7 +411,7 @@ public static class ServiceExtensions
                     capabilities ?? OpenAIProviderDefaults.DefaultEmbeddingCapabilities,
                     limits ?? OpenAIProviderDefaults.DefaultEmbeddingLimits,
                     pricing: null,
-                    ExtensionData.Empty);
+                    ExtensionData.Empty));
 
                 return new OpenAIEmbeddingModel(
                     descriptor,

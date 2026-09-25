@@ -70,4 +70,19 @@ public sealed record EmbeddingSpaceIdentity
 
     /// <summary>Gets provider-specific space-identity data.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <summary>Gets the normalization policy applied to the vector, when reported.</summary>
+    public EmbeddingNormalization Normalization { get; init; } = EmbeddingNormalization.Unspecified;
+
+    /// <summary>Gets the truncation policy applied to the input, when reported.</summary>
+    public EmbeddingTruncation Truncation { get; init; } = EmbeddingTruncation.ProviderDefault;
+
+    /// <summary>Gets the endpoint identity that produced the vector, when published.</summary>
+    public ProviderEndpointId EndpointId { get; init; }
+
+    /// <summary>Gets the service surface that produced the vector, when published.</summary>
+    public ProviderServiceSurfaceId ServiceSurface { get; init; }
+
+    /// <summary>Gets the provider model revision, when tracked.</summary>
+    public ProviderModelRevision? ModelRevision { get; init; }
 }

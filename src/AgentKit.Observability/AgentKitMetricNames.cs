@@ -238,6 +238,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal model-execution outcomes.</summary>
     public const string ModelExecutionCount = "agentkit.model.execution.count";
 
+    /// <summary>Gets the counter for terminal provider HTTP request outcomes.</summary>
+    public const string ProviderRequestCount = "agentkit.provider.request.count";
+
+    /// <summary>Gets the histogram for provider HTTP request duration in seconds.</summary>
+    public const string ProviderRequestDuration = "agentkit.provider.request.duration";
+
     /// <summary>Gets the counter for terminal language-query outcomes.</summary>
     public const string LanguageQueryCount = "agentkit.language.query.count";
 

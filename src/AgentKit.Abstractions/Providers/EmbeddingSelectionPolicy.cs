@@ -1,0 +1,29 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit;
+
+/// <summary>Declares ordered embedding-model candidates and fallback behavior.</summary>
+public sealed record EmbeddingSelectionPolicy
+{
+    /// <summary>Initializes a selection policy.</summary>
+    /// <param name="candidates">The ordered candidate aliases.</param>
+    /// <param name="fallback">The fallback mode when the first candidate is unavailable.</param>
+    /// <exception cref="ArgumentException"><paramref name="candidates"/> is default or contains null aliases.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fallback"/> is undefined.</exception>
+    public EmbeddingSelectionPolicy(
+        ImmutableArray<EmbeddingModelAlias> candidates,
+        SemanticFallbackPolicy fallback = SemanticFallbackPolicy.FirstCandidateOnly)
+    {
+        ArgumentException.ThrowIfDefault(candidates);
+        ArgumentOutOfRangeException.ThrowIfUndefined(fallback);
+        Candidates = candidates;
+        Fallback = fallback;
+    }
+
+    /// <summary>Gets the ordered candidate aliases.</summary>
+    public ImmutableArray<EmbeddingModelAlias> Candidates { get; init; }
+
+    /// <summary>Gets the fallback mode.</summary>
+    public SemanticFallbackPolicy Fallback { get; init; }
+}

@@ -29,6 +29,27 @@ public static class OpenAIProviderDefaults
     /// <summary>Gets the default embeddings operation path.</summary>
     public const string DefaultEmbeddingsPath = "v1/embeddings";
 
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("openai-chat-completions");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("openai-embeddings");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("openai/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("openai/chat");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("openai/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("openai/embeddings");
+
+    /// <summary>Gets the credential source key shared by OpenAI operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("openai");
+
     /// <summary>
     /// Gets the default capability set applied to a registered OpenAI chat
     /// model unless the caller supplies its own.

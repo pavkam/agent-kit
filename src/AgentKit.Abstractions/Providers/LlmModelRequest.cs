@@ -21,6 +21,9 @@ public sealed record LlmModelRequest
     /// <param name="attempt">The one-based attempt number for this request's <see cref="ModelRequestId"/>.</param>
     /// <param name="deadline">The instant by which this attempt must complete.</param>
     /// <param name="options">Bounded, provider-specific request options.</param>
+    /// <param name="operation">
+    /// The protected semantic operation this attempt serves, when the caller captured one.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="context"/> or <paramref name="options"/> is null.
     /// </exception>
@@ -31,7 +34,8 @@ public sealed record LlmModelRequest
         LlmRequestContext context,
         int attempt,
         DateTimeOffset deadline,
-        ProviderRequestOptions options)
+        ProviderRequestOptions options,
+        ProtectedSemanticOperationContext? operation = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
@@ -41,6 +45,7 @@ public sealed record LlmModelRequest
         Attempt = attempt;
         Deadline = deadline;
         Options = options;
+        Operation = operation;
     }
 
     /// <summary>Gets the provider-neutral content of the request.</summary>
@@ -87,4 +92,7 @@ public sealed record LlmModelRequest
             field = value;
         }
     }
+
+    /// <summary>Gets the protected semantic operation when the caller captured one.</summary>
+    public ProtectedSemanticOperationContext? Operation { get; init; }
 }

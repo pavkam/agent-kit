@@ -60,6 +60,11 @@ public static class ServiceExtensions
             services.TryAddSingleton<ILlmModelResolver, DefaultLlmModelResolver>();
             services.TryAddSingleton<IEmbeddingModelResolver, DefaultEmbeddingModelResolver>();
             services.TryAddSingleton<IModelRequestExecutor, DefaultModelRequestExecutor>();
+            services.TryAddSingleton<IEmbeddingModelSelector, DefaultEmbeddingModelSelector>();
+            services.TryAddSingleton<IEmbeddingRequestExecutor, DefaultEmbeddingRequestExecutor>();
+            services.TryAddSingleton<IRerankerSelector, DefaultRerankerSelector>();
+            services.TryAddSingleton<IRerankerResolver, DefaultRerankerResolver>();
+            services.TryAddSingleton<IRerankRequestExecutor, DefaultRerankRequestExecutor>();
             services.TryAddSingleton(CreateProfileRegistry);
             services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
 

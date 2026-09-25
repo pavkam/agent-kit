@@ -26,6 +26,8 @@ namespace AgentKit;
 public sealed record ModelCatalogSnapshot
 {
     private readonly ImmutableArray<ModelDescriptor> _conversationModels;
+    private readonly ImmutableArray<EmbeddingModelDescriptor> _embeddingModels;
+    private readonly ImmutableArray<RerankerDescriptor> _rerankers;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModelCatalogSnapshot"/>
@@ -52,6 +54,8 @@ public sealed record ModelCatalogSnapshot
 
         Version = version;
         _conversationModels = conversationModels;
+        _embeddingModels = [];
+        _rerankers = [];
     }
 
     /// <summary>Gets this snapshot's catalog revision.</summary>
@@ -104,6 +108,62 @@ public sealed record ModelCatalogSnapshot
         return null;
     }
 
+    /// <summary>Gets composed embedding model descriptors.</summary>
+    public ImmutableArray<EmbeddingModelDescriptor> EmbeddingModels
+    {
+        get => _embeddingModels;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value, nameof(EmbeddingModels));
+            ThrowIfDuplicateEmbeddingAlias(value, nameof(EmbeddingModels));
+            _embeddingModels = value;
+        }
+    }
+
+    /// <summary>Gets composed reranker descriptors.</summary>
+    public ImmutableArray<RerankerDescriptor> Rerankers
+    {
+        get => _rerankers;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value, nameof(Rerankers));
+            ThrowIfDuplicateRerankerAlias(value, nameof(Rerankers));
+            _rerankers = value;
+        }
+    }
+
+    /// <summary>Finds the embedding descriptor published under <paramref name="alias"/>.</summary>
+    /// <param name="alias">The application selection key to resolve.</param>
+    /// <returns>The matching descriptor, or <see langword="null"/> when absent.</returns>
+    public EmbeddingModelDescriptor? FindEmbeddingModel(EmbeddingModelAlias alias)
+    {
+        foreach (var descriptor in _embeddingModels)
+        {
+            if (descriptor.Alias == alias)
+            {
+                return descriptor;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Finds the reranker descriptor published under <paramref name="alias"/>.</summary>
+    /// <param name="alias">The application selection key to resolve.</param>
+    /// <returns>The matching descriptor, or <see langword="null"/> when absent.</returns>
+    public RerankerDescriptor? FindReranker(RerankerAlias alias)
+    {
+        foreach (var descriptor in _rerankers)
+        {
+            if (descriptor.Alias == alias)
+            {
+                return descriptor;
+            }
+        }
+
+        return null;
+    }
+
     private static void ThrowIfDuplicateAlias(
         ImmutableArray<ModelDescriptor> descriptors,
         string paramName)
@@ -120,6 +180,48 @@ public sealed record ModelCatalogSnapshot
             {
                 throw new ArgumentException(
                     $"Value must not contain duplicate model alias '{descriptor.Alias}'.",
+                    paramName);
+            }
+        }
+    }
+
+    private static void ThrowIfDuplicateEmbeddingAlias(
+        ImmutableArray<EmbeddingModelDescriptor> descriptors,
+        string paramName)
+    {
+        if (descriptors.IsDefaultOrEmpty)
+        {
+            return;
+        }
+
+        var seen = new HashSet<EmbeddingModelAlias>();
+        foreach (var descriptor in descriptors)
+        {
+            if (!seen.Add(descriptor.Alias))
+            {
+                throw new ArgumentException(
+                    $"Value must not contain duplicate embedding alias '{descriptor.Alias}'.",
+                    paramName);
+            }
+        }
+    }
+
+    private static void ThrowIfDuplicateRerankerAlias(
+        ImmutableArray<RerankerDescriptor> descriptors,
+        string paramName)
+    {
+        if (descriptors.IsDefaultOrEmpty)
+        {
+            return;
+        }
+
+        var seen = new HashSet<RerankerAlias>();
+        foreach (var descriptor in descriptors)
+        {
+            if (!seen.Add(descriptor.Alias))
+            {
+                throw new ArgumentException(
+                    $"Value must not contain duplicate reranker alias '{descriptor.Alias}'.",
                     paramName);
             }
         }

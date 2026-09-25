@@ -194,7 +194,7 @@ internal sealed partial class DefaultModelRequestExecutor(
         var context = request.Context.Model.Equals(request.Selection.Model)
             ? request.Context
             : request.Context with { Model = request.Selection.Model };
-        return new LlmModelRequest(context, attempt, deadline, ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt, deadline, ProviderRequestOptions.Empty, request.Operation);
     }
 
     private async Task DelayBeforeRetryAsync(
