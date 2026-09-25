@@ -79,6 +79,26 @@ namespace AgentKit.Providers
         public static AgentKit.ProviderFailure? Validate(AgentKit.EmbeddingModelRequest request, AgentKit.EmbeddingModelDescriptor descriptor) { }
         public static AgentKit.ProviderFailure? Validate(AgentKit.LlmModelRequest request, AgentKit.ModelDescriptor descriptor) { }
     }
+    public sealed class ProviderCredentialProfileOptions
+    {
+        public ProviderCredentialProfileOptions() { }
+        public AgentKit.ProviderAccountId? AccountId { get; set; }
+        public AgentKit.ProviderId? ProviderId { get; set; }
+        public System.TimeSpan RefreshSkew { get; set; }
+        public AgentKit.ProviderServiceSurfaceId? ServiceSurface { get; set; }
+        public AgentKit.ProviderCredentialSourceKey? SourceKey { get; set; }
+        public AgentKit.ProviderCredentialProfileVersion Version { get; set; }
+    }
+    public sealed class ProviderEndpointProfileOptions
+    {
+        public ProviderEndpointProfileOptions() { }
+        public AgentKit.ProviderApiVersion? ApiVersion { get; set; }
+        public System.Uri? BaseAddress { get; set; }
+        public AgentKit.ProviderEndpointId? EndpointId { get; set; }
+        public AgentKit.ProviderId? ProviderId { get; set; }
+        public AgentKit.ProviderServiceSurfaceId? ServiceSurface { get; set; }
+        public AgentKit.ProviderEndpointProfileVersion Version { get; set; }
+    }
     public static class ProviderJson
     {
         public static void ApplyExtensions(System.Text.Json.Nodes.JsonObject body, AgentKit.ExtensionData extensions) { }
@@ -115,6 +135,16 @@ namespace AgentKit.Providers
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptors(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
                 where TSource :  class, AgentKit.IModelDescriptorSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderEndpointProfile(AgentKit.ProviderEndpointProfileKey key, System.Action<AgentKit.Providers.ProviderEndpointProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderEndpointProfile(AgentKit.ProviderEndpointProfileKey key, System.Action<AgentKit.Providers.ProviderEndpointProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderCredentialProfile(AgentKit.ProviderCredentialProfileKey key, System.Action<AgentKit.Providers.ProviderCredentialProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderCredentialProfile(AgentKit.ProviderCredentialProfileKey key, System.Action<AgentKit.Providers.ProviderCredentialProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddProviderCredentialSource<TSource>(AgentKit.ProviderCredentialSourceKey key)
+                where TSource :  class, AgentKit.IProviderCredentialSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderCredentialSource<TSource>(AgentKit.ProviderCredentialSourceKey key)
+                where TSource :  class, AgentKit.IProviderCredentialSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceProviderProfileRuntimeSelector<TSelector>()
+                where TSelector :  class, AgentKit.IProviderProfileRuntimeSelector { }
         }
     }
     public sealed class StaticModelDescriptorSource : AgentKit.IModelDescriptorSource

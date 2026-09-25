@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>
 /// Registers the provider-neutral model catalog, selector, and capability
 /// validator.
@@ -58,6 +60,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<ILlmModelResolver, DefaultLlmModelResolver>();
             services.TryAddSingleton<IEmbeddingModelResolver, DefaultEmbeddingModelResolver>();
             services.TryAddSingleton<IModelRequestExecutor, DefaultModelRequestExecutor>();
+            services.TryAddSingleton(CreateProfileRegistry);
+            services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
 
             return services;
         }
@@ -138,6 +142,143 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddSingleton<IModelDescriptorSource, TSource>();
             return services;
+        }
+
+        /// <summary>Registers one endpoint profile snapshot.</summary>
+        /// <param name="key">The stable profile key.</param>
+        /// <param name="configure">Configures the profile options.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection AddProviderEndpointProfile(
+            ProviderEndpointProfileKey key,
+            Action<ProviderEndpointProfileOptions> configure) =>
+            RegisterEndpointProfile(services, key, configure, replace: false);
+
+        /// <summary>Replaces one endpoint profile snapshot.</summary>
+        /// <param name="key">The stable profile key.</param>
+        /// <param name="configure">Configures the profile options.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection ReplaceProviderEndpointProfile(
+            ProviderEndpointProfileKey key,
+            Action<ProviderEndpointProfileOptions> configure) =>
+            RegisterEndpointProfile(services, key, configure, replace: true);
+
+        /// <summary>Registers one credential profile snapshot.</summary>
+        /// <param name="key">The stable profile key.</param>
+        /// <param name="configure">Configures the profile options.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection AddProviderCredentialProfile(
+            ProviderCredentialProfileKey key,
+            Action<ProviderCredentialProfileOptions> configure) =>
+            RegisterCredentialProfile(services, key, configure, replace: false);
+
+        /// <summary>Replaces one credential profile snapshot.</summary>
+        /// <param name="key">The stable profile key.</param>
+        /// <param name="configure">Configures the profile options.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection ReplaceProviderCredentialProfile(
+            ProviderCredentialProfileKey key,
+            Action<ProviderCredentialProfileOptions> configure) =>
+            RegisterCredentialProfile(services, key, configure, replace: true);
+
+        /// <summary>Registers a keyed credential source.</summary>
+        /// <typeparam name="TSource">The credential source implementation.</typeparam>
+        /// <param name="key">The source key referenced by credential profiles.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection AddProviderCredentialSource<TSource>(ProviderCredentialSourceKey key)
+            where TSource : class, IProviderCredentialSource
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
+            _ = services.AddKeyedSingleton<IProviderCredentialSource, TSource>(key);
+            return services;
+        }
+
+        /// <summary>Replaces a keyed credential source registration.</summary>
+        /// <typeparam name="TSource">The replacement credential source implementation.</typeparam>
+        /// <param name="key">The source key referenced by credential profiles.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection ReplaceProviderCredentialSource<TSource>(ProviderCredentialSourceKey key)
+            where TSource : class, IProviderCredentialSource
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.RemoveAllKeyed<IProviderCredentialSource>(key);
+            _ = services.AddKeyedSingleton<IProviderCredentialSource, TSource>(key);
+            return services;
+        }
+
+        /// <summary>Replaces the profile runtime selector.</summary>
+        /// <typeparam name="TSelector">The replacement selector type.</typeparam>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection ReplaceProviderProfileRuntimeSelector<TSelector>()
+            where TSelector : class, IProviderProfileRuntimeSelector
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return services.Replace(ServiceDescriptor.Singleton<IProviderProfileRuntimeSelector, TSelector>());
+        }
+    }
+
+    private static ProviderProfileRegistry CreateProfileRegistry(IServiceProvider serviceProvider)
+    {
+        var registry = new ProviderProfileRegistry();
+        foreach (var configure in serviceProvider.GetServices<IConfigureOptions<ProviderProfileRegistry>>())
+        {
+            configure.Configure(registry);
+        }
+
+        return registry;
+    }
+
+    private static IServiceCollection RegisterEndpointProfile(
+        IServiceCollection services,
+        ProviderEndpointProfileKey key,
+        Action<ProviderEndpointProfileOptions> configure,
+        bool replace)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.TryAddSingleton(CreateProfileRegistry);
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
+        _ = services.AddSingleton<IConfigureOptions<ProviderProfileRegistry>>(new ConfigureEndpointProfile(key, configure, replace));
+        return services;
+    }
+
+    private static IServiceCollection RegisterCredentialProfile(
+        IServiceCollection services,
+        ProviderCredentialProfileKey key,
+        Action<ProviderCredentialProfileOptions> configure,
+        bool replace)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.TryAddSingleton(CreateProfileRegistry);
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
+        _ = services.AddSingleton<IConfigureOptions<ProviderProfileRegistry>>(new ConfigureCredentialProfile(key, configure, replace));
+        return services;
+    }
+
+    private sealed class ConfigureEndpointProfile(
+        ProviderEndpointProfileKey key,
+        Action<ProviderEndpointProfileOptions> configure,
+        bool replace): IConfigureOptions<ProviderProfileRegistry>
+    {
+        public void Configure(ProviderProfileRegistry registry)
+        {
+            var options = new ProviderEndpointProfileOptions();
+            configure(options);
+            registry.RegisterEndpoint(ProviderProfileSnapshots.CreateEndpoint(key, options), replace);
+        }
+    }
+
+    private sealed class ConfigureCredentialProfile(
+        ProviderCredentialProfileKey key,
+        Action<ProviderCredentialProfileOptions> configure,
+        bool replace): IConfigureOptions<ProviderProfileRegistry>
+    {
+        public void Configure(ProviderProfileRegistry registry)
+        {
+            var options = new ProviderCredentialProfileOptions();
+            configure(options);
+            registry.RegisterCredential(ProviderProfileSnapshots.CreateCredential(key, options), replace);
         }
     }
 }

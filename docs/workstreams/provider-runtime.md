@@ -15,7 +15,7 @@ Owning documents:
 - [x] WS7-C1 `IModelRequestExecutor` contract family
 - [x] WS7-C2 `DefaultModelRequestExecutor` and runtime options
 - [x] WS7-C3 loop consumes the executor
-- [ ] WS7-C4 profile runtime selector and lease
+- [x] WS7-C4 profile runtime selector and lease
 - [ ] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible bind
 - [ ] WS7-C5b remaining leaves bind
 - [ ] WS7-C6 embedding selector and executor
@@ -145,6 +145,14 @@ files, untouched.
   `AddProviderCredentialProfile`, `Replace*`; selector resolves the existing
   keyed `IProviderCredentialSource` by `ProviderCredentialSourceKey` without
   changing that interface. Snapshots: Abstractions, Providers.
+- Landed: `ProviderProfileRegistry` composes profile snapshots from
+  `IConfigureOptions` registrations. The selector resolves keyed credential
+  sources through `GetKeyedService` without changing
+  `IProviderCredentialSource`.
+- Landed: `ProviderProfileRegistry` composes profile snapshots from
+  `IConfigureOptions` registrations. The selector resolves keyed credential
+  sources through `GetKeyedService` without changing
+  `IProviderCredentialSource`.
 
 ### WS7-C5a/C5b: `ModelDescriptor.Binding` and leaf binding
 

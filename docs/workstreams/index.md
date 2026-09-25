@@ -28,7 +28,7 @@ hours, L three to six hours.
 | 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3        | 13     | C1–C13  |
 | 5   | [Host access](host-access.md)                                         | 3           | 18     | C1–C17  |
 | 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13     | C1a–C10 |
-| 7   | [Provider runtime](provider-runtime.md)                               | 2           | 15     | C1–C3   |
+| 7   | [Provider runtime](provider-runtime.md)                               | 2           | 15     | C1–C4   |
 | 8   | [Structured output](structured-output.md)                             | 2, 7        | 12     | –       |
 | 9   | [Context assembly](context-assembly.md)                               | 2           | 8      | C1–C8   |
 | 10  | [Context compaction](context-compaction.md)                           | 7, 9        | 8      | –       |

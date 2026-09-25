@@ -5145,6 +5145,16 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.ProviderCredential> GetCredentialAsync(AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IProviderProfileRuntimeLease : System.IAsyncDisposable
+    {
+        AgentKit.ProviderCredentialProfileSnapshot Credential { get; }
+        AgentKit.IProviderCredentialSource CredentialSource { get; }
+        AgentKit.ProviderEndpointProfileSnapshot Endpoint { get; }
+    }
+    public interface IProviderProfileRuntimeSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ProviderProfileRuntimeSelectionResult> SelectAsync(AgentKit.ProviderOperationBinding binding, AgentKit.ProtectedSemanticOperationContext operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IRecoveryPolicy
     {
         System.Threading.Tasks.ValueTask<AgentKit.RecoveryDecision> DecideAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.RecoveryEvidence evidence, System.Threading.CancellationToken cancellationToken = default);
@@ -7823,6 +7833,18 @@ namespace AgentKit
         public ProviderOperationBinding(AgentKit.ProviderEndpointProfileReference endpoint, AgentKit.ProviderCredentialProfileReference credential) { }
         public AgentKit.ProviderCredentialProfileReference Credential { get; }
         public AgentKit.ProviderEndpointProfileReference Endpoint { get; }
+    }
+    public sealed class ProviderProfileRuntimeSelected : AgentKit.ProviderProfileRuntimeSelectionResult, System.IEquatable<AgentKit.ProviderProfileRuntimeSelected>
+    {
+        public ProviderProfileRuntimeSelected(AgentKit.IProviderProfileRuntimeLease runtime) { }
+        public AgentKit.IProviderProfileRuntimeLease Runtime { get; }
+    }
+    public abstract class ProviderProfileRuntimeSelectionResult : System.IEquatable<AgentKit.ProviderProfileRuntimeSelectionResult> { }
+    public sealed class ProviderProfileRuntimeUnavailable : AgentKit.ProviderProfileRuntimeSelectionResult, System.IEquatable<AgentKit.ProviderProfileRuntimeUnavailable>
+    {
+        public ProviderProfileRuntimeUnavailable(AgentKit.ProviderOperationBinding binding, AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderOperationBinding Binding { get; }
+        public AgentKit.ProviderFailure Failure { get; }
     }
     public readonly struct ProviderRequestId : System.IEquatable<AgentKit.ProviderRequestId>
     {
