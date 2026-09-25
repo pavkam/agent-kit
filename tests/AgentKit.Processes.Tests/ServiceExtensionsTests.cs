@@ -12,6 +12,7 @@ public sealed class ServiceExtensionsTests
         var intentIds = new SequenceSecurityEnforcementIntentIdGenerator(
             Guid.Parse("82000000-0000-0000-0000-000000000008"));
         _ = services.AddSingleton<ISecurityGrantStore>(new TestGrantStore());
+        _ = services.AddSingleton<ISecurityAuditDispatcher, NoOpSecurityAuditDispatcher>();
         _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(intentIds);
         _ = services.AddAgentProcesses(new ProcessExecutorKey("default"), static options =>
         {
@@ -27,5 +28,13 @@ public sealed class ServiceExtensionsTests
         provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>().Create().Value.ShouldNotBe(Guid.Empty);
         provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>().ShouldBeSameAs(intentIds);
         _ = provider.GetRequiredService<IProcessExecutorSelector>();
+    }
+
+    private sealed class NoOpSecurityAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
     }
 }

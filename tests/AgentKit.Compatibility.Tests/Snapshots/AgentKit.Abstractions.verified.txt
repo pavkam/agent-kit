@@ -5121,8 +5121,10 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ProcessExitResult> Completion { get; }
         AgentKit.ProcessOperationId Id { get; }
+        System.Threading.Tasks.ValueTask CompleteStandardInputAsync(System.Threading.CancellationToken cancellationToken = default);
         System.Collections.Generic.IAsyncEnumerable<AgentKit.ProcessOutputEvent> ReadOutputAsync(System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.ProcessTerminationResult> TerminateAsync(AgentKit.ProcessTerminationRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ProcessStandardInputWriteResult> WriteStandardInputAsync(System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IProcessIntentResolver
     {
@@ -7456,8 +7458,9 @@ namespace AgentKit
     }
     public sealed class ProcessResourceLimits : System.IEquatable<AgentKit.ProcessResourceLimits>
     {
-        public ProcessResourceLimits(System.TimeSpan timeout, long maximumOutputBytes, System.TimeSpan terminationGracePeriod) { }
+        public ProcessResourceLimits(System.TimeSpan timeout, long maximumOutputBytes, System.TimeSpan terminationGracePeriod, AgentKit.ProcessStandardInputDelivery standardInputDelivery = 0) { }
         public long MaximumOutputBytes { get; }
+        public AgentKit.ProcessStandardInputDelivery StandardInputDelivery { get; }
         public System.TimeSpan TerminationGracePeriod { get; }
         public System.TimeSpan Timeout { get; }
     }
@@ -7569,6 +7572,30 @@ namespace AgentKit
     {
         public ProcessStandardErrorTruncated(long sequence, long bytesObserved) { }
         public long BytesObserved { get; init; }
+    }
+    public enum ProcessStandardInputDelivery
+    {
+        AfterInitialPayload = 0,
+        Streaming = 1,
+    }
+    public sealed class ProcessStandardInputWriteLimitExceeded : AgentKit.ProcessStandardInputWriteResult, System.IEquatable<AgentKit.ProcessStandardInputWriteLimitExceeded>
+    {
+        public ProcessStandardInputWriteLimitExceeded(string SafeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class ProcessStandardInputWriteResult : System.IEquatable<AgentKit.ProcessStandardInputWriteResult>
+    {
+        protected ProcessStandardInputWriteResult() { }
+    }
+    public sealed class ProcessStandardInputWriteSucceeded : AgentKit.ProcessStandardInputWriteResult, System.IEquatable<AgentKit.ProcessStandardInputWriteSucceeded>
+    {
+        public ProcessStandardInputWriteSucceeded(int BytesWritten) { }
+        public int BytesWritten { get; init; }
+    }
+    public sealed class ProcessStandardInputWriteUnavailable : AgentKit.ProcessStandardInputWriteResult, System.IEquatable<AgentKit.ProcessStandardInputWriteUnavailable>
+    {
+        public ProcessStandardInputWriteUnavailable(string SafeMessage) { }
+        public string SafeMessage { get; init; }
     }
     public sealed class ProcessStandardOutputBytes : AgentKit.ProcessOutputEvent, System.IEquatable<AgentKit.ProcessStandardOutputBytes>
     {
