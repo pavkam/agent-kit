@@ -195,8 +195,12 @@ internal static class CompositionTestData
 
     /// <summary>Registers the hook kernel so composition validation can reach later readiness checks.</summary>
     /// <param name="services">The composition under test.</param>
-    public static void AddHookKernelForEngineValidation(IServiceCollection services) =>
+    public static void AddHookKernelForEngineValidation(IServiceCollection services)
+    {
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
+        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
         HookCompositionTestSupport.TryAddDefaultHookKernel(services);
+    }
 
     public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions) =>
         AddRunProfiles(services, SessionBusyBehavior.Reject, definitions);

@@ -23,6 +23,20 @@ public static class GroqProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Groq's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("groq-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("groq-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("groq/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("groq/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("groq");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>Gets Groq's REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.groq.com/openai/v1/");

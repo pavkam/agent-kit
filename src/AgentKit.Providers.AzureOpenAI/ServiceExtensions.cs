@@ -3,6 +3,9 @@
 
 namespace AgentKit.Providers.AzureOpenAI;
 
+using AgentKit.Providers;
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -65,6 +68,25 @@ public static class ServiceExtensions
                 ServiceDescriptor.Singleton<IValidateOptions<AzureOpenAIProviderOptions>, AzureOpenAIProviderOptionsValidator>());
             _ = services.Configure(configureOptions);
 
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfilesFromServices(
+                services,
+                AzureOpenAIProviderDefaults.ProviderId,
+                AzureOpenAIProviderDefaults.ChatServiceSurface,
+                static provider => provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value.ResourceEndpoint!,
+                AzureOpenAIProviderDefaults.CredentialSourceKey,
+                AzureOpenAIProviderDefaults.ChatEndpointProfileKey,
+                AzureOpenAIProviderDefaults.ChatCredentialProfileKey,
+                AzureOpenAIProviderDefaults.DefaultEndpointId);
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterEmbeddingProfilesFromServices(
+                services,
+                AzureOpenAIProviderDefaults.ProviderId,
+                AzureOpenAIProviderDefaults.EmbeddingServiceSurface,
+                static provider => provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value.ResourceEndpoint!,
+                AzureOpenAIProviderDefaults.CredentialSourceKey,
+                AzureOpenAIProviderDefaults.EmbeddingEndpointProfileKey,
+                AzureOpenAIProviderDefaults.EmbeddingCredentialProfileKey,
+                AzureOpenAIProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -114,7 +136,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId, credentialSource);
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                AzureOpenAIProviderDefaults.CredentialSourceKey,
+                AzureOpenAIProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -237,19 +263,27 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the deployment the model is served from.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                AzureOpenAIProviderDefaults.ChatServiceSurface,
+                AzureOpenAIProviderDefaults.ChatEndpointProfileKey,
+                AzureOpenAIProviderDefaults.ChatCredentialProfileKey,
+                AzureOpenAIProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value;
                 var profile = AzureOpenAIProviderDefaults.CreateProfile(options);
 
                 return new AzureOpenAILlmModel(
-                    descriptor,
+                    boundDescriptor,
                     profile,
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

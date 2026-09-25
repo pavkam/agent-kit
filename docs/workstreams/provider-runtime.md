@@ -16,16 +16,17 @@ Owning documents:
 - [x] WS7-C2 `DefaultModelRequestExecutor` and runtime options
 - [x] WS7-C3 loop consumes the executor
 - [x] WS7-C4 profile runtime selector and lease
-- [ ] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible bind
+- [x] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible LLM bind
 - [ ] WS7-C5b remaining leaves bind
-- [ ] WS7-C6 embedding selector and executor
-- [ ] WS7-C7 `EmbeddingSpaceIdentity` growth
-- [ ] WS7-C8a rerank contracts and defaults
+- [x] WS7-C6 embedding selector and executor
+- [ ] WS7-C7 `EmbeddingSpaceIdentity` growth (Abstractions + OpenAI-compatible
+      parser; four native parsers pending)
+- [x] WS7-C8a rerank contracts and defaults
 - [ ] WS7-C8b Cohere reranker
 - [ ] WS7-C8c OpenRouter reranker
-- [ ] WS7-C9a provider observability names and OpenAICompatible base
+- [x] WS7-C9a provider observability names and OpenAICompatible LLM base
 - [ ] WS7-C9b six native leaves instrumented
-- [ ] WS7-C10 validator
+- [x] WS7-C10 validator
 
 ## Verified current state
 

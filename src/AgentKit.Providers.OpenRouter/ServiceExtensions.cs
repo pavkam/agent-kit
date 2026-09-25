@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenRouter;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -62,6 +63,27 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                OpenRouterProviderDefaults.ProviderId,
+                OpenRouterProviderDefaults.ChatServiceSurface,
+                OpenRouterProviderDefaults.DefaultBaseAddress,
+                OpenRouterProviderDefaults.CredentialSourceKey,
+                OpenRouterProviderDefaults.ChatEndpointProfileKey,
+                OpenRouterProviderDefaults.ChatCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterEmbeddingProfiles(
+                services,
+                OpenRouterProviderDefaults.ProviderId,
+                OpenRouterProviderDefaults.EmbeddingServiceSurface,
+                OpenRouterProviderDefaults.DefaultBaseAddress,
+                OpenRouterProviderDefaults.CredentialSourceKey,
+                OpenRouterProviderDefaults.EmbeddingEndpointProfileKey,
+                OpenRouterProviderDefaults.EmbeddingCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -110,7 +132,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                OpenRouterProviderDefaults.CredentialSourceKey,
                 OpenRouterProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -144,9 +168,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 OpenRouterProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenRouterProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OpenRouterProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 OpenRouterProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OpenRouterProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -223,18 +251,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the OpenRouter provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                OpenRouterProviderDefaults.ChatServiceSurface,
+                OpenRouterProviderDefaults.ChatEndpointProfileKey,
+                OpenRouterProviderDefaults.ChatCredentialProfileKey,
+                OpenRouterProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
 
                 return new OpenRouterLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     OpenRouterProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

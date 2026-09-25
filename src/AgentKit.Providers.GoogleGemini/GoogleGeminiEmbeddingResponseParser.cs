@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
+using AgentKit.Providers;
 using AgentKit.Providers.GoogleGemini.Wire;
 
 /// <summary>
@@ -72,12 +73,13 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
 
             var vector = new DenseFloatVector([.. values]);
             var correlationId = (requestInputs[index] as TextEmbeddingInput)?.CorrelationId;
-            var space = new EmbeddingSpaceIdentity(
+            var space = EmbeddingSpaceIdentityFactory.Create(
                 identity,
                 vector.Values.Length,
                 EmbeddingElementType.Float32,
                 context.RequestedPurpose,
-                ExtensionData.Empty);
+                ExtensionData.Empty,
+                context);
 
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));
         }

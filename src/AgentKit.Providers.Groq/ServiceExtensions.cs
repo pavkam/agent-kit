@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.Groq;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,16 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                GroqProviderDefaults.ProviderId,
+                GroqProviderDefaults.ChatServiceSurface,
+                GroqProviderDefaults.DefaultBaseAddress,
+                GroqProviderDefaults.CredentialSourceKey,
+                GroqProviderDefaults.ChatEndpointProfileKey,
+                GroqProviderDefaults.ChatCredentialProfileKey,
+                GroqProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -108,7 +119,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                GroqProviderDefaults.CredentialSourceKey,
                 GroqProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -142,9 +155,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 GroqProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                GroqProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(GroqProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 GroqProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(GroqProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -218,18 +235,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Groq provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                GroqProviderDefaults.ChatServiceSurface,
+                GroqProviderDefaults.ChatEndpointProfileKey,
+                GroqProviderDefaults.ChatCredentialProfileKey,
+                GroqProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GroqProviderOptions>>().Value;
 
                 return new GroqLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     GroqProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(GroqProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -279,7 +304,12 @@ public static class ServiceExtensions
                     nameof(modelId));
             }
 
-            var descriptor = known.ToDescriptor(alias, GroqProviderDefaults.ApiFamily, GroqProviderDefaults.DefaultCapabilities);
+            var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                known.ToDescriptor(alias, GroqProviderDefaults.ApiFamily, GroqProviderDefaults.DefaultCapabilities),
+                GroqProviderDefaults.ChatServiceSurface,
+                GroqProviderDefaults.ChatEndpointProfileKey,
+                GroqProviderDefaults.ChatCredentialProfileKey,
+                GroqProviderDefaults.DefaultEndpointId);
             _ = services.AddGroqLlmModel(descriptor);
             _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"groq.known/{alias.Value}"), [descriptor]);
             return services;

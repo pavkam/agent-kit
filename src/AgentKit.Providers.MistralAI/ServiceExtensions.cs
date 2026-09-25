@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -64,6 +66,27 @@ public static class ServiceExtensions
             services.TryAddSingleton<IMistralAIResponseParser, MistralAIResponseParser>();
             services.TryAddSingleton<IMistralAIEmbeddingRequestTranslator, MistralAIEmbeddingRequestTranslator>();
             services.TryAddSingleton<IMistralAIEmbeddingResponseParser, MistralAIEmbeddingResponseParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                MistralAIProviderDefaults.ProviderId,
+                MistralAIProviderDefaults.ChatServiceSurface,
+                MistralAIProviderDefaults.DefaultBaseAddress,
+                MistralAIProviderDefaults.CredentialSourceKey,
+                MistralAIProviderDefaults.ChatEndpointProfileKey,
+                MistralAIProviderDefaults.ChatCredentialProfileKey,
+                MistralAIProviderDefaults.DefaultEndpointId);
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                MistralAIProviderDefaults.ProviderId,
+                MistralAIProviderDefaults.EmbeddingServiceSurface,
+                MistralAIProviderDefaults.DefaultBaseAddress,
+                MistralAIProviderDefaults.CredentialSourceKey,
+                MistralAIProviderDefaults.EmbeddingEndpointProfileKey,
+                MistralAIProviderDefaults.EmbeddingCredentialProfileKey,
+                MistralAIProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -113,7 +136,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId, credentialSource);
+            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
+                services,
+                MistralAIProviderDefaults.CredentialSourceKey,
+                MistralAIProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }

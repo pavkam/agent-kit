@@ -41,6 +41,29 @@ public static class GoogleVertexAIProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Vertex's native generateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-vertex-ai-generate-content");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("google-vertex-ai-generate-content");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("google-vertex-ai/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("google-vertex-ai/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("google-vertex-ai");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("google-vertex-ai-predict-embedding");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("google-vertex-ai/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("google-vertex-ai/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Vertex's generic predict wire format used by text-embedding models.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("google-vertex-ai-predict-embedding");

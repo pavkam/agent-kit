@@ -94,7 +94,10 @@ internal sealed class DefaultEmbeddingRequestExecutor(
             requestId,
             request.Selection.Model,
             request.Request);
-        return new EmbeddingModelRequest(context, attempt, deadline, ProviderRequestOptions.Empty);
+        return new EmbeddingModelRequest(context, attempt, deadline, ProviderRequestOptions.Empty)
+        {
+            Operation = request.Operation,
+        };
     }
 
     private async Task DelayBeforeRetryAsync(

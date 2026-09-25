@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.ZAI;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,17 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                ZAIProviderDefaults.ProviderId,
+                ZAIProviderDefaults.ChatServiceSurface,
+                ZAIProviderDefaults.DefaultBaseAddress,
+                ZAIProviderDefaults.CredentialSourceKey,
+                ZAIProviderDefaults.ChatEndpointProfileKey,
+                ZAIProviderDefaults.ChatCredentialProfileKey,
+                ZAIProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -111,7 +123,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                ZAIProviderDefaults.CredentialSourceKey,
                 ZAIProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -145,9 +159,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 ZAIProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                ZAIProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(ZAIProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 ZAIProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(ZAIProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -221,18 +239,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Z.AI provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                ZAIProviderDefaults.ChatServiceSurface,
+                ZAIProviderDefaults.ChatEndpointProfileKey,
+                ZAIProviderDefaults.ChatCredentialProfileKey,
+                ZAIProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<ZAIProviderOptions>>().Value;
 
                 return new ZAILlmModel(
-                    descriptor,
+                    boundDescriptor,
                     ZAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

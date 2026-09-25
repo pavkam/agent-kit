@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.MoonshotKimi;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,17 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                MoonshotKimiProviderDefaults.ProviderId,
+                MoonshotKimiProviderDefaults.ChatServiceSurface,
+                MoonshotKimiProviderDefaults.DefaultBaseAddress,
+                MoonshotKimiProviderDefaults.CredentialSourceKey,
+                MoonshotKimiProviderDefaults.ChatEndpointProfileKey,
+                MoonshotKimiProviderDefaults.ChatCredentialProfileKey,
+                MoonshotKimiProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -108,7 +120,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                MoonshotKimiProviderDefaults.CredentialSourceKey,
                 MoonshotKimiProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -142,9 +156,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 MoonshotKimiProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                MoonshotKimiProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(MoonshotKimiProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 MoonshotKimiProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(MoonshotKimiProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -218,18 +236,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Moonshot Kimi provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                MoonshotKimiProviderDefaults.ChatServiceSurface,
+                MoonshotKimiProviderDefaults.ChatEndpointProfileKey,
+                MoonshotKimiProviderDefaults.ChatCredentialProfileKey,
+                MoonshotKimiProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<MoonshotKimiProviderOptions>>().Value;
 
                 return new MoonshotKimiLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     MoonshotKimiProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(MoonshotKimiProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

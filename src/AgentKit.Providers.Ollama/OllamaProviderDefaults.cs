@@ -26,6 +26,29 @@ public static class OllamaProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Ollama's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("ollama-openai-compatible");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("ollama-openai-compatible");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("ollama/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("ollama/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("ollama");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("ollama-openai-compatible-embeddings");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("ollama/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("ollama/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Ollama's OpenAI-compatible embeddings wire format.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("ollama-openai-compatible-embeddings");

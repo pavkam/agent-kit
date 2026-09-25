@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.XAI;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,27 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                XAIProviderDefaults.ProviderId,
+                XAIProviderDefaults.ChatServiceSurface,
+                XAIProviderDefaults.DefaultBaseAddress,
+                XAIProviderDefaults.CredentialSourceKey,
+                XAIProviderDefaults.ChatEndpointProfileKey,
+                XAIProviderDefaults.ChatCredentialProfileKey,
+                XAIProviderDefaults.DefaultEndpointId);
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterEmbeddingProfiles(
+                services,
+                XAIProviderDefaults.ProviderId,
+                XAIProviderDefaults.EmbeddingServiceSurface,
+                XAIProviderDefaults.DefaultBaseAddress,
+                XAIProviderDefaults.CredentialSourceKey,
+                XAIProviderDefaults.EmbeddingEndpointProfileKey,
+                XAIProviderDefaults.EmbeddingCredentialProfileKey,
+                XAIProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -108,7 +130,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                XAIProviderDefaults.CredentialSourceKey,
                 XAIProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -142,9 +166,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 XAIProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                XAIProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(XAIProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 XAIProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(XAIProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -218,18 +246,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the xAI provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                XAIProviderDefaults.ChatServiceSurface,
+                XAIProviderDefaults.ChatEndpointProfileKey,
+                XAIProviderDefaults.ChatCredentialProfileKey,
+                XAIProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<XAIProviderOptions>>().Value;
 
                 return new XAILlmModel(
-                    descriptor,
+                    boundDescriptor,
                     XAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(XAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

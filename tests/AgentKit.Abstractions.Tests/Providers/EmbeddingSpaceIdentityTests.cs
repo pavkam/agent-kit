@@ -33,5 +33,20 @@ public sealed class EmbeddingSpaceIdentityTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void EmbeddingSpaceIdentity_Equality_WhenExtendedMetadataMatches_InstancesAreEqual()
+    {
+        var first = new EmbeddingSpaceIdentity(ProviderIdentity(), 3, EmbeddingElementType.Float32, EmbeddingPurpose.Document, ExtensionData.Empty)
+        {
+            Normalization = EmbeddingNormalization.Unit,
+            Truncation = EmbeddingTruncation.End,
+            EndpointId = new ProviderEndpointId("default"),
+            ServiceSurface = new ProviderServiceSurfaceId("openai-embeddings"),
+            ModelRevision = new ProviderModelRevision("2024-01-01"),
+        };
+        var second = first with { };
+        first.ShouldBe(second);
+    }
+
     private static ProviderResponseIdentity ProviderIdentity() => new(new ProviderId("openai"), null, new ApiFamilyId("openai"), new ModelId("text-embedding-3-small"), new ModelId("text-embedding-3-small"), null, null, null);
 }

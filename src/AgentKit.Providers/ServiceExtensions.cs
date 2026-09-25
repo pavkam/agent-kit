@@ -158,6 +158,15 @@ public static class ServiceExtensions
             Action<ProviderEndpointProfileOptions> configure) =>
             RegisterEndpointProfile(services, key, configure, replace: false);
 
+        /// <summary>Registers one endpoint profile snapshot resolved from the built service provider.</summary>
+        /// <param name="key">The stable profile key.</param>
+        /// <param name="configure">Configures the profile using live services.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        public IServiceCollection AddProviderEndpointProfileFromServices(
+            ProviderEndpointProfileKey key,
+            Action<ProviderEndpointProfileOptions, IServiceProvider> configure) =>
+            RegisterEndpointProfileFromServices(services, key, configure, replace: false);
+
         /// <summary>Replaces one endpoint profile snapshot.</summary>
         /// <param name="key">The stable profile key.</param>
         /// <param name="configure">Configures the profile options.</param>
@@ -247,6 +256,21 @@ public static class ServiceExtensions
         return services;
     }
 
+    private static IServiceCollection RegisterEndpointProfileFromServices(
+        IServiceCollection services,
+        ProviderEndpointProfileKey key,
+        Action<ProviderEndpointProfileOptions, IServiceProvider> configure,
+        bool replace)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.TryAddSingleton(CreateProfileRegistry);
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
+        _ = services.AddSingleton<IConfigureOptions<ProviderProfileRegistry>, ConfigureEndpointProfileFromServices>(
+            sp => new ConfigureEndpointProfileFromServices(sp, key, configure, replace));
+        return services;
+    }
+
     private static IServiceCollection RegisterCredentialProfile(
         IServiceCollection services,
         ProviderCredentialProfileKey key,
@@ -270,6 +294,20 @@ public static class ServiceExtensions
         {
             var options = new ProviderEndpointProfileOptions();
             configure(options);
+            registry.RegisterEndpoint(ProviderProfileSnapshots.CreateEndpoint(key, options), replace);
+        }
+    }
+
+    private sealed class ConfigureEndpointProfileFromServices(
+        IServiceProvider serviceProvider,
+        ProviderEndpointProfileKey key,
+        Action<ProviderEndpointProfileOptions, IServiceProvider> configure,
+        bool replace): IConfigureOptions<ProviderProfileRegistry>
+    {
+        public void Configure(ProviderProfileRegistry registry)
+        {
+            var options = new ProviderEndpointProfileOptions();
+            configure(options, serviceProvider);
             registry.RegisterEndpoint(ProviderProfileSnapshots.CreateEndpoint(key, options), replace);
         }
     }

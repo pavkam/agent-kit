@@ -98,7 +98,15 @@ internal static class AgentCompositionValidator
         AgentRunProfilePublicationSnapshot? validatedRunProfiles = null;
         if (catalog is not null)
         {
-            validatedRunProfiles = ValidateCatalog(catalog, profileReader, componentRegistrations, diagnostics);
+            var modelCatalog = provider.GetService<IModelCatalog>();
+            var capabilityValidator = provider.GetService<IModelCapabilityValidator>();
+            validatedRunProfiles = ValidateCatalog(
+                catalog,
+                profileReader,
+                componentRegistrations,
+                diagnostics,
+                modelCatalog,
+                capabilityValidator);
             var hookProfileSelector = provider.GetService<IHookProfileSelector>();
             if (hookProfileSelector is not null)
             {
@@ -247,7 +255,9 @@ internal static class AgentCompositionValidator
         IAgentDefinitionCatalog catalog,
         IAgentRunProfilePublicationReader? profileReader,
         ComponentRegistrationSnapshot componentRegistrations,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics,
+        IModelCatalog? modelCatalog,
+        IModelCapabilityValidator? capabilityValidator)
     {
         var snapshot = catalog.CurrentSnapshot;
         if (snapshot is null)
@@ -365,9 +375,85 @@ internal static class AgentCompositionValidator
                 RequireKeyedOrUnkeyedOptional<IOutputPublisher>(
                     componentRegistrations, explicitOutputKey.Value, definition.Id, diagnostics);
             }
+
+            if (modelCatalog is not null && capabilityValidator is not null)
+            {
+                ValidateDefinitionModelCompatibility(definition, modelCatalog, capabilityValidator, diagnostics);
+            }
         }
 
         return profileSnapshot;
+    }
+
+    /// <summary>
+    /// Ensures at least one configured candidate satisfies the definition's stated model requirements.
+    /// </summary>
+    private static void ValidateDefinitionModelCompatibility(
+        AgentDefinition definition,
+        IModelCatalog modelCatalog,
+        IModelCapabilityValidator capabilityValidator,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+    {
+        Debug.Assert(modelCatalog is not null, "Model compatibility validation requires a catalog.");
+        Debug.Assert(capabilityValidator is not null, "Model compatibility validation requires a capability validator.");
+
+        if (definition.ModelRequirements == ModelRequirements.None)
+        {
+            return;
+        }
+
+        ModelCatalogSnapshot catalogSnapshot;
+        try
+        {
+            catalogSnapshot = modelCatalog.GetSnapshotAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.definition.model-catalog-unavailable",
+                $"Agent '{definition.Id}' model requirements could not be checked because the model catalog snapshot is unavailable."));
+            return;
+        }
+
+        var policy = definition.Models;
+        foreach (var alias in policy.Candidates)
+        {
+            var descriptor = catalogSnapshot.FindConversationModel(alias);
+            if (descriptor is null)
+            {
+                continue;
+            }
+
+            CapabilityValidationResult validation;
+            try
+            {
+                validation = capabilityValidator
+                    .ValidateAsync(
+                        descriptor,
+                        definition.ModelRequirements,
+                        policy.Downgrade,
+                        CancellationToken.None)
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.definition.model-catalog-unavailable",
+                    $"Agent '{definition.Id}' model requirements could not be checked for alias '{alias.Value}'."));
+                return;
+            }
+
+            if (validation is not CapabilitiesUnsupported)
+            {
+                return;
+            }
+        }
+
+        diagnostics.Add(new CompositionDiagnostic(
+            "agentkit.definition.model-incompatible",
+            $"Agent '{definition.Id}' requires model capabilities that none of its configured candidates satisfy."));
     }
 
     /// <summary>Requires a registration keyed to <paramref name="loopKey"/>, or an unkeyed fallback, for one collaborator contract.</summary>

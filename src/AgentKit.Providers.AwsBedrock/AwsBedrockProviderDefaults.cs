@@ -24,6 +24,20 @@ public static class AwsBedrockProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Bedrock's Converse wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("aws-bedrock-converse");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("aws-bedrock-converse");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("aws-bedrock/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("aws-bedrock/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("aws-bedrock");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>The AWS signing service name used in the SigV4 credential scope.</summary>
     public const string SigningServiceName = "bedrock";

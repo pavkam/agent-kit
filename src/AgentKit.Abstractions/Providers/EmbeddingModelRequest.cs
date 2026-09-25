@@ -87,4 +87,9 @@ public sealed record EmbeddingModelRequest
             field = value;
         }
     }
+
+    /// <summary>
+    /// Gets the protected operation context used for profile runtime selection when the descriptor carries a binding.
+    /// </summary>
+    public ProtectedSemanticOperationContext? Operation { get; init; }
 }

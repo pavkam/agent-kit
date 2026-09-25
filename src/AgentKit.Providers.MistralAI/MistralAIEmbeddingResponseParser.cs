@@ -5,6 +5,8 @@ namespace AgentKit.Providers.MistralAI;
 
 using System.Diagnostics;
 
+using AgentKit.Providers;
+
 using AgentKit.Providers.MistralAI.Wire;
 
 /// <summary>
@@ -115,7 +117,13 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
             }
 
             var correlationId = (requestInputs[entry.Index] as TextEmbeddingInput)?.CorrelationId;
-            var space = new EmbeddingSpaceIdentity(identity, DimensionsOf(vector), elementType, EmbeddingPurpose.Unspecified, ExtensionData.Empty);
+            var space = EmbeddingSpaceIdentityFactory.Create(
+                identity,
+                DimensionsOf(vector),
+                elementType,
+                EmbeddingPurpose.Unspecified,
+                ExtensionData.Empty,
+                context);
 
             items[entry.Index] = new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty);
         }

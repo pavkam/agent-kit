@@ -76,6 +76,21 @@ public record EmbeddingResponseParseContext
     /// </summary>
     public ProviderRequestId? ProviderRequestId { get; init; }
 
+    /// <summary>Gets the endpoint identity stamped onto resulting vectors, when published.</summary>
+    public ProviderEndpointId? EndpointId { get; init; }
+
+    /// <summary>Gets the service surface stamped onto resulting vectors, when published.</summary>
+    public ProviderServiceSurfaceId? ServiceSurface { get; init; }
+
+    /// <summary>Gets the normalization policy to stamp onto resulting vectors.</summary>
+    public EmbeddingNormalization Normalization { get; init; } = EmbeddingNormalization.Unspecified;
+
+    /// <summary>Gets the truncation policy to stamp onto resulting vectors.</summary>
+    public EmbeddingTruncation Truncation { get; init; } = EmbeddingTruncation.ProviderDefault;
+
+    /// <summary>Gets the provider model revision to stamp onto resulting vectors, when tracked.</summary>
+    public ProviderModelRevision? ModelRevision { get; init; }
+
     /// <summary>
     /// Builds the <see cref="ProviderResponseIdentity"/> of an embedding
     /// response parsed under this context.

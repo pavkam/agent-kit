@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -62,6 +64,39 @@ public static class ServiceExtensions
             services.TryAddSingleton<ICohereResponseParser, CohereResponseParser>();
             services.TryAddSingleton<ICohereEmbeddingRequestTranslator, CohereEmbeddingRequestTranslator>();
             services.TryAddSingleton<ICohereEmbeddingResponseParser, CohereEmbeddingResponseParser>();
+            services.TryAddSingleton<ICohereRerankRequestTranslator, CohereRerankRequestTranslator>();
+            services.TryAddSingleton<ICohereRerankResponseParser, CohereRerankResponseParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                CohereProviderDefaults.ProviderId,
+                CohereProviderDefaults.ChatServiceSurface,
+                CohereProviderDefaults.DefaultBaseAddress,
+                CohereProviderDefaults.CredentialSourceKey,
+                CohereProviderDefaults.ChatEndpointProfileKey,
+                CohereProviderDefaults.ChatCredentialProfileKey,
+                CohereProviderDefaults.DefaultEndpointId);
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                CohereProviderDefaults.ProviderId,
+                CohereProviderDefaults.EmbeddingServiceSurface,
+                CohereProviderDefaults.DefaultBaseAddress,
+                CohereProviderDefaults.CredentialSourceKey,
+                CohereProviderDefaults.EmbeddingEndpointProfileKey,
+                CohereProviderDefaults.EmbeddingCredentialProfileKey,
+                CohereProviderDefaults.DefaultEndpointId);
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                CohereProviderDefaults.ProviderId,
+                CohereProviderDefaults.RerankServiceSurface,
+                CohereProviderDefaults.DefaultBaseAddress,
+                CohereProviderDefaults.CredentialSourceKey,
+                CohereProviderDefaults.RerankEndpointProfileKey,
+                CohereProviderDefaults.RerankCredentialProfileKey,
+                CohereProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -111,7 +146,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(CohereProviderDefaults.ProviderId, credentialSource);
+            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
+                services,
+                CohereProviderDefaults.CredentialSourceKey,
+                CohereProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -219,18 +258,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Cohere provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                CohereProviderDefaults.ChatServiceSurface,
+                CohereProviderDefaults.ChatEndpointProfileKey,
+                CohereProviderDefaults.ChatCredentialProfileKey,
+                CohereProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<CohereProviderOptions>>().Value;
 
                 return new CohereLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<ICohereRequestTranslator>(),
                     provider.GetRequiredService<ICohereResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -342,6 +389,52 @@ public static class ServiceExtensions
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>Registers one named Cohere reranker as an additional <see cref="IReranker"/> implementation.</summary>
+        /// <param name="alias">The application-facing selection key.</param>
+        /// <param name="modelId">The Cohere rerank model identifier.</param>
+        /// <param name="capabilities">Optional capability overrides.</param>
+        /// <param name="limits">Optional limit overrides.</param>
+        /// <returns>The same <paramref name="services"/> instance.</returns>
+        public IServiceCollection AddCohereReranker(
+            RerankerAlias alias,
+            ModelId modelId,
+            RerankerCapabilities? capabilities = null,
+            RerankerLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            var descriptor = ProviderOperationDescriptorBinding.ApplyRerankBinding(
+                new RerankerDescriptor(
+                    alias,
+                    CohereProviderDefaults.ProviderId,
+                    CohereProviderDefaults.RerankApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? CohereProviderDefaults.DefaultRerankCapabilities,
+                    limits ?? CohereProviderDefaults.DefaultRerankLimits,
+                    ExtensionData.Empty),
+                CohereProviderDefaults.RerankServiceSurface,
+                CohereProviderDefaults.RerankEndpointProfileKey,
+                CohereProviderDefaults.RerankCredentialProfileKey,
+                CohereProviderDefaults.DefaultEndpointId);
+
+            _ = services.AddSingleton<IReranker>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<CohereProviderOptions>>().Value;
+                return new CohereReranker(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<ICohereRerankRequestTranslator>(),
+                    provider.GetRequiredService<ICohereRerankResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

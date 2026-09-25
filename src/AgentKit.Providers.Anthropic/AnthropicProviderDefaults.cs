@@ -38,6 +38,20 @@ public static class AnthropicProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Anthropic's Messages wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("anthropic-messages");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("anthropic-messages");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("anthropic/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("anthropic/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("anthropic");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>Gets Anthropic's public REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.anthropic.com/");
@@ -97,9 +111,20 @@ public static class AnthropicProviderDefaults
     /// <param name="options">The validated Anthropic provider options.</param>
     /// <returns>The absolute URI of the Messages operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-    public static Uri BuildMessagesUri(AnthropicProviderOptions options)
+    public static Uri BuildMessagesUri(AnthropicProviderOptions options) =>
+        BuildMessagesUri(options, baseAddressOverride: null);
+
+    /// <summary>Builds the messages URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated Anthropic provider options.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the messages operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildMessagesUri(AnthropicProviderOptions options, Uri? baseAddressOverride)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return new Uri(options.BaseAddress, options.MessagesPath);
+
+        return baseAddressOverride is null
+            ? new Uri(options.BaseAddress, options.MessagesPath)
+            : new Uri(ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride), options.MessagesPath);
     }
 }

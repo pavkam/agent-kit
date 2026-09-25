@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.Ollama;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,27 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                OllamaProviderDefaults.ProviderId,
+                OllamaProviderDefaults.ChatServiceSurface,
+                OllamaProviderDefaults.DefaultBaseAddress,
+                OllamaProviderDefaults.CredentialSourceKey,
+                OllamaProviderDefaults.ChatEndpointProfileKey,
+                OllamaProviderDefaults.ChatCredentialProfileKey,
+                OllamaProviderDefaults.DefaultEndpointId);
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterEmbeddingProfiles(
+                services,
+                OllamaProviderDefaults.ProviderId,
+                OllamaProviderDefaults.EmbeddingServiceSurface,
+                OllamaProviderDefaults.DefaultBaseAddress,
+                OllamaProviderDefaults.CredentialSourceKey,
+                OllamaProviderDefaults.EmbeddingEndpointProfileKey,
+                OllamaProviderDefaults.EmbeddingCredentialProfileKey,
+                OllamaProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -114,7 +136,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                OllamaProviderDefaults.CredentialSourceKey,
                 OllamaProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -148,9 +172,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 OllamaProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OllamaProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OllamaProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 OllamaProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OllamaProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -224,18 +252,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Ollama provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                OllamaProviderDefaults.ChatServiceSurface,
+                OllamaProviderDefaults.ChatEndpointProfileKey,
+                OllamaProviderDefaults.ChatCredentialProfileKey,
+                OllamaProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OllamaProviderOptions>>().Value;
 
                 return new OllamaLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     OllamaProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OllamaProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

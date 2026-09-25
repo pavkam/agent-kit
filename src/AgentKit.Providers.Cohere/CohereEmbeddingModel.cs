@@ -209,7 +209,12 @@ public sealed class CohereEmbeddingModel: IEmbeddingModel
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
                 request.Context.Request.Encoding ?? EmbeddingEncoding.Float,
-                request.Context.Request.Purpose);
+                request.Context.Request.Purpose)
+            {
+                EndpointId = _descriptor.EndpointId.Value is not null ? _descriptor.EndpointId : null,
+                ServiceSurface = _descriptor.ServiceSurface.Value is not null ? _descriptor.ServiceSurface : null,
+                Truncation = request.Context.Request.Truncation,
+            };
 
             try
             {

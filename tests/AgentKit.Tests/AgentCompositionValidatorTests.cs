@@ -270,4 +270,68 @@ public sealed class AgentCompositionValidatorTests
 
         exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.hook-profile.unavailable");
     }
+
+    [Fact]
+    public void Build_WhenNoCandidateSatisfiesModelRequirements_RejectsWithIncompatibleDiagnostic()
+    {
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("chat"),
+            new ProviderId("test"),
+            new ApiFamilyId("test"),
+            new ModelId("m"),
+            deploymentId: null,
+            new ModelCapabilities(
+                supportsSystemInstructions: true,
+                supportsStreaming: true,
+                supportsToolCalls: false,
+                supportsParallelToolCalls: false,
+                supportsStructuredOutput: false,
+                supportsReasoning: false,
+                supportsVisionInput: false,
+                ExtensionData.Empty),
+            new ModelLimits(maxContextTokens: null, maxOutputTokens: null),
+            pricing: null,
+            ExtensionData.Empty);
+        var definition = new AgentDefinition(
+            CompositionTestData.AgentId,
+            new AgentDefinitionRevision(1),
+            "test agent",
+            new ModelSelectionPolicy([new ModelAlias("chat")]),
+            new ModelRequirements { RequiresToolCalls = true },
+            [],
+            LlmRequestSettings.Default,
+            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
+            ExtensionData.Empty,
+            new SecurityProfileKey("security"),
+            new SessionProfileKey("session"));
+        var builder = CompositionTestData.RunnableBuilder(definition: definition);
+        _ = builder.Services.RemoveAll<IModelCatalog>();
+        _ = builder.Services.AddSingleton<IModelCatalog>(
+            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])));
+        _ = builder.Services.RemoveAll<IModelCapabilityValidator>();
+        _ = builder.Services.AddSingleton<IModelCapabilityValidator, ToolRequirementCapabilityValidator>();
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.model-incompatible");
+    }
+
+    private sealed class ToolRequirementCapabilityValidator: IModelCapabilityValidator
+    {
+        public ValueTask<CapabilityValidationResult> ValidateAsync(
+            ModelDescriptor model,
+            ModelRequirements requirements,
+            CapabilityDowngradePolicy downgradePolicy,
+            CancellationToken cancellationToken = default)
+        {
+            return requirements.RequiresToolCalls && !model.Capabilities.SupportsToolCalls
+                ? ValueTask.FromResult<CapabilityValidationResult>(
+                    new CapabilitiesUnsupported([
+                        new UnsupportedCapability(
+                            ModelCapabilityKind.ToolCalls,
+                            "The request requires model-requested tool calls."),
+                    ]))
+                : ValueTask.FromResult<CapabilityValidationResult>(new CapabilitiesSupported());
+        }
+    }
 }

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Anthropic;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -62,6 +64,17 @@ public static class ServiceExtensions
             services.TryAddSingleton<IAnthropicMessageTranslator, AnthropicMessageTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IAnthropicMessageStreamParser, AnthropicMessageStreamParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                AnthropicProviderDefaults.ProviderId,
+                AnthropicProviderDefaults.ChatServiceSurface,
+                AnthropicProviderDefaults.DefaultBaseAddress,
+                AnthropicProviderDefaults.CredentialSourceKey,
+                AnthropicProviderDefaults.ChatEndpointProfileKey,
+                AnthropicProviderDefaults.ChatCredentialProfileKey,
+                AnthropicProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -111,7 +124,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(AnthropicProviderDefaults.ProviderId, credentialSource);
+            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
+                services,
+                AnthropicProviderDefaults.CredentialSourceKey,
+                AnthropicProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -143,6 +160,10 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(AnthropicProviderDefaults.ProviderId);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                AnthropicProviderDefaults.CredentialSourceKey,
+                static (provider, key) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(AnthropicProviderDefaults.ProviderId)));
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 AnthropicProviderDefaults.ProviderId,
                 static (provider, key) => new DelegatingOAuthCredentialSource(
@@ -220,18 +241,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the Anthropic provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                AnthropicProviderDefaults.ChatServiceSurface,
+                AnthropicProviderDefaults.ChatEndpointProfileKey,
+                AnthropicProviderDefaults.ChatCredentialProfileKey,
+                AnthropicProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<AnthropicProviderOptions>>().Value;
 
                 return new AnthropicLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     options,
                     provider.GetRequiredService<IAnthropicMessageTranslator>(),
                     provider.GetRequiredService<IAnthropicMessageStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(AnthropicProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -5,6 +5,7 @@ namespace AgentKit.Providers.Cohere;
 
 using System.Diagnostics;
 
+using AgentKit.Providers;
 using AgentKit.Providers.Cohere.Wire;
 
 /// <summary>
@@ -97,7 +98,13 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
             }
 
             var correlationId = (requestInputs[index] as TextEmbeddingInput)?.CorrelationId;
-            var space = new EmbeddingSpaceIdentity(identity, DimensionsOf(vector), elementType, context.RequestedPurpose, ExtensionData.Empty);
+            var space = EmbeddingSpaceIdentityFactory.Create(
+                identity,
+                DimensionsOf(vector),
+                elementType,
+                context.RequestedPurpose,
+                ExtensionData.Empty,
+                context);
 
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));
         }

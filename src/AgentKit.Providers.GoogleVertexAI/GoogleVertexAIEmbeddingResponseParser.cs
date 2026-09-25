@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
+using AgentKit.Providers;
 using AgentKit.Providers.GoogleVertexAI.Wire;
 
 /// <summary>
@@ -75,12 +76,13 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
 
             var vector = new DenseFloatVector([.. values]);
             var correlationId = (requestInputs[index] as TextEmbeddingInput)?.CorrelationId;
-            var space = new EmbeddingSpaceIdentity(
+            var space = EmbeddingSpaceIdentityFactory.Create(
                 identity,
                 vector.Values.Length,
                 EmbeddingElementType.Float32,
                 context.RequestedPurpose,
-                ExtensionData.Empty);
+                ExtensionData.Empty,
+                context);
 
             var extensions = ExtensionData.Empty;
             if (embedding?.Statistics is { } statistics)

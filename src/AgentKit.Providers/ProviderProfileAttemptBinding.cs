@@ -16,7 +16,6 @@ public static class ProviderProfileAttemptBinding
     /// <param name="providerId">The provider identity used in typed failures.</param>
     /// <param name="cancellationToken">A token used to cancel selection.</param>
     /// <returns>A successful resolution or a typed failure.</returns>
-    /// <summary>Resolves the credential source for one attempt.</summary>
     public static async ValueTask<ProfileCredentialResolution> ResolveCredentialSourceAsync(
         ProviderOperationBinding? binding,
         ProtectedSemanticOperationContext? operation,
@@ -49,7 +48,6 @@ public static class ProviderProfileAttemptBinding
             selected.Runtime);
     }
 
-    /// <summary>Normalizes a base address for RFC 3986 relative resolution.</summary>
     /// <summary>Normalizes a base address for relative URI resolution.</summary>
     public static Uri NormalizeBaseAddress(Uri baseAddress)
     {

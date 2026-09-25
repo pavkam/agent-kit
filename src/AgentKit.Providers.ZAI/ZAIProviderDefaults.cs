@@ -24,6 +24,20 @@ public static class ZAIProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Z.ai's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("z-ai-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("zai-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("zai/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("zai/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("zai");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>Gets Z.ai's general-purpose PaaS REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.z.ai/api/paas/v4/");

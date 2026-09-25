@@ -37,6 +37,29 @@ public static class GoogleGeminiProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Gemini's GenerateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-gemini-generate-content");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("google-gemini-generate-content");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("google-gemini/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("google-gemini/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("google-gemini");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("google-gemini-embed-content");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("google-gemini/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("google-gemini/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Gemini's embeddings wire format.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("google-gemini-embed-content");

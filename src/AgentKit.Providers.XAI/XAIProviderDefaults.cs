@@ -24,6 +24,29 @@ public static class XAIProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for xAI's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("xai-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("xai-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("xai/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("xai/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("xai");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("xai-embeddings");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("xai/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("xai/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for xAI's embeddings wire format.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("xai-embeddings");

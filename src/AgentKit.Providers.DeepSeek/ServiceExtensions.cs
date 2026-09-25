@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.DeepSeek;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -62,6 +63,17 @@ public static class ServiceExtensions
                 _ = services.Configure(configureOptions);
             }
 
+
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterChatProfiles(
+                services,
+                DeepSeekProviderDefaults.ProviderId,
+                DeepSeekProviderDefaults.ChatServiceSurface,
+                DeepSeekProviderDefaults.DefaultBaseAddress,
+                DeepSeekProviderDefaults.CredentialSourceKey,
+                DeepSeekProviderDefaults.ChatEndpointProfileKey,
+                DeepSeekProviderDefaults.ChatCredentialProfileKey,
+                DeepSeekProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -110,7 +122,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
+                services,
+                DeepSeekProviderDefaults.CredentialSourceKey,
                 DeepSeekProviderDefaults.ProviderId,
                 credentialSource);
 
@@ -144,9 +158,13 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
                 DeepSeekProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                DeepSeekProviderDefaults.CredentialSourceKey,
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(DeepSeekProviderDefaults.ProviderId)));
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 DeepSeekProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                static (provider, _) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(DeepSeekProviderDefaults.ProviderId)));
 
             return services;
         }
@@ -220,18 +238,26 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the DeepSeek provider and API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
+                descriptor,
+                DeepSeekProviderDefaults.ChatServiceSurface,
+                DeepSeekProviderDefaults.ChatEndpointProfileKey,
+                DeepSeekProviderDefaults.ChatCredentialProfileKey,
+                DeepSeekProviderDefaults.DefaultEndpointId);
+
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<DeepSeekProviderOptions>>().Value;
 
                 return new DeepSeekLlmModel(
-                    descriptor,
+                    boundDescriptor,
                     DeepSeekProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -32,6 +32,29 @@ public static class CohereProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Chat wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("cohere-chat-v2");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("cohere-chat-v2");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("cohere/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("cohere/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("cohere");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("cohere-embed-v2");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("cohere/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("cohere/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Embed wire format.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("cohere-embed-v2");
@@ -44,6 +67,21 @@ public static class CohereProviderDefaults
 
     /// <summary>Gets the default path, relative to <see cref="DefaultBaseAddress"/>, of the embed operation.</summary>
     public const string DefaultEmbedPath = "v2/embed";
+
+    /// <summary>Gets the rerank service surface identity.</summary>
+    public static ProviderServiceSurfaceId RerankServiceSurface { get; } = new("cohere-rerank-v2");
+
+    /// <summary>Gets the default endpoint profile key for reranking.</summary>
+    public static ProviderEndpointProfileKey RerankEndpointProfileKey { get; } = new("cohere/rerank");
+
+    /// <summary>Gets the default credential profile key for reranking.</summary>
+    public static ProviderCredentialProfileKey RerankCredentialProfileKey { get; } = new("cohere/rerank");
+
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Rerank wire format.</summary>
+    public static ApiFamilyId RerankApiFamily { get; } = new("cohere-rerank-v2");
+
+    /// <summary>Gets the default path, relative to <see cref="DefaultBaseAddress"/>, of the rerank operation.</summary>
+    public const string DefaultRerankPath = "v2/rerank";
 
     /// <summary>
     /// Gets the default capability set applied to a registered Cohere chat
@@ -116,15 +154,28 @@ public static class CohereProviderDefaults
         defaultDimensions: null,
         maxDimensions: null);
 
+    /// <summary>Gets the default capability set applied to a registered Cohere reranker unless overridden.</summary>
+    public static RerankerCapabilities DefaultRerankCapabilities { get; } = new(supportsTopCount: true, ExtensionData.Empty);
+
+    /// <summary>Gets the default rerank limits applied to a registered Cohere reranker unless overridden.</summary>
+    public static RerankerLimits DefaultRerankLimits { get; } = new(maxDocumentsPerRequest: null, maxDocumentCharacters: null);
+
     /// <summary>Builds the absolute chat operation URI for the given options.</summary>
     /// <param name="options">The validated Cohere provider options.</param>
     /// <returns>The absolute URI of the chat operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-    public static Uri BuildChatUri(CohereProviderOptions options)
+    public static Uri BuildChatUri(CohereProviderOptions options) =>
+        BuildChatUri(options, baseAddressOverride: null);
+
+    /// <summary>Builds the chat URI using an optional profile-bound base address override.</summary>
+    public static Uri BuildChatUri(CohereProviderOptions options, Uri? baseAddressOverride)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return new Uri(options.BaseAddress, options.ChatPath);
+        var baseAddress = baseAddressOverride is null
+            ? options.BaseAddress
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, options.ChatPath);
     }
 
     /// <summary>Builds the absolute embed operation URI for the given options.</summary>
@@ -136,5 +187,27 @@ public static class CohereProviderDefaults
         ArgumentNullException.ThrowIfNull(options);
 
         return new Uri(options.BaseAddress, options.EmbedPath);
+    }
+
+    /// <summary>Builds the absolute rerank operation URI for the given options.</summary>
+    /// <param name="options">The validated Cohere provider options.</param>
+    /// <returns>The absolute URI of the rerank operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildRerankUri(CohereProviderOptions options) =>
+        BuildRerankUri(options, baseAddressOverride: null);
+
+    /// <summary>Builds the rerank URI using an optional profile-bound base address override.</summary>
+    /// <param name="options">The validated Cohere provider options.</param>
+    /// <param name="baseAddressOverride">The optional endpoint base address from profile binding.</param>
+    /// <returns>The absolute URI of the rerank operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildRerankUri(CohereProviderOptions options, Uri? baseAddressOverride)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var baseAddress = baseAddressOverride is null
+            ? options.BaseAddress
+            : ProviderProfileAttemptBinding.NormalizeBaseAddress(baseAddressOverride);
+        return new Uri(baseAddress, options.RerankPath);
     }
 }

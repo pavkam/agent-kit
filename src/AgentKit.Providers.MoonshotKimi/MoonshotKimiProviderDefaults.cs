@@ -24,6 +24,20 @@ public static class MoonshotKimiProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Moonshot Kimi's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("moonshot-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("moonshotkimi-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("moonshotkimi/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("moonshotkimi/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("moonshotkimi");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>Gets Moonshot Kimi's REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.moonshot.ai/v1/");

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
+using AgentKit.Providers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -64,6 +66,27 @@ public static class ServiceExtensions
             services.TryAddSingleton<IGoogleGeminiResponseParser, GoogleGeminiResponseParser>();
             services.TryAddSingleton<IGoogleGeminiEmbeddingRequestTranslator, GoogleGeminiEmbeddingRequestTranslator>();
             services.TryAddSingleton<IGoogleGeminiEmbeddingResponseParser, GoogleGeminiEmbeddingResponseParser>();
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                GoogleGeminiProviderDefaults.ProviderId,
+                GoogleGeminiProviderDefaults.ChatServiceSurface,
+                GoogleGeminiProviderDefaults.DefaultBaseAddress,
+                GoogleGeminiProviderDefaults.CredentialSourceKey,
+                GoogleGeminiProviderDefaults.ChatEndpointProfileKey,
+                GoogleGeminiProviderDefaults.ChatCredentialProfileKey,
+                GoogleGeminiProviderDefaults.DefaultEndpointId);
+
+            _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfiles(
+                services,
+                GoogleGeminiProviderDefaults.ProviderId,
+                GoogleGeminiProviderDefaults.EmbeddingServiceSurface,
+                GoogleGeminiProviderDefaults.DefaultBaseAddress,
+                GoogleGeminiProviderDefaults.CredentialSourceKey,
+                GoogleGeminiProviderDefaults.EmbeddingEndpointProfileKey,
+                GoogleGeminiProviderDefaults.EmbeddingCredentialProfileKey,
+                GoogleGeminiProviderDefaults.DefaultEndpointId);
+
             services.TryAddSingleton(TimeProvider.System);
             // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
             // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
@@ -113,7 +136,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId, credentialSource);
+            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
+                services,
+                GoogleGeminiProviderDefaults.CredentialSourceKey,
+                GoogleGeminiProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }

@@ -19,6 +19,7 @@ public sealed class GroqLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="credentials">Resolves the current Groq credential.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public GroqLlmModel(
         ModelDescriptor descriptor,
@@ -27,8 +28,9 @@ public sealed class GroqLlmModel: OpenAICompatibleLlmModelBase
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
-        : base(descriptor, profile, translator, streamParser, credentials, httpClient, timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
+        : base(descriptor, profile, translator, streamParser, credentials, httpClient, timeProvider, profileSelector)
     {
     }
 }

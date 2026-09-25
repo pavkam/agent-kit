@@ -24,6 +24,20 @@ public static class DeepSeekProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for DeepSeek's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("deepseek-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("deepseek-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("deepseek/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("deepseek/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("deepseek");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
 
     /// <summary>Gets DeepSeek's OpenAI-style REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.deepseek.com/");

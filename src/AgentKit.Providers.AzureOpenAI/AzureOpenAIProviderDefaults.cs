@@ -40,6 +40,29 @@ public static class AzureOpenAIProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for the Azure OpenAI GA v1 Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("azure-openai-chat-completions");
+    /// <summary>Gets the chat service surface identity.</summary>
+    public static ProviderServiceSurfaceId ChatServiceSurface { get; } = new("azure-openai-chat-completions");
+
+    /// <summary>Gets the default endpoint profile key for chat.</summary>
+    public static ProviderEndpointProfileKey ChatEndpointProfileKey { get; } = new("azure-openai/chat");
+
+    /// <summary>Gets the default credential profile key for chat.</summary>
+    public static ProviderCredentialProfileKey ChatCredentialProfileKey { get; } = new("azure-openai/chat");
+
+    /// <summary>Gets the credential source key shared by provider operations.</summary>
+    public static ProviderCredentialSourceKey CredentialSourceKey { get; } = new("azure-openai");
+
+    /// <summary>Gets the default endpoint identity stamped on descriptors.</summary>
+    public static ProviderEndpointId DefaultEndpointId { get; } = new("default");
+
+    /// <summary>Gets the embedding service surface identity.</summary>
+    public static ProviderServiceSurfaceId EmbeddingServiceSurface { get; } = new("azure-openai-embeddings");
+
+    /// <summary>Gets the default endpoint profile key for embeddings.</summary>
+    public static ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; } = new("azure-openai/embeddings");
+
+    /// <summary>Gets the default credential profile key for embeddings.</summary>
+    public static ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; } = new("azure-openai/embeddings");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for the Azure OpenAI GA v1 embeddings wire format.</summary>
     public static ApiFamilyId EmbeddingApiFamily { get; } = new("azure-openai-embeddings");

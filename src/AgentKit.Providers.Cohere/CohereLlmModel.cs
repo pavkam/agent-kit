@@ -6,6 +6,7 @@ namespace AgentKit.Providers.Cohere;
 using System.Diagnostics;
 using System.Net.Http;
 
+using AgentKit.Providers;
 using AgentKit.Providers.Cohere.Wire;
 using AgentKit.Providers.Http;
 
@@ -33,6 +34,7 @@ public sealed class CohereLlmModel: ILlmModel
     private readonly IProviderCredentialSource _credentials;
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
+    private readonly IProviderProfileRuntimeSelector? _profileSelector;
 
     /// <summary>Initializes a new instance of the <see cref="CohereLlmModel"/> class.</summary>
     /// <param name="descriptor">The descriptor of the model this instance serves.</param>
@@ -42,6 +44,7 @@ public sealed class CohereLlmModel: ILlmModel
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public CohereLlmModel(
         ModelDescriptor descriptor,
@@ -50,7 +53,8 @@ public sealed class CohereLlmModel: ILlmModel
         ICohereResponseParser responseParser,
         IProviderCredentialSource credentials,
         HttpClient httpClient,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector? profileSelector = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
@@ -68,6 +72,7 @@ public sealed class CohereLlmModel: ILlmModel
         _credentials = credentials;
         _httpClient = httpClient;
         _timeProvider = timeProvider;
+        _profileSelector = profileSelector;
     }
 
     /// <inheritdoc/>
@@ -151,10 +156,25 @@ public sealed class CohereLlmModel: ILlmModel
                 "The request deadline had already elapsed before the attempt could be sent.").ConfigureAwait(false);
         }
 
+        await using var sendContext = await NativeProviderChatSend.BeginAsync(
+                _descriptor,
+                request,
+                _credentials,
+                _profileSelector,
+                _timeProvider,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!sendContext.IsSuccess)
+        {
+            return await FailAsync(sendContext.Failure!).ConfigureAwait(false);
+        }
+
         ProviderCredential credential;
         try
         {
-            credential = await _credentials.GetCredentialAsync(_descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+            credential = await sendContext.CredentialSource!
+                .GetCredentialAsync(_descriptor.ProviderId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -187,7 +207,7 @@ public sealed class CohereLlmModel: ILlmModel
                 exception).ConfigureAwait(false);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, granted);
+        using var httpRequest = CreateHttpRequest(payload, granted, sendContext.EndpointBaseOverride);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
@@ -302,9 +322,9 @@ public sealed class CohereLlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization, Uri? endpointBaseOverride)
     {
-        var uri = CohereProviderDefaults.BuildChatUri(_options);
+        var uri = CohereProviderDefaults.BuildChatUri(_options, endpointBaseOverride);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
