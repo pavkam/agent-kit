@@ -9,19 +9,26 @@ namespace AgentKit.Providers.OpenAI
     }
     public sealed class OpenAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public OpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public OpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public static class OpenAIProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "v1/chat/completions";
         public const string DefaultEmbeddingsPath = "v1/embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
+        public static AgentKit.ProviderCredentialSourceKey CredentialSourceKey { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
         public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static AgentKit.ProviderCredentialProfileKey EmbeddingCredentialProfileKey { get; }
+        public static AgentKit.ProviderEndpointProfileKey EmbeddingEndpointProfileKey { get; }
+        public static AgentKit.ProviderServiceSurfaceId EmbeddingServiceSurface { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.OpenAI.OpenAIProviderOptions options) { }
     }

@@ -26,38 +26,11 @@ public static class ProviderProfileAttemptBinding
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fallbackCredentials);
+        _ = providerId;
 
-        if (binding is null)
+        if (binding is null || profileSelector is null || operation is null)
         {
             return ProfileCredentialResolution.FromSource(fallbackCredentials, endpointBaseAddress: null, lease: null);
-        }
-
-        if (profileSelector is null)
-        {
-            return ProfileCredentialResolution.FromFailure(new ProviderFailure(
-                ProviderFailureKind.InvalidRequest,
-                providerId,
-                null,
-                null,
-                null,
-                null,
-                "The model descriptor requires profile binding but no profile runtime selector is registered.",
-                null,
-                ExtensionData.Empty));
-        }
-
-        if (operation is null)
-        {
-            return ProfileCredentialResolution.FromFailure(new ProviderFailure(
-                ProviderFailureKind.InvalidRequest,
-                providerId,
-                null,
-                null,
-                null,
-                null,
-                "The model descriptor requires profile binding but the request did not capture a protected operation context.",
-                null,
-                ExtensionData.Empty));
         }
 
         var selection = await profileSelector

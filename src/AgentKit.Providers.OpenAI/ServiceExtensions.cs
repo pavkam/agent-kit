@@ -316,7 +316,7 @@ public static class ServiceExtensions
                     nameof(modelId));
             }
 
-            var descriptor = known.ToDescriptor(alias, OpenAIProviderDefaults.ApiFamily, OpenAIProviderDefaults.DefaultCapabilities);
+            var descriptor = WithOpenAIChatBinding(known.ToDescriptor(alias, OpenAIProviderDefaults.ApiFamily, OpenAIProviderDefaults.DefaultCapabilities));
             _ = services.AddOpenAILlmModel(descriptor);
             _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"openai.known/{alias.Value}"), [descriptor]);
             return services;
@@ -344,11 +344,12 @@ public static class ServiceExtensions
                 throw new ArgumentException("The descriptor must name the OpenAI provider and chat-completions API family.", nameof(descriptor));
             }
 
+            var boundDescriptor = WithOpenAIChatBinding(descriptor);
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
                 return new OpenAILlmModel(
-                    WithOpenAIChatBinding(descriptor),
+                    boundDescriptor,
                     OpenAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),

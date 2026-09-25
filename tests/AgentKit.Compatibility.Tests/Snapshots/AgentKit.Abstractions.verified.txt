@@ -3086,6 +3086,12 @@ namespace AgentKit
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.FileSystemPath? path, int maximumEntries, AgentKit.DirectoryEnumerationCursor? continuation) { }
         public static AgentKit.ProtectedResource Resource(AgentKit.FileSystemPath? path) { }
     }
+    public readonly struct DocumentId : System.IEquatable<AgentKit.DocumentId>
+    {
+        public DocumentId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
     public readonly struct DurabilityProfileKey : System.IEquatable<AgentKit.DurabilityProfileKey>
     {
         public DurabilityProfileKey(string value) { }
@@ -3318,6 +3324,42 @@ namespace AgentKit
         Binary = 3,
         UBinary = 4,
     }
+    public sealed class EmbeddingExecutionCompleted : AgentKit.EmbeddingExecutionResult, System.IEquatable<AgentKit.EmbeddingExecutionCompleted>
+    {
+        public EmbeddingExecutionCompleted(AgentKit.EmbeddingSelectionDecision Selection, int Attempts, AgentKit.EmbeddingResponse Response) { }
+        public int Attempts { get; init; }
+        public AgentKit.EmbeddingResponse Response { get; init; }
+        public AgentKit.EmbeddingSelectionDecision Selection { get; init; }
+    }
+    public sealed class EmbeddingExecutionFailed : AgentKit.EmbeddingExecutionResult, System.IEquatable<AgentKit.EmbeddingExecutionFailed>
+    {
+        public EmbeddingExecutionFailed(AgentKit.EmbeddingSelectionDecision Selection, int Attempts, AgentKit.ProviderFailure Failure) { }
+        public int Attempts { get; init; }
+        public AgentKit.ProviderFailure Failure { get; init; }
+        public AgentKit.EmbeddingSelectionDecision Selection { get; init; }
+    }
+    public sealed class EmbeddingExecutionRequest : System.IEquatable<AgentKit.EmbeddingExecutionRequest>
+    {
+        public EmbeddingExecutionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.EmbeddingSelectionDecision selection, AgentKit.EmbeddingRequest request, AgentKit.BudgetExecutionCapability? budget, AgentKit.HookDispatchContext? hooks, AgentKit.SemanticOperationRetryPolicy retryPolicy, AgentKit.SemanticFallbackPolicy fallback = 0) { }
+        public AgentKit.BudgetExecutionCapability? Budget { get; }
+        public AgentKit.SemanticFallbackPolicy Fallback { get; }
+        public AgentKit.HookDispatchContext? Hooks { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+        public AgentKit.EmbeddingRequest Request { get; }
+        public AgentKit.SemanticOperationRetryPolicy RetryPolicy { get; }
+        public AgentKit.EmbeddingSelectionDecision Selection { get; }
+    }
+    public abstract class EmbeddingExecutionResult : System.IEquatable<AgentKit.EmbeddingExecutionResult>
+    {
+        protected EmbeddingExecutionResult() { }
+    }
+    public sealed class EmbeddingFallbackRequired : AgentKit.EmbeddingExecutionResult, System.IEquatable<AgentKit.EmbeddingFallbackRequired>
+    {
+        public EmbeddingFallbackRequired(AgentKit.EmbeddingSelectionDecision Selection, int Attempts, AgentKit.ProviderFailure Failure) { }
+        public int Attempts { get; init; }
+        public AgentKit.ProviderFailure Failure { get; init; }
+        public AgentKit.EmbeddingSelectionDecision Selection { get; init; }
+    }
     public abstract class EmbeddingInput : System.IEquatable<AgentKit.EmbeddingInput> { }
     public readonly struct EmbeddingInputId : System.IEquatable<AgentKit.EmbeddingInputId>
     {
@@ -3361,13 +3403,17 @@ namespace AgentKit
         public EmbeddingModelDescriptor(AgentKit.EmbeddingModelAlias alias, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, AgentKit.EmbeddingCapabilities capabilities, AgentKit.EmbeddingLimits limits, AgentKit.ModelPricing? pricing, AgentKit.ExtensionData extensions) { }
         public AgentKit.EmbeddingModelAlias Alias { get; init; }
         public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderOperationBinding? Binding { get; init; }
         public AgentKit.EmbeddingCapabilities Capabilities { get; init; }
         public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderEndpointId EndpointId { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.EmbeddingLimits Limits { get; init; }
         public AgentKit.ModelId ModelId { get; init; }
+        public AgentKit.ProviderModelRevision? ModelRevision { get; init; }
         public AgentKit.ModelPricing? Pricing { get; init; }
         public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
     }
     public sealed class EmbeddingModelRequest : System.IEquatable<AgentKit.EmbeddingModelRequest>
     {
@@ -3376,6 +3422,17 @@ namespace AgentKit
         public AgentKit.EmbeddingRequestContext Context { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.ProviderRequestOptions Options { get; init; }
+    }
+    public sealed class EmbeddingModelSelected : AgentKit.EmbeddingSelectionResult, System.IEquatable<AgentKit.EmbeddingModelSelected>
+    {
+        public EmbeddingModelSelected(AgentKit.EmbeddingSelectionDecision Decision) { }
+        public AgentKit.EmbeddingSelectionDecision Decision { get; init; }
+    }
+    public enum EmbeddingNormalization
+    {
+        Unspecified = 0,
+        Unit = 1,
+        None = 2,
     }
     public enum EmbeddingPurpose
     {
@@ -3413,6 +3470,16 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public sealed class EmbeddingRequirements : System.IEquatable<AgentKit.EmbeddingRequirements>
+    {
+        public EmbeddingRequirements() { }
+        public bool RequiresBatchInput { get; init; }
+        public bool RequiresDimensions { get; init; }
+        public bool RequiresEncodingSelection { get; init; }
+        public bool RequiresPurpose { get; init; }
+        public bool RequiresTruncationControl { get; init; }
+        public static AgentKit.EmbeddingRequirements None { get; }
+    }
     public sealed class EmbeddingResponse : System.IEquatable<AgentKit.EmbeddingResponse>
     {
         public EmbeddingResponse(System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingItemOutcome> items, AgentKit.ModelUsage usage, AgentKit.ProviderRequestId? providerRequestId, AgentKit.ExtensionData extensions) { }
@@ -3423,14 +3490,51 @@ namespace AgentKit
         public bool Equals(AgentKit.EmbeddingResponse? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class EmbeddingSelectionDecision : System.IEquatable<AgentKit.EmbeddingSelectionDecision>
+    {
+        public EmbeddingSelectionDecision(AgentKit.EmbeddingModelDescriptor model, string reason, AgentKit.ModelCatalogVersion catalogVersion) { }
+        public AgentKit.ModelCatalogVersion CatalogVersion { get; init; }
+        public AgentKit.EmbeddingModelDescriptor Model { get; init; }
+        public string Reason { get; init; }
+    }
+    public sealed class EmbeddingSelectionDiagnostic : System.IEquatable<AgentKit.EmbeddingSelectionDiagnostic>
+    {
+        public EmbeddingSelectionDiagnostic(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelCandidateOutcome outcome, string reason) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; init; }
+        public AgentKit.ModelCandidateOutcome Outcome { get; init; }
+        public string Reason { get; init; }
+    }
+    public sealed class EmbeddingSelectionPolicy : System.IEquatable<AgentKit.EmbeddingSelectionPolicy>
+    {
+        public EmbeddingSelectionPolicy(System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingModelAlias> candidates, AgentKit.SemanticFallbackPolicy fallback = 0) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingModelAlias> Candidates { get; init; }
+        public AgentKit.SemanticFallbackPolicy Fallback { get; init; }
+    }
+    public sealed class EmbeddingSelectionRequest : System.IEquatable<AgentKit.EmbeddingSelectionRequest>
+    {
+        public EmbeddingSelectionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.EmbeddingSelectionPolicy policy, AgentKit.EmbeddingRequirements requirements, AgentKit.ModelCatalogSnapshot catalog) { }
+        public AgentKit.ModelCatalogSnapshot Catalog { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+        public AgentKit.EmbeddingSelectionPolicy Policy { get; }
+        public AgentKit.EmbeddingRequirements Requirements { get; }
+    }
+    public abstract class EmbeddingSelectionResult : System.IEquatable<AgentKit.EmbeddingSelectionResult>
+    {
+        protected EmbeddingSelectionResult() { }
+    }
     public sealed class EmbeddingSpaceIdentity : System.IEquatable<AgentKit.EmbeddingSpaceIdentity>
     {
         public EmbeddingSpaceIdentity(AgentKit.ProviderResponseIdentity provider, int dimensions, AgentKit.EmbeddingElementType elementType, AgentKit.EmbeddingPurpose purpose, AgentKit.ExtensionData extensions) { }
         public int Dimensions { get; init; }
         public AgentKit.EmbeddingElementType ElementType { get; init; }
+        public AgentKit.ProviderEndpointId EndpointId { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.ProviderModelRevision? ModelRevision { get; init; }
+        public AgentKit.EmbeddingNormalization Normalization { get; init; }
         public AgentKit.ProviderResponseIdentity Provider { get; init; }
         public AgentKit.EmbeddingPurpose Purpose { get; init; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
+        public AgentKit.EmbeddingTruncation Truncation { get; init; }
     }
     public enum EmbeddingTruncation
     {
@@ -4818,6 +4922,14 @@ namespace AgentKit
     {
         AgentKit.IEmbeddingModel? Resolve(AgentKit.EmbeddingModelDescriptor model);
     }
+    public interface IEmbeddingModelSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.EmbeddingSelectionResult> SelectAsync(AgentKit.EmbeddingSelectionRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEmbeddingRequestExecutor
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingExecutionResult> ExecuteAsync(AgentKit.EmbeddingExecutionRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IExecutableResolver
     {
         AgentKit.ComponentId SecurityAudience { get; }
@@ -5160,6 +5272,23 @@ namespace AgentKit
     public interface IRecoveryPolicy
     {
         System.Threading.Tasks.ValueTask<AgentKit.RecoveryDecision> DecideAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.RecoveryEvidence evidence, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IRerankRequestExecutor
+    {
+        System.Threading.Tasks.Task<AgentKit.RerankExecutionResult> ExecuteAsync(AgentKit.RerankExecutionRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IReranker
+    {
+        AgentKit.RerankerAlias Alias { get; }
+        System.Threading.Tasks.Task<AgentKit.RerankModelResult> RerankAsync(AgentKit.RerankModelRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IRerankerResolver
+    {
+        AgentKit.IReranker? Resolve(AgentKit.RerankerDescriptor model);
+    }
+    public interface IRerankerSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.RerankerSelectionResult> SelectAsync(AgentKit.RerankerSelectionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IRunBudget : AgentKit.IBudgetScope { }
     public interface IRunContinuationPolicy
@@ -6007,10 +6136,11 @@ namespace AgentKit
     }
     public sealed class LlmModelRequest : System.IEquatable<AgentKit.LlmModelRequest>
     {
-        public LlmModelRequest(AgentKit.LlmRequestContext context, int attempt, System.DateTimeOffset deadline, AgentKit.ProviderRequestOptions options) { }
+        public LlmModelRequest(AgentKit.LlmRequestContext context, int attempt, System.DateTimeOffset deadline, AgentKit.ProviderRequestOptions options, AgentKit.ProtectedSemanticOperationContext? operation = null) { }
         public int Attempt { get; init; }
         public AgentKit.LlmRequestContext Context { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.ProtectedSemanticOperationContext? Operation { get; init; }
         public AgentKit.ProviderRequestOptions Options { get; init; }
     }
     public enum LlmReasoningEffort
@@ -6232,8 +6362,12 @@ namespace AgentKit
     {
         public ModelCatalogSnapshot(AgentKit.ModelCatalogVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> ConversationModels { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingModelDescriptor> EmbeddingModels { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RerankerDescriptor> Rerankers { get; init; }
         public AgentKit.ModelCatalogVersion Version { get; init; }
         public AgentKit.ModelDescriptor? FindConversationModel(AgentKit.ModelAlias alias) { }
+        public AgentKit.EmbeddingModelDescriptor? FindEmbeddingModel(AgentKit.EmbeddingModelAlias alias) { }
+        public AgentKit.RerankerDescriptor? FindReranker(AgentKit.RerankerAlias alias) { }
     }
     public readonly struct ModelCatalogVersion : System.IEquatable<AgentKit.ModelCatalogVersion>
     {
@@ -6246,13 +6380,18 @@ namespace AgentKit
         public ModelDescriptor(AgentKit.ModelAlias alias, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, AgentKit.ModelCapabilities capabilities, AgentKit.ModelLimits limits, AgentKit.ModelPricing? pricing, AgentKit.ExtensionData extensions) { }
         public AgentKit.ModelAlias Alias { get; init; }
         public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderOperationBinding? Binding { get; init; }
         public AgentKit.ModelCapabilities Capabilities { get; init; }
+        public AgentKit.CompatibilityProfile? Compatibility { get; init; }
         public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelDescriptorRevision DescriptorRevision { get; init; }
+        public AgentKit.ProviderEndpointId EndpointId { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.ModelLimits Limits { get; init; }
         public AgentKit.ModelId ModelId { get; init; }
         public AgentKit.ModelPricing? Pricing { get; init; }
         public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
     }
     public readonly struct ModelDescriptorRevision : System.IEquatable<AgentKit.ModelDescriptorRevision>
     {
@@ -6811,11 +6950,23 @@ namespace AgentKit
         PlatformDefault = 0,
         PinCertificateFingerprint = 1,
     }
+    public sealed class NoCompatibleEmbeddingModel : AgentKit.EmbeddingSelectionResult, System.IEquatable<AgentKit.NoCompatibleEmbeddingModel>
+    {
+        public NoCompatibleEmbeddingModel(AgentKit.EmbeddingRequirements Requirements, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingSelectionDiagnostic> Diagnostics) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingSelectionDiagnostic> Diagnostics { get; init; }
+        public AgentKit.EmbeddingRequirements Requirements { get; init; }
+    }
     public sealed class NoCompatibleModel : AgentKit.ModelSelectionResult, System.IEquatable<AgentKit.NoCompatibleModel>
     {
         public NoCompatibleModel(AgentKit.ModelRequirements requirements, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> Diagnostics { get; init; }
         public AgentKit.ModelRequirements Requirements { get; init; }
+    }
+    public sealed class NoCompatibleReranker : AgentKit.RerankerSelectionResult, System.IEquatable<AgentKit.NoCompatibleReranker>
+    {
+        public NoCompatibleReranker(AgentKit.RerankerRequirements Requirements, System.Collections.Immutable.ImmutableArray<AgentKit.RerankerSelectionDiagnostic> Diagnostics) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RerankerSelectionDiagnostic> Diagnostics { get; init; }
+        public AgentKit.RerankerRequirements Requirements { get; init; }
     }
     public sealed class NoSafeCompactionCut : AgentKit.CompactionCutSelectionResult, System.IEquatable<AgentKit.NoSafeCompactionCut>
     {
@@ -8082,6 +8233,174 @@ namespace AgentKit
         public RejectedInput(AgentKit.InputRejection rejection) { }
         public AgentKit.InputRejection Rejection { get; }
     }
+    public sealed class RerankDocument : System.IEquatable<AgentKit.RerankDocument>
+    {
+        public RerankDocument(AgentKit.DocumentId id, int inputIndex, string text, AgentKit.ExtensionData metadata) { }
+        public AgentKit.DocumentId Id { get; init; }
+        public int InputIndex { get; init; }
+        public AgentKit.ExtensionData Metadata { get; init; }
+        public string Text { get; init; }
+    }
+    public sealed class RerankExecutionFailed : AgentKit.RerankExecutionResult, System.IEquatable<AgentKit.RerankExecutionFailed>
+    {
+        public RerankExecutionFailed(AgentKit.RerankerSelectionDecision Selection, int Attempts, AgentKit.ProviderFailure Failure) { }
+        public int Attempts { get; init; }
+        public AgentKit.ProviderFailure Failure { get; init; }
+        public AgentKit.RerankerSelectionDecision Selection { get; init; }
+    }
+    public sealed class RerankExecutionRequest : System.IEquatable<AgentKit.RerankExecutionRequest>
+    {
+        public RerankExecutionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.RerankerSelectionDecision selection, AgentKit.RerankRequest request, AgentKit.BudgetExecutionCapability? budget, AgentKit.HookDispatchContext? hooks, AgentKit.SemanticOperationRetryPolicy retryPolicy, AgentKit.SemanticFallbackPolicy fallback = 0) { }
+        public AgentKit.BudgetExecutionCapability? Budget { get; }
+        public AgentKit.SemanticFallbackPolicy Fallback { get; }
+        public AgentKit.HookDispatchContext? Hooks { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+        public AgentKit.RerankRequest Request { get; }
+        public AgentKit.SemanticOperationRetryPolicy RetryPolicy { get; }
+        public AgentKit.RerankerSelectionDecision Selection { get; }
+    }
+    public abstract class RerankExecutionResult : System.IEquatable<AgentKit.RerankExecutionResult>
+    {
+        protected RerankExecutionResult() { }
+    }
+    public sealed class RerankExecutionSucceeded : AgentKit.RerankExecutionResult, System.IEquatable<AgentKit.RerankExecutionSucceeded>
+    {
+        public RerankExecutionSucceeded(AgentKit.RerankerSelectionDecision Selection, int Attempts, AgentKit.RerankResponse Response) { }
+        public int Attempts { get; init; }
+        public AgentKit.RerankResponse Response { get; init; }
+        public AgentKit.RerankerSelectionDecision Selection { get; init; }
+    }
+    public sealed class RerankFallbackRequired : AgentKit.RerankExecutionResult, System.IEquatable<AgentKit.RerankFallbackRequired>
+    {
+        public RerankFallbackRequired(AgentKit.RerankerSelectionDecision Selection, int Attempts, AgentKit.ProviderFailure Failure) { }
+        public int Attempts { get; init; }
+        public AgentKit.ProviderFailure Failure { get; init; }
+        public AgentKit.RerankerSelectionDecision Selection { get; init; }
+    }
+    public sealed class RerankModelFailed : AgentKit.RerankModelResult, System.IEquatable<AgentKit.RerankModelFailed>
+    {
+        public RerankModelFailed(AgentKit.ProviderFailure Failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class RerankModelRequest : System.IEquatable<AgentKit.RerankModelRequest>
+    {
+        public RerankModelRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.RerankerSelectionDecision selection, AgentKit.RerankRequest request, int attempt, System.DateTimeOffset deadline) { }
+        public int Attempt { get; init; }
+        public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; init; }
+        public AgentKit.RerankRequest Request { get; init; }
+        public AgentKit.RerankerSelectionDecision Selection { get; init; }
+    }
+    public abstract class RerankModelResult : System.IEquatable<AgentKit.RerankModelResult>
+    {
+        protected RerankModelResult() { }
+    }
+    public sealed class RerankModelSucceeded : AgentKit.RerankModelResult, System.IEquatable<AgentKit.RerankModelSucceeded>
+    {
+        public RerankModelSucceeded(AgentKit.RerankResponse Response) { }
+        public AgentKit.RerankResponse Response { get; init; }
+    }
+    public sealed class RerankRequest : System.IEquatable<AgentKit.RerankRequest>
+    {
+        public RerankRequest(string query, System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> documents, int? topCount, AgentKit.ProviderRequestOptions options) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RerankDocument> Documents { get; init; }
+        public AgentKit.ProviderRequestOptions Options { get; init; }
+        public string Query { get; init; }
+        public int? TopCount { get; init; }
+    }
+    public sealed class RerankResponse : System.IEquatable<AgentKit.RerankResponse>
+    {
+        public RerankResponse(System.Collections.Immutable.ImmutableArray<AgentKit.RerankResult> results, AgentKit.SemanticOperationUsage usage, AgentKit.ProviderRequestId? providerRequestId, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RerankResult> Results { get; init; }
+        public AgentKit.SemanticOperationUsage Usage { get; init; }
+    }
+    public sealed class RerankResult : System.IEquatable<AgentKit.RerankResult>
+    {
+        public RerankResult(int inputIndex, AgentKit.DocumentId documentId, double relevanceScore, AgentKit.ExtensionData extensions) { }
+        public AgentKit.DocumentId DocumentId { get; init; }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public int InputIndex { get; init; }
+        public double RelevanceScore { get; init; }
+    }
+    public readonly struct RerankerAlias : System.IEquatable<AgentKit.RerankerAlias>
+    {
+        public RerankerAlias(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class RerankerCapabilities : System.IEquatable<AgentKit.RerankerCapabilities>
+    {
+        public RerankerCapabilities(bool supportsTopCount, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public bool SupportsTopCount { get; init; }
+    }
+    public sealed class RerankerDescriptor : System.IEquatable<AgentKit.RerankerDescriptor>
+    {
+        public RerankerDescriptor(AgentKit.RerankerAlias alias, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, AgentKit.RerankerCapabilities capabilities, AgentKit.RerankerLimits limits, AgentKit.ExtensionData extensions) { }
+        public AgentKit.RerankerAlias Alias { get; init; }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderOperationBinding? Binding { get; init; }
+        public AgentKit.RerankerCapabilities Capabilities { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderEndpointId EndpointId { get; init; }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public AgentKit.RerankerLimits Limits { get; init; }
+        public AgentKit.ModelId ModelId { get; init; }
+        public AgentKit.ProviderModelRevision? ModelRevision { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
+    }
+    public sealed class RerankerLimits : System.IEquatable<AgentKit.RerankerLimits>
+    {
+        public RerankerLimits(int? maxDocumentsPerRequest, int? maxDocumentCharacters) { }
+        public int? MaxDocumentCharacters { get; init; }
+        public int? MaxDocumentsPerRequest { get; init; }
+    }
+    public sealed class RerankerRequirements : System.IEquatable<AgentKit.RerankerRequirements>
+    {
+        public RerankerRequirements() { }
+        public bool RequiresTopCount { get; init; }
+        public static AgentKit.RerankerRequirements None { get; }
+    }
+    public sealed class RerankerSelected : AgentKit.RerankerSelectionResult, System.IEquatable<AgentKit.RerankerSelected>
+    {
+        public RerankerSelected(AgentKit.RerankerSelectionDecision Decision) { }
+        public AgentKit.RerankerSelectionDecision Decision { get; init; }
+    }
+    public sealed class RerankerSelectionDecision : System.IEquatable<AgentKit.RerankerSelectionDecision>
+    {
+        public RerankerSelectionDecision(AgentKit.RerankerDescriptor model, string reason, AgentKit.ModelCatalogVersion catalogVersion) { }
+        public AgentKit.ModelCatalogVersion CatalogVersion { get; init; }
+        public AgentKit.RerankerDescriptor Model { get; init; }
+        public string Reason { get; init; }
+    }
+    public sealed class RerankerSelectionDiagnostic : System.IEquatable<AgentKit.RerankerSelectionDiagnostic>
+    {
+        public RerankerSelectionDiagnostic(AgentKit.RerankerAlias alias, AgentKit.ModelCandidateOutcome outcome, string reason) { }
+        public AgentKit.RerankerAlias Alias { get; init; }
+        public AgentKit.ModelCandidateOutcome Outcome { get; init; }
+        public string Reason { get; init; }
+    }
+    public sealed class RerankerSelectionPolicy : System.IEquatable<AgentKit.RerankerSelectionPolicy>
+    {
+        public RerankerSelectionPolicy(System.Collections.Immutable.ImmutableArray<AgentKit.RerankerAlias> candidates, AgentKit.SemanticFallbackPolicy fallback = 0) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RerankerAlias> Candidates { get; init; }
+        public AgentKit.SemanticFallbackPolicy Fallback { get; init; }
+    }
+    public sealed class RerankerSelectionRequest : System.IEquatable<AgentKit.RerankerSelectionRequest>
+    {
+        public RerankerSelectionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.RerankerSelectionPolicy policy, AgentKit.RerankerRequirements requirements, AgentKit.ModelCatalogSnapshot catalog) { }
+        public AgentKit.ModelCatalogSnapshot Catalog { get; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; }
+        public AgentKit.RerankerSelectionPolicy Policy { get; }
+        public AgentKit.RerankerRequirements Requirements { get; }
+    }
+    public abstract class RerankerSelectionResult : System.IEquatable<AgentKit.RerankerSelectionResult>
+    {
+        protected RerankerSelectionResult() { }
+    }
     public sealed class ResolvedAgentDefinition : AgentKit.AgentDefinitionResolution, System.IEquatable<AgentKit.ResolvedAgentDefinition>
     {
         public ResolvedAgentDefinition(AgentKit.AgentDefinition definition, AgentKit.AgentCatalogVersion catalogVersion) { }
@@ -8836,6 +9155,27 @@ namespace AgentKit
         public SecurityRevocationVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public enum SemanticFallbackPolicy
+    {
+        FirstCandidateOnly = 0,
+        OrderedCandidates = 1,
+    }
+    public sealed class SemanticOperationRetryPolicy : System.IEquatable<AgentKit.SemanticOperationRetryPolicy>
+    {
+        public SemanticOperationRetryPolicy(int maximumAttempts, System.TimeSpan initialDelay, System.TimeSpan maximumDelay) { }
+        public System.TimeSpan InitialDelay { get; }
+        public int MaximumAttempts { get; }
+        public System.TimeSpan MaximumDelay { get; }
+        public static AgentKit.SemanticOperationRetryPolicy None { get; }
+    }
+    public sealed class SemanticOperationUsage : System.IEquatable<AgentKit.SemanticOperationUsage>
+    {
+        public SemanticOperationUsage(long? inputTokens, long? outputTokens, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; init; }
+        public long? InputTokens { get; init; }
+        public long? OutputTokens { get; init; }
+        public static AgentKit.SemanticOperationUsage NotReported { get; }
     }
     public sealed class SequencingModelResponseObserver : AgentKit.IModelResponseObserver
     {

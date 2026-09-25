@@ -59,6 +59,9 @@ namespace AgentKit.Observability
         public const string ProcessResolve = "process.resolve";
         public const string ProcessRun = "process.run";
         public const string ProcessSandboxPrepare = "process.sandbox.prepare";
+        public const string ProviderEmbeddingSend = "provider.embedding.send";
+        public const string ProviderRerankSend = "provider.rerank.send";
+        public const string ProviderSend = "provider.send";
         public const string RunContinuationEvaluate = "run.continuation.evaluate";
         public const string RunEventHub = "run.event.hub";
         public const string RunSettle = "run.settle";
@@ -181,6 +184,8 @@ namespace AgentKit.Observability
         public const string OutputProcessingCount = "agentkit.output.processing.count";
         public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
         public const string ProcessOperationCount = "agentkit.process.operation.count";
+        public const string ProviderRequestCount = "agentkit.provider.request.count";
+        public const string ProviderRequestDuration = "agentkit.provider.request.duration";
         public const string RunContinuationEvaluationCount = "agentkit.run.continuation.evaluation.count";
         public const string RunContinuationEvaluationDuration = "agentkit.run.continuation.evaluation.duration";
         public const string RunEventHubOperationCount = "agentkit.run.event.hub.operation.count";
@@ -273,6 +278,7 @@ namespace AgentKit.Observability
         public const string ProcessOperationId = "agentkit.process.operation.id";
         public const string ProcessStage = "agentkit.process.stage";
         public const string ProviderName = "gen_ai.provider.name";
+        public const string ProviderOperation = "agentkit.provider.operation";
         public const string QuestionId = "agentkit.question.id";
         public const string RequestModel = "gen_ai.request.model";
         public const string RunEventHubOperation = "agentkit.run.event.hub.operation";

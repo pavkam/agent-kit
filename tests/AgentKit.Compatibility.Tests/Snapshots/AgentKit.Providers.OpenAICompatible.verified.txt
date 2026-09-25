@@ -65,7 +65,7 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleLlmModelBase : AgentKit.ILlmModel
     {
-        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.ModelDescriptor Descriptor { get; }

@@ -150,6 +150,8 @@ internal static class CompositionTestData
     /// </summary>
     public static void AddRunServicesFakes(IServiceCollection services)
     {
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
+        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
         services.TryAddSingleton<ISessionCoordinator, UnsupportedSessionCoordinator>();
         services.TryAddSingleton<ISessionRunCoordinator, UnsupportedSessionRunCoordinator>();
         services.TryAddSingleton<IContextAssembler, UnsupportedContextAssembler>();
@@ -182,8 +184,12 @@ internal static class CompositionTestData
     /// <summary>Registers the security services required by facade registration validation.</summary>
     /// <param name="services">The composition under test.</param>
     /// <param name="includeGrantStore">Whether to register the default in-memory grant store.</param>
-    public static void AddFacadeRegistrationRequirements(IServiceCollection services, bool includeGrantStore = true) =>
+    public static void AddFacadeRegistrationRequirements(IServiceCollection services, bool includeGrantStore = true)
+    {
         AddRequiredSecurityServices(services, includeGrantStore);
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
+        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
+    }
 
     public static void AddRequiredSecurityGrantStore(IServiceCollection services) => AddRequiredSecurityServices(services);
 

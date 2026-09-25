@@ -105,6 +105,32 @@ namespace AgentKit.Providers
         public static System.Text.Json.JsonElement ParseArguments(string? json) { }
         public static System.Text.Json.JsonElement ParseEmptyObject() { }
     }
+    public static class ProviderOperationProfileRegistration
+    {
+        public static AgentKit.ProviderOperationBinding RegisterDefaultOperationProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId serviceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey endpointKey, AgentKit.ProviderCredentialProfileKey credentialKey, AgentKit.ProviderEndpointId endpointId) { }
+    }
+    public static class ProviderProfileAttemptBinding
+    {
+        public static System.Uri NormalizeBaseAddress(System.Uri baseAddress) { }
+        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution> ResolveCredentialSourceAsync(AgentKit.ProviderOperationBinding? binding, AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.IProviderCredentialSource fallbackCredentials, AgentKit.IProviderProfileRuntimeSelector? profileSelector, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken) { }
+        public readonly struct ProfileCredentialResolution
+        {
+            public AgentKit.IProviderCredentialSource? CredentialSource { get; }
+            public System.Uri? EndpointBaseAddress { get; }
+            public AgentKit.ProviderFailure? Failure { get; }
+            public bool IsSuccess { get; }
+            public AgentKit.IProviderProfileRuntimeLease? Lease { get; }
+            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution FromFailure(AgentKit.ProviderFailure failure) { }
+            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution FromSource(AgentKit.IProviderCredentialSource credentialSource, System.Uri? endpointBaseAddress, AgentKit.IProviderProfileRuntimeLease? lease) { }
+        }
+    }
+    public static class ProviderRequestObservability
+    {
+        public static void RecordRequest(string operation, string outcome, System.TimeSpan duration) { }
+        public static System.Diagnostics.Activity? StartChatSend(AgentKit.ProviderId providerId, string operation = "chat") { }
+        public static System.Diagnostics.Activity? StartEmbeddingSend(AgentKit.ProviderId providerId, string operation = "embedding") { }
+        public static System.Diagnostics.Activity? StartRerankSend(AgentKit.ProviderId providerId, string operation = "rerank") { }
+    }
     public sealed class ProviderResponseParseContext : System.IEquatable<AgentKit.Providers.ProviderResponseParseContext>
     {
         public ProviderResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
