@@ -32,6 +32,8 @@ Owning documents:
 - [x] WS3-C11 bounded infrastructure bootstrap capability
 - [x] WS3-C12 validator and Simple defaults
 - [x] WS3-C13 documentation
+- [x] WS3-C14 shared grant-consumption host operations
+- [x] WS3-C15 Simple `WithPolicy<T>` sugar
 
 ## Verified current state
 
@@ -40,7 +42,7 @@ Owning documents:
 | `ISecurityPolicyCatalog`, `ISecurityPolicySelector`, `SecurityPolicySnapshotResult`                                                                                                                                                                                                                                                         | WIRED (WS3-C4)          | `SecurityPolicyCatalog`, `DefaultSecurityPolicySelector`, and `SecurityAuthority` snapshot selection via `ISecurityPolicySelector`; `ReplaceSecurityPolicyCatalog<T>` / `ReplaceSecurityPolicySelector<T>` on `ServiceExtensions` |
 | `IApprovalHandlerDispatcher`                                                                                                                                                                                                                                                                                                                | WIRED (WS3-C8a)         | `DefaultApprovalHandlerDispatcher`; `DefaultApprovalBroker` routes through `TryResolveAsync`                                                                                                                                      |
 | `ISecurityGrantIssuer`, `ISecurityDecisionStore`                                                                                                                                                                                                                                                                                            | WIRED (WS3-C6)          | `DefaultSecurityGrantIssuer`; InMemory/Json/Sqlite `ISecurityDecisionStore` adapters                                                                                                                                              |
-| `RevocationReason`, `GrantRevocationResult`, `SecurityRevocationTrigger`, `SecurityRevocationConstraint`, `ApprovalValidityWindow`, `ApprovalAuthenticationEvidence(+Id)`, `ApprovalChannelId`, `SecurityApprovalRequired`, `SecurityPolicyContext`, `SecurityAllowConstraints`, `ApprovalAuthenticationMethod`, `ApprovalResolutionResult` | WIRED (WS3-C1/C3/C7/C8) | consumed by `SecurityAuthority`, grant stores, approval broker, and policy evaluation                                                                                                                           |
+| `RevocationReason`, `GrantRevocationResult`, `SecurityRevocationTrigger`, `SecurityRevocationConstraint`, `ApprovalValidityWindow`, `ApprovalAuthenticationEvidence(+Id)`, `ApprovalChannelId`, `SecurityApprovalRequired`, `SecurityPolicyContext`, `SecurityAllowConstraints`, `ApprovalAuthenticationMethod`, `ApprovalResolutionResult` | WIRED (WS3-C1/C3/C7/C8) | consumed by `SecurityAuthority`, grant stores, approval broker, and policy evaluation                                                                                                                                             |
 | `ISecurityAuthority.AuthorizeAsync(SecurityRequest, CT)` without hook context                                                                                                                                                                                                                                                               | VERIFIED                | `Abstractions/Security/ISecurityAuthority.cs`; impls `SecurityAuthority.cs:104`, `DenyAllSecurityAuthority.cs`                                                                                                                    |
 | `IApprovalBroker.ResolveAsync`                                                                                                                                                                                                                                                                                                              | WIRED (WS3-C8b)         | `DefaultApprovalBroker.ResolveAsync`; deferral via `HeadlessApprovalBehavior` and durable stores                                                                                                                                  |
 | approval stores                                                                                                                                                                                                                                                                                                                             | WIRED (WS3-C9)          | InMemory, Json, Sqlite; `ApprovalStoreConformanceTests` on all three                                                                                                                                                              |
@@ -309,6 +311,20 @@ at `SecurityAuthorityTests.cs:570`.
 - Deliverables: `permissions-and-human-control.md` reconciliation,
   `guides/permissions.md`, `src/AgentKit.Permissions*/README.md`, permissions
   skill.
+
+### WS3-C14: Shared grant-consumption host operations
+
+- Depends on: C5. Risk: ADDITIVE. Size: S.
+- Deliverables: `SecurityGrantConsumptionHostOperations` in
+  `AgentKit.Abstractions`; refactor file, network, process, and in-memory host
+  guards to call it; focused Abstractions tests.
+
+### WS3-C15: Simple `WithPolicy<T>` sugar
+
+- Depends on: C12. Risk: ADDITIVE. Size: S.
+- Deliverables: `AddSecurityPolicy<TPolicy>()` on `AgentKit.Permissions`
+  `ServiceExtensions`; `AgentKit.Simple.WithPolicy<T>()` chaining over the
+  builder plan.
 
 ## Totals
 

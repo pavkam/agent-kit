@@ -24,7 +24,8 @@ internal static class McpServerRegistration
         }
 
         _ = services.AddKeyedSingleton(key.Value, new McpServerEndpoint(key, options.Transport));
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpPrimitiveHandler, AgentKitPrimitiveHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpPrimitiveHandler, AgentKitPrimitiveHandler>(
+            static provider => new AgentKitPrimitiveHandler(provider)));
         services.TryAddSingleton<IMcpServer, McpServerHost>();
         return services;
     }

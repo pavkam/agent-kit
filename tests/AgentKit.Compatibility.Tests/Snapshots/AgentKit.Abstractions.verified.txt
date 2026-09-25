@@ -8652,6 +8652,13 @@ namespace AgentKit
         public bool Equals(AgentKit.SecurityGrant? other) { }
         public override int GetHashCode() { }
     }
+    public static class SecurityGrantConsumptionHostOperations
+    {
+        public static System.Threading.Tasks.ValueTask<string?> ConsumeWithRequiredAuditAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, AgentKit.SecurityGrantConsumptionHostOperations.FreshExactValidator isFreshExact, AgentKit.SecurityGrantConsumptionHostOperations.DenialMessageFactory denialMessage, System.Threading.CancellationToken cancellationToken) { }
+        public static AgentKit.SecurityAuditRecord CreateGrantConsumptionIntentRecord(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityAuditRecordId recordId, System.DateTimeOffset timestamp) { }
+        public delegate string DenialMessageFactory(AgentKit.GrantConsumptionResult consumption);
+        public delegate bool FreshExactValidator(AgentKit.GrantConsumptionResult consumption, AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent);
+    }
     public enum SecurityGrantStoreFailureKind
     {
         OpenFailed = 0,

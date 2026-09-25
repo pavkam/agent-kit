@@ -16,6 +16,9 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
             [System.Obsolete("Prefer keyed AddOperatingSystemFileSystem and tool options HostRootPath.")]
             public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithPolicy<TPolicy>()
+                where TPolicy :  class, AgentKit.ISecurityPolicy { }
+            public AgentKit.AgentEngineBuilder WithHostAccess(string? processWorkspaceRoot = null) { }
             public AgentKit.AgentEngineBuilder WithMcpServer(AgentKit.ToolSourceId sourceId, AgentKit.Mcp.McpEndpointKey endpointKey, AgentKit.CapabilityProfileId capabilityProfileId, System.Action<AgentKit.Mcp.Client.McpClientOptions>? configureClient = null) { }
             public AgentKit.AgentEngineBuilder WithTools(params AgentKit.ToolsetKey[] toolsets) { }
             public AgentKit.AgentEngineBuilder UseModel(AgentKit.ModelAlias alias) { }

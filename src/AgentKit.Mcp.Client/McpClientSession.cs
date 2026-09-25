@@ -11,7 +11,10 @@ internal sealed class McpClientSession: IMcpClientSession
     private readonly SdkMcpSessionAdapter _adapter;
     private readonly ISecurityGrantStore _grantStore;
     private readonly ISecurityAuthoritySelector _authoritySelector;
+    private readonly ISecurityAuditDispatcher _audit;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _inFlight;
     private readonly McpClientOpenRequest _openRequest;
@@ -23,7 +26,10 @@ internal sealed class McpClientSession: IMcpClientSession
         McpClientOpenRequest openRequest,
         ISecurityAuthoritySelector authoritySelector,
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher audit,
         IIdentifierGenerator<SecurityRequestId> requestIds,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
         TimeProvider timeProvider,
         McpClientOptionsSnapshot options)
     {
@@ -33,7 +39,10 @@ internal sealed class McpClientSession: IMcpClientSession
         _openRequest = openRequest;
         _authoritySelector = authoritySelector;
         _grantStore = grantStore;
+        _audit = audit;
         _requestIds = requestIds;
+        _auditRecordIds = auditRecordIds;
+        _intentIds = intentIds;
         _timeProvider = timeProvider;
         _inFlight = new SemaphoreSlim(options.MaximumInFlightRequests, options.MaximumInFlightRequests);
     }
@@ -53,6 +62,7 @@ internal sealed class McpClientSession: IMcpClientSession
         IIdentifierGenerator<McpSessionId> sessionIds,
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
         TimeProvider timeProvider,
         McpClientOptionsSnapshot options,
         ToolSourceId toolSourceId,
@@ -67,6 +77,7 @@ internal sealed class McpClientSession: IMcpClientSession
         ArgumentNullException.ThrowIfNull(sessionIds);
         ArgumentNullException.ThrowIfNull(securityRequestIds);
         ArgumentNullException.ThrowIfNull(auditRecordIds);
+        ArgumentNullException.ThrowIfNull(intentIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(loggerFactory);
@@ -128,7 +139,10 @@ internal sealed class McpClientSession: IMcpClientSession
             request,
             authoritySelector,
             grantStore,
+            audit,
             securityRequestIds,
+            auditRecordIds,
+            intentIds,
             timeProvider,
             options);
     }
@@ -181,6 +195,10 @@ internal sealed class McpClientSession: IMcpClientSession
             var consumption = await McpClientSecurityOperations.ConsumeGrantAsync(
                 grant,
                 _grantStore,
+                _audit,
+                _auditRecordIds,
+                _intentIds,
+                _timeProvider,
                 cancellationToken).ConfigureAwait(false);
             return consumption.Status != GrantConsumptionStatus.Consumed
                 ? new McpResponseDenied(request.Request.Id, "MCP grant consumption failed.")

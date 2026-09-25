@@ -10,7 +10,7 @@ namespace AgentKit.Mcp.Client
     }
     public sealed class HttpMcpTransportFactory : AgentKit.Mcp.IMcpTransportFactory
     {
-        public HttpMcpTransportFactory(AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher audit, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.IServiceProvider services, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) { }
+        public HttpMcpTransportFactory(AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher audit, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.IServiceProvider services, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) { }
         public System.Type TransportProfileType { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken) { }
     }

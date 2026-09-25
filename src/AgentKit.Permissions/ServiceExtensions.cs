@@ -266,6 +266,28 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Adds one additive <see cref="ISecurityPolicy"/> implementation.</summary>
+        /// <typeparam name="TPolicy">The policy type to register.</typeparam>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// <see cref="ISecurityPolicy"/> registrations are additive. Repeating the same implementation type is
+        /// idempotent and still registers exactly one instance.
+        /// </remarks>
+        public IServiceCollection AddSecurityPolicy<TPolicy>()
+            where TPolicy : class, ISecurityPolicy
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityPolicy)
+                    && descriptor.ImplementationType == typeof(TPolicy)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityPolicy, TPolicy>());
+            }
+
+            return services;
+        }
+
         /// <summary>Adds <see cref="AllowAllSecurityPolicy"/> as an additive security policy.</summary>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

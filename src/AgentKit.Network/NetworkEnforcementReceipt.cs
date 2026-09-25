@@ -57,6 +57,17 @@ internal static class NetworkEnforcementReceipt
             && HasExactEnforcement(receipt.Enforcement, enforcement);
     }
 
+    /// <summary>Returns a stable non-content error when a consumed result lacks the required authoritative receipt.</summary>
+    /// <param name="consumption">The non-null consumption result that failed fresh exact validation.</param>
+    /// <returns>The store message for an unconsumed result, or a fixed missing-receipt message for an invalid consumed result.</returns>
+    internal static string DenialMessage(GrantConsumptionResult consumption)
+    {
+        ArgumentNullException.ThrowIfNull(consumption);
+        return consumption.Status is GrantConsumptionStatus.Consumed
+            ? "The grant store did not retain a fresh exact enforcement-intent receipt."
+            : consumption.SafeMessage;
+    }
+
     /// <summary>Compares every enforcement field, including the resource sequence, without relying on immutable-array backing identity.</summary>
     /// <param name="actual">The non-null enforcement retained by the receipt.</param>
     /// <param name="expected">The non-null enforcement sent for this effect.</param>

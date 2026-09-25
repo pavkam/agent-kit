@@ -21,6 +21,7 @@ public sealed class HttpMcpTransportFactory(
     ISecurityAuditDispatcher audit,
     IIdentifierGenerator<SecurityRequestId> securityRequestIds,
     IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+    IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
     IServiceProvider services,
     TimeProvider timeProvider,
     ILoggerFactory loggerFactory): IMcpTransportFactory
@@ -55,8 +56,18 @@ public sealed class HttpMcpTransportFactory(
             return new McpTransportOpenDenied("HTTP MCP connect denied by security authority.");
         }
 
-        _ = await McpClientSecurityOperations.ConsumeGrantAsync(grant, grantStore, cancellationToken)
-            .ConfigureAwait(false);
+        var consumption = await McpClientSecurityOperations.ConsumeGrantAsync(
+            grant,
+            grantStore,
+            audit,
+            auditRecordIds,
+            intentIds,
+            timeProvider,
+            cancellationToken).ConfigureAwait(false);
+        if (consumption.Status is not GrantConsumptionStatus.Consumed)
+        {
+            return new McpTransportOpenDenied("HTTP MCP connect grant consumption failed.");
+        }
 
         var additionalHeaders = new Dictionary<string, string>(StringComparer.Ordinal);
         if (request.Endpoint.Authentication is { } authentication)

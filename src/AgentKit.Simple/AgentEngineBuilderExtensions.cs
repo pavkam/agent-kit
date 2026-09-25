@@ -410,6 +410,46 @@ public static class AgentEngineBuilderExtensions
             return builder;
         }
 
+        /// <summary>Registers one additive security policy consulted by the configured authority.</summary>
+        /// <typeparam name="TPolicy">The policy implementation type.</typeparam>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        public AgentEngineBuilder WithPolicy<TPolicy>()
+            where TPolicy : class, ISecurityPolicy
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            _ = Plan(builder);
+            _ = builder.Services.AddSecurityPolicy<TPolicy>();
+            return builder;
+        }
+
+        /// <summary>
+        /// Registers default network and process host boundaries for MCP stdio servers, web fetch, and command tools.
+        /// </summary>
+        /// <param name="processWorkspaceRoot">
+        /// The absolute workspace root for process execution; defaults to the system temporary directory when omitted.
+        /// </param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="processWorkspaceRoot"/> is not an absolute path.</exception>
+        public AgentEngineBuilder WithHostAccess(string? processWorkspaceRoot = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            _ = Plan(builder);
+            _ = builder.Services.AddAgentNetwork();
+            var root = processWorkspaceRoot ?? Path.GetTempPath();
+            if (!Path.IsPathFullyQualified(root))
+            {
+                throw new ArgumentException("The process workspace root must be absolute.", nameof(processWorkspaceRoot));
+            }
+
+            _ = builder.Services.AddAgentProcesses(new ProcessExecutorKey("default"), options =>
+            {
+                options.OperatingSystem.RootDirectory = Path.GetFullPath(root);
+            });
+            return builder;
+        }
+
         /// <summary>Registers one MCP endpoint as a remote tool source for the agent.</summary>
         /// <param name="sourceId">The tool source identity used during discovery.</param>
         /// <param name="endpointKey">The configured MCP endpoint key.</param>

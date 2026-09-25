@@ -28,24 +28,27 @@ Owning documents: [MCP](../architecture/mcp.md),
 - [x] WS6-C9a server runtime and tools primitive
 - [x] WS6-C9b server resources, prompts, peer authentication
 - [x] WS6-C10 Simple `WithMcpServer` and documentation
+- [x] WS6-C11 HTTP transport grant consumption and network bridge (partial)
+- [x] WS6-C12 MCP grant-consumption audit and intent receipts
+- [x] WS6-C13 MCP server listener and `IToolExecutor` dispatch
 
 ## Verified current state
 
-| Item                                                                  | State                      | Evidence                                                                                                                                      |
-| --------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| WS6-C1a/C1b contract types in `AgentKit.Mcp`                          | EXISTS-AND-USED            | `src/AgentKit.Mcp/`; consumed by `AgentKit.Mcp.Client` session, transport, and tool provider                                                  |
-| `McpClientSession`, `SdkMcpSessionAdapter`, `McpClientSessionFactory` | EXISTS-AND-USED            | `src/AgentKit.Mcp.Client/McpClientSession.cs`, `SdkMcpSessionAdapter.cs`, `McpClientSessionFactory.cs`; `McpClientSessionIntegrationTests.cs` |
-| `HttpMcpTransportFactory`                                             | EXISTS-AS-REDUCED-STAND-IN | Connect-time security + OAuth; per-frame traffic uses SDK `HttpClientTransport`, not `INetworkTransport` (`HttpMcpTransportFactory.cs:80-87`) |
-| `StdioMcpTransportFactory`                                            | EXISTS-AND-USED            | Starts streaming stdio processes via `IProcessExecutor`; `IProcessHandle.WriteStandardInputAsync` / `CompleteStandardInputAsync` (WS5/WS6-C5) |
-| `McpToolProvider` / `McpToolInvoker` / `AddMcpToolSource`             | EXISTS-AND-USED            | `McpToolProvider.cs`, `McpToolInvoker.cs`, `ServiceExtensions.cs`; conformance suite not yet adopted                                          |
-| `McpResourceSource` / `McpPromptSource`                               | WIRED (WS6-C8)             | `AddMcpContextContributors`, `WithMcpServer`; catalog metadata as `RetrievedData`                                                             |
-| `McpClientSecurityOperations`                                         | EXISTS-AND-USED            | Connect and request authorization in `McpClientSecurityOperations.cs`; denial-before-transport test in `HttpMcpTransportFactoryTests.cs`      |
-| `IMcpServer` / `McpServerHost` / `AgentKitPrimitiveHandler`           | EXISTS-AS-REDUCED-STAND-IN | `McpServerHost.RunAsync` is a no-op listener; `AgentKitPrimitiveHandler` does not call `IToolExecutor` yet                                    |
-| Reflection typed client (`McpToolClient<TTools>`)                     | EXISTS-AND-USED            | Unchanged caller-supplied SDK transport path                                                                                                  |
-| SDK MCP server builder (`AddAgentKitMcpServer`, `WithAgentKitTools`)  | EXISTS-AND-USED            | `McpServerBuilderExtensions.cs`                                                                                                               |
-| Simple `WithMcpServer`                                                | EXISTS-AND-USED            | Registers MCP client + tool source (`AgentEngineBuilderExtensions.cs:419-428`); name means remote tool source, not host listener              |
-| package refs                                                          | –                          | `AgentKit.Simple` references `AgentKit.Mcp.Client`; Client/Server unchanged SDK refs                                                          |
-| `AgentDefinition.Capabilities` for profile resolution                 | MISSING                    | `McpCapabilityProfileCatalog.ResolveAsync(AgentCapabilityReference)` used at discovery; definition surface still pending WS18                 |
+| Item                                                                  | State                      | Evidence                                                                                                                                           |
+| --------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WS6-C1a/C1b contract types in `AgentKit.Mcp`                          | EXISTS-AND-USED            | `src/AgentKit.Mcp/`; consumed by `AgentKit.Mcp.Client` session, transport, and tool provider                                                       |
+| `McpClientSession`, `SdkMcpSessionAdapter`, `McpClientSessionFactory` | EXISTS-AND-USED            | `src/AgentKit.Mcp.Client/McpClientSession.cs`, `SdkMcpSessionAdapter.cs`, `McpClientSessionFactory.cs`; `McpClientSessionIntegrationTests.cs`      |
+| `HttpMcpTransportFactory`                                             | EXISTS-AS-REDUCED-STAND-IN | Connect grant consumption uses required audit; per-frame traffic still uses SDK `HttpClientTransport` until `INetworkTransport` bridging lands     |
+| `StdioMcpTransportFactory`                                            | EXISTS-AND-USED            | Starts streaming stdio processes via `IProcessExecutor`; `IProcessHandle.WriteStandardInputAsync` / `CompleteStandardInputAsync` (WS5/WS6-C5)      |
+| `McpToolProvider` / `McpToolInvoker` / `AddMcpToolSource`             | EXISTS-AND-USED            | `McpToolProvider.cs`, `McpToolInvoker.cs`, `ServiceExtensions.cs`; conformance suite not yet adopted                                               |
+| `McpResourceSource` / `McpPromptSource`                               | WIRED (WS6-C8)             | `AddMcpContextContributors`, `WithMcpServer`; catalog metadata as `RetrievedData`                                                                  |
+| `McpClientSecurityOperations`                                         | EXISTS-AND-USED            | Connect and request authorization in `McpClientSecurityOperations.cs`; denial-before-transport test in `HttpMcpTransportFactoryTests.cs`           |
+| `IMcpServer` / `McpServerHost` / `AgentKitPrimitiveHandler`           | WIRED (WS6-C13)            | Stdio `McpServerHost` starts SDK listener; `AgentKitPrimitiveHandler` dispatches through `IToolExecutor` when runtime collaborators are registered |
+| Reflection typed client (`McpToolClient<TTools>`)                     | EXISTS-AND-USED            | Unchanged caller-supplied SDK transport path                                                                                                       |
+| SDK MCP server builder (`AddAgentKitMcpServer`, `WithAgentKitTools`)  | EXISTS-AND-USED            | `McpServerBuilderExtensions.cs`                                                                                                                    |
+| Simple `WithMcpServer`                                                | EXISTS-AND-USED            | Registers MCP client + tool source (`AgentEngineBuilderExtensions.cs:419-428`); name means remote tool source, not host listener                   |
+| package refs                                                          | –                          | `AgentKit.Simple` references `AgentKit.Mcp.Client`; Client/Server unchanged SDK refs                                                               |
+| `AgentDefinition.Capabilities` for profile resolution                 | MISSING                    | `McpCapabilityProfileCatalog.ResolveAsync(AgentCapabilityReference)` used at discovery; definition surface still pending WS18                      |
 
 Loopback pipe transport for tests: `PipeMcpTransportFactory` in
 `AgentKit.Mcp.Client.Tests` integration suite.
@@ -229,6 +232,27 @@ Loopback pipe transport for tests: `PipeMcpTransportFactory` in
   `AddMcpToolSource`; `AgentKit.Mcp.Client` README updated; compatibility
   snapshot for Simple. **Open:** `mcp.md` acceptance checklist and skill cross-
   links when server/transport blockers close.
+
+### WS6-C11: HTTP `INetworkTransport` bridge
+
+- Depends on: C4, WS5-C10. Risk: ADDITIVE. Size: M.
+- Deliverables: per-frame JSON-RPC over `INetworkTransport` with scripted tests.
+- Landed: connect grant consumption now uses required-audit intent receipts.
+  **Open:** replace SDK `HttpClientTransport` default path with protected
+  `INetworkTransport` once the HTTP message handler is sized.
+
+### WS6-C12: MCP grant-consumption audit
+
+- Depends on: C7, WS3-C14. Risk: ADDITIVE. Size: S–M.
+- Deliverables: `McpEnforcementReceipt`, intent-aware `ConsumeGrantAsync`, DI
+  registration for `SecurityEnforcementIntentId` generator; required-audit
+  tests.
+
+### WS6-C13: MCP server listener and tool dispatch
+
+- Depends on: C9, WS4-C5. Risk: ADDITIVE. Size: M.
+- Deliverables: stdio `McpServerHost.RunAsync` with SDK `StreamServerTransport`,
+  `AgentKitPrimitiveHandler` → `IToolExecutor`, `McpServerOperationFactory`.
 
 ## Totals
 

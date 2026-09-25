@@ -37,45 +37,16 @@ internal static class ProcessHostGuard
         ArgumentNullException.ThrowIfNull(timeProvider);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var consumption = await grantStore.ValidateAndConsumeAsync(
-            grant, enforcement, intent, cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!ProcessEnforcementReceipt.IsFreshExact(consumption, grant, enforcement, intent))
-        {
-            return consumption.Status == GrantConsumptionStatus.Consumed
-                ? "The grant store did not retain a fresh exact enforcement-intent receipt."
-                : consumption.SafeMessage;
-        }
-
-        var auditRecord = new SecurityAuditRecord(
-            auditRecordIds.Create(),
-            grant.Scope,
-            grant.RequestId,
-            grant.Id,
-            null,
-            SecurityAuditEventKind.GrantConsumptionIntent,
-            SecurityAuditOutcome.Accepted,
-            grant.PolicyVersion,
-            ImmutableDictionary<string, RedactedAuditValue>.Empty
-                .Add("audience", RedactedAuditValue.FromComponentId(enforcement.Audience))
-                .Add("effect", RedactedAuditValue.FromEffect(enforcement.Effect))
-                .Add("fingerprint", RedactedAuditValue.FromFingerprint(new ContentHash(enforcement.InputFingerprint.Value)))
-                .Add("kind", RedactedAuditValue.FromOperationKind(enforcement.Kind)),
-            timeProvider.GetUtcNow());
-        SecurityAuditDispatchResult auditResult;
-        try
-        {
-            auditResult = await auditDispatcher.DispatchAsync(auditRecord, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return "Required security audit failed.";
-        }
-
-        return auditResult is SecurityAuditAccepted ? null : "Required security audit failed.";
+        return await SecurityGrantConsumptionHostOperations.ConsumeWithRequiredAuditAsync(
+            grant,
+            enforcement,
+            intent,
+            grantStore,
+            auditDispatcher,
+            auditRecordIds,
+            timeProvider,
+            ProcessEnforcementReceipt.IsFreshExact,
+            ProcessEnforcementReceipt.DenialMessage,
+            cancellationToken).ConfigureAwait(false);
     }
 }

@@ -34,6 +34,7 @@ concept specifications for access bounds, egress, and sandboxing.
 - [x] WS5-C15 `CommandTool` onto `IProcessExecutor`
 - [x] WS5-C16 `WebFetchTool` onto split bounds
 - [x] WS5-C17 documentation
+- [x] WS5-C18 Simple `WithHostAccess` sugar
 
 ## Verified current state
 
@@ -48,7 +49,7 @@ Abstractions live under `src/AgentKit.Abstractions/Host/`.
 | `IDirectoryReader`, `IFileGlobber`, `IFileContentSearcher`, `IFileSnapshotReader`, `IAtomicFileReplacer`, `IWorkspacePatchApplier`                                                                                                                                                                                                                                                                                             | EXISTS-AND-USED by List/Glob/Search/Edit/Patch/Resource/Skill                                                                                                                                             | `IDirectoryReader` shape differs (`:171-176`)                                                                                                                                      |
 | `FileTarget`, `ResolvedFileTarget`, `AuthorizedFileRead/Write`, `FileWriteContent`, `FileReadBounds`, `FileWriteDisposition`, `FileWriteOutcomeKind`, `FileWriteSuccess`, `IFileReader`, `IFileReadHandle`, `IFileWriter`, `IFileMetadataReader`, `IFileChangeSource`, `ITemporaryFileStore`, `IFileSystemSelector`, `FileSystemCapabilities`, `FileSystemProfileKey`, `IDirectoryCreator`, `OperatingSystemFileReader/Writer` | MISSING                                                                                                                                                                                                   | `:127-235,385-425`                                                                                                                                                                 |
 | keyed registration `AddOperatingSystemFileSystem(FileSystemProfileKey, …)`, `AddInMemoryFileSystem(key, …)`                                                                                                                                                                                                                                                                                                                    | MISSING; un-keyed `AddSandboxedFileSystem(root, …)`, `AddInMemoryFileSystem(Action?)`                                                                                                                     | `:465-486`                                                                                                                                                                         |
-| audit in FS/Network/Processes                                                                                                                                                                                                                                                                                                                                                                                                  | WIRED (WS5-C10b/C13b)     | `OperatingSystemFileOperations`, `DefaultNetworkTransport`, `ProcessHostGuard` + `OperatingSystemProcessExecutor`                                                                                                                                    |
+| audit in FS/Network/Processes                                                                                                                                                                                                                                                                                                                                                                                                  | WIRED (WS5-C10b/C13b)                                                                                                                                                                                     | `OperatingSystemFileOperations`, `DefaultNetworkTransport`, `ProcessHostGuard` + `OperatingSystemProcessExecutor`                                                                  |
 | arm64 constants                                                                                                                                                                                                                                                                                                                                                                                                                | EXISTS (WS5-C1)                                                                                                                                                                                           | `PosixOpenFlags` selects aarch64 `O_DIRECTORY=0x4000` / `O_NOFOLLOW=0x8000`; macOS and other Linux arches keep their previous constants. `SandboxedFileSystem` open flags call it. |
 
 Test doubles: `IFileSystem` 4 (`ReplacementFileSystem` ×2, `FakeFileSystem` ×2),
@@ -298,6 +299,13 @@ Conformance suites for all three boundaries are MISSING.
 - Depends on: all. Size: S.
 - Deliverables: `guides/file-system.md`, the three architecture documents'
   acceptance lists, host-access skill, READMEs.
+
+### WS5-C18: Simple `WithHostAccess` sugar
+
+- Depends on: C10, C13. Risk: ADDITIVE. Size: S.
+- Deliverables: `AgentKit.Simple.WithHostAccess()` registering default keyed
+  `AddAgentNetwork` and `AddAgentProcesses` for MCP stdio, command tools, and
+  web fetch; references `AgentKit.Network` and `AgentKit.Processes` from Simple.
 
 ## Totals
 

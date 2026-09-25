@@ -11,6 +11,7 @@ internal sealed class StdioMcpTransportFactory(
     ISecurityAuditDispatcher audit,
     IIdentifierGenerator<SecurityRequestId> securityRequestIds,
     IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+    IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
     IIdentifierGenerator<ProcessOperationId> processOperationIds,
     McpClientOptionsSnapshot clientOptions,
     TimeProvider timeProvider): IMcpTransportFactory
@@ -21,6 +22,7 @@ internal sealed class StdioMcpTransportFactory(
     private readonly ISecurityAuditDispatcher _audit = audit;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds = securityRequestIds;
     private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds = auditRecordIds;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds = intentIds;
     private readonly IIdentifierGenerator<ProcessOperationId> _processOperationIds = processOperationIds;
     private readonly McpClientOptionsSnapshot _clientOptions = clientOptions;
     private readonly TimeProvider _timeProvider = timeProvider;
@@ -57,8 +59,18 @@ internal sealed class StdioMcpTransportFactory(
             return new McpTransportOpenDenied("Stdio MCP connect denied by security authority.");
         }
 
-        _ = await McpClientSecurityOperations.ConsumeGrantAsync(connectGrant, _grantStore, cancellationToken)
-            .ConfigureAwait(false);
+        var connectConsumption = await McpClientSecurityOperations.ConsumeGrantAsync(
+            connectGrant,
+            _grantStore,
+            _audit,
+            _auditRecordIds,
+            _intentIds,
+            _timeProvider,
+            cancellationToken).ConfigureAwait(false);
+        if (connectConsumption.Status is not GrantConsumptionStatus.Consumed)
+        {
+            return new McpTransportOpenDenied("Stdio MCP connect grant consumption failed.");
+        }
 
         var selection = await _processExecutors.SelectAsync(_clientOptions.StdioProcessExecutorKey, cancellationToken)
             .ConfigureAwait(false);

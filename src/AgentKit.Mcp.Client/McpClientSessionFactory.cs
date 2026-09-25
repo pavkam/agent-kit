@@ -14,6 +14,7 @@ internal sealed class McpClientSessionFactory(
     IIdentifierGenerator<McpSessionId> sessionIds,
     IIdentifierGenerator<SecurityRequestId> securityRequestIds,
     IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+    IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
     TimeProvider timeProvider,
     McpClientOptionsSnapshot options,
     ILoggerFactory loggerFactory): IMcpClientSessionFactory
@@ -25,6 +26,7 @@ internal sealed class McpClientSessionFactory(
     private readonly IIdentifierGenerator<McpSessionId> _sessionIds = sessionIds;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds = securityRequestIds;
     private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds = auditRecordIds;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds = intentIds;
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly McpClientOptionsSnapshot _options = options;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
@@ -40,6 +42,7 @@ internal sealed class McpClientSessionFactory(
             _sessionIds,
             _securityRequestIds,
             _auditRecordIds,
+            _intentIds,
             _timeProvider,
             _options,
             new ToolSourceId($"mcp.endpoint.{request.Endpoint.Key.Value}"),

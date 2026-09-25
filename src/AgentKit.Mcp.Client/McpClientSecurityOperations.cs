@@ -86,15 +86,37 @@ internal static class McpClientSecurityOperations
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal static ValueTask<GrantConsumptionResult> ConsumeGrantAsync(
+    internal static async ValueTask<GrantConsumptionResult> ConsumeGrantAsync(
         SecurityGrant grant,
         ISecurityGrantStore grantStore,
+        ISecurityAuditDispatcher auditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(grantStore);
-        var enforcement = CreateEnforcement(grant);
-        return grantStore.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
+        ArgumentNullException.ThrowIfNull(intentIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        var enforcement = McpEnforcementReceipt.Create(grant);
+        var intent = new SecurityEnforcementIntent(intentIds.Create(), null);
+        var denial = await SecurityGrantConsumptionHostOperations.ConsumeWithRequiredAuditAsync(
+            grant,
+            enforcement,
+            intent,
+            grantStore,
+            auditDispatcher,
+            auditRecordIds,
+            timeProvider,
+            McpEnforcementReceipt.IsFreshExact,
+            McpEnforcementReceipt.DenialMessage,
+            cancellationToken).ConfigureAwait(false);
+        return denial is not null
+            ? new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, denial)
+            : new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
     }
 
     private static async ValueTask<SecurityGrant?> AuthorizeAndRegisterAsync(
@@ -158,14 +180,4 @@ internal static class McpClientSecurityOperations
         return [new ProtectedResource(kind, identifier)];
     }
 
-    private static SecurityEnforcementRequest CreateEnforcement(SecurityGrant grant) =>
-        new(
-            grant.Scope,
-            grant.Identity,
-            grant.Audience,
-            grant.Kind,
-            grant.Effect,
-            grant.Resources,
-            grant.InputFingerprint,
-            grant.RevocationVersion);
 }

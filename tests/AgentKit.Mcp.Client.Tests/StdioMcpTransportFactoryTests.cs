@@ -14,6 +14,7 @@ public sealed class StdioMcpTransportFactoryTests
             .AddSingleton(TimeProvider.System)
             .AddSingleton<IIdentifierGenerator<SecurityRequestId>, TestSecurityRequestIdGenerator>()
             .AddSingleton<IIdentifierGenerator<SecurityAuditRecordId>, TestSecurityAuditRecordIdGenerator>()
+            .AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, TestSecurityEnforcementIntentIdGenerator>()
             .AddSingleton<IIdentifierGenerator<ProcessOperationId>, TestProcessOperationIdGenerator>()
             .AddSingleton<ISecurityAuditDispatcher, NoOpSecurityAuditDispatcher>()
             .AddInMemorySecurityGrantStore()
@@ -37,6 +38,7 @@ public sealed class StdioMcpTransportFactoryTests
             provider.GetRequiredService<ISecurityAuditDispatcher>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
             provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>(),
             provider.GetRequiredService<McpClientOptionsSnapshot>(),
             provider.GetRequiredService<TimeProvider>());
@@ -115,6 +117,11 @@ public sealed class StdioMcpTransportFactoryTests
     private sealed class TestSecurityAuditRecordIdGenerator: IIdentifierGenerator<SecurityAuditRecordId>
     {
         public SecurityAuditRecordId Create() => new(Guid.NewGuid());
+    }
+
+    private sealed class TestSecurityEnforcementIntentIdGenerator: IIdentifierGenerator<SecurityEnforcementIntentId>
+    {
+        public SecurityEnforcementIntentId Create() => new(Guid.NewGuid());
     }
 
     private sealed class TestProcessOperationIdGenerator: IIdentifierGenerator<ProcessOperationId>

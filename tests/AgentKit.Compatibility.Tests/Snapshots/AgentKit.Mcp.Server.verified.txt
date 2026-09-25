@@ -4,7 +4,7 @@ namespace AgentKit.Mcp.Server
 {
     public sealed class AgentKitPrimitiveHandler : AgentKit.Mcp.IMcpPrimitiveHandler
     {
-        public AgentKitPrimitiveHandler(AgentKit.IToolExecutor executor) { }
+        public AgentKitPrimitiveHandler(System.IServiceProvider services) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpResponse> HandleAsync(AgentKit.Mcp.McpPeerContext peer, AgentKit.Mcp.McpRequest request, System.Threading.CancellationToken cancellationToken) { }
     }
     public static class McpServerBuilderExtensions

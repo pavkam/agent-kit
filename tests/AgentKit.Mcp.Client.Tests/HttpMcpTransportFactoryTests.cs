@@ -21,6 +21,7 @@ public sealed class HttpMcpTransportFactoryTests
             .AddSingleton(TimeProvider.System)
             .AddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>()
             .AddSingleton<IIdentifierGenerator<SecurityAuditRecordId>, GuidSecurityAuditRecordIdGenerator>()
+            .AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>()
             .AddSingleton<ISecurityAuditDispatcher, NoOpSecurityAuditDispatcher>()
             .AddInMemorySecurityGrantStore()
             .AddInMemoryApprovalStore()
@@ -43,6 +44,7 @@ public sealed class HttpMcpTransportFactoryTests
             provider.GetRequiredService<ISecurityAuditDispatcher>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
             provider,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILoggerFactory>());

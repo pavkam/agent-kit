@@ -37,43 +37,16 @@ internal static class FileSystemHostGuard
         ArgumentNullException.ThrowIfNull(timeProvider);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var consumption = await grantStore.ValidateAndConsumeAsync(
-            grant, enforcement, intent, cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!FileSystemEnforcementReceipt.IsFreshExact(consumption, grant, enforcement, intent))
-        {
-            return FileSystemEnforcementReceipt.DenialMessage(consumption);
-        }
-
-        var auditRecord = new SecurityAuditRecord(
-            auditRecordIds.Create(),
-            grant.Scope,
-            grant.RequestId,
-            grant.Id,
-            null,
-            SecurityAuditEventKind.GrantConsumptionIntent,
-            SecurityAuditOutcome.Accepted,
-            grant.PolicyVersion,
-            ImmutableDictionary<string, RedactedAuditValue>.Empty
-                .Add("audience", RedactedAuditValue.FromComponentId(enforcement.Audience))
-                .Add("effect", RedactedAuditValue.FromEffect(enforcement.Effect))
-                .Add("fingerprint", RedactedAuditValue.FromFingerprint(new ContentHash(enforcement.InputFingerprint.Value)))
-                .Add("kind", RedactedAuditValue.FromOperationKind(enforcement.Kind)),
-            timeProvider.GetUtcNow());
-        SecurityAuditDispatchResult auditResult;
-        try
-        {
-            auditResult = await auditDispatcher.DispatchAsync(auditRecord, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return "Required security audit failed.";
-        }
-
-        return auditResult is SecurityAuditAccepted ? null : "Required security audit failed.";
+        return await SecurityGrantConsumptionHostOperations.ConsumeWithRequiredAuditAsync(
+            grant,
+            enforcement,
+            intent,
+            grantStore,
+            auditDispatcher,
+            auditRecordIds,
+            timeProvider,
+            FileSystemEnforcementReceipt.IsFreshExact,
+            FileSystemEnforcementReceipt.DenialMessage,
+            cancellationToken).ConfigureAwait(false);
     }
 }
