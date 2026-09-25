@@ -8,10 +8,11 @@ boundary around protected operations.
 
 ## Use this project
 
-Start with `AddMcpClient` and `AddMcpToolSource` in [ServiceExtensions.cs](ServiceExtensions.cs)
-for engine-owned sessions, transports, and `IToolProvider` discovery. The legacy
-`AddMcpToolClient` path remains for caller-supplied SDK transports. Read the
-overload XML for required security, store, and catalog collaborators.
+Start with `AddMcpClient` and `AddMcpToolSource` in
+[ServiceExtensions.cs](ServiceExtensions.cs) for engine-owned sessions,
+transports, and `IToolProvider` discovery. The legacy `AddMcpToolClient` path
+remains for caller-supplied SDK transports. Read the overload XML for required
+security, store, and catalog collaborators.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

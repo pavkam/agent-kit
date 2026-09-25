@@ -4,8 +4,12 @@ Goal: AgentKit owns MCP client sessions, endpoint and capability-profile
 catalogs, stdio and HTTP transports over the protected process and network
 boundaries, an `IToolProvider` that exposes MCP tools through the normal tool
 runtime, resource and prompt sources as context contributors, and an
-`IMcpServer` that serves engine tools to peers. Today only a typed
-reflection-based client over caller-supplied SDK transports exists.
+`IMcpServer` that serves engine tools to peers. Engine-owned client sessions,
+tool discovery, and Simple MCP tool-source registration are wired; the typed
+reflection client over caller-supplied SDK transports remains for direct SDK
+composition. Stdio transport, full `INetworkTransport` HTTP bridging, and
+`IToolExecutor` server dispatch remain blocked or partial (see chunk Landed
+notes).
 
 Owning documents: [MCP](../architecture/mcp.md),
 [MCP integration](../concepts/mcp-integration.md).
@@ -27,20 +31,24 @@ Owning documents: [MCP](../architecture/mcp.md),
 
 ## Verified current state
 
-| Item                                                                                                                                                                                                                                                                                             | State                    | Evidence                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| identities, endpoint, and profile values from WS6-C1a (`McpSessionId`, `McpRequestId`, `McpEndpointKey`, `McpServerKey`, revisions, `McpCapabilityIds`, `McpEndpoint`, `McpTransportProfile`, `McpAuthenticationReference`, `McpEndpointBounds`, `McpCapabilityProfile`, `McpClientOpenRequest`) | EXISTS-UNWIRED (WS6-C1a) | `src/AgentKit.Mcp/`; no production consumer                                                                                                                                                                                                                                                       |
-| remaining client/server/transport/primitive spec types (`IMcpClientSession(Factory)`, catalogs, `McpRequest/Response/Notification`, `McpCatalogSnapshot`, transport factories, `McpToolProvider/Invoker`, sources, `IMcpServer`, `IMcpPrimitiveHandler`, options)                                | MISSING                  | grep `src/`                                                                                                                                                                                                                                                                                       |
-| `AgentKit.Mcp`                                                                                                                                                                                                                                                                                   | reflection slice         | `McpCatalogVersion.cs:11`, `McpProtocolEra.cs:15`, `McpProtocolVersion.cs:14`, `McpProtocolVersions.cs:7`, `McpToolAttribute.cs:13`, `McpToolContract<TTools>.cs:15`, `McpToolMethodDescriptor.cs:9`, `McpToolName.cs:7`, `McpMetadataKeys.cs:7`, `AddMcpToolContract<TTools>`                    |
-| `AgentKit.Mcp.Client`                                                                                                                                                                                                                                                                            | typed client only        | `McpToolClientFactory<TTools>.ConnectAsync(IClientTransport, …)` (`:51-52`, caller supplies the raw SDK transport), `McpToolClient<TTools>`, internal `SdkMcpToolCaller.cs:12`, `McpClientToolCatalogSnapshot`, `McpClientVersionPolicy`, `McpRemoteTool(Descriptor)`, `AddMcpToolClient<TTools>` |
-| `AgentKit.Mcp.Server`                                                                                                                                                                                                                                                                            | SDK builder only         | `AddAgentKitMcpServer(McpServerVersionPolicy?)`, `WithAgentKitTools<TTools>`, `McpServerVersionPolicy`                                                                                                                                                                                            |
-| AgentKit-owned transport                                                                                                                                                                                                                                                                         | NONE                     | tests use SDK `StreamClientTransport` over pipes (`tests/AgentKit.Mcp.Client.Tests/SdkIntegrationTests.cs:174-202`)                                                                                                                                                                               |
-| `IToolProvider` implementation, `ToolSourceId`                                                                                                                                                                                                                                                   | NONE                     | –                                                                                                                                                                                                                                                                                                 |
-| security or audit integration                                                                                                                                                                                                                                                                    | NONE                     | –                                                                                                                                                                                                                                                                                                 |
-| package refs                                                                                                                                                                                                                                                                                     | –                        | Client → Mcp, Observability, `ModelContextProtocol.Core 2.2.0`; Server → Mcp, `ModelContextProtocol 2.2.0`; Simple references no Mcp package                                                                                                                                                      |
-| `ProtectedSemanticOperationContext`, `AgentCapabilityReference`, `IOAuthAccessTokenProvider`                                                                                                                                                                                                     | EXISTS                   | but `AgentDefinition` has no `Capabilities` collection                                                                                                                                                                                                                                            |
+| Item                                                                  | State                      | Evidence                                                                                                                                      |
+| --------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| WS6-C1a/C1b contract types in `AgentKit.Mcp`                          | EXISTS-AND-USED            | `src/AgentKit.Mcp/`; consumed by `AgentKit.Mcp.Client` session, transport, and tool provider                                                  |
+| `McpClientSession`, `SdkMcpSessionAdapter`, `McpClientSessionFactory` | EXISTS-AND-USED            | `src/AgentKit.Mcp.Client/McpClientSession.cs`, `SdkMcpSessionAdapter.cs`, `McpClientSessionFactory.cs`; `McpClientSessionIntegrationTests.cs` |
+| `HttpMcpTransportFactory`                                             | EXISTS-AS-REDUCED-STAND-IN | Connect-time security + OAuth; per-frame traffic uses SDK `HttpClientTransport`, not `INetworkTransport` (`HttpMcpTransportFactory.cs:80-87`) |
+| `StdioMcpTransportFactory`                                            | EXISTS-AS-REDUCED-STAND-IN | Fails closed with explicit message until `IProcessHandle` exposes stdin (`StdioMcpTransportFactory.cs:48-50`)                                 |
+| `McpToolProvider` / `McpToolInvoker` / `AddMcpToolSource`             | EXISTS-AND-USED            | `McpToolProvider.cs`, `McpToolInvoker.cs`, `ServiceExtensions.cs`; conformance suite not yet adopted                                          |
+| `McpResourceSource` / `McpPromptSource`                               | EXISTS-UNWIRED             | `McpResourceSource.cs`, `McpPromptSource.cs`; no engine registration helper yet                                                               |
+| `McpClientSecurityOperations`                                         | EXISTS-AND-USED            | Connect and request authorization in `McpClientSecurityOperations.cs`; denial-before-transport test in `HttpMcpTransportFactoryTests.cs`      |
+| `IMcpServer` / `McpServerHost` / `AgentKitPrimitiveHandler`           | EXISTS-AS-REDUCED-STAND-IN | `McpServerHost.RunAsync` is a no-op listener; `AgentKitPrimitiveHandler` does not call `IToolExecutor` yet                                    |
+| Reflection typed client (`McpToolClient<TTools>`)                     | EXISTS-AND-USED            | Unchanged caller-supplied SDK transport path                                                                                                  |
+| SDK MCP server builder (`AddAgentKitMcpServer`, `WithAgentKitTools`)  | EXISTS-AND-USED            | `McpServerBuilderExtensions.cs`                                                                                                               |
+| Simple `WithMcpServer`                                                | EXISTS-AND-USED            | Registers MCP client + tool source (`AgentEngineBuilderExtensions.cs:419-428`); name means remote tool source, not host listener              |
+| package refs                                                          | –                          | `AgentKit.Simple` references `AgentKit.Mcp.Client`; Client/Server unchanged SDK refs                                                          |
+| `AgentDefinition.Capabilities` for profile resolution                 | MISSING                    | `McpCapabilityProfileCatalog.ResolveAsync(AgentCapabilityReference)` used at discovery; definition surface still pending WS18                 |
 
-No `IMcp*` test fakes exist.
+Loopback pipe transport for tests: `PipeMcpTransportFactory` in
+`AgentKit.Mcp.Client.Tests` integration suite.
 
 ## Hidden prerequisites
 
@@ -133,6 +141,12 @@ No `IMcp*` test fakes exist.
   unknown-notification policy, in-flight limit; loopback pipe server tests via a
   test `IMcpTransportFactory`. The typed `McpToolClient<TTools>` remains the
   reflection slice.
+- Landed: `McpClientSession`, `McpClientSessionFactory`, and
+  `SdkMcpSessionAdapter` implement initialize, catalog refresh, tool invoke,
+  notification channel, and disposal. `PipeMcpTransportFactory` plus
+  `McpClientSessionIntegrationTests` cover loopback SDK servers. In-flight
+  request limiting and unknown-notification policy follow
+  `McpClientOptionsSnapshot`.
 
 ### WS6-C4: `HttpMcpTransportFactory` over `INetworkTransport`
 
@@ -142,6 +156,10 @@ No `IMcp*` test fakes exist.
   request or stream through `ISecurityAuthoritySelector`; redirect
   re-authorization; OAuth through `IOAuthAccessTokenProvider` bound to the
   endpoint audience; tests with `ScriptedNetworkTransport`.
+- Landed: connect authorization, grant consumption, and keyed OAuth token
+  binding. **Blocker:** JSON-RPC/SSE still rides the SDK `HttpClientTransport`;
+  per-request `INetworkTransport` grant enforcement, redirect re-authorization,
+  and `ScriptedNetworkTransport` tests remain open.
 
 ### WS6-C5: `StdioMcpTransportFactory` over `IProcessHandle`
 
@@ -149,6 +167,9 @@ No `IMcp*` test fakes exist.
 - Deliverables: `IProcessExecutor.StartAsync` under a process grant, SDK
   `StreamClientTransport` over the handle's stdin/stdout, bounded stderr drain,
   `TerminateAsync` on dispose or failure; tests with `ScriptedProcessExecutor`.
+- Landed: factory registered in DI with connect security wiring. **Blocker:**
+  `IProcessHandle` has no stdin writer (`IProcessHandle.cs:7-28`); open fails
+  closed with an explicit message (`StdioMcpTransportFactoryTests`).
 
 ### WS6-C6: `McpToolProvider` and `McpToolInvoker`
 
@@ -159,6 +180,9 @@ No `IMcp*` test fakes exist.
   with `AuthorizedMcpRequest`; `isError` never decides status),
   `McpToolProviderCapture`, `AddMcpToolSource(ToolSourceId, McpEndpointKey)`;
   catalog change invalidates the capture; reuse `ToolProvider*ConformanceTests`.
+- Landed: `McpToolProvider`, `McpToolInvoker`, `McpToolProviderCapture`, and
+  `AddMcpToolSource`. **Open:** adopt `ToolProviderConformanceTests` /
+  `ToolProviderCaptureConformanceTests` in `AgentKit.Mcp.Client.Tests`.
 
 ### WS6-C7: Security and audit integration
 
@@ -167,12 +191,19 @@ No `IMcp*` test fakes exist.
   consumption via `ISecurityGrantStore`, audit records for connect, request,
   notification policy; tests for denial before the first frame and
   required-audit closure.
+- Landed: `McpClientSecurityOperations` for connect and MCP request grants.
+  Connect denial before transport creation covered by
+  `HttpMcpTransportFactoryTests`. **Open:** audit dispatch on connect/request
+  and required-audit closure tests.
 
 ### WS6-C8: Resource and prompt sources
 
 - Depends on: C3, WS9 contributor contracts. Risk: ADDITIVE. Size: M.
 - Deliverables: `McpResourceSource`, `McpPromptSource` as context contributors
   with `RetrievedData` trust and provenance; never injected into history.
+- Landed: `McpResourceSource` and `McpPromptSource` emit `RetrievedData` context
+  candidates from catalog metadata only (no live `resources/read` yet).
+  **Open:** wire contributors through agent context registration.
 
 ### WS6-C9a/C9b: `AgentKit.Mcp.Server`
 
@@ -180,15 +211,24 @@ No `IMcp*` test fakes exist.
   Size: L split in two.
 - C9a: `IMcpServer`, `McpServer`, `AgentKitPrimitiveHandler` mapping
   `tools/call` to `IToolExecutor` under the shared authority,
-  `McpServerListenerOptions`, `AddMcpServer(McpServerKey, …)`; loopback client lists and
-  calls an engine tool. C9b: resources, prompts, `McpPeerContext`,
+  `McpServerListenerOptions`, `AddMcpServer(McpServerKey, …)`; loopback client
+  lists and calls an engine tool. C9b: resources, prompts, `McpPeerContext`,
   `McpServerEndpoint`, peer authentication (NO-SPEC). Snapshot: Mcp.Server.
+- Landed: `IMcpServer`, `McpServerHost`, `McpServerEndpoint`, `McpPeerContext`,
+  `AgentKitPrimitiveHandler`, `AddMcpServer`, and compatibility snapshots.
+  **Blocker:** `McpServerHost.RunAsync` does not start an SDK listener;
+  `AgentKitPrimitiveHandler` does not dispatch to `IToolExecutor`. Resources,
+  prompts, and peer authentication (NO-SPEC) are types-only.
 
 ### WS6-C10: Simple `WithMcpServer` and documentation
 
 - Depends on: C2, C6. Risk: ADDITIVE. Size: S–M.
 - Deliverables: `WithMcpServer(McpEndpointKey, …)` (Simple references
   Mcp.Client); `mcp.md` acceptance list, mcp skill, READMEs.
+- Landed: `AgentKit.Simple.WithMcpServer` registers `AddMcpClient` +
+  `AddMcpToolSource`; `AgentKit.Mcp.Client` README updated; compatibility
+  snapshot for Simple. **Open:** `mcp.md` acceptance checklist and skill cross-
+  links when server/transport blockers close.
 
 ## Totals
 
