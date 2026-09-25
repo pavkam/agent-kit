@@ -48,6 +48,7 @@ namespace AgentKit.Observability
         public const string McpConnect = "mcp.connect";
         public const string McpToolCall = "mcp.tool.call";
         public const string ModelCatalogRefresh = "model.catalog.refresh";
+        public const string ModelExecute = "model.execute";
         public const string ModelSelect = "model.select";
         public const string ModelStream = "model.stream";
         public const string NetworkResolve = "network.resolve";
@@ -174,6 +175,7 @@ namespace AgentKit.Observability
         public const string LanguageQueryCount = "agentkit.language.query.count";
         public const string McpClientOperationCount = "agentkit.mcp.client.operation.count";
         public const string ModelCatalogRefreshCount = "agentkit.model.catalog.refresh.count";
+        public const string ModelExecutionCount = "agentkit.model.execution.count";
         public const string ModelSelectionCount = "agentkit.model.selection.count";
         public const string NetworkOperationCount = "agentkit.network.operation.count";
         public const string OutputProcessingCount = "agentkit.output.processing.count";

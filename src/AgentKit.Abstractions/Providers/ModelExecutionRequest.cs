@@ -26,28 +26,36 @@ public sealed record ModelExecutionRequest
     /// <param name="budget">The live budget capability when one is bound; otherwise null.</param>
     /// <param name="hooks">The hook dispatch when one is active; otherwise null.</param>
     /// <param name="retryPolicy">The same-model retry bound.</param>
+    /// <param name="fallback">
+    /// The selection-policy fallback mode captured with this execution. The executor uses it only to decide whether a
+    /// retryable failure should surface <see cref="ModelFallbackRequired"/>.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="operation"/>, <paramref name="selection"/>, <paramref name="context"/>,
     /// or <paramref name="retryPolicy"/> is null.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fallback"/> is not defined.</exception>
     public ModelExecutionRequest(
         ProtectedSemanticOperationContext operation,
         ModelSelectionDecision selection,
         LlmRequestContext context,
         BudgetExecutionCapability? budget,
         HookDispatchContext? hooks,
-        ProviderRetryPolicy retryPolicy)
+        ProviderRetryPolicy retryPolicy,
+        ModelFallbackPolicy fallback = ModelFallbackPolicy.FirstCandidateOnly)
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(retryPolicy);
+        ArgumentOutOfRangeException.ThrowIfUndefined(fallback);
         Operation = operation;
         Selection = selection;
         Context = context;
         Budget = budget;
         Hooks = hooks;
         RetryPolicy = retryPolicy;
+        Fallback = fallback;
     }
 
     /// <summary>Gets the protected operation.</summary>
@@ -67,4 +75,7 @@ public sealed record ModelExecutionRequest
 
     /// <summary>Gets the same-model retry bound.</summary>
     public ProviderRetryPolicy RetryPolicy { get; }
+
+    /// <summary>Gets the captured selection-policy fallback mode.</summary>
+    public ModelFallbackPolicy Fallback { get; }
 }

@@ -40,19 +40,39 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException">
         /// The service collection is <see langword="null"/>.
         /// </exception>
-        public IServiceCollection AddAgentProviders()
+        public IServiceCollection AddAgentProviders(Action<AgentProviderRuntimeOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
 
             _ = services.AddAgentKitObservability();
+            _ = services.AddOptions<AgentProviderRuntimeOptions>();
+            if (configure is not null)
+            {
+                _ = services.Configure(configure);
+            }
 
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IModelCapabilityValidator, DefaultModelCapabilityValidator>();
             services.TryAddSingleton<IModelCatalog, DefaultModelCatalog>();
             services.TryAddSingleton<IModelSelector, DefaultModelSelector>();
             services.TryAddSingleton<ILlmModelResolver, DefaultLlmModelResolver>();
             services.TryAddSingleton<IEmbeddingModelResolver, DefaultEmbeddingModelResolver>();
+            services.TryAddSingleton<IModelRequestExecutor, DefaultModelRequestExecutor>();
 
             return services;
+        }
+
+        /// <summary>
+        /// Replaces the registered <see cref="IModelRequestExecutor"/> with another implementation.
+        /// </summary>
+        /// <typeparam name="TExecutor">The replacement executor type.</typeparam>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        /// <exception cref="ArgumentNullException">The service collection is <see langword="null"/>.</exception>
+        public IServiceCollection ReplaceModelRequestExecutor<TExecutor>()
+            where TExecutor : class, IModelRequestExecutor
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return services.Replace(ServiceDescriptor.Singleton<IModelRequestExecutor, TExecutor>());
         }
 
         /// <summary>

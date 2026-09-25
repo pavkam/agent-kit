@@ -16,6 +16,11 @@ internal static class ProviderMetrics
         unit: "{selection}",
         description: "Number of terminal model-selection outcomes.");
 
+    private static readonly Counter<long> _executions = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.ModelExecutionCount,
+        unit: "{execution}",
+        description: "Number of terminal model-execution outcomes.");
+
     /// <summary>Records one catalog refresh using a bounded outcome only.</summary>
     /// <param name="outcome">The normalized terminal outcome.</param>
     internal static void RecordCatalogRefresh(string outcome) =>
@@ -25,4 +30,9 @@ internal static class ProviderMetrics
     /// <param name="outcome">The normalized terminal outcome.</param>
     internal static void RecordSelection(string outcome) =>
         _selections.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+
+    /// <summary>Records one model execution using a bounded outcome only.</summary>
+    /// <param name="outcome">The normalized terminal outcome.</param>
+    internal static void RecordExecution(string outcome) =>
+        _executions.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
 }

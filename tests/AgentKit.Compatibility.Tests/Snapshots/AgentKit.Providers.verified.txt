@@ -3,6 +3,14 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers
 {
+    public sealed class AgentProviderRuntimeOptions
+    {
+        public AgentProviderRuntimeOptions() { }
+        public bool AllowSemanticFallback { get; set; }
+        public int MaximumAttempts { get; set; }
+        public System.TimeSpan RequestTimeout { get; set; }
+        public System.TimeSpan StreamIdleTimeout { get; set; }
+    }
     public class EmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.EmbeddingResponseParseContext>
     {
         public EmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
@@ -101,7 +109,9 @@ namespace AgentKit.Providers
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProviders() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProviders(System.Action<AgentKit.Providers.AgentProviderRuntimeOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceModelRequestExecutor<TExecutor>()
+                where TExecutor :  class, AgentKit.IModelRequestExecutor { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptors(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
                 where TSource :  class, AgentKit.IModelDescriptorSource { }

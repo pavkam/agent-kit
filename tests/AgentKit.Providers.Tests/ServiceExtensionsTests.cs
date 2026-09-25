@@ -15,6 +15,7 @@ public sealed class ServiceExtensionsTests
         _ = provider.GetRequiredService<IModelCatalog>();
         _ = provider.GetRequiredService<IModelSelector>();
         _ = provider.GetRequiredService<IModelCapabilityValidator>();
+        _ = provider.GetRequiredService<IModelRequestExecutor>();
     }
 
     [Fact]

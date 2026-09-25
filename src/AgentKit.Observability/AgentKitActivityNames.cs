@@ -273,6 +273,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for selecting one compatible model registration.</summary>
     public const string ModelSelect = "model.select";
 
+    /// <summary>Gets the name for executing one captured model selection, including same-model retry.</summary>
+    public const string ModelExecute = "model.execute";
+
     /// <summary>Gets the name for one bounded language-intelligence query.</summary>
     public const string LanguageQuery = "language.query";
 

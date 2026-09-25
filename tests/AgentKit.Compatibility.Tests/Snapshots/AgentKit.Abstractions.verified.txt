@@ -6273,9 +6273,10 @@ namespace AgentKit
     }
     public sealed class ModelExecutionRequest : System.IEquatable<AgentKit.ModelExecutionRequest>
     {
-        public ModelExecutionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.ModelSelectionDecision selection, AgentKit.LlmRequestContext context, AgentKit.BudgetExecutionCapability? budget, AgentKit.HookDispatchContext? hooks, AgentKit.ProviderRetryPolicy retryPolicy) { }
+        public ModelExecutionRequest(AgentKit.ProtectedSemanticOperationContext operation, AgentKit.ModelSelectionDecision selection, AgentKit.LlmRequestContext context, AgentKit.BudgetExecutionCapability? budget, AgentKit.HookDispatchContext? hooks, AgentKit.ProviderRetryPolicy retryPolicy, AgentKit.ModelFallbackPolicy fallback = 0) { }
         public AgentKit.BudgetExecutionCapability? Budget { get; }
         public AgentKit.LlmRequestContext Context { get; }
+        public AgentKit.ModelFallbackPolicy Fallback { get; }
         public AgentKit.HookDispatchContext? Hooks { get; }
         public AgentKit.ProtectedSemanticOperationContext Operation { get; }
         public AgentKit.ProviderRetryPolicy RetryPolicy { get; }

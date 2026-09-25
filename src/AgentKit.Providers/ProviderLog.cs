@@ -64,4 +64,63 @@ internal static partial class ProviderLog
         ILogger logger,
         ModelRequestId modelRequestId,
         string errorType);
+
+    /// <summary>Logs that no adapter is registered for the selected alias.</summary>
+    [LoggerMessage(6107, LogLevel.Error, "No LLM model adapter is registered for alias {ModelAlias}.")]
+    internal static partial void ModelExecutionMissingAdapter(ILogger logger, ModelAlias modelAlias);
+
+    /// <summary>Logs a successful model execution.</summary>
+    [LoggerMessage(
+        6108,
+        LogLevel.Debug,
+        "Model execution for request {ModelRequestId} completed on alias {ModelAlias} after {Attempts} attempt(s).")]
+    internal static partial void ModelExecutionCompleted(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        ModelAlias modelAlias,
+        int attempts);
+
+    /// <summary>Logs caller cancellation of one model execution.</summary>
+    [LoggerMessage(
+        6109,
+        LogLevel.Debug,
+        "Model execution for request {ModelRequestId} was cancelled after {Attempts} attempt(s).")]
+    internal static partial void ModelExecutionCancelled(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        int attempts);
+
+    /// <summary>Logs a content-free model-execution failure.</summary>
+    [LoggerMessage(
+        6110,
+        LogLevel.Error,
+        "Model execution for request {ModelRequestId} failed with error type {ErrorType}.")]
+    internal static partial void ModelExecutionFailed(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        string errorType);
+
+    /// <summary>Logs a terminal model execution failure.</summary>
+    [LoggerMessage(
+        6111,
+        LogLevel.Warning,
+        "Model execution for request {ModelRequestId} on alias {ModelAlias} failed with {FailureKind} after {Attempts} attempt(s).")]
+    internal static partial void ModelExecutionTerminalFailure(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        ModelAlias modelAlias,
+        ProviderFailureKind failureKind,
+        int attempts);
+
+    /// <summary>Logs that same-model retries were exhausted and semantic fallback is required.</summary>
+    [LoggerMessage(
+        6112,
+        LogLevel.Information,
+        "Model execution for request {ModelRequestId} on alias {ModelAlias} requires fallback after {FailureKind} and {Attempts} attempt(s).")]
+    internal static partial void ModelExecutionFallbackRequired(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        ModelAlias modelAlias,
+        ProviderFailureKind failureKind,
+        int attempts);
 }

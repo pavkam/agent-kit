@@ -235,6 +235,9 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal model-selection outcomes.</summary>
     public const string ModelSelectionCount = "agentkit.model.selection.count";
 
+    /// <summary>Gets the counter for terminal model-execution outcomes.</summary>
+    public const string ModelExecutionCount = "agentkit.model.execution.count";
+
     /// <summary>Gets the counter for terminal language-query outcomes.</summary>
     public const string LanguageQueryCount = "agentkit.language.query.count";
 

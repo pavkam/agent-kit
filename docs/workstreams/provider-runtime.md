@@ -13,7 +13,7 @@ Owning documents:
 ## Progress
 
 - [x] WS7-C1 `IModelRequestExecutor` contract family
-- [ ] WS7-C2 `DefaultModelRequestExecutor` and runtime options
+- [x] WS7-C2 `DefaultModelRequestExecutor` and runtime options
 - [ ] WS7-C3 loop consumes the executor
 - [ ] WS7-C4 profile runtime selector and lease
 - [ ] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible bind
@@ -117,6 +117,9 @@ files, untouched.
   `AddAgentProviders(Action<AgentProviderRuntimeOptions>?)`,
   `ReplaceModelRequestExecutor<T>()`, new log/metric events, activity
   `model.execute`; tests with `ScriptedLlmModel`. Snapshot: Providers.
+- Landed: `ModelExecutionRequest.Fallback` captures the selection-policy mode.
+  `AllowSemanticFallback` gates `ModelFallbackRequired`. Same-model retry skips
+  attempts that already delivered an observer event.
 
 ### WS7-C3: Loop consumes the executor
 
