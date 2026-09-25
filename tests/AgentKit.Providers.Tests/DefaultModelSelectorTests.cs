@@ -50,6 +50,24 @@ public sealed class DefaultModelSelectorTests
     }
 
     [Fact]
+    public async Task SelectAsync_WhenCandidateIsExcluded_SkipsItAndSelectsTheNextMatch()
+    {
+        var catalog = ProviderTestData.Catalog(ProviderTestData.Model("first"), ProviderTestData.Model("second"));
+        var policy = ProviderTestData.Policy(ModelFallbackPolicy.OrderedCandidates, candidates: ["first", "second"]);
+        var request = new ModelSelectionRequest(
+            ProviderTestData.Scope(),
+            ProviderTestData.ModelRequestId,
+            policy,
+            ModelRequirements.None,
+            catalog,
+            excludedCandidates: [new ModelAlias("first")]);
+        var result = await _selector.SelectAsync(request, TestContext.Current.CancellationToken);
+        var selected = result.ShouldBeOfType<ModelSelected>();
+        selected.Decision.Model.Alias.Value.ShouldBe("second");
+        selected.Decision.Diagnostics[0].Outcome.ShouldBe(ModelCandidateOutcome.NotEvaluated);
+    }
+
+    [Fact]
     public async Task SelectAsync_WhenCandidateLacksRequiredCapability_SkipsItUnderFallback()
     {
         var catalog = ProviderTestData.Catalog(ProviderTestData.Model("no-tools", toolCalls: false), ProviderTestData.Model("tools", toolCalls: true));

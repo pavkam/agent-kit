@@ -14,7 +14,7 @@ Owning documents:
 
 - [x] WS7-C1 `IModelRequestExecutor` contract family
 - [x] WS7-C2 `DefaultModelRequestExecutor` and runtime options
-- [ ] WS7-C3 loop consumes the executor
+- [x] WS7-C3 loop consumes the executor
 - [ ] WS7-C4 profile runtime selector and lease
 - [ ] WS7-C5a `ModelDescriptor.Binding`, OpenAI and OpenAICompatible bind
 - [ ] WS7-C5b remaining leaves bind
@@ -130,6 +130,10 @@ files, untouched.
   reselect excluding the failed alias, rebuild context, re-issue once per turn;
   `AgentRunServicesFactory` resolves it; legacy path preserved when null.
   Snapshots: Abstractions, Loop.
+- Landed: `ModelSelectionRequest.ExcludedCandidates` supports fallback reselect.
+  The loop rebuilds provider context for the fallback model and retries
+  execution once per turn. Legacy direct `ILlmModel` invocation remains when no
+  executor is composed.
 
 ### WS7-C4: Profile runtime selector and lease
 

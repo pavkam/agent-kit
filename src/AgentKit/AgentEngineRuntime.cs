@@ -1526,7 +1526,8 @@ internal sealed class AgentEngineRuntime
                 compiled.Budgets,
                 compiled.RunCoordinator,
                 input,
-                publisher);
+                publisher,
+                compiled.ModelExecutor);
     }
 
     private static AgentRunRejected<TOutput> Reject<TOutput>(

@@ -76,6 +76,10 @@ public sealed class AgentRunServices
     /// durable marker after each committed message — or <see langword="null"/> when the composition selects no
     /// output publisher; the loop then produces no <see cref="RunEvent"/> for this run.
     /// </param>
+    /// <param name="modelExecutor">
+    /// Executes captured model selections with same-model retry and fallback signaling, or <see langword="null"/>
+    /// when the composition selects none; the loop then invokes <see cref="ILlmModel"/> directly.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -92,7 +96,8 @@ public sealed class AgentRunServices
         IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
         IInputCoordinator? input = null,
-        IOutputPublisher? publisher = null)
+        IOutputPublisher? publisher = null,
+        IModelRequestExecutor? modelExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -118,6 +123,7 @@ public sealed class AgentRunServices
         RunCoordinator = runCoordinator;
         Input = input;
         Publisher = publisher;
+        ModelExecutor = modelExecutor;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -174,4 +180,8 @@ public sealed class AgentRunServices
     /// <summary>Gets the collaborator that receives every <see cref="RunEvent"/> the loop produces.</summary>
     /// <value><see langword="null"/> when the composition selects no output publisher; the loop then produces no <see cref="RunEvent"/> for this run.</value>
     public IOutputPublisher? Publisher { get; }
+
+    /// <summary>Gets the collaborator that executes captured model selections when one is composed.</summary>
+    /// <value><see langword="null"/> when none is registered; the loop invokes <see cref="ILlmModel"/> directly.</value>
+    public IModelRequestExecutor? ModelExecutor { get; }
 }

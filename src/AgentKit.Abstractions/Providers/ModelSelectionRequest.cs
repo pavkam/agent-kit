@@ -29,6 +29,7 @@ public sealed record ModelSelectionRequest
     private readonly ModelRequirements _requirements;
     private readonly ModelCatalogSnapshot _catalog;
     private readonly SecurityAuthorizationScope _scope;
+    private readonly ImmutableArray<ModelAlias> _excludedCandidates;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModelSelectionRequest"/>
@@ -48,6 +49,10 @@ public sealed record ModelSelectionRequest
     /// <param name="turnId">
     /// The turn this selection belongs to, when it belongs to one.
     /// </param>
+    /// <param name="excludedCandidates">
+    /// Candidate aliases the selector must skip, normally because a prior attempt on that alias failed and the loop
+    /// is reselecting under <see cref="ModelFallbackPolicy.OrderedCandidates"/>.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="scope"/>, <paramref name="policy"/>,
     /// <paramref name="requirements"/>, or <paramref name="catalog"/> is
@@ -63,7 +68,8 @@ public sealed record ModelSelectionRequest
         ModelSelectionPolicy policy,
         ModelRequirements requirements,
         ModelCatalogSnapshot catalog,
-        TurnId? turnId = null)
+        TurnId? turnId = null,
+        ImmutableArray<ModelAlias> excludedCandidates = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentOutOfRangeException.ThrowIfEqual(modelRequestId, default, nameof(modelRequestId));
@@ -78,6 +84,7 @@ public sealed record ModelSelectionRequest
         _requirements = requirements;
         _catalog = catalog;
         TurnId = turnId;
+        _excludedCandidates = excludedCandidates.IsDefault ? [] : excludedCandidates;
     }
 
     /// <summary>Gets the agent, session, and causal correlation.</summary>
@@ -172,6 +179,13 @@ public sealed record ModelSelectionRequest
             ThrowIfDefaultTurn(value, nameof(TurnId));
             field = value;
         }
+    }
+
+    /// <summary>Gets aliases the selector must skip during this selection.</summary>
+    public ImmutableArray<ModelAlias> ExcludedCandidates
+    {
+        get => _excludedCandidates;
+        init => _excludedCandidates = value.IsDefault ? [] : value;
     }
 
     private static void ThrowIfDefaultTurn(TurnId? turnId, string paramName)

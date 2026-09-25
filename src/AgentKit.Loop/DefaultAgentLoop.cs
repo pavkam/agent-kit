@@ -125,6 +125,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     private static readonly TimeSpan _hookDispatchTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>Same-model retry bounds passed to <see cref="IModelRequestExecutor"/> when one is composed.</summary>
+    private static readonly ProviderRetryPolicy _modelExecutionRetryPolicy = new(3, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30));
+
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
@@ -673,6 +676,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         turn,
                         turn == 1 ? modelResolution.FirstModelRequestId : null,
                         modelResolution.Adjustments,
+                        modelResolution.SelectionDecision!,
+                        request.Agent?.Models ?? request.ModelPolicy,
                         history,
                         tracking,
                         hookScope,
@@ -782,7 +787,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         selected.Decision.Diagnostics));
                 }
 
-                return ModelResolution.Resolved(descriptor, adapter, firstModelRequestId, selected.Decision.Adjustments);
+                return ModelResolution.Resolved(
+                    descriptor,
+                    adapter,
+                    firstModelRequestId,
+                    selected.Decision.Adjustments,
+                    selected.Decision);
 
             default:
                 throw new InvalidOperationException(
@@ -823,6 +833,193 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return settings;
     }
 
+    private async Task<TurnModelExecutionResult> ExecuteTurnModelAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        ILlmModel llmModel,
+        ModelDescriptor model,
+        ModelSelectionDecision selectionDecision,
+        ModelSelectionPolicy modelPolicy,
+        LlmRequestContext context,
+        ModelRequestId modelRequestId,
+        TurnId turnId,
+        InRunOperationCorrelation turnCorrelation,
+        SecurityAuthorizationContext turnAuthorization,
+        ConversationId? conversationId,
+        IModelResponseObserver responseObserver,
+        CancellationToken cancellationToken)
+    {
+        var activeModel = model;
+        var activeContext = context;
+        var activeDecision = selectionDecision;
+        var fallbackRetried = false;
+
+        while (true)
+        {
+            if (services.ModelExecutor is { } executor)
+            {
+                var operation = new ProtectedSemanticOperationContext(
+                    request.AgentId,
+                    request.SessionId,
+                    conversationId,
+                    request.Identity,
+                    turnCorrelation,
+                    turnAuthorization);
+
+                var executionRequest = new ModelExecutionRequest(
+                    operation,
+                    activeDecision,
+                    activeContext,
+                    budget: null,
+                    hooks: null,
+                    _modelExecutionRetryPolicy,
+                    modelPolicy.Fallback);
+
+                var executionResult = await executor
+                    .ExecuteAsync(executionRequest, responseObserver, cancellationToken)
+                    .ConfigureAwait(false);
+
+                switch (executionResult)
+                {
+                    case ModelExecutionCompleted completed:
+                        return new TurnModelExecutionResult(completed.Result, activeModel);
+
+                    case ModelExecutionFailed failed:
+                        return new TurnModelExecutionResult(
+                            new ModelAttemptFailed(failed.Failure, [], null),
+                            activeModel);
+
+                    case ModelExecutionCancelled cancelled:
+                        return new TurnModelExecutionResult(
+                            new ModelAttemptCancelled(cancelled.Cancellation, [], null),
+                            activeModel);
+
+                    case ModelFallbackRequired fallback when !fallbackRetried
+                        && modelPolicy.Fallback is ModelFallbackPolicy.OrderedCandidates:
+                        fallbackRetried = true;
+                        var reselected = await ReselectModelAfterFallbackAsync(
+                            request,
+                            services,
+                            turnCorrelation.OperationId,
+                            turnId,
+                            modelRequestId,
+                            modelPolicy,
+                            fallback.Selection.Model.Alias,
+                            cancellationToken).ConfigureAwait(false);
+                        if (reselected.Failure is { } selectionFailure)
+                        {
+                            return new TurnModelExecutionResult(
+                                new ModelAttemptFailed(selectionFailure, [], null),
+                                activeModel);
+                        }
+
+                        activeModel = reselected.Model!;
+                        activeDecision = reselected.Decision!;
+                        activeContext = activeContext with { Model = activeModel };
+                        continue;
+
+                    case ModelFallbackRequired fallbackRequired:
+                        return new TurnModelExecutionResult(
+                            new ModelAttemptFailed(fallbackRequired.Failure, [], null),
+                            activeModel);
+
+                    default:
+                        throw new InvalidOperationException(
+                            $"Unexpected {nameof(ModelExecutionResult)} '{executionResult.GetType().Name}'.");
+                }
+            }
+
+            var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
+            var chatRequest = new LlmModelRequest(activeContext, attempt: 1, deadline, ProviderRequestOptions.Empty);
+            var legacyResult = await llmModel
+                .ExecuteAsync(chatRequest, responseObserver, cancellationToken)
+                .ConfigureAwait(false);
+            return new TurnModelExecutionResult(legacyResult, activeModel);
+        }
+    }
+
+    private async Task<ReselectModelResult> ReselectModelAfterFallbackAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        OperationId operationId,
+        TurnId turnId,
+        ModelRequestId modelRequestId,
+        ModelSelectionPolicy policy,
+        ModelAlias excludedAlias,
+        CancellationToken cancellationToken)
+    {
+        var catalog = await services.Models.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var scope = new SecurityAuthorizationScope(
+            request.AgentId,
+            request.SessionId,
+            new InRunOperationCorrelation(operationId, request.RunId, turnId));
+        var selectionRequest = new ModelSelectionRequest(
+            scope,
+            modelRequestId,
+            policy,
+            request.Agent?.ModelRequirements ?? request.ModelRequirements,
+            catalog,
+            turnId,
+            [excludedAlias]);
+
+        var selection = await services.ModelSelector.SelectAsync(selectionRequest, cancellationToken)
+            .ConfigureAwait(false);
+
+        return selection switch
+        {
+            ModelSelected selected when services.ModelResolver.Resolve(selected.Decision.Model) is not null =>
+                new ReselectModelResult(selected.Decision.Model, selected.Decision, failure: null),
+
+            ModelSelected =>
+                new ReselectModelResult(
+                    null,
+                    null,
+                    new ProviderFailure(
+                        ProviderFailureKind.InvalidRequest,
+                        new ProviderId("selection"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        "No LLM model adapter is registered for the fallback selection.",
+                        null,
+                        ExtensionData.Empty)),
+
+            NoCompatibleModel =>
+                new ReselectModelResult(
+                    null,
+                    null,
+                    new ProviderFailure(
+                        ProviderFailureKind.Unavailable,
+                        new ProviderId("selection"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        "No remaining configured model satisfies this run's requirements.",
+                        null,
+                        ExtensionData.Empty)),
+
+            InvalidModelPolicy invalid =>
+                new ReselectModelResult(
+                    null,
+                    null,
+                    new ProviderFailure(
+                        ProviderFailureKind.InvalidRequest,
+                        new ProviderId("selection"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        invalid.Reason,
+                        null,
+                        ExtensionData.Empty)),
+
+            _ => throw new InvalidOperationException(
+                $"Unexpected {nameof(ModelSelectionResult)} '{selection.GetType().Name}' during fallback reselection."),
+        };
+    }
+
     private async Task<TurnOutcome> RunTurnAsync(
         AgentLoopRunRequest request,
         AgentRunServices services,
@@ -832,6 +1029,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         int turn,
         ModelRequestId? reservedModelRequestId,
         ImmutableArray<CapabilityAdjustment> selectionAdjustments,
+        ModelSelectionDecision selectionDecision,
+        ModelSelectionPolicy modelPolicy,
         HistoryView history,
         RunTracking tracking,
         HookActivationScope? hookScope,
@@ -998,8 +1197,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 RunOutcomes.BudgetExhausted(requestExhausted, hasPartialOutput: committedMessages.Count > 0), currentVersion);
         }
 
-        var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
-        var chatRequest = new LlmModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
+        IModelResponseObserver responseObserver = request.Observer is null && services.Publisher is null
+            ? NoOpModelResponseObserver.Instance
+            : new RunModelResponseObserver(
+                turnId,
+                (runEvent, token) => ObserveAsync(request, services, laneState, history.SourceCursor.ConversationId, runEvent, token));
 
         ModelAttemptResult attemptResult;
         using (var modelActivity = AgentKitDiagnostics.Activities.StartActivity(
@@ -1017,14 +1219,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
             LoopLog.ModelRequestStarted(_logger, request.RunId, turnId, modelRequestId, model.Alias);
             try
             {
-                attemptResult = await llmModel.ExecuteAsync(
-                    chatRequest,
-                    request.Observer is null && services.Publisher is null
-                        ? NoOpModelResponseObserver.Instance
-                        : new RunModelResponseObserver(
-                            turnId,
-                            (runEvent, token) => ObserveAsync(request, services, laneState, history.SourceCursor.ConversationId, runEvent, token)),
+                var execution = await ExecuteTurnModelAsync(
+                    request,
+                    services,
+                    llmModel,
+                    model,
+                    selectionDecision,
+                    modelPolicy,
+                    context,
+                    modelRequestId,
+                    turnId,
+                    turnCorrelation,
+                    turnAuthorization,
+                    history.SourceCursor.ConversationId,
+                    responseObserver,
                     cancellationToken).ConfigureAwait(false);
+                attemptResult = execution.AttemptResult;
+                model = execution.Model;
                 if (attemptResult is ModelAttemptCompleted)
                 {
                     modelActivity.SetSuccessful("completed");
@@ -3354,13 +3565,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ModelDescriptor? model,
             ILlmModel? adapter,
             ModelRequestId? firstModelRequestId,
-            ImmutableArray<CapabilityAdjustment> adjustments)
+            ImmutableArray<CapabilityAdjustment> adjustments,
+            ModelSelectionDecision? selectionDecision)
         {
             Outcome = outcome;
             Model = model;
             Adapter = adapter;
             FirstModelRequestId = firstModelRequestId;
             Adjustments = adjustments;
+            SelectionDecision = selectionDecision;
         }
 
         /// <summary>Gets the terminal outcome, when no model could be used.</summary>
@@ -3382,16 +3595,39 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// </summary>
         public ImmutableArray<CapabilityAdjustment> Adjustments { get; }
 
+        /// <summary>Gets the selection decision when resolution succeeded.</summary>
+        public ModelSelectionDecision? SelectionDecision { get; }
+
         /// <summary>Creates a successful resolution.</summary>
         public static ModelResolution Resolved(
             ModelDescriptor model,
             ILlmModel adapter,
             ModelRequestId firstModelRequestId,
-            ImmutableArray<CapabilityAdjustment> adjustments) =>
-            new(null, model, adapter, firstModelRequestId, adjustments);
+            ImmutableArray<CapabilityAdjustment> adjustments,
+            ModelSelectionDecision selectionDecision) =>
+            new(null, model, adapter, firstModelRequestId, adjustments, selectionDecision);
 
         /// <summary>Creates a resolution that settles the run before it starts.</summary>
-        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null, []);
+        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null, [], null);
+    }
+
+    private readonly struct TurnModelExecutionResult(ModelAttemptResult attemptResult, ModelDescriptor model)
+    {
+        public ModelAttemptResult AttemptResult { get; } = attemptResult;
+
+        public ModelDescriptor Model { get; } = model;
+    }
+
+    private readonly struct ReselectModelResult(
+        ModelDescriptor? model,
+        ModelSelectionDecision? decision,
+        ProviderFailure? failure)
+    {
+        public ModelDescriptor? Model { get; } = model;
+
+        public ModelSelectionDecision? Decision { get; } = decision;
+
+        public ProviderFailure? Failure { get; } = failure;
     }
 
     /// <summary>

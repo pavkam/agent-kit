@@ -51,6 +51,15 @@ internal sealed partial class DefaultModelSelector(
         {
             var alias = policy.Candidates[index];
 
+            if (request.ExcludedCandidates.Contains(alias))
+            {
+                diagnostics.Add(new ModelSelectionDiagnostic(
+                    alias,
+                    ModelCandidateOutcome.NotEvaluated,
+                    "Excluded after a prior attempt on this alias failed."));
+                continue;
+            }
+
             if (index >= evaluable)
             {
                 diagnostics.Add(new ModelSelectionDiagnostic(

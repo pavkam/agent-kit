@@ -239,7 +239,8 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
             provider.GetService<IBudgetAuthority>(),
             provider.GetService<ISessionRunCoordinator>(),
             provider.GetService<IInputCoordinator>(),
-            provider.GetService<IOutputPublisher>());
+            provider.GetService<IOutputPublisher>(),
+            provider.GetKeyedService<IModelRequestExecutor>(key) ?? provider.GetService<IModelRequestExecutor>());
     }
 
     private static InvalidAgentRunPlan Invalid(string code, string safeMessage) =>
