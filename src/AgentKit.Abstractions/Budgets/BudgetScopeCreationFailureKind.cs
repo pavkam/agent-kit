@@ -19,5 +19,11 @@ public enum BudgetScopeCreationFailureKind
     LimitWiderThanAncestor,
 
     /// <summary>A limit references a dimension with no registered descriptor, or an unsupported unit.</summary>
-    InvalidLimit
+    InvalidLimit,
+
+    /// <summary>The requested budget profile is not registered in the profile catalog.</summary>
+    ProfileNotFound,
+
+    /// <summary>A configured budget policy denied scope creation or reservation.</summary>
+    PolicyDenied
 }

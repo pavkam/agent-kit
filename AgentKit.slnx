@@ -3,6 +3,7 @@
     <Project Path="src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <Project Path="src/AgentKit/AgentKit.csproj"/>
     <Project Path="src/AgentKit.Observability/AgentKit.Observability.csproj"/>
+    <Project Path="src/AgentKit.Observability.OpenTelemetry/AgentKit.Observability.OpenTelemetry.csproj"/>
     <Project Path="src/AgentKit.Providers/AgentKit.Providers.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
@@ -37,7 +38,10 @@
     <Project Path="src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <Project Path="src/AgentKit.Budgets.Sqlite/AgentKit.Budgets.Sqlite.csproj"/>
     <Project Path="src/AgentKit.Budgets.Json/AgentKit.Budgets.Json.csproj"/>
+    <Project Path="src/AgentKit.Durability/AgentKit.Durability.csproj"/>
     <Project Path="src/AgentKit.Durability.InMemory/AgentKit.Durability.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Durability.Json/AgentKit.Durability.Json.csproj"/>
+    <Project Path="src/AgentKit.Durability.Sqlite/AgentKit.Durability.Sqlite.csproj"/>
     <Project Path="src/AgentKit.Identity/AgentKit.Identity.csproj"/>
     <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
@@ -82,6 +86,7 @@
     <Project Path="tests/AgentKit.Conformance/AgentKit.Conformance.csproj"/>
     <Project Path="tests/AgentKit.Tests/AgentKit.Tests.csproj"/>
     <Project Path="tests/AgentKit.Observability.Tests/AgentKit.Observability.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Observability.OpenTelemetry.Tests/AgentKit.Observability.OpenTelemetry.Tests.csproj"/>
     <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.Tests/AgentKit.Providers.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenAI.Tests/AgentKit.Providers.OpenAI.Tests.csproj"/>
@@ -117,7 +122,10 @@
     <Project Path="tests/AgentKit.Budgets.InMemory.Tests/AgentKit.Budgets.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.Tests/AgentKit.Budgets.Sqlite.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Json.Tests/AgentKit.Budgets.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Durability.Tests/AgentKit.Durability.Tests.csproj"/>
     <Project Path="tests/AgentKit.Durability.InMemory.Tests/AgentKit.Durability.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Durability.Json.Tests/AgentKit.Durability.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Durability.Sqlite.Tests/AgentKit.Durability.Sqlite.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.ProcessHost/AgentKit.Budgets.Sqlite.ProcessHost.csproj"/>
     <Project Path="tests/AgentKit.Identity.Tests/AgentKit.Identity.Tests.csproj"/>
     <Project Path="tests/AgentKit.Conversations.Tests/AgentKit.Conversations.Tests.csproj"/>

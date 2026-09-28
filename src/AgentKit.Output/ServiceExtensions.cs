@@ -65,6 +65,7 @@ public static class ServiceExtensions
                     provider.GetKeyedServices<IOutputValidator>(serviceKey),
                     provider.GetRequiredKeyedService<IOutputSchemaEngine>(serviceKey),
                     provider.GetRequiredKeyedService<AgentOutputOptionsSnapshot>(serviceKey),
+                    provider.GetService<IHookDispatcher>(),
                     provider.GetService<ILogger<DefaultOutputProcessor>>()));
 
             if (processorKey.Equals(AgentOutputDefaults.ProcessorKey))

@@ -12,47 +12,40 @@ Owning documents: [Durable execution](../architecture/durable-execution.md),
 
 ## Progress
 
-- [ ] WS12-C1 `RecoveryEvidence.RecordedResult`/`NotBefore`,
+- [x] WS12-C1 `RecoveryEvidence.RecordedResult`/`NotBefore`,
       `DurableOperationWaiting`
-- [ ] WS12-C2 `AuthorizedDurableRequest<T>` and `RecordWaitingAsync`
-- [ ] WS12-C3 backend, runtime, coordinator, event contracts
-- [ ] WS12-C4 journal and lease-manager conformance suites
-- [ ] WS12-C5 InMemory keyed, grant-consuming, audited
-- [ ] WS12-C6 `AgentKit.Durability` runtime package
-- [ ] WS12-C7 `DefaultRecoveryPolicy` and fenced journal decorator
-- [ ] WS12-C8 `DurableExecutionCoordinator`
-- [ ] WS12-C9 `AgentKit.Durability.Sqlite`
-- [ ] WS12-C10 `AgentKit.Durability.Json`
-- [ ] WS12-C11 definition key and validator
-- [ ] WS12-C12a loop checkpoints
+- [x] WS12-C2 `AuthorizedDurableRequest<T>` and `RecordWaitingAsync`
+- [x] WS12-C3 backend, runtime, coordinator, event contracts
+- [x] WS12-C4 journal and lease-manager conformance suites
+- [x] WS12-C5 InMemory keyed, grant-consuming, audited
+- [x] WS12-C6 `AgentKit.Durability` runtime package
+- [x] WS12-C7 `DefaultRecoveryPolicy` and fenced journal decorator
+- [x] WS12-C8 `DurableExecutionCoordinator`
+- [x] WS12-C9 `AgentKit.Durability.Sqlite`
+- [x] WS12-C10 `AgentKit.Durability.Json`
+- [x] WS12-C11 definition key and validator
+- [x] WS12-C12a loop checkpoints
 - [ ] WS12-C12b engine, settlement, approval, compaction checkpoints
 - [ ] WS12-C13 Simple `WithDurability` and documentation
 
 ## Verified current state
 
-| Item                                                                                                                                                                                                                                                                                                                             | State                               | Evidence                                                                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `AgentKit.Durability` package                                                                                                                                                                                                                                                                                                    | MISSING                             | only `AgentKit.Durability.InMemory`                                                                                                |
-| `IDurableExecutionCoordinator`, `IDurableExecutionBackend`, backend catalog/selector, runtime selector/lease, dispatch and reconciliation types, event sink/dispatcher, `DurableExecutionEvent`, `UnknownEffectRecoveryMode`, `DurableCheckpointMode`, `DurabilityUnavailable`, `RecoveryIncompatible`, `OperatorActionRequired` | MISSING (22 types)                  | –                                                                                                                                  |
-| `IRecoveryPolicy`                                                                                                                                                                                                                                                                                                                | EXISTS-UNWIRED                      | `Abstractions/Durability/IRecoveryPolicy.cs:30-63`; zero impls                                                                     |
-| `IDurableOperationJournal`                                                                                                                                                                                                                                                                                                       | EXISTS-AS-REDUCED-STAND-IN          | remark `InMemoryDurableOperationJournal.cs:17-30`: no grant consumption or audit, cannot record `Waiting`; zero production callers |
-| `IDurableLeaseManager`, `IExecutionLease`                                                                                                                                                                                                                                                                                        | EXISTS, zero production callers     | `InMemoryDurableLeaseManager.cs:14`, `InMemoryExecutionLease.cs:8`                                                                 |
-| `RecoveryEvidence`                                                                                                                                                                                                                                                                                                               | lacks `RecordedResult`, `NotBefore` | `RecoveryEvidence.cs:75-129`                                                                                                       |
-| `DurableOperationState.Waiting`                                                                                                                                                                                                                                                                                                  | unreachable via journal             | `DurableOperationState.cs:44`                                                                                                      |
-| `IDurableOperationCodec<T>`, `JsonDurableOperationCodec<T>`                                                                                                                                                                                                                                                                      | EXISTS-UNWIRED                      | –                                                                                                                                  |
-| identity keys                                                                                                                                                                                                                                                                                                                    | EXISTS                              | `Abstractions/Identity/`                                                                                                           |
-| `.Sqlite`, `.Json` journals; fenced decorator; `AddAgentDurability`; `AddDurabilityProfile`                                                                                                                                                                                                                                      | MISSING                             | –                                                                                                                                  |
-| InMemory registrations                                                                                                                                                                                                                                                                                                           | un-keyed singletons                 | `Durability.InMemory/ServiceExtensions.cs:18-55`                                                                                   |
-| consumers                                                                                                                                                                                                                                                                                                                        | zero                                | no durability references in `AgentKit`, `Loop`, `IO`, `Context.Compaction`                                                         |
-| observability names                                                                                                                                                                                                                                                                                                              | partial                             | `durable.lease.*`, `durable.journal.*` exist; no `durable.execute/recover`                                                         |
-| journal conformance suite                                                                                                                                                                                                                                                                                                        | MISSING                             | –                                                                                                                                  |
-
-Test doubles: `IDurableOperationJournal` none outside its own tests;
-`IExecutionLease` one
-(`Abstractions.Tests/Durability/DurabilityTestData.cs:145`); `RecoveryEvidence`
-constructed in Abstractions and InMemory tests (additive params keep them
-green). Architecture tests already whitelist `AgentKit.Durability` and forbid
-`Durability → Session`.
+| Item                                                                                                             | State   | Evidence                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `AgentKit.Durability` runtime package                                                                            | DONE    | coordinator, fenced journal, recovery policy, profile registry, catalogs, selectors, event dispatcher |
+| backend, runtime, coordinator, dispatch, reconciliation, and event contracts                                     | DONE    | `Abstractions/Durability/`                                                                            |
+| `DefaultRecoveryPolicy`, `FencedDurableOperationJournal`, `DurableExecutionCoordinator`, `ExecutionLeaseRenewal` | DONE    | `AgentKit.Durability/`; 178 tests in `AgentKit.Durability.Tests`                                      |
+| `AddAgentDurability`, `AddDurabilityProfile`, keyed journal/lease/policy/backend registrations                   | DONE    | `DurabilityServiceRegistration.cs`; no persistence target is ever registered by default               |
+| `InMemoryDurableOperationJournal` keyed, grant-consuming, audited; `RecordWaitingAsync`                          | DONE    | `Durability.InMemory/`; 181 tests                                                                     |
+| `InMemoryDurableExecutionBackend`                                                                                | DONE    | claims neither external handoff nor reconciliation, and refuses both                                  |
+| journal and lease-manager conformance suites                                                                     | DONE    | `AgentKit.Conformance/Durability/`                                                                    |
+| definition key and composition validator                                                                         | DONE    | `AgentOptionalCapabilitySelection.DurabilityProfile`, `AgentKit/DurabilityCompositionValidator.cs`    |
+| observability names and event IDs                                                                                | DONE    | `durable.execute/recover/dispatch/reconcile`; `AgentKit.Durability` owns event IDs 26000-26009        |
+| `AgentKit.Durability.Sqlite` journal, lease manager, and backend                                                 | DONE    | `Durability.Sqlite/`; 137 tests including both conformance suites and reopen persistence              |
+| `AgentKit.Durability.Json` journal                                                                               | DONE    | `Durability.Json/`; 88 tests including the journal suite, torn-append recovery, and second-writer     |
+| loop model-attempt and tool-call checkpoints                                                                     | DONE    | `AgentKit.Loop/LoopDurableScope.cs` and the two boundary handlers; profile-gated per operation name   |
+| engine, settlement, approval, and compaction checkpoints                                                         | MISSING | blocked: `IDurableOperationHandler.InvokeAsync` exposes no checkpoint writer (see WS12-C12b)          |
+| `AgentKit.Simple` `WithDurability`                                                                               | MISSING | –                                                                                                     |
 
 ## Hidden prerequisites
 
@@ -155,9 +148,13 @@ green). Architecture tests already whitelist `AgentKit.Durability` and forbid
 
 - Depends on: C4, C5. Risk: ADDITIVE new project. Size: L.
 - Deliverables: journal and lease manager (token via `UPDATE … RETURNING`),
-  database/schema/options/settings/target, keyed registrations,
-  `JsonDurableOperationCodec<T>`; both suites plus reopen persistence.
-  Descriptor claims host-local multi-process only.
+  database/schema/options/settings/target, keyed registrations; both suites plus
+  reopen persistence. Descriptor claims host-local multi-process only.
+- Landed: the journal and lease manager share one `SqliteDurableDatabase` the
+  host supplies, so a lease generation actually fences a journal write. Portable
+  evidence is encoded with `JsonStoreSerialization` into a BLOB plus a SHA256
+  digest, which is why the SQLite and JSON leaves persist identical shapes
+  instead of each owning a private binary codec.
 
 ### WS12-C10: `AgentKit.Durability.Json`
 
@@ -165,15 +162,20 @@ green). Architecture tests already whitelist `AgentKit.Durability` and forbid
 - Deliverables: journal over `JsonRecordLog` with torn-tail recovery and
   single-writer lock; no Json lease manager (documented). Suite plus torn append
   and second-writer tests.
+- Landed: the log is appended before the in-memory projection is advanced, so a
+  failed append can never leave live state ahead of the evidence. The adapter
+  ships no lease manager because an advisory lock that rejects a second writer
+  cannot honestly coordinate ownership between processes.
 
 ### WS12-C11: Definition key and validator
 
 - Depends on: C6. Risk: DENSE-MODIFY `AgentDefinition.cs` equality,
   `AgentCompositionValidator.cs`. Size: M.
-- Deliverables: `DurabilityProfileKey? DurabilityProfile` (or on
-  `OptionalCapabilities`); when set require coordinator, runtime selector,
-  backend catalog, keyed journal/lease/policy/backend, codecs, generators;
-  diagnostics `agentkit.durability.*`; one failing test each.
+- Deliverables: `DurabilityProfileKey? DurabilityProfile` on
+  `AgentOptionalCapabilities`; when set require coordinator, runtime selector,
+  backend catalog, event dispatcher, keyed journal/lease/policy/backend, and the
+  checkpoint/worker identifier generators; diagnostics `agentkit.durability.*`
+  from `DurabilityCompositionValidator`; one failing test each.
 
 ### WS12-C12a: Loop checkpoints
 
@@ -183,6 +185,16 @@ green). Architecture tests already whitelist `AgentKit.Durability` and forbid
   invocations when a profile is selected; codecs for model-request and tool-call
   durable states; crash-after-outcome-ready → no reinvoke; unknown effect →
   operator.
+- Landed: `LoopDurableScope` resolves the definition's profile once per run and
+  journals only the boundaries that profile enables, so selecting durability
+  never changes what the loop computes. Each boundary publishes its live
+  continuation into `LoopDurableInvocationRegistry` for exactly one operation
+  identity; a recovering process finds none and refuses rather than inventing a
+  terminal record. Committing an already-recorded terminal result never reaches
+  a handler, so crash-after-outcome-ready still cannot reinvoke, and both
+  boundaries declare themselves non-idempotent so an unknown effect escalates to
+  an operator. Payloads are identity-and-count manifests: prompts, arguments,
+  and results never enter a durable record.
 
 ### WS12-C12b: Engine, settlement, approval, compaction checkpoints
 
@@ -190,6 +202,14 @@ green). Architecture tests already whitelist `AgentKit.Durability` and forbid
   IO promotion, compaction activation. Size: L.
 - Deliverables: `RecordWaitingAsync` for approval waits; checkpoints after
   promotion, settlement, activation; process-loss replay through the engine.
+- Blocked on a contract gap found while landing C12a: the coordinator owns the
+  fenced journal and the lease, and `IDurableOperationHandler.InvokeAsync`
+  receives neither, so a handler cannot write a mid-operation checkpoint or a
+  waiting record at all. Promotion, settlement, activation, and approval waits
+  are exactly mid-operation events. C12b must first add a coordinator-owned
+  checkpoint writer to the handler contract (a deliberate contract break), then
+  apply the C12a sandwich in `AgentKit.IO`, `AgentKit.Context.Compaction`, and
+  `AgentKit.Permissions`.
 
 ### WS12-C13: Simple `WithDurability` and documentation
 
@@ -199,4 +219,5 @@ green). Architecture tests already whitelist `AgentKit.Durability` and forbid
 
 ## Totals
 
-S 2, M 7, L 5. Confidence high on state; medium on C12 sizing.
+S 2, M 7, L 5. C12b and C13 remain; see the C12b note for the contract gap that
+must land first.

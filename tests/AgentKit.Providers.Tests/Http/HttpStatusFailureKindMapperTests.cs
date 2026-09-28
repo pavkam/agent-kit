@@ -17,7 +17,7 @@ public sealed class HttpStatusFailureKindMapperTests
     [InlineData(429, ProviderFailureKind.Throttling)]
     [InlineData(408, ProviderFailureKind.Timeout)]
     [InlineData(504, ProviderFailureKind.Timeout)]
-    [InlineData(413, ProviderFailureKind.InvalidRequest)]
+    [InlineData(413, ProviderFailureKind.ContextLengthExceeded)]
     [InlineData(529, ProviderFailureKind.Unavailable)]
     public void Map_WhenStatusHasExplicitRow_ReturnsThatKind(int statusCode, ProviderFailureKind expected)
     {

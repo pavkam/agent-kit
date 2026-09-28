@@ -1225,7 +1225,8 @@ public sealed class DefaultConversationSessionTests
 
     private sealed class NullOutputProcessor: IOutputProcessor
     {
-        public ValueTask<OutputProcessingResult> ProcessAsync(OutputProcessingRequest request, CancellationToken cancellationToken = default) =>
+        public ValueTask<OutputProcessingResult> ProcessAsync(
+            OutputProcessingRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

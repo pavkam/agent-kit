@@ -25,7 +25,8 @@ internal sealed class ScriptedOutputProcessor: IOutputProcessor
     public TaskCompletionSource? Gate { get; set; }
 
     /// <inheritdoc/>
-    public async ValueTask<OutputProcessingResult> ProcessAsync(OutputProcessingRequest request, CancellationToken cancellationToken = default)
+    public async ValueTask<OutputProcessingResult> ProcessAsync(
+        OutputProcessingRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         Requests.Add(request);

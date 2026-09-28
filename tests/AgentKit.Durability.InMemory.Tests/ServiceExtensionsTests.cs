@@ -6,33 +6,52 @@ namespace AgentKit.Durability.InMemory.Tests;
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
 public sealed class ServiceExtensionsTests
 {
-    [Fact]
-    public void AddInMemoryDurableLeaseManager_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
-    {
-        IServiceCollection services = null!;
-        var exception = Should.Throw<ArgumentNullException>(services.AddInMemoryDurableLeaseManager);
-        exception.ParamName.ShouldBe("services");
-    }
+    private static readonly DurableLeaseManagerKey LeaseKey = new("leases");
+    private static readonly DurableLeaseManagerKey OtherLeaseKey = new("other-leases");
+    private static readonly DurableJournalKey OtherJournalKey = new("other-journal");
 
     [Fact]
-    public void AddInMemoryDurableLeaseManager_WhenCalledTwice_RegistersOneReplaceableDefault()
+    public void AddInMemoryDurableLeaseManager_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName() =>
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddInMemoryDurableLeaseManager(LeaseKey))
+            .ParamName.ShouldBe("services");
+
+    [Fact]
+    public void AddInMemoryDurableLeaseManager_WhenTheKeyIsDefault_ThrowsArgumentNullExceptionWithParamName() =>
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddInMemoryDurableLeaseManager(default))
+            .ParamName.ShouldBe("key");
+
+    [Fact]
+    public void AddInMemoryDurableLeaseManager_WhenCalledTwiceWithTheSameKey_RegistersOneReplaceableDefault()
     {
         var services = new ServiceCollection();
-        _ = services.AddInMemoryDurableLeaseManager().AddInMemoryDurableLeaseManager();
+
+        _ = services.AddInMemoryDurableLeaseManager(LeaseKey).AddInMemoryDurableLeaseManager(LeaseKey);
 
         services.Count(descriptor =>
                 descriptor.ServiceType == typeof(IDurableLeaseManager)
-                && descriptor.ImplementationType == typeof(InMemoryDurableLeaseManager))
+                && Equals(descriptor.ServiceKey, LeaseKey.Value))
             .ShouldBe(1);
     }
 
     [Fact]
-    public async Task AddInMemoryDurableLeaseManager_WhenResolved_GrantsOwnership()
+    public void AddInMemoryDurableLeaseManager_WhenCalledWithDistinctKeys_RegistersOnePerKey()
     {
         var services = new ServiceCollection();
-        _ = services.AddInMemoryDurableLeaseManager();
+
+        _ = services.AddInMemoryDurableLeaseManager(LeaseKey).AddInMemoryDurableLeaseManager(OtherLeaseKey);
+
         using var provider = services.BuildServiceProvider();
-        var manager = provider.GetRequiredService<IDurableLeaseManager>();
+        provider.GetRequiredKeyedService<IDurableLeaseManager>(LeaseKey.Value)
+            .ShouldNotBeSameAs(provider.GetRequiredKeyedService<IDurableLeaseManager>(OtherLeaseKey.Value));
+    }
+
+    [Fact]
+    public async Task AddInMemoryDurableLeaseManager_WhenResolvedByKey_GrantsOwnership()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInMemoryDurableLeaseManager(LeaseKey);
+        using var provider = services.BuildServiceProvider();
+        var manager = provider.GetRequiredKeyedService<IDurableLeaseManager>(LeaseKey.Value);
 
         var address = new DurableOperationAddress(
             new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000009")),
@@ -48,13 +67,13 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddInMemoryDurableLeaseManager_WhenACustomManagerIsAlreadyRegistered_PreservesItAlongsideTheDefault()
+    public void AddInMemoryDurableLeaseManager_WhenAnUnkeyedManagerIsAlreadyRegistered_PreservesItAlongsideTheKeyedDefault()
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IDurableLeaseManager>(new InMemoryDurableLeaseManager(
             new GuidExecutionLeaseIdGenerator(), TimeProvider.System));
 
-        _ = services.AddInMemoryDurableLeaseManager();
+        _ = services.AddInMemoryDurableLeaseManager(LeaseKey);
 
         services.Count(descriptor => descriptor.ServiceType == typeof(IDurableLeaseManager)).ShouldBe(2);
     }
@@ -66,53 +85,90 @@ public sealed class ServiceExtensionsTests
         var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         _ = services.AddSingleton<TimeProvider>(clock);
 
-        _ = services.AddInMemoryDurableLeaseManager();
+        _ = services.AddInMemoryDurableLeaseManager(LeaseKey);
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
     }
 
     [Fact]
-    public void AddInMemoryDurableOperationJournal_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
-    {
-        IServiceCollection services = null!;
-        var exception = Should.Throw<ArgumentNullException>(services.AddInMemoryDurableOperationJournal);
-        exception.ParamName.ShouldBe("services");
-    }
+    public void AddInMemoryDurableOperationJournal_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName() =>
+        Should.Throw<ArgumentNullException>(() =>
+                ((IServiceCollection) null!).AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey))
+            .ParamName.ShouldBe("services");
 
     [Fact]
-    public void AddInMemoryDurableOperationJournal_WhenCalledTwice_RegistersOneReplaceableDefault()
+    public void AddInMemoryDurableOperationJournal_WhenTheKeyIsDefault_ThrowsArgumentNullExceptionWithParamName() =>
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddInMemoryDurableOperationJournal(default))
+            .ParamName.ShouldBe("key");
+
+    [Fact]
+    public void AddInMemoryDurableOperationJournal_WhenCalledTwiceWithTheSameKey_RegistersOneReplaceableDefault()
     {
         var services = new ServiceCollection();
-        _ = services.AddInMemoryDurableOperationJournal().AddInMemoryDurableOperationJournal();
+
+        _ = services
+            .AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey)
+            .AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey);
 
         services.Count(descriptor =>
                 descriptor.ServiceType == typeof(IDurableOperationJournal)
-                && descriptor.ImplementationType == typeof(InMemoryDurableOperationJournal))
+                && Equals(descriptor.ServiceKey, DurableJournalTestData.JournalKey.Value))
             .ShouldBe(1);
     }
 
     [Fact]
-    public async Task AddInMemoryDurableOperationJournal_WhenResolved_RecordsAcceptance()
+    public void AddInMemoryDurableOperationJournal_WhenCalledWithDistinctKeys_RegistersOnePerKey()
     {
         var services = new ServiceCollection();
-        _ = services.AddInMemoryDurableOperationJournal();
+        _ = AddSecurity(services);
+
+        _ = services
+            .AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey)
+            .AddInMemoryDurableOperationJournal(OtherJournalKey);
+
         using var provider = services.BuildServiceProvider();
-        var journal = provider.GetRequiredService<IDurableOperationJournal>();
+        provider.GetRequiredKeyedService<IDurableOperationJournal>(DurableJournalTestData.JournalKey.Value)
+            .ShouldBeOfType<InMemoryDurableOperationJournal>().Key.ShouldBe(DurableJournalTestData.JournalKey);
+        provider.GetRequiredKeyedService<IDurableOperationJournal>(OtherJournalKey.Value)
+            .ShouldBeOfType<InMemoryDurableOperationJournal>().Key.ShouldBe(OtherJournalKey);
+    }
+
+    [Fact]
+    public async Task AddInMemoryDurableOperationJournal_WhenResolvedByKey_RecordsAcceptance()
+    {
+        var services = new ServiceCollection();
+        var harness = AddSecurity(services);
+        _ = services.AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey);
+        using var provider = services.BuildServiceProvider();
+        var journal = provider
+            .GetRequiredKeyedService<IDurableOperationJournal>(DurableJournalTestData.JournalKey.Value)
+            .ShouldBeOfType<InMemoryDurableOperationJournal>();
+        var start = DurableJournalTestData.Start(new FencingToken(1));
 
         var result = await journal.RecordStartAsync(
-            DurableJournalTestData.Start(new FencingToken(1)), TestContext.Current.CancellationToken);
+            harness.Authorize(
+                start,
+                DurableJournalTestData.JournalKey,
+                journal.SecurityAudience,
+                start.Descriptor.Binding.Address,
+                start.Descriptor.Binding.ExecutionContext.Authorization,
+                DurableJournalSecurityBinding.Fingerprint(start),
+                SecurityOperationKind.StateMutation,
+                SecurityEffect.Create,
+                new FencingToken(1)),
+            TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<DurableRecorded>();
     }
 
     [Fact]
-    public void AddInMemoryDurableOperationJournal_WhenACustomJournalIsAlreadyRegistered_PreservesItAlongsideTheDefault()
+    public void AddInMemoryDurableOperationJournal_WhenAnUnkeyedJournalIsAlreadyRegistered_PreservesItAlongsideTheKeyedDefault()
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton<IDurableOperationJournal>(new InMemoryDurableOperationJournal(TimeProvider.System));
+        _ = services.AddSingleton<IDurableOperationJournal>(new DurableJournalFixture().Journal);
 
-        _ = services.AddInMemoryDurableOperationJournal();
+        _ = services.AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey);
 
         services.Count(descriptor => descriptor.ServiceType == typeof(IDurableOperationJournal)).ShouldBe(2);
     }
@@ -124,9 +180,17 @@ public sealed class ServiceExtensionsTests
         var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         _ = services.AddSingleton<TimeProvider>(clock);
 
-        _ = services.AddInMemoryDurableOperationJournal();
+        _ = services.AddInMemoryDurableOperationJournal(DurableJournalTestData.JournalKey);
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+    }
+
+    private static TestDurableSecurityHarness AddSecurity(IServiceCollection services)
+    {
+        var harness = new TestDurableSecurityHarness();
+        _ = services.AddSingleton<ISecurityGrantStore>(harness);
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(harness);
+        return harness;
     }
 }

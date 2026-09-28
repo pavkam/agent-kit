@@ -19,6 +19,7 @@ internal static class DurableJournalWriteOperationExtensions
                 DurableJournalWriteOperation.RecordStart => "record_start",
                 DurableJournalWriteOperation.RecordCheckpoint => "record_checkpoint",
                 DurableJournalWriteOperation.RecordTerminal => "record_terminal",
+                DurableJournalWriteOperation.RecordWaiting => "record_waiting",
                 _ => throw new UnreachableException(),
             };
         }

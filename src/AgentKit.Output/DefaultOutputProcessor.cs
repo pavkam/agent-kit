@@ -43,12 +43,14 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
     private readonly JsonSerializerOptions _deserializationOptions;
     private readonly IOutputSchemaEngine _schemaEngine;
     private readonly AgentOutputOptionsSnapshot _options;
+    private readonly IHookDispatcher? _hooks;
     private readonly ILogger<DefaultOutputProcessor> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultOutputProcessor"/> class.</summary>
     /// <param name="validators">Every additively registered validator, addressable by its stable name.</param>
     /// <param name="schemaEngine">The selected local schema profile used for preflight and evaluation.</param>
     /// <param name="options">The validated processor options.</param>
+    /// <param name="hooks">The optional hook dispatcher used for <see cref="AgentHookPoints.OutputValidating"/>.</param>
     /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
     /// <exception cref="ArgumentNullException"><paramref name="validators"/> or <paramref name="options"/> is null.</exception>
     /// <exception cref="ArgumentException">Two or more validators share the same <see cref="IOutputValidator.Name"/>.</exception>
@@ -56,6 +58,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         IEnumerable<IOutputValidator> validators,
         IOutputSchemaEngine schemaEngine,
         AgentOutputOptionsSnapshot options,
+        IHookDispatcher? hooks = null,
         ILogger<DefaultOutputProcessor>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(validators);
@@ -75,6 +78,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         _validatorsByName = builder.ToImmutable();
         _schemaEngine = schemaEngine;
         _options = options;
+        _hooks = hooks;
         _deserializationOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
@@ -85,7 +89,9 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
     /// <inheritdoc/>
     public async ValueTask<OutputProcessingResult> ProcessAsync(
-        OutputProcessingRequest request, CancellationToken cancellationToken = default)
+        OutputProcessingRequest request,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -98,7 +104,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = await ProcessCoreAsync(request, cancellationToken).ConfigureAwait(false);
+            var result = await ProcessCoreAsync(request, hooks, cancellationToken).ConfigureAwait(false);
             var outcome = result switch
             {
                 OutputAccepted => "accepted",
@@ -142,11 +148,14 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
     }
 
     private async ValueTask<OutputProcessingResult> ProcessCoreAsync(
-        OutputProcessingRequest request, CancellationToken cancellationToken)
+        OutputProcessingRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken)
     {
 
-        var definition = request.Definition;
         var attempt = request.ValidationAttempt;
+        if (TryNegotiateDefinition(request, out var definition, out var negotiationFailure) && negotiationFailure is not null)
+        {
+            return negotiationFailure;
+        }
 
         var schemaPreflight = PreflightDefinition(definition, cancellationToken);
         if (schemaPreflight.Failure is not null)
@@ -154,18 +163,12 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             return new OutputConfigurationRejected(schemaPreflight.Failure);
         }
 
-        if (definition.Mode is OutputMode.SyntheticTool or OutputMode.Media or OutputMode.Union)
+        if (definition.Mode is OutputMode.Union)
         {
-            return Decide(
-                definition,
-                attempt,
-                new OutputValidationFailure(
-                    OutputValidationFailureKind.UnsupportedMode,
-                    $"Output mode '{definition.Mode}' is not yet supported by this processor.",
-                    []));
+            return await ProcessUnionAsync(request, definition, cancellationToken).ConfigureAwait(false);
         }
 
-        var isStructuredMode = definition.Mode is OutputMode.NativeSchema or OutputMode.Prompted;
+        var isStructuredMode = definition.Mode is OutputMode.NativeSchema or OutputMode.Prompted or OutputMode.SyntheticTool or OutputMode.Media;
 
         if (isStructuredMode && definition.Schema is null && _options.RequireSchemaForStructuredModes)
         {
@@ -179,7 +182,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         var schemaManifest = schemaPreflight.Manifest;
 
         var extraction = ExtractCandidate(
-            definition.Mode,
+            definition,
             request.Response,
             _options.MaximumCandidateBytes,
             _options.MaximumCandidateDepth,
@@ -284,8 +287,154 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             return Decide(definition, attempt, validatorFailure);
         }
 
+        if (hooks is not null && _hooks is not null && request.Turn > 0)
+        {
+            var validatingArgs = new OutputValidatingEventArgs(
+                hooks.Dispatch,
+                request.AgentId,
+                request.SessionId,
+                request.Turn,
+                definition,
+                candidate,
+                attempt);
+
+            await _hooks.DispatchAsync(
+                AgentHookPointDefinitions.OutputValidating,
+                hooks,
+                validatingArgs,
+                HookFailureMode.FailOperation,
+                cancellationToken).ConfigureAwait(false);
+            if (validatingArgs.Reject)
+            {
+                return Decide(
+                    definition,
+                    attempt,
+                    new OutputValidationFailure(
+                        OutputValidationFailureKind.ValidatorFailed,
+                        validatingArgs.RejectMessage ?? "An output-validating hook rejected the candidate.",
+                        []));
+            }
+        }
+
         var manifest = new OutputValidationManifest(definition.Id, definition.Mode, attempt, []);
         return new OutputAccepted(candidate, manifest);
+    }
+
+    private bool TryNegotiateDefinition(
+        OutputProcessingRequest request,
+        out OutputDefinition definition,
+        out OutputConfigurationRejected? failure)
+    {
+        definition = request.Definition;
+        failure = null;
+        var capabilities = request.Model?.Capabilities;
+        if (capabilities is null || ModeSupported(definition.Mode, capabilities))
+        {
+            return true;
+        }
+
+        if (!_options.AllowProviderModeDowngrade)
+        {
+            failure = new OutputConfigurationRejected(new OutputSchemaConfigurationFailure(
+                OutputSchemaConfigurationFailureKind.ProviderCapabilityMismatch,
+                $"The selected model cannot honor output mode '{definition.Mode}'.",
+                []));
+            return true;
+        }
+
+        if (definition.Mode is OutputMode.NativeSchema or OutputMode.SyntheticTool or OutputMode.Union or OutputMode.Media)
+        {
+            definition = definition with { Mode = OutputMode.Prompted };
+            return true;
+        }
+
+        failure = new OutputConfigurationRejected(new OutputSchemaConfigurationFailure(
+            OutputSchemaConfigurationFailureKind.ProviderCapabilityMismatch,
+            $"The selected model cannot honor output mode '{definition.Mode}'.",
+            []));
+        return true;
+    }
+
+    private static bool ModeSupported(OutputMode mode, ModelCapabilities capabilities) => mode switch
+    {
+        OutputMode.Text or OutputMode.Prompted => true,
+        OutputMode.NativeSchema or OutputMode.SyntheticTool or OutputMode.Union =>
+            capabilities.SupportsStructuredOutput,
+        OutputMode.Media => capabilities.SupportsVisionInput,
+        _ => false,
+    };
+
+    private ValueTask<OutputProcessingResult> ProcessUnionAsync(
+        OutputProcessingRequest request,
+        OutputDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var attempt = request.ValidationAttempt;
+        var extraction = ExtractCandidate(
+            definition,
+            request.Response,
+            _options.MaximumCandidateBytes,
+            _options.MaximumCandidateDepth,
+            cancellationToken);
+        if (extraction.Failure is not null)
+        {
+            return ValueTask.FromResult(Decide(definition, attempt, extraction.Failure));
+        }
+
+        if (extraction.Json is not { } candidateJson)
+        {
+            return ValueTask.FromResult(Decide(
+                definition,
+                attempt,
+                new OutputValidationFailure(
+                    OutputValidationFailureKind.MalformedJson,
+                    "Union output requires a JSON candidate.",
+                    [])));
+        }
+
+        var passes = 0;
+        foreach (var alternative in definition.Alternatives)
+        {
+            var preflight = _schemaEngine.Preflight(
+                new OutputSchemaPreflightRequest(alternative.Schema, CreateSchemaLimits()),
+                cancellationToken);
+            if (preflight is OutputSchemaPreflightRejected)
+            {
+                continue;
+            }
+
+            var manifest = ((OutputSchemaPreflightAccepted) preflight).Manifest;
+            var evaluation = _schemaEngine.Evaluate(
+                new OutputSchemaEvaluationRequest(
+                    alternative.Schema,
+                    candidateJson,
+                    manifest,
+                    CreateSchemaLimits(),
+                    CreateCandidateLimits(),
+                    Math.Min(definition.ValidationPolicy.MaximumIssues, _options.MaximumValidationIssues)),
+                cancellationToken);
+            if (evaluation is OutputSchemaEvaluationPassed)
+            {
+                passes++;
+            }
+        }
+
+        if (passes == 1)
+        {
+            var candidate = new ValidatedOutput(OutputMode.Union, null, candidateJson, null);
+            var manifest = new OutputValidationManifest(definition.Id, definition.Mode, attempt, []);
+            return ValueTask.FromResult<OutputProcessingResult>(new OutputAccepted(candidate, manifest));
+        }
+
+        return ValueTask.FromResult(Decide(
+            definition,
+            attempt,
+            new OutputValidationFailure(
+                passes == 0 ? OutputValidationFailureKind.SchemaValidationFailed : OutputValidationFailureKind.ValidatorFailed,
+                passes == 0
+                    ? "The candidate did not validate against any union alternative."
+                    : "The candidate validated against more than one union alternative.",
+                [])));
     }
 
     private async Task<OutputValidationFailure?> RunValidatorsAsync(
@@ -359,12 +508,23 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
     }
 
     private static ExtractionOutcome ExtractCandidate(
-        OutputMode mode,
+        OutputDefinition definition,
         ModelResponse response,
         int maximumCandidateBytes,
         int maximumCandidateDepth,
         CancellationToken cancellationToken)
     {
+        var mode = definition.Mode;
+        if (mode == OutputMode.Media)
+        {
+            return ExtractMediaCandidate(response, cancellationToken);
+        }
+
+        if (mode == OutputMode.SyntheticTool)
+        {
+            return ExtractSyntheticToolCandidate(response, maximumCandidateBytes, maximumCandidateDepth, cancellationToken);
+        }
+
         if (mode == OutputMode.Text)
         {
             return ExtractTextWithinLimit(response, maximumCandidateBytes, cancellationToken);
@@ -417,6 +577,79 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                     "The candidate text could not be parsed as JSON.",
                     [new OutputValidationIssue("json-parse-error", exception.Message, null)]),
                 textExtraction.Utf8ByteCount);
+        }
+    }
+
+    private static ExtractionOutcome ExtractMediaCandidate(ModelResponse response, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var media = response.Parts.OfType<MediaReferencePart>().FirstOrDefault();
+        if (media is null)
+        {
+            return new ExtractionOutcome(
+                null,
+                null,
+                new OutputValidationFailure(
+                    OutputValidationFailureKind.MalformedJson,
+                    "Media output requires a media reference part in the terminal response.",
+                    []),
+                null);
+        }
+
+        var payload = JsonSerializer.SerializeToElement(new { mediaType = media.Reference.MediaType });
+        return new ExtractionOutcome(null, payload, null, null);
+    }
+
+    private static ExtractionOutcome ExtractSyntheticToolCandidate(
+        ModelResponse response,
+        int maximumCandidateBytes,
+        int maximumCandidateDepth,
+        CancellationToken cancellationToken)
+    {
+        var call = response.Parts.OfType<ToolCallPart>().FirstOrDefault(StructuredOutputToolConvention.IsSyntheticOutputCall);
+        if (call is null)
+        {
+            return new ExtractionOutcome(
+                null,
+                null,
+                new OutputValidationFailure(
+                    OutputValidationFailureKind.MalformedJson,
+                    "Synthetic tool output requires a matching tool call in the terminal response.",
+                    []),
+                null);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(
+                call.Arguments.GetRawText(),
+                new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = maximumCandidateDepth,
+                });
+            return BoundedJsonSerializer.TryComputeHash(document.RootElement, maximumCandidateBytes, cancellationToken, out _)
+                ? new ExtractionOutcome(null, document.RootElement.Clone(), null, null)
+                : new ExtractionOutcome(
+                    null,
+                    null,
+                    new OutputValidationFailure(
+                        OutputValidationFailureKind.OversizedCandidate,
+                        $"The synthetic tool arguments exceed the maximum of {maximumCandidateBytes} UTF-8 bytes.",
+                        []),
+                    null);
+        }
+        catch (JsonException exception)
+        {
+            return new ExtractionOutcome(
+                null,
+                null,
+                new OutputValidationFailure(
+                    OutputValidationFailureKind.MalformedJson,
+                    "The synthetic tool arguments could not be parsed as JSON.",
+                    [new OutputValidationIssue("json-parse-error", exception.Message, null)]),
+                null);
         }
     }
 

@@ -25,14 +25,22 @@ public sealed record DurableRecorded: DurableRecordResult
     /// The instant the journal committed the record, from the injected
     /// <see cref="TimeProvider"/>.
     /// </param>
+    /// <param name="enforcement">
+    /// Evidence that the write's grant was consumed and its required audit accepted, or
+    /// <see langword="null"/> when the journal's selected access contract performs no grant ingress.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="fencingToken"/> is the default, unallocated token.
     /// </exception>
-    public DurableRecorded(FencingToken fencingToken, DateTimeOffset recordedAt)
+    public DurableRecorded(
+        FencingToken fencingToken,
+        DateTimeOffset recordedAt,
+        DurableJournalEnforcementReceipt? enforcement = null)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(fencingToken, default, nameof(fencingToken));
         FencingToken = fencingToken;
         RecordedAt = recordedAt;
+        Enforcement = enforcement;
     }
 
     /// <summary>
@@ -53,4 +61,12 @@ public sealed record DurableRecorded: DurableRecordResult
 
     /// <summary>Gets the instant the journal committed the record.</summary>
     public DateTimeOffset RecordedAt { get; init; }
+
+    /// <summary>Gets the write's grant-consumption and audit evidence.</summary>
+    /// <value>
+    /// The authoritative receipt proving this exact write consumed its single-use grant and completed required
+    /// audit, or <see langword="null"/> when the journal performs no grant ingress. A caller that requires
+    /// audited durability treats a null receipt as unproven rather than as success.
+    /// </value>
+    public DurableJournalEnforcementReceipt? Enforcement { get; init; }
 }

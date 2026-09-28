@@ -35,7 +35,7 @@ public sealed class ExtractiveCompactionStrategyTests
         var strategy = CreateStrategy();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => strategy.ProduceAsync(null!, TestContext.Current.CancellationToken));
+            () => strategy.ProduceAsync(null!, null, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("request");
     }
@@ -55,7 +55,7 @@ public sealed class ExtractiveCompactionStrategyTests
 
         var result = await strategy.ProduceAsync(
             new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(2), second.Sequence), source, cut),
-            TestContext.Current.CancellationToken);
+            null, TestContext.Current.CancellationToken);
 
         var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
         var text = ((TextPart) produced.Checkpoint.Summary[0]).Text;
@@ -79,7 +79,7 @@ public sealed class ExtractiveCompactionStrategyTests
 
         var result = await strategy.ProduceAsync(
             new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), entry.Sequence), source, cut),
-            TestContext.Current.CancellationToken);
+            null, TestContext.Current.CancellationToken);
 
         var unsupported = result.ShouldBeOfType<CompactionStrategyUnsupported>();
         unsupported.Rejection.Kind.ShouldBe(CompactionRejectionKind.NoSafeCut);
@@ -97,7 +97,7 @@ public sealed class ExtractiveCompactionStrategyTests
 
         var result = await strategy.ProduceAsync(
             new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), entry.Sequence), source, cut),
-            TestContext.Current.CancellationToken);
+            null, TestContext.Current.CancellationToken);
 
         var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
         var text = ((TextPart) produced.Checkpoint.Summary[0]).Text;
@@ -125,7 +125,7 @@ public sealed class ExtractiveCompactionStrategyTests
 
         var result = await strategy.ProduceAsync(
             new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), entry.Sequence), source, cut),
-            TestContext.Current.CancellationToken);
+            null, TestContext.Current.CancellationToken);
 
         var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
         var summary = ((TextPart) produced.Checkpoint.Summary[0]).Text;
@@ -175,6 +175,7 @@ public sealed class ExtractiveCompactionStrategyTests
         _ = await Should.ThrowAsync<OperationCanceledException>(
             () => strategy.ProduceAsync(
                 new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), entry.Sequence), source, cut),
+                budget: null,
                 cts.Token));
     }
 
@@ -190,7 +191,7 @@ public sealed class ExtractiveCompactionStrategyTests
 
         var result = await strategy.ProduceAsync(
             new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), call.Sequence), source, cut),
-            TestContext.Current.CancellationToken);
+            null, TestContext.Current.CancellationToken);
 
         var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
         var text = ((TextPart) produced.Checkpoint.Summary[0]).Text;

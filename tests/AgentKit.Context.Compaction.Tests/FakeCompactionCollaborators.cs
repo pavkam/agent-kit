@@ -19,7 +19,9 @@ internal sealed class FakeCompactionStrategy: ICompactionStrategy
     public Func<CompactionStrategyRequest, CompactionStrategyResult>? OnProduce { get; set; }
 
     public Task<CompactionStrategyResult> ProduceAsync(
-        CompactionStrategyRequest request, CancellationToken cancellationToken = default) =>
+        CompactionStrategyRequest request,
+        BudgetExecutionCapability? budget,
+        CancellationToken cancellationToken = default) =>
         Task.FromResult(OnProduce?.Invoke(request) ?? throw new InvalidOperationException("not configured"));
 }
 

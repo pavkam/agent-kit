@@ -19,7 +19,7 @@ namespace AgentKit.Loop;
 /// lifetime and reconciliation. Pre-effect estimation of unknown token cost is not attempted here.
 /// </para>
 /// </remarks>
-internal sealed class RunBudget
+internal sealed class RunBudget: IRunBudget
 {
     private static readonly BudgetUnit _count = new("count");
     private static readonly BudgetUnit _tokens = new("tokens");
@@ -45,6 +45,10 @@ internal sealed class RunBudget
 
     /// <summary>Gets the underlying scope identity.</summary>
     public BudgetScopeId ScopeId => _scope.Id;
+
+    public BudgetScopeId Id => throw new NotImplementedException();
+
+    public BudgetScopeAddress Address => throw new NotImplementedException();
 
     /// <summary>Gets the borrowed scope for tool-execution capability binding.</summary>
     /// <returns>The live scope this run budget reserves through.</returns>
@@ -97,8 +101,44 @@ internal sealed class RunBudget
         {
             exhausted ??= await ReserveAndCommitAsync(BudgetDimensions.Cost, _usd, cost, operationId, $"{key}:cost", certainty, cancellationToken).ConfigureAwait(false);
         }
+        else if (usage.EstimatedCost is null && usage.ReportState != ModelUsageReportState.NotReported)
+        {
+            exhausted ??= await ReserveUnknownCostAsync(operationId, $"{key}:cost-unknown", certainty, cancellationToken).ConfigureAwait(false);
+        }
 
         return exhausted;
+    }
+
+    private async ValueTask<BudgetExhaustion?> ReserveUnknownCostAsync(
+        OperationId operationId,
+        string key,
+        SideEffectCertainty sideEffectCertainty,
+        CancellationToken cancellationToken)
+    {
+        var result = await _scope.ReserveAsync(
+            new BudgetReservationRequest(
+                _scope.Id,
+                BudgetDimensions.Cost,
+                1m,
+                _usd,
+                operationId,
+                _timeProvider.GetUtcNow().AddMinutes(5),
+                new IdempotencyKey($"run:{_runId}:{BudgetDimensions.Cost.Value}:{key}"),
+                costEstimateUnknown: true),
+            cancellationToken).ConfigureAwait(false);
+        return result switch
+        {
+            BudgetReserved => null,
+            BudgetRejected rejected => new BudgetExhaustion(rejected.Failure.Dimension, rejected.Failure.SafeMessage, rejected.Failure, sideEffectCertainty),
+            BudgetHeld held => new BudgetExhaustion(
+                held.Holds[0].Dimension,
+                $"The {held.Holds[0].Dimension.Value} budget overran and further reservations are held.",
+                Failure: null, sideEffectCertainty),
+            _ => new BudgetExhaustion(
+                BudgetDimensions.Cost,
+                "The budget authority returned an unsupported reservation outcome for unknown cost.",
+                Failure: null, sideEffectCertainty),
+        };
     }
 
     private async ValueTask<BudgetExhaustion?> ReserveAndCommitAsync(
@@ -136,6 +176,10 @@ internal sealed class RunBudget
                     Failure: null, sideEffectCertainty);
         }
     }
+
+    public ValueTask<BudgetReservationResult> ReserveAsync(BudgetReservationRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(ImmutableArray<BudgetReservationRequest> requests, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 }
 
 /// <summary>

@@ -102,10 +102,16 @@ public sealed class ResourceTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("resource"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public ValueTask<ToolInvocationResult> InvokeAsync(
+    public async ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
-        CancellationToken cancellationToken = default) =>
-        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        using var observation = ToolLeafObservation.Start(Id);
+        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
+        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
+        return result;
+    }
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

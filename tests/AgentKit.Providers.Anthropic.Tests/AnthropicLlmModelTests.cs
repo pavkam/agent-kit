@@ -183,7 +183,7 @@ public sealed class AnthropicLlmModelTests
     [InlineData(302, ProviderFailureKind.ProtocolViolation)]
     [InlineData(408, ProviderFailureKind.Timeout)]
     [InlineData(409, ProviderFailureKind.InvalidRequest)]
-    [InlineData(413, ProviderFailureKind.InvalidRequest)]
+    [InlineData(413, ProviderFailureKind.ContextLengthExceeded)]
     [InlineData(503, ProviderFailureKind.Unavailable)]
     [InlineData(504, ProviderFailureKind.Timeout)]
     [InlineData(599, ProviderFailureKind.Unavailable)]

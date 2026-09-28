@@ -24,7 +24,7 @@ public sealed class AnthropicProviderDefaultsTests
     {
         AnthropicProviderDefaults.DefaultCapabilities.SupportsReasoning.ShouldBeTrue();
         AnthropicProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
-        AnthropicProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
+        AnthropicProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeTrue();
     }
 
     [Fact]

@@ -140,7 +140,61 @@ internal static class DurabilityTestData
     public static ExternalOperationReference ExternalReference() =>
         new(new DurableBackendKey("backend"), "handle-1");
 
+    public static DurableOperationBinding Binding() => new(Address(), Context());
+
+    public static DurableBackendDescriptor BackendDescriptor() =>
+        new(
+            new DurableBackendKey("backend"),
+            new DurableBackendCapabilities(
+                SupportsDistributedOwnership: false,
+                SupportsExternalHandoff: true,
+                SupportsReconciliation: true),
+            [new DurableOperationName("tool.call")],
+            supportsFencing: true,
+            supportsReconciliation: true);
+
+    public static SecurityGrant Grant()
+    {
+        var authorization = Authorization();
+        return new SecurityGrant(
+            new GrantId(Guid.Parse("d1000000-0000-0000-0000-00000000000a")),
+            new SecurityRequestId(Guid.Parse("e1000000-0000-0000-0000-00000000000b")),
+            authorization.Scope,
+            authorization.Identity,
+            authorization,
+            new ComponentId("durable-journal"),
+            SecurityOperationKind.StateMutation,
+            SecurityEffect.Mutate,
+            [new ProtectedResource(ProtectedResourceKind.ApplicationState, "durable-journal:journal")],
+            new InputFingerprint("sha256:durable"),
+            new SecurityPolicyVersion(1),
+            new SecurityRevocationVersion(1),
+            Now,
+            Now.AddMinutes(1),
+            1);
+    }
+
+    public static SecurityEnforcementIntent Intent() =>
+        new(new SecurityEnforcementIntentId(Guid.Parse("f1000000-0000-0000-0000-00000000000c")), null);
+
     public static IExecutionLease Lease() => new FakeExecutionLease();
+
+    public static IDurabilityRuntimeLease RuntimeLease() => new FakeRuntimeLease();
+
+    private sealed class FakeRuntimeLease: IDurabilityRuntimeLease
+    {
+        public DurableExecutionContext Context => DurabilityTestData.Context();
+
+        public IDurableExecutionBackend Backend => throw new NotSupportedException("The contract test never activates a backend.");
+
+        public IDurableOperationJournal Journal => throw new NotSupportedException("The contract test never activates a journal.");
+
+        public IDurableLeaseManager LeaseManager => throw new NotSupportedException("The contract test never activates a lease manager.");
+
+        public IRecoveryPolicy RecoveryPolicy => throw new NotSupportedException("The contract test never activates a recovery policy.");
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 
     private sealed class FakeExecutionLease: IExecutionLease
     {

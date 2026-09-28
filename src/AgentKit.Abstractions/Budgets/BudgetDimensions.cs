@@ -65,6 +65,15 @@ public static class BudgetDimensions
     /// <summary>Gets the dimension counting output-validation retry attempts.</summary>
     public static BudgetDimension OutputValidationRetries { get; } = new("agentkit.output.validation_retries");
 
+    /// <summary>Gets the dimension counting structured-output repair attempts.</summary>
+    public static BudgetDimension OutputRepairs { get; } = new("agentkit.output.repairs");
+
+    /// <summary>Gets the dimension counting context compaction attempts.</summary>
+    public static BudgetDimension CompactionAttempts { get; } = new("agentkit.compaction.attempts");
+
+    /// <summary>Gets the dimension counting tokens consumed by compaction summary generation.</summary>
+    public static BudgetDimension CompactionSummaryTokens { get; } = new("agentkit.compaction.summary_tokens");
+
     /// <summary>Gets the dimension counting delegations.</summary>
     public static BudgetDimension Delegations { get; } = new("agentkit.delegations");
 

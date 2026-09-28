@@ -34,6 +34,28 @@ public sealed class AgentPermissionOptions
     /// <value><see cref="HeadlessApprovalBehavior.Deny"/> unless the host explicitly opts into durable deferral.</value>
     public HeadlessApprovalBehavior HeadlessApprovalBehavior { get; set; } = HeadlessApprovalBehavior.Deny;
 
+    /// <summary>Gets or sets the durability profile this authority journals deferred approval waits under.</summary>
+    /// <value>
+    /// A nondefault profile key, or <see langword="null"/> — the default — when a deferred approval leaves no durable
+    /// operation record.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The profile is configured here rather than read from an agent definition because this authority is an
+    /// engine-wide singleton: it authorizes work for every hosted agent and holds no per-agent selection. A host
+    /// whose agents need different durability profiles for approval waits registers one keyed authority per profile
+    /// instead of expecting this single value to vary.
+    /// </para>
+    /// <para>
+    /// Setting this key promises evidence will exist, so a request whose decision defers is journaled only when the
+    /// composed durability runtime resolves the profile and that profile enables
+    /// <see cref="PermissionsDurableOperations.ApprovalWait"/>. When durability is not composed, the profile is
+    /// unknown, or the name is not enabled, the authority behaves exactly as it does undurably: the wait is still
+    /// reported to the caller, and no security decision changes.
+    /// </para>
+    /// </remarks>
+    public DurabilityProfileKey? DurabilityProfile { get; set; }
+
     /// <summary>Gets or sets the default delivery requirement for security audit records.</summary>
     /// <value><see cref="SecurityAuditDelivery.Required"/> unless the host explicitly accepts best-effort audit export.</value>
     public SecurityAuditDelivery AuditDelivery { get; set; } = SecurityAuditDelivery.Required;

@@ -38,6 +38,7 @@ public static class GoogleGeminiErrorMapping
     public static ProviderFailureKind MapStatus(string? status) =>
         status switch
         {
+            "CONTEXT_LENGTH_EXCEEDED" => ProviderFailureKind.ContextLengthExceeded,
             "INVALID_ARGUMENT" or "FAILED_PRECONDITION" or "OUT_OF_RANGE" => ProviderFailureKind.InvalidRequest,
             "UNAUTHENTICATED" => ProviderFailureKind.Authentication,
             "PERMISSION_DENIED" => ProviderFailureKind.Authorization,

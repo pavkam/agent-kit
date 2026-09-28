@@ -124,6 +124,50 @@ public interface IObservationRedactor
 }
 ```
 
+Supporting observation types referenced by sinks and redactors:
+
+```csharp
+public enum ObservationContentKind
+{
+    Prompt,
+    ModelOutput,
+    ToolArguments,
+    ToolResult,
+    RetrievedContent,
+    Reasoning,
+}
+
+public enum DataClassification
+{
+    Public,
+    Internal,
+    Confidential,
+    Restricted,
+}
+
+public readonly record struct ContentFingerprint(string Value);
+
+public sealed record ObservationPolicy(
+    ObservationBounds Bounds,
+    ImmutableHashSet<DataClassification> AllowedClassifications);
+
+public abstract record RedactionResult;
+
+public sealed record RedactedContent(ObservationContent Content) : RedactionResult;
+
+public sealed record ContentOmitted : RedactionResult;
+
+public sealed record ObservationContentCapturePolicy(
+    bool Enabled = false);
+
+public sealed record ObservationDeliveryPolicy(
+    bool Required = false,
+    TimeSpan FlushDeadline = default);
+
+public sealed record ObservationBounds(
+    int MaximumBytesPerField = 0);
+```
+
 `SecurityAuditRecordId` is a dedicated validated readonly identifier. A run
 event's stable protocol identity is the composite `(RunId, Sequence)`; the
 sequence remains ordering within that run and is never used alone as a domain

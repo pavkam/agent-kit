@@ -76,6 +76,10 @@ public sealed record AgentOptionalCapabilitySelection
     /// <value>A nondefault profile key, or <see langword="null"/> when this agent neither owns nor delegates goals.</value>
     public GoalProfileKey? GoalProfile { get; }
 
+    /// <summary>Gets the compaction profile that selects a keyed <see cref="ICompactor"/> for this agent.</summary>
+    /// <value>A nondefault profile key, or <see langword="null"/> when this agent does not enable context compaction.</value>
+    public CompactionProfileKey? CompactionProfile { get; init; }
+
     /// <summary>Gets the declared external capability references this agent exposes to delegation or discovery.</summary>
     /// <value>An initialized, nonnull immutable array; empty when this agent declares none.</value>
     public ImmutableArray<AgentCapabilityReference> Capabilities { get; }
@@ -86,7 +90,8 @@ public sealed record AgentOptionalCapabilitySelection
     public bool Equals(AgentOptionalCapabilitySelection? other) => other is not null
         && ToolExecutor == other.ToolExecutor && ArtifactCoordinator == other.ArtifactCoordinator
         && DurabilityProfile == other.DurabilityProfile && MemoryProfile == other.MemoryProfile
-        && GoalProfile == other.GoalProfile && Capabilities.SequenceEqual(other.Capabilities);
+        && GoalProfile == other.GoalProfile && CompactionProfile == other.CompactionProfile
+        && Capabilities.SequenceEqual(other.Capabilities);
 
     /// <summary>Hashes every optional selection consistently with structural equality.</summary>
     /// <returns>A hash over every field and the ordered capability sequence.</returns>
@@ -94,7 +99,7 @@ public sealed record AgentOptionalCapabilitySelection
     {
         var hash = new HashCode();
         hash.Add(ToolExecutor); hash.Add(ArtifactCoordinator); hash.Add(DurabilityProfile);
-        hash.Add(MemoryProfile); hash.Add(GoalProfile);
+        hash.Add(MemoryProfile); hash.Add(GoalProfile); hash.Add(CompactionProfile);
         foreach (var capability in Capabilities) { hash.Add(capability); }
         return hash.ToHashCode();
     }

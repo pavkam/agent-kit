@@ -20,4 +20,7 @@ internal static partial class DurableJournalLog
 
     [LoggerMessage(EventId = 21004, Level = LogLevel.Debug, Message = "Durable journal evidence load was cancelled.")]
     internal static partial void EvidenceLoadCancelled(ILogger logger);
+
+    [LoggerMessage(EventId = 21005, Level = LogLevel.Warning, Message = "Durable journal {Operation} was denied before any record changed.")]
+    internal static partial void WriteDenied(ILogger logger, string operation);
 }

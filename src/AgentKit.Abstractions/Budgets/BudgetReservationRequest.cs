@@ -31,6 +31,10 @@ public sealed record BudgetReservationRequest
     /// applies its configured default lifetime.
     /// </param>
     /// <param name="idempotencyKey">The key that makes repeating this exact request safe.</param>
+    /// <param name="costEstimateUnknown">
+    /// When <see langword="true"/> for a <see cref="BudgetDimensions.Cost"/> reservation, the amount is a placeholder
+    /// and the estimate provenance is unknown rather than measured.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="amount"/> is not positive.</exception>
     public BudgetReservationRequest(
         BudgetScopeId scopeId,
@@ -39,7 +43,8 @@ public sealed record BudgetReservationRequest
         BudgetUnit unit,
         OperationId operationId,
         DateTimeOffset? expiresAt,
-        IdempotencyKey idempotencyKey)
+        IdempotencyKey idempotencyKey,
+        bool costEstimateUnknown = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);
 
@@ -50,6 +55,7 @@ public sealed record BudgetReservationRequest
         OperationId = operationId;
         ExpiresAt = expiresAt;
         IdempotencyKey = idempotencyKey;
+        CostEstimateUnknown = costEstimateUnknown;
     }
 
     /// <summary>Gets the scope to reserve against.</summary>
@@ -84,4 +90,9 @@ public sealed record BudgetReservationRequest
 
     /// <summary>Gets the key that makes repeating this exact request safe.</summary>
     public IdempotencyKey IdempotencyKey { get; init; }
+
+    /// <summary>
+    /// Gets whether a cost reservation uses an unknown estimate rather than measured or provider-reported pricing.
+    /// </summary>
+    public bool CostEstimateUnknown { get; init; }
 }

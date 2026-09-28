@@ -275,7 +275,9 @@ public sealed class AgentEngineTests
         var loop = new RecordingAgentLoop();
         var limit = new BudgetLimit(BudgetDimensions.Turns, 3m, new BudgetUnit("count"), BudgetLimitKind.Hard);
         var definition = CompositionTestData.Definition() with { BudgetLimits = [limit] };
-        await using var engine = CompositionTestData.RunnableBuilder(loop, definition).Build();
+        var builder = CompositionTestData.RunnableBuilder(loop, definition);
+        _ = builder.Services.AddSingleton<IBudgetAuthority>(new NullBudgetAuthority());
+        await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
@@ -442,7 +444,8 @@ public sealed class AgentEngineTests
 
     private sealed class NullOutputProcessor: IOutputProcessor
     {
-        public ValueTask<OutputProcessingResult> ProcessAsync(OutputProcessingRequest request, CancellationToken cancellationToken = default) =>
+        public ValueTask<OutputProcessingResult> ProcessAsync(
+            OutputProcessingRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

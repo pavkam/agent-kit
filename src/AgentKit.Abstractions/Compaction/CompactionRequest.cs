@@ -212,4 +212,39 @@ public sealed record CompactionRequest
 
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <summary>Gets the compiled policy snapshot when the caller supplies one.</summary>
+    /// <value>Null when the caller uses the reduced request shape.</value>
+    public CompactionPolicySnapshot? Policy { get; init; }
+
+    /// <summary>Gets the effective instruction fingerprint observed when the request was built.</summary>
+    /// <value>Null when the caller did not compute an instruction fingerprint.</value>
+    public ContentHash? EffectiveInstructionsFingerprint { get; init; }
+
+    /// <summary>Gets the durability profile this attempt's activation is journaled under.</summary>
+    /// <value>
+    /// The nondefault profile the requesting agent definition selected, or <see langword="null"/> — the default —
+    /// when this attempt's activation is not durably recorded.
+    /// </value>
+    /// <remarks>
+    /// The profile travels on the request because compaction is driven on behalf of one agent's run while the
+    /// activation coordinator itself is an engine-wide component with no per-agent selection of its own. Setting it
+    /// journals the activation append only when the composed durability runtime resolves the profile and that
+    /// profile enables <see cref="CompactionDurableOperations.Activation"/>; otherwise activation behaves exactly as
+    /// it does undurably, because durability changes what evidence survives rather than what compaction computes.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a default, unusable profile key.</exception>
+    public DurabilityProfileKey? DurabilityProfile
+    {
+        get;
+        init
+        {
+            if (value is { } profile)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(profile, default, nameof(DurabilityProfile));
+            }
+
+            field = value;
+        }
+    }
 }

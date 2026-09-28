@@ -56,5 +56,33 @@ internal static class TestFactory
         OutputDefinition definition, ModelResponse response, int attempt = 1) =>
         new(definition, response, attempt);
 
+    public static OutputProcessingRequest ProcessingRequest(
+        OutputDefinition definition, ModelResponse response, ModelDescriptor model, int attempt = 1) =>
+        new(definition, response, attempt, model, budget: null);
+
+    public static ModelDescriptor ModelDescriptor(bool supportsStructuredOutput = true)
+    {
+        var capabilities = new ModelCapabilities(
+            supportsSystemInstructions: true,
+            supportsStreaming: true,
+            supportsToolCalls: true,
+            supportsParallelToolCalls: true,
+            supportsStructuredOutput: supportsStructuredOutput,
+            supportsReasoning: false,
+            supportsVisionInput: false,
+            ExtensionData.Empty);
+
+        return new ModelDescriptor(
+            new ModelAlias("test"),
+            new ProviderId("test"),
+            new ApiFamilyId("test"),
+            new ModelId("test-model"),
+            deploymentId: null,
+            capabilities,
+            new ModelLimits(maxContextTokens: 4096, maxOutputTokens: 1024),
+            pricing: null,
+            ExtensionData.Empty);
+    }
+
     public static JsonElement ParseJson(string json) => JsonDocument.Parse(json).RootElement;
 }

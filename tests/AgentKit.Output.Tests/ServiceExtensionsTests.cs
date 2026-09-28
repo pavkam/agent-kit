@@ -234,7 +234,7 @@ public sealed class ServiceExtensionsTests
     private sealed class FakeOutputProcessor: IOutputProcessor
     {
         public ValueTask<OutputProcessingResult> ProcessAsync(
-            OutputProcessingRequest request, CancellationToken cancellationToken = default) =>
+            OutputProcessingRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 }

@@ -1,0 +1,108 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Durability.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Durability
+{
+    public sealed class AgentDurabilityOptions
+    {
+        public AgentDurabilityOptions() { }
+        public AgentKit.Durability.DurableCheckpointMode CheckpointMode { get; set; }
+        public System.TimeSpan LeaseDuration { get; set; }
+        public System.TimeSpan LeaseRenewalInterval { get; set; }
+        public int MaximumRecoveryAttempts { get; set; }
+        public AgentKit.Durability.UnknownEffectRecoveryMode UnknownEffectMode { get; set; }
+    }
+    public sealed class DefaultRecoveryPolicy : AgentKit.IRecoveryPolicy
+    {
+        public DefaultRecoveryPolicy(Microsoft.Extensions.Options.IOptions<AgentKit.Durability.AgentDurabilityOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryDecision> DecideAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.RecoveryEvidence evidence, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DurabilityProfileOptions
+    {
+        public DurabilityProfileOptions() { }
+        public AgentKit.DurableBackendKey BackendKey { get; set; }
+        public System.Collections.Generic.List<AgentKit.DurableOperationName> EnabledOperations { get; }
+        public AgentKit.DurableJournalKey JournalKey { get; set; }
+        public AgentKit.DurableLeaseManagerKey LeaseManagerKey { get; set; }
+        public AgentKit.RecoveryPolicyKey RecoveryPolicyKey { get; set; }
+        public AgentKit.DurabilityProfileVersion Version { get; set; }
+    }
+    public enum DurableCheckpointMode
+    {
+        SemanticBoundaries = 0,
+        EveryTransition = 1,
+    }
+    public enum DurableExecutionEventDelivery
+    {
+        Observational = 0,
+        Required = 1,
+    }
+    public sealed class DurableExecutionEventSinkRegistration : System.IEquatable<AgentKit.Durability.DurableExecutionEventSinkRegistration>
+    {
+        public DurableExecutionEventSinkRegistration(AgentKit.DurableExecutionEventSinkId id, int order, AgentKit.Durability.DurableExecutionEventDelivery delivery, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime, System.Collections.Immutable.ImmutableArray<AgentKit.DurabilityProfileKey> profiles = default) { }
+        public AgentKit.Durability.DurableExecutionEventDelivery Delivery { get; }
+        public AgentKit.DurableExecutionEventSinkId Id { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.DurabilityProfileKey> Profiles { get; }
+        public bool Observes(AgentKit.DurabilityProfileKey profile) { }
+    }
+    public sealed class FencedDurableOperationJournal : AgentKit.IDurableOperationJournal
+    {
+        public FencedDurableOperationJournal(AgentKit.IDurableOperationJournal inner, AgentKit.IExecutionLease lease) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationAddress> address, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableCheckpoint> checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationStart> start, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationResult> result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordWaitingAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationWaiting> waiting, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDurability(System.Action<AgentKit.Durability.AgentDurabilityOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurabilityProfile(AgentKit.DurabilityProfileKey key, System.Action<AgentKit.Durability.DurabilityProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurabilityProfile(AgentKit.DurabilityProfileKey key, System.Action<AgentKit.Durability.DurabilityProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurabilityBackend<TBackend>(AgentKit.DurableBackendKey key)
+                where TBackend :  class, AgentKit.IDurableExecutionBackend { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurabilityBackend<TBackend>(AgentKit.DurableBackendKey key)
+                where TBackend :  class, AgentKit.IDurableExecutionBackend { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableJournal<TJournal>(AgentKit.DurableJournalKey key)
+                where TJournal :  class, AgentKit.IDurableOperationJournal { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableJournal<TJournal>(AgentKit.DurableJournalKey key)
+                where TJournal :  class, AgentKit.IDurableOperationJournal { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableLeaseManager<TLeaseManager>(AgentKit.DurableLeaseManagerKey key)
+                where TLeaseManager :  class, AgentKit.IDurableLeaseManager { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableLeaseManager<TLeaseManager>(AgentKit.DurableLeaseManagerKey key)
+                where TLeaseManager :  class, AgentKit.IDurableLeaseManager { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRecoveryPolicy<TPolicy>(AgentKit.RecoveryPolicyKey key)
+                where TPolicy :  class, AgentKit.IRecoveryPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceRecoveryPolicy<TPolicy>(AgentKit.RecoveryPolicyKey key)
+                where TPolicy :  class, AgentKit.IRecoveryPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableOperationCodec<TState, TCodec>()
+                where TCodec :  class, AgentKit.IDurableOperationCodec<TState> { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableOperationCodec<TState, TCodec>()
+                where TCodec :  class, AgentKit.IDurableOperationCodec<TState> { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableExecutionEventSink<TSink>(AgentKit.Durability.DurableExecutionEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IDurableExecutionEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurabilityRuntimeSelector<TSelector>()
+                where TSelector :  class, AgentKit.IDurabilityRuntimeSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableExecutionCoordinator<TCoordinator>()
+                where TCoordinator :  class, AgentKit.IDurableExecutionCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableBackendCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IDurableBackendCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableBackendSelector<TSelector>()
+                where TSelector :  class, AgentKit.IDurableBackendSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDurableExecutionEventDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IDurableExecutionEventDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableOperationHandler<THandler>()
+                where THandler :  class, AgentKit.IDurableOperationHandler { }
+        }
+    }
+    public enum UnknownEffectRecoveryMode
+    {
+        RequireOperator = 0,
+        ReconcileWhenSupported = 1,
+    }
+}

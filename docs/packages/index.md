@@ -62,13 +62,22 @@ suite; their capability descriptors differ.
 
 ## Durable execution
 
-| Project                                                                          | Use it for                                                                                            | Tests                                                             |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [AgentKit.Durability.InMemory](../../src/AgentKit.Durability.InMemory/README.md) | Coordinate exclusive process-local ownership of durable operations and record their journal evidence. | [Tests](../../tests/AgentKit.Durability.InMemory.Tests/README.md) |
+| Project                                                                          | Use it for                                                                                                                                 | Tests                                                             |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| [AgentKit.Durability](../../src/AgentKit.Durability/README.md)                   | Compose the durability runtime: profiles, backend catalog and selector, recovery policy, fenced journal, and the execution coordinator.    | [Tests](../../tests/AgentKit.Durability.Tests/README.md)          |
+| [AgentKit.Durability.InMemory](../../src/AgentKit.Durability.InMemory/README.md) | Coordinate exclusive process-local ownership of durable operations and record their journal evidence.                                      | [Tests](../../tests/AgentKit.Durability.InMemory.Tests/README.md) |
+| [AgentKit.Durability.Sqlite](../../src/AgentKit.Durability.Sqlite/README.md)     | Record journal evidence and allocate fencing generations in one durable local SQLite database shared by the journal and the lease manager. | [Tests](../../tests/AgentKit.Durability.Sqlite.Tests/README.md)   |
+| [AgentKit.Durability.Json](../../src/AgentKit.Durability.Json/README.md)         | Record journal evidence as a durable, inspectable append-only JSON log under one host-supplied root.                                       | [Tests](../../tests/AgentKit.Durability.Json.Tests/README.md)     |
 
-This is currently the only durable-execution package. The provider-neutral
-coordinator, checkpoint store, and recovery policy described in
-[durable execution](../architecture/durable-execution.md) remain unimplemented.
+The SQLite adapter is the one to select when more than one process may own the
+same operation: it is the only durability leaf that ships a lease manager,
+because its fencing generations are allocated inside the shared database. The
+JSON adapter holds an advisory exclusive lock and rejects a second writer, so it
+ships no lease manager and claims no multi-process coordination.
+
+Consumer checkpoints are partly landed: the agent loop journals its model
+attempts and tool calls when a profile enables them. Engine admission,
+settlement, approval waits, and compaction activation do not checkpoint yet.
 
 ## Host access and scripted backends
 

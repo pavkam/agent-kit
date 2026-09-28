@@ -45,7 +45,7 @@ public sealed class MistralAIProviderDefaultsTests
     {
         MistralAIProviderDefaults.DefaultCapabilities.SupportsReasoning.ShouldBeFalse();
         MistralAIProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
-        MistralAIProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
+        MistralAIProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeTrue();
         MistralAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
         MistralAIProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
     }

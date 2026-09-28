@@ -27,4 +27,8 @@ public interface IOutputPublisher
     /// <exception cref="OperationCanceledException">The caller's wait is cancelled before acceptance.</exception>
     /// <remarks>This operation adds no required effect that retroactively determines settlement. Required result persistence and publication intent are prepared by the settlement protocol before the envelope becomes observable.</remarks>
     public ValueTask CompleteAsync<TOutput>(AgentRunFinished<TOutput> result, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets the settlement outcome implied by required run-event sink delivery for this run.</summary>
+    /// <value><see cref="RunSettlementCompleted"/> when every required sink accepted its events; otherwise <see cref="RunSettlementRecoveryRequired"/>.</value>
+    public RunSettlementOutcome SettlementOutcome => new RunSettlementCompleted();
 }

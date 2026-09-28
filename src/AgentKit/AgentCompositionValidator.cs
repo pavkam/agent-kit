@@ -83,6 +83,8 @@ internal static class AgentCompositionValidator
         // selection is not a supported axis), so one engine-wide check covers every definition.
         _ = Resolve<IModelCatalog>(provider, diagnostics, "agentkit.model-catalog.missing");
         HookCompositionValidator.Validate(provider, diagnostics);
+        var budgetAuthority = provider.GetService<IBudgetAuthority>();
+        var budgetProfileCatalog = provider.GetService<IBudgetProfileCatalog>();
         // The continuation policy is resolved from one fixed, well-known key rather than per loop, so
         // this is a single engine-wide check rather than one per runnable definition.
         if (!componentRegistrations.Services.Any(service =>
@@ -106,11 +108,22 @@ internal static class AgentCompositionValidator
                 componentRegistrations,
                 diagnostics,
                 modelCatalog,
-                capabilityValidator);
+                capabilityValidator,
+                budgetAuthority,
+                budgetProfileCatalog);
             var hookProfileSelector = provider.GetService<IHookProfileSelector>();
             if (hookProfileSelector is not null)
             {
                 HookCompositionValidator.ValidateDefinitionHookProfiles(catalog, hookProfileSelector, diagnostics);
+            }
+
+            if (catalog.CurrentSnapshot is { } durabilitySnapshot)
+            {
+                DurabilityCompositionValidator.Validate(
+                    durabilitySnapshot.Definitions,
+                    provider.GetService<IDurabilityProfileCatalog>(),
+                    componentRegistrations,
+                    diagnostics);
             }
         }
 
@@ -257,7 +270,9 @@ internal static class AgentCompositionValidator
         ComponentRegistrationSnapshot componentRegistrations,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics,
         IModelCatalog? modelCatalog,
-        IModelCapabilityValidator? capabilityValidator)
+        IModelCapabilityValidator? capabilityValidator,
+        IBudgetAuthority? budgetAuthority,
+        IBudgetProfileCatalog? budgetProfileCatalog)
     {
         var snapshot = catalog.CurrentSnapshot;
         if (snapshot is null)
@@ -354,6 +369,35 @@ internal static class AgentCompositionValidator
                     toolExecutorKey.Value,
                     definition.Id,
                     diagnostics);
+            }
+
+            if (definition.OptionalCapabilities.CompactionProfile is { Value: var compactionProfileKey and not "" })
+            {
+                _ = compactionProfileKey;
+                if (!componentRegistrations.Services.Any(static descriptor => descriptor.ServiceType == typeof(ICompactor)))
+                {
+                    diagnostics.Add(new CompositionDiagnostic(
+                        "agentkit.definition.compaction.missing",
+                        $"Agent '{definition.Id}' selects compaction profile '{compactionProfileKey}' but no {nameof(ICompactor)} is registered."));
+                }
+            }
+
+            if (!definition.BudgetLimits.IsEmpty || definition.BudgetProfile is { Value.Length: > 0 })
+            {
+                if (budgetAuthority is null)
+                {
+                    diagnostics.Add(new CompositionDiagnostic(
+                        "agentkit.definition.budget-authority.missing",
+                        $"Agent '{definition.Id}' declares budget limits or a budget profile but no {nameof(IBudgetAuthority)} is registered."));
+                }
+
+                if (definition.BudgetProfile is { Value.Length: > 0 } budgetProfileKey
+                    && (budgetProfileCatalog is null || !budgetProfileCatalog.TryGet(budgetProfileKey, out _)))
+                {
+                    diagnostics.Add(new CompositionDiagnostic(
+                        "agentkit.definition.budget-profile.missing",
+                        $"Agent '{definition.Id}' selects budget profile '{budgetProfileKey.Value}' but it is not registered."));
+                }
             }
 
             RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);

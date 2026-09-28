@@ -187,6 +187,10 @@ public sealed record ContextAssemblyRequest
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
     public ExtensionData Extensions { get; init; }
 
+    /// <summary>Gets the output contract to include on the assembled provider request.</summary>
+    /// <value>The selected definition, or <see langword="null"/> when the run has no structured output requirement.</value>
+    public OutputDefinition? Output { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(ContextAssemblyRequest? other) =>
         other is not null
@@ -203,7 +207,8 @@ public sealed record ContextAssemblyRequest
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
-        && Extensions.Equals(other.Extensions);
+        && Extensions.Equals(other.Extensions)
+        && Equals(Output, other.Output);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -235,6 +240,7 @@ public sealed record ContextAssemblyRequest
         hash.Add(Evidence);
         hash.Add(Settings);
         hash.Add(Extensions);
+        hash.Add(Output);
         return hash.ToHashCode();
     }
 

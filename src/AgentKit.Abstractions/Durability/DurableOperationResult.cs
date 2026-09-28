@@ -29,8 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableOperationResult
 {
-    private readonly OperationPayload _output;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="DurableOperationResult"/> record.
@@ -118,7 +116,7 @@ public sealed record DurableOperationResult
         Binding = binding;
         State = state;
         SideEffectCertainty = sideEffectCertainty;
-        _output = output;
+        Output = output;
         FencingToken = fencingToken;
         CompletedAt = completedAt;
         SafeFailureMessage = safeFailureMessage;
@@ -176,11 +174,11 @@ public sealed record DurableOperationResult
     /// </exception>
     public OperationPayload Output
     {
-        get => _output;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Output));
-            _output = value;
+            field = value;
         }
     }
 

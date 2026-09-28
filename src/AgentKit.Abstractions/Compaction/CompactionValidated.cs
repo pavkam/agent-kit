@@ -11,14 +11,35 @@ namespace AgentKit;
 public sealed record CompactionValidated: CompactionValidationResult
 {
     /// <summary>Initializes a new instance of the <see cref="CompactionValidated"/> record.</summary>
-    /// <param name="candidate">The validated candidate.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="candidate"/> is null.</exception>
-    public CompactionValidated(CompactionCandidate candidate)
+    /// <param name="compaction">The validated compaction.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="compaction"/> is null.</exception>
+    public CompactionValidated(ValidatedCompaction compaction)
     {
-        ArgumentNullException.ThrowIfNull(candidate);
-        Candidate = candidate;
+        ArgumentNullException.ThrowIfNull(compaction);
+        Compaction = compaction;
     }
 
+    /// <summary>Initializes a validated outcome from a candidate using a placeholder stamp.</summary>
+    /// <param name="candidate">The validated candidate.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="candidate"/> is null.</exception>
+    /// <remarks>
+    /// Callers that require an authoritative stamp should use the constructor that accepts
+    /// <see cref="ValidatedCompaction"/> directly.
+    /// </remarks>
+    public CompactionValidated(CompactionCandidate candidate)
+        : this(new ValidatedCompaction(
+            candidate,
+            new CompactionValidationStamp(
+                new CompactionValidatorVersion("0"),
+                new ContentHash("legacy"),
+                DateTimeOffset.MinValue),
+            []))
+    {
+    }
+
+    /// <summary>Gets the validated compaction.</summary>
+    public ValidatedCompaction Compaction { get; init; }
+
     /// <summary>Gets the validated candidate.</summary>
-    public CompactionCandidate Candidate { get; init; }
+    public CompactionCandidate Candidate => Compaction.Candidate;
 }

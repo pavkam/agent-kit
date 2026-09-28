@@ -33,10 +33,23 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
             body["system"] = system.ToString();
         }
 
-        if (context.Tools.Length > 0)
+        var tools = context.Tools;
+        var toolChoice = context.ToolChoice;
+        if (context.Output is { Mode: OutputMode.NativeSchema or OutputMode.SyntheticTool, Schema: { } outputSchema })
         {
-            body["tools"] = TranslateTools(context.Tools);
-            body["tool_choice"] = TranslateToolChoice(context.ToolChoice, context.Settings.ParallelToolCalls);
+            var synthetic = StructuredOutputToolConvention.CreateToolDefinition(context.Output);
+            if (!tools.Any(static tool => tool.Id == StructuredOutputToolConvention.ToolId))
+            {
+                tools = tools.Add(synthetic);
+            }
+
+            toolChoice = LlmToolChoice.Named(StructuredOutputToolConvention.ToolName);
+        }
+
+        if (tools.Length > 0)
+        {
+            body["tools"] = TranslateTools(tools);
+            body["tool_choice"] = TranslateToolChoice(toolChoice, context.Settings.ParallelToolCalls);
         }
 
         if (context.Settings.Temperature is { } temperature)

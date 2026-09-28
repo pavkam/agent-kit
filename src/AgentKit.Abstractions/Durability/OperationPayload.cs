@@ -25,8 +25,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record OperationPayload
 {
-    private readonly ImmutableArray<byte> _data;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="OperationPayload"/>
     /// record.
@@ -53,7 +51,7 @@ public sealed record OperationPayload
         ArgumentOutOfRangeException.ThrowIfEqual(schemaVersion, default);
         ArgumentException.ThrowIfDefault(data);
         SchemaVersion = schemaVersion;
-        _data = data;
+        Data = data;
     }
 
     /// <summary>Gets the non-default schema version the payload was written under.</summary>
@@ -80,11 +78,11 @@ public sealed record OperationPayload
     /// </exception>
     public ImmutableArray<byte> Data
     {
-        get => _data;
+        get;
         init
         {
             ArgumentException.ThrowIfDefault(value, nameof(Data));
-            _data = value;
+            field = value;
         }
     }
 

@@ -15,7 +15,7 @@ public sealed class BudgetAuthorityTests
         {
             DescriptorValue = null
         };
-        var exception = Should.Throw<ArgumentNullException>(() => new BudgetAuthority(ledger, TestFactory.DefaultOptions()));
+        var exception = Should.Throw<ArgumentNullException>(() => TestFactory.Authority(ledger));
         exception.ParamName.ShouldBe("ledger");
         ledger.DescriptorReads.ShouldBe(1);
         ledger.Calls.ShouldBe(0);
@@ -111,8 +111,8 @@ public sealed class BudgetAuthorityTests
     public async Task CreateAndReserve_WhenRequestIsNullOrBatchInvalid_RejectBeforeLedger()
     {
         var ledger = new RecordingLedger();
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
-        var scope = new BudgetScope(ledger, Scope());
+        var authority = TestFactory.Authority(ledger);
+        var scope = new BudgetScope(ledger, Scope(), TestFactory.DefaultOptions());
         (await Should.ThrowAsync<ArgumentNullException>(async () => await authority.CreateChildScopeAsync(null!))).ParamName.ShouldBe("request");
         (await Should.ThrowAsync<ArgumentNullException>(async () => await scope.ReserveAsync(null!))).ParamName.ShouldBe("request");
         (await Should.ThrowAsync<ArgumentException>(async () => await scope.ReserveBatchAsync([]))).ParamName.ShouldBe("originalRequests");
@@ -139,7 +139,7 @@ public sealed class BudgetAuthorityTests
         ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 0m, 1);
         ledger.SnapshotResult = new BudgetSnapshot(reference.Id, DateTimeOffset.UnixEpoch, []);
         ledger.ReleaseResult = new BudgetLedgerReleased(receipt.Reservation);
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+        var authority = TestFactory.Authority(ledger);
         using var create = new CancellationTokenSource();
         using var reserve = new CancellationTokenSource();
         using var start = new CancellationTokenSource();
@@ -173,8 +173,8 @@ public sealed class BudgetAuthorityTests
         };
         var reference = Scope();
         var receipt = Receipt(reference, TestFactory.ReservationRequest(reference.Id));
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
-        var scope = new BudgetScope(ledger, reference);
+        var authority = TestFactory.Authority(ledger);
+        var scope = new BudgetScope(ledger, reference, TestFactory.DefaultOptions());
         var reservation = new BudgetReservation(ledger, receipt);
         _ = await Should.ThrowAsync<OperationCanceledException>(async () => await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), source.Token));
         _ = await Should.ThrowAsync<OperationCanceledException>(async () => await scope.ReserveAsync(receipt.OriginalRequest, source.Token));
@@ -190,7 +190,7 @@ public sealed class BudgetAuthorityTests
     public async Task CreateChildScopeAsync_WhenLedgerCreatesScope_ReturnsHandleAndCapturedPolicy()
     {
         var ledger = new RecordingBudgetLedger();
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(BudgetOverrunBehavior.RequireOperatorReconciliation));
+        var authority = TestFactory.Authority(ledger, TestFactory.DefaultOptions(BudgetOverrunBehavior.RequireOperatorReconciliation));
         var request = TestFactory.ScopeRequest();
         var reference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), request.Address);
         ledger.CreateResult = new BudgetLedgerScopeCreated(reference);
@@ -248,13 +248,17 @@ public sealed class BudgetAuthorityTests
         var address = new BudgetScopeAddress(
             new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()),
             new SessionId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new OperationId(Guid.NewGuid()));
-        var request = new BudgetScopeRequest(null, address, [], new IdempotencyKey(Guid.NewGuid().ToString()));
+        var request = new BudgetScopeRequest(
+            null,
+            address,
+            [new BudgetLimit(new BudgetDimension("agentkit.turns"), 1, new BudgetUnit("count"), BudgetLimitKind.Hard)],
+            new IdempotencyKey(Guid.NewGuid().ToString()));
         var reference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), address);
         var ledger = new RecordingBudgetLedger
         {
             CreateResult = new BudgetLedgerScopeCreated(reference)
         };
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+        var authority = TestFactory.Authority(ledger);
 
         var result = await authority.CreateChildScopeAsync(request, TestContext.Current.CancellationToken);
 
@@ -273,7 +277,7 @@ public sealed class BudgetAuthorityTests
         {
             CreateResult = new BudgetLedgerScopeCreateRejected(failure)
         };
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+        var authority = TestFactory.Authority(ledger);
         var result = await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken);
         result.ShouldBeSameAs(failure);
     }
@@ -304,7 +308,7 @@ public sealed class BudgetAuthorityTests
         {
             CreateResult = new BudgetLedgerScopeCreateRejected(failure)
         };
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions());
+        var authority = TestFactory.Authority(ledger);
 
         var result = await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken);
 
@@ -321,7 +325,7 @@ public sealed class BudgetAuthorityTests
         {
             CreateResult = new BudgetLedgerScopeCreated(reference)
         };
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(), new ThrowingLoggerFactory());
+        var authority = TestFactory.Authority(ledger, loggerFactory: new ThrowingLoggerFactory());
         var result = await authority.CreateChildScopeAsync(request, TestContext.Current.CancellationToken);
         ((BudgetScopeCreated) result).Scope.Id.ShouldBe(reference.Id);
     }
@@ -375,7 +379,7 @@ public sealed class BudgetAuthorityTests
         ledger.SnapshotResult = new BudgetSnapshot(scopeReference.Id, DateTimeOffset.UnixEpoch, [], []);
         var scopeLogger = new CapturingLogger<BudgetScope>();
         var reservationLogger = new CapturingLogger<BudgetReservation>();
-        var scope = new BudgetScope(ledger, scopeReference, scopeLogger, reservationLogger);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions(), scopeLogger, reservationLogger);
         var reservation = new BudgetReservation(ledger, TestFactory.Receipt(scopeReference, request), reservationLogger);
         _ = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
         ledger.ReleaseResult = new BudgetLedgerRetainedStarted(new BudgetLedgerReservationReference(scopeReference, reservation.Id));
@@ -417,8 +421,8 @@ public sealed class BudgetAuthorityTests
     public void Constructors_WhenRequiredDependencyIsNull_ThrowExactParameterName()
     {
         var ledger = new RecordingLedger();
-        Should.Throw<ArgumentNullException>(() => new BudgetAuthority(null!, TestFactory.DefaultOptions())).ParamName.ShouldBe("ledger");
-        Should.Throw<ArgumentNullException>(() => new BudgetAuthority(ledger, null!)).ParamName.ShouldBe("options");
+        Should.Throw<ArgumentNullException>(() => new BudgetAuthority(null!, TestFactory.EmptyProfileCatalog(), TestFactory.EmptyPolicyCatalog(), TestFactory.DefaultOptions())).ParamName.ShouldBe("ledger");
+        Should.Throw<ArgumentNullException>(() => new BudgetAuthority(ledger, TestFactory.EmptyProfileCatalog(), TestFactory.EmptyPolicyCatalog(), null!)).ParamName.ShouldBe("options");
     }
 
     [Fact]
@@ -431,7 +435,7 @@ public sealed class BudgetAuthorityTests
         };
         var logger = new CapturingLogger<BudgetAuthority>();
         var loggerFactory = new CapturingLoggerFactory(logger);
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(), loggerFactory);
+        var authority = TestFactory.Authority(ledger, loggerFactory: loggerFactory);
         var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken));
         exception.ShouldBeSameAs(failure);
         logger.Events.ShouldContain(entry => entry.EventId == 7003);
@@ -457,7 +461,7 @@ public sealed class BudgetAuthorityTests
         var rawLogger = new CapturingRawLogger();
         var loggerFactory = new CapturingLoggerFactory(rawLogger);
         var ledger = new RecordingBudgetLedger();
-        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(), loggerFactory);
+        var authority = TestFactory.Authority(ledger, loggerFactory: loggerFactory);
         var reference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         var request = TestFactory.ReservationRequest(reference.Id);
         var receipt = TestFactory.Receipt(reference, request);

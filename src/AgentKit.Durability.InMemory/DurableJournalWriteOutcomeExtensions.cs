@@ -19,6 +19,7 @@ internal static class DurableJournalWriteOutcomeExtensions
                 DurableJournalWriteOutcome.Recorded => "recorded",
                 DurableJournalWriteOutcome.Fenced => "fenced",
                 DurableJournalWriteOutcome.Failed => "failed",
+                DurableJournalWriteOutcome.Denied => "denied",
                 DurableJournalWriteOutcome.Cancelled => "cancelled",
                 _ => throw new UnreachableException(),
             };

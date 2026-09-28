@@ -78,10 +78,19 @@ public static class ServiceExtensions
             services.TryAddSingleton<ICompactionCutSelector, StructuralCompactionCutSelector>();
             services.TryAddSingleton<ICompactionStrategy, ExtractiveCompactionStrategy>();
             services.TryAddSingleton<ICompactionValidator, DefaultCompactionValidator>();
-            services.TryAddSingleton<ICompactor, DefaultCompactor>();
+            _ = services.AddAgentContextCompaction(AgentContextCompactionComponentDefaults.CompactorKey);
 
             return services;
         }
+
+        /// <summary>Registers the built-in compaction pipeline under an explicit compactor key.</summary>
+        /// <param name="key">The stable compactor key.</param>
+        /// <param name="configure">Optional configuration for <see cref="ContextCompactionOptions"/>.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        public IServiceCollection AddAgentContextCompaction(
+            ComponentKey<ICompactor> key,
+            Action<ContextCompactionOptions>? configure = null) =>
+            ContextCompactionRegistration.Add(services, key, configure);
 
         /// <summary>
         /// Registers the built-in compaction pipeline with <see cref="ModelCompactionStrategy"/> as its
@@ -124,7 +133,29 @@ public static class ServiceExtensions
                 _ => new GuidIdentifierGenerator<ModelRequestId>(static value => new ModelRequestId(value)));
             services.TryAddSingleton<IIdentifierGenerator<MessageId>>(
                 _ => new GuidIdentifierGenerator<MessageId>(static value => new MessageId(value)));
-            _ = services.Replace(ServiceDescriptor.Singleton<ICompactionStrategy, ModelCompactionStrategy>());
+            services.TryAddSingleton<ICompactionSummaryGenerator, ModelBackedSummaryGenerator>();
+            _ = services.Replace(ServiceDescriptor.Singleton<ICompactionStrategy>(static provider =>
+            {
+                _ = provider.GetRequiredService<ICompactionSummaryGenerator>();
+                return new ModelCompactionStrategy(
+                    AgentContextCompactionComponentDefaults.CompactorKey,
+                    provider.GetRequiredKeyedService<ICompactionSummaryGeneratorResolver>(
+                        CompactionServiceKeys.SummaryGeneratorResolver(AgentContextCompactionComponentDefaults.CompactorKey)),
+                    provider.GetRequiredService<ICompactionSizeEstimator>(),
+                    provider.GetRequiredService<IIdentifierGenerator<MessageId>>(),
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<IOptions<CompactionOptions>>());
+            }));
+            services.TryAddKeyedSingleton<ICompactionSummaryGenerator>(
+                CompactionServiceKeys.SummaryGenerator(
+                    AgentContextCompactionComponentDefaults.CompactorKey,
+                    ModelBackedSummaryGenerator.GeneratorKey),
+                static (provider, _) => provider.GetRequiredService<ModelBackedSummaryGenerator>());
+            services.TryAddKeyedSingleton<ICompactionStrategy>(
+                CompactionServiceKeys.Strategy(
+                    AgentContextCompactionComponentDefaults.CompactorKey,
+                    ModelCompactionStrategy.StrategyKey),
+                static (provider, _) => provider.GetRequiredService<ModelCompactionStrategy>());
 
             return services;
         }

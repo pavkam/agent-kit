@@ -15,6 +15,9 @@ internal enum DurableJournalWriteOutcome
     /// <summary>The write could not commit for a reason other than fencing.</summary>
     Failed,
 
+    /// <summary>Authorization refused the write before any record was inspected or mutated.</summary>
+    Denied,
+
     /// <summary>The caller cancelled the attempt before a terminal outcome.</summary>
     Cancelled,
 }

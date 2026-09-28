@@ -37,15 +37,28 @@ public sealed class CohereRequestTranslator: ICohereRequestTranslator
             ["stream"] = useStreaming,
         };
 
-        if (context.Tools.Length > 0)
+        var tools = context.Tools;
+        var toolChoice = context.ToolChoice;
+        if (context.Output is { Mode: OutputMode.SyntheticTool or OutputMode.NativeSchema, Schema: not null })
         {
-            body["tools"] = TranslateTools(context.Tools);
+            var synthetic = StructuredOutputToolConvention.CreateToolDefinition(context.Output);
+            if (!tools.Any(static tool => tool.Id == StructuredOutputToolConvention.ToolId))
+            {
+                tools = tools.Add(synthetic);
+            }
+
+            toolChoice = LlmToolChoice.Named(StructuredOutputToolConvention.ToolName);
         }
 
-        var toolChoice = TranslateToolChoice(context.ToolChoice);
-        if (toolChoice is not null)
+        if (tools.Length > 0)
         {
-            body["tool_choice"] = toolChoice;
+            body["tools"] = TranslateTools(tools);
+        }
+
+        var wireToolChoice = TranslateToolChoice(toolChoice);
+        if (wireToolChoice is not null)
+        {
+            body["tool_choice"] = wireToolChoice;
         }
 
         if (context.Settings.ParallelToolCalls is false)

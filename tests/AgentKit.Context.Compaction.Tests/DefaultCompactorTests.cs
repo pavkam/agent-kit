@@ -997,12 +997,16 @@ public sealed class DefaultCompactorTests
         });
         var estimator = new CharacterCompactionSizeEstimator(options);
         var descriptor = TestFactory.SummaryModel(model.Alias.Value);
-        var strategy = new ModelCompactionStrategy(
+        var generator = new ModelBackedSummaryGenerator(
             new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])),
             ScriptedModelSelector.Selecting(descriptor),
             new AliasLlmModelResolver(model),
-            estimator,
             IdGenerator(static v => new ModelRequestId(v)),
+            options);
+        var strategy = new ModelCompactionStrategy(
+            AgentContextCompactionComponentDefaults.CompactorKey,
+            new FixedCompactionSummaryGeneratorResolver(generator),
+            estimator,
             IdGenerator(static v => new MessageId(v)),
             Clock(),
             options);

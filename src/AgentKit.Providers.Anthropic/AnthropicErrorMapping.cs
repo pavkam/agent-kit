@@ -20,7 +20,7 @@ internal static class AnthropicErrorMapping
             "authentication_error" => ProviderFailureKind.Authentication,
             "permission_error" => ProviderFailureKind.Authorization,
             "not_found_error" => ProviderFailureKind.InvalidRequest,
-            "request_too_large" => ProviderFailureKind.InvalidRequest,
+            "request_too_large" => ProviderFailureKind.ContextLengthExceeded,
             "rate_limit_error" => ProviderFailureKind.Throttling,
             "overloaded_error" => ProviderFailureKind.Unavailable,
             "api_error" => ProviderFailureKind.Unavailable,

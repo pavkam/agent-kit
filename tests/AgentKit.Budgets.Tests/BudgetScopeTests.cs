@@ -17,7 +17,7 @@ public sealed class BudgetScopeTests
         var reservationReference = new BudgetLedgerReservationReference(scopeReference, new BudgetReservationId(Guid.NewGuid()));
         var hold = new BudgetOverrunHold(new BudgetOverrunHoldReference(scopeReference, reservationReference, new BudgetAccountingRevision(1)), request.Dimension, request.Unit, request.Amount, request.Amount + 1, BudgetOverrunHoldPolicy.ClearWhenReconciled);
         ledger.ReserveResult = new BudgetLedgerBatchReserveHeld([hold]);
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
         var result = await scope.ReserveBatchAsync([request], TestContext.Current.CancellationToken);
         result.ShouldBe(new BudgetBatchHeld([hold]));
         ledger.ReserveRequest!.OriginalRequests.ShouldBe([request]);
@@ -34,7 +34,7 @@ public sealed class BudgetScopeTests
         var firstReceipt = TestFactory.Receipt(scopeReference, firstRequest);
         var secondReceipt = TestFactory.Receipt(scopeReference, secondRequest);
         ledger.ReserveResult = new BudgetLedgerBatchReserved([firstReceipt, secondReceipt]);
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
         var result = await scope.ReserveBatchAsync([firstRequest, secondRequest], TestContext.Current.CancellationToken);
         var reserved = result.ShouldBeOfType<BudgetBatchReserved>();
         reserved.Reservations.Select(static reservation => reservation.Id).ShouldBe([firstReceipt.Reservation.Id, secondReceipt.Reservation.Id]);
@@ -47,7 +47,7 @@ public sealed class BudgetScopeTests
         var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         var request = TestFactory.ReservationRequest(scopeReference.Id);
         var failure = new BudgetLimitFailure(scopeReference.Id, request.Dimension, BudgetLimitKind.Hard, 1m, 1m, 1m, request.Unit, "capacity exceeded");
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
         ledger.ReserveResult = new BudgetLedgerBatchReserveRejected(failure);
         var rejected = await scope.ReserveAsync(request, TestContext.Current.CancellationToken);
         rejected.ShouldBe(new BudgetRejected(failure));
@@ -90,7 +90,7 @@ public sealed class BudgetScopeTests
         {
             ReserveResult = new BudgetLedgerBatchReserved([TestFactory.Receipt(scopeReference, request)])
         };
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
 
         var result = await scope.ReserveBatchAsync([request], TestContext.Current.CancellationToken);
 
@@ -122,7 +122,7 @@ public sealed class BudgetScopeTests
         var ledger = new RecordingBudgetLedger();
         var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         ledger.SnapshotResult = new BudgetSnapshot(scopeReference.Id, DateTimeOffset.UnixEpoch, [], []);
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
         var result = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
         result.ShouldBeSameAs(ledger.SnapshotResult);
         Activity.Current.ShouldBeSameAs(parent);
@@ -162,7 +162,7 @@ public sealed class BudgetScopeTests
         {
             SnapshotResult = new BudgetSnapshot(scopeReference.Id, DateTimeOffset.UnixEpoch, [], [])
         };
-        var scope = new BudgetScope(ledger, scopeReference);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions());
 
         var result = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
 
@@ -178,8 +178,8 @@ public sealed class BudgetScopeTests
     {
         var ledger = new RecordingLedgerBudgetRuntimeBoundary();
         var scope = Scope();
-        Should.Throw<ArgumentNullException>(() => new BudgetScope(null!, scope)).ParamName.ShouldBe("ledger");
-        Should.Throw<ArgumentNullException>(() => new BudgetScope(ledger, null!)).ParamName.ShouldBe("reference");
+        Should.Throw<ArgumentNullException>(() => new BudgetScope(null!, scope, TestFactory.DefaultOptions())).ParamName.ShouldBe("ledger");
+        Should.Throw<ArgumentNullException>(() => new BudgetScope(ledger, null!, TestFactory.DefaultOptions())).ParamName.ShouldBe("reference");
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class BudgetScopeTests
         var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         var request = TestFactory.ReservationRequest(scopeReference.Id);
         var logger = new CapturingLogger<BudgetScope>();
-        var scope = new BudgetScope(ledger, scopeReference, logger);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions(), logger);
         var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await scope.ReserveBatchAsync([request], TestContext.Current.CancellationToken));
         exception.ShouldBeSameAs(failure);
         logger.Events.ShouldContain(entry => entry.EventId == 7012);
@@ -209,7 +209,7 @@ public sealed class BudgetScopeTests
         };
         var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         var logger = new CapturingLogger<BudgetScope>();
-        var scope = new BudgetScope(ledger, scopeReference, logger);
+        var scope = new BudgetScope(ledger, scopeReference, TestFactory.DefaultOptions(), logger);
         var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await scope.GetSnapshotAsync(TestContext.Current.CancellationToken));
         exception.ShouldBeSameAs(failure);
         logger.Events.ShouldContain(entry => entry.EventId == 7061);

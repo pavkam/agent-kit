@@ -18,6 +18,9 @@ public enum CompactionFailureKind
     /// <summary>Appending the validated record to the session failed.</summary>
     ActivationFailure,
 
+    /// <summary>A required observation sink was unavailable before activation.</summary>
+    RequiredObservationUnavailable,
+
     /// <summary>An unclassified failure occurred.</summary>
     Unknown
 }

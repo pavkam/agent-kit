@@ -172,6 +172,10 @@ public sealed record LlmRequestContext
     /// <value>The manifest for this request, or <see langword="null"/> when assembly did not run contributors.</value>
     public ContextManifest? Manifest { get; init; }
 
+    /// <summary>Gets the immutable output contract the provider adapter may translate for this request.</summary>
+    /// <value>The selected definition, or <see langword="null"/> when the run has no structured output requirement.</value>
+    public OutputDefinition? Output { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(LlmRequestContext? other) =>
         other is not null
@@ -182,7 +186,8 @@ public sealed record LlmRequestContext
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
         && Extensions.Equals(other.Extensions)
-        && Equals(Manifest, other.Manifest);
+        && Equals(Manifest, other.Manifest)
+        && Equals(Output, other.Output);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -204,6 +209,7 @@ public sealed record LlmRequestContext
         hash.Add(Settings);
         hash.Add(Extensions);
         hash.Add(Manifest);
+        hash.Add(Output);
         return hash.ToHashCode();
     }
 }

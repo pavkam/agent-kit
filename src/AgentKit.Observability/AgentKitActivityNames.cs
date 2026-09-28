@@ -313,7 +313,45 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for one durable-journal evidence load.</summary>
     public const string DurableJournalLoadEvidence = "durable.journal.load_evidence";
 
+    /// <summary>Gets the name for one coordinated durable-operation execution, from runtime activation to its terminal record.</summary>
+    /// <remarks>Success means the coordinator reached a terminal durable record, not that an external effect was undone on failure.</remarks>
+    public const string DurableExecute = "durable.execute";
+
+    /// <summary>Gets the name for one coordinated durable-operation recovery attempt driven by loaded evidence.</summary>
+    /// <remarks>The activity covers evidence loading, the policy decision, and the permitted action; it never implies reinvocation.</remarks>
+    public const string DurableRecover = "durable.recover";
+
+    /// <summary>Gets the name for handing one durable operation to its selected external durable backend.</summary>
+    public const string DurableDispatch = "durable.dispatch";
+
+    /// <summary>Gets the name for reconciling one durable operation's true external state with a backend.</summary>
+    public const string DurableReconcile = "durable.reconcile";
+
     /// <summary>Gets the name for submitting one conversational turn through a conversation session.</summary>
     /// <remarks>The activity covers session creation, message admission, and the driven agent-loop run as one causal unit.</remarks>
     public const string ConversationTurn = "conversation.turn";
+
+    /// <summary>Gets the name for staging one artifact before commit.</summary>
+    public const string ArtifactPrepare = "artifact.prepare";
+
+    /// <summary>Gets the name for committing one prepared artifact.</summary>
+    public const string ArtifactFinalize = "artifact.finalize";
+
+    /// <summary>Gets the name for aborting one staged artifact.</summary>
+    public const string ArtifactAbort = "artifact.abort";
+
+    /// <summary>Gets the name for reading one committed artifact.</summary>
+    public const string ArtifactRead = "artifact.read";
+
+    /// <summary>Gets the name for deleting one committed artifact.</summary>
+    public const string ArtifactDelete = "artifact.delete";
+
+    /// <summary>Gets the name for one inbound MCP server request dispatch.</summary>
+    public const string McpServerRequest = "mcp.server.request";
+
+    /// <summary>Gets the name for one MCP server tool invocation.</summary>
+    public const string McpServerToolCall = "mcp.server.tool.call";
+
+    /// <summary>Gets the name for one Simple facade ask operation.</summary>
+    public const string SimpleAsk = "simple.ask";
 }

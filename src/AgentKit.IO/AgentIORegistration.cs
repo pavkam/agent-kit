@@ -145,6 +145,7 @@ internal static class AgentIORegistration
     private static void RegisterSharedInfrastructure(IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IRequiredRunEventSinkCoordinator, RequiredRunEventSinkCoordinator>();
         services.TryAddSingleton<IOutputBackpressurePolicy>(static provider =>
             new DefaultOutputBackpressurePolicy(provider.GetRequiredService<IOptions<AgentIOOptions>>().Value.MaximumBestEffortSinkWait));
         services.TryAddScoped(static provider =>
@@ -160,6 +161,26 @@ internal static class AgentIORegistration
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetService<ILogger<RunEventHub>>());
         });
+        RegisterDurableBoundaries(services);
+    }
+
+    /// <summary>Registers the bridge that lets the durability coordinator drive this package's journaled boundaries.</summary>
+    /// <param name="services">The service collection to register into.</param>
+    /// <remarks>
+    /// The registry and both handlers are registered unconditionally because they are inert without a composed
+    /// durability runtime: no coordinator means nothing resolves them, and a profile that enables neither operation
+    /// name means nothing publishes a continuation into them. Registering them here keeps the promotion and
+    /// settlement boundaries available to any durability profile the application later selects, without this package
+    /// depending on the durability runtime. Every registration is <c>TryAdd</c>, so the registry stays the one
+    /// engine-wide instance whichever package registers it first.
+    /// </remarks>
+    private static void RegisterDurableBoundaries(IServiceCollection services)
+    {
+        services.TryAddSingleton<DurableBoundaryRegistry>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IDurableOperationHandler, InputPromotionDurableOperationHandler>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IDurableOperationHandler, RunSettlementDurableOperationHandler>());
     }
 
     /// <summary>Tracks one sink's declared identity and implementation type for duplicate-name conflict detection.</summary>

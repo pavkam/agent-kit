@@ -39,6 +39,19 @@ read the [modern C# rules](../references/modern-csharp.md).
    every durable write must reject a stale owner.
 6. Keep durability optional and explicit. No backend, journal, or recovery
    profile may appear by fallback, and cancellation reports true external state.
+7. Select a journal adapter by what it can prove.
+   [`AgentKit.Durability.Sqlite`](../../../src/AgentKit.Durability.Sqlite/README.md)
+   is the only leaf with a lease manager, because its journal and lease manager
+   share one host-supplied database.
+   [`AgentKit.Durability.Json`](../../../src/AgentKit.Durability.Json/README.md)
+   is durable and inspectable but single-writer, so it ships none.
+   `AgentKit.Durability.InMemory` is explicitly ephemeral. All three run the
+   same journal conformance suite.
+8. A consumer journals a boundary through `IDurableExecutionCoordinator` and an
+   `IDurableOperationHandler` registered for its operation name, gated on the
+   selected profile enabling that name. See `AgentKit.Loop`'s `LoopDurableScope`
+   and its two boundary handlers for the working pattern, including why a
+   recovering process refuses to invoke a boundary it never prepared.
 
 A storage fence cannot stop an external effect. Takeover requires receiver
 fencing, idempotency, or reconciliation before another invocation. Grant and

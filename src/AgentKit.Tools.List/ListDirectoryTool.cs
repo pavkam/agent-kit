@@ -107,14 +107,17 @@ public sealed class ListDirectoryTool: IToolInvoker
     }
 
     /// <inheritdoc/>
-    public ValueTask<ToolInvocationResult> InvokeAsync(
+    public async ValueTask<ToolInvocationResult> InvokeAsync(
             ToolInvocationContext context,
             CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+        using var observation = ToolLeafObservation.Start(Id);
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
-        return InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
+        var result = await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
+        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
+        return result;
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(

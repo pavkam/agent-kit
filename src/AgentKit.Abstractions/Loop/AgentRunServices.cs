@@ -60,6 +60,7 @@ public sealed class AgentRunServices
     /// Creates the run's budget scope and serves its reservations when the request declares limits, or
     /// <see langword="null"/> when the composition selects no budget authority; a budgeted request then fails closed.
     /// </param>
+    /// <param name="budgetProfiles"></param>
     /// <param name="runCoordinator">
     /// Backs the local run-ownership lease the composed session store may require, and lets the loop release a
     /// durably admitted run's lane through <see cref="ISessionCoordinator.ReleaseRunAsync"/> when the request
@@ -94,6 +95,7 @@ public sealed class AgentRunServices
         IOutputProcessor? outputProcessor = null,
         ICompactor? compactor = null,
         IBudgetAuthority? budgets = null,
+        IBudgetProfileCatalog? budgetProfiles = null,
         ISessionRunCoordinator? runCoordinator = null,
         IInputCoordinator? input = null,
         IOutputPublisher? publisher = null,
@@ -120,6 +122,7 @@ public sealed class AgentRunServices
         OutputProcessor = outputProcessor;
         Compactor = compactor;
         Budgets = budgets;
+        BudgetProfiles = budgetProfiles;
         RunCoordinator = runCoordinator;
         Input = input;
         Publisher = publisher;
@@ -165,6 +168,10 @@ public sealed class AgentRunServices
     /// <summary>Gets the budget authority the loop reserves a budgeted run's capacity through.</summary>
     /// <value><see langword="null"/> when the composition selects none; a request with budget limits then fails closed.</value>
     public IBudgetAuthority? Budgets { get; }
+
+    /// <summary>Gets the profile catalog used to resolve named run budget profiles.</summary>
+    /// <value><see langword="null"/> when the composition selects no budget runtime.</value>
+    public IBudgetProfileCatalog? BudgetProfiles { get; }
 
     /// <summary>Gets the collaborator that lets the loop release a durably admitted run's lane on settlement.</summary>
     /// <value>

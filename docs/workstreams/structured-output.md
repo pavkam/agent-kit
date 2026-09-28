@@ -12,18 +12,18 @@ Owning documents: [Structured output](../architecture/structured-output.md),
 
 ## Progress
 
-- [ ] WS8-C1 output contract on the request context
-- [ ] WS8-C2 OpenAI-family `response_format`
-- [ ] WS8-C3a Gemini and Vertex `responseSchema`
-- [ ] WS8-C3b Anthropic and Bedrock forced tool
-- [ ] WS8-C3c Cohere and Mistral forced tool
-- [ ] WS8-C4a negotiation, downgrade, `SyntheticTool`
-- [ ] WS8-C4b `Union`
-- [ ] WS8-C4c `Media`
-- [ ] WS8-C5 `OutputEndStrategy` in the loop
-- [ ] WS8-C6 hook context and `OutputValidating` point
-- [ ] WS8-C7 repair attempts reserve budget
-- [ ] WS8-C8 Simple `WithOutput<T>` mode options
+- [x] WS8-C1 output contract on the request context
+- [x] WS8-C2 OpenAI-family `response_format`
+- [x] WS8-C3a Gemini and Vertex `responseSchema`
+- [x] WS8-C3b Anthropic and Bedrock forced tool
+- [x] WS8-C3c Cohere and Mistral forced tool
+- [x] WS8-C4a negotiation, downgrade, `SyntheticTool`
+- [x] WS8-C4b `Union`
+- [x] WS8-C4c `Media`
+- [x] WS8-C5 `OutputEndStrategy` in the loop
+- [x] WS8-C6 hook context and `OutputValidating` point
+- [x] WS8-C7 repair attempts reserve budget
+- [x] WS8-C8 Simple `WithOutput<T>` mode options
 
 ## Verified current state
 

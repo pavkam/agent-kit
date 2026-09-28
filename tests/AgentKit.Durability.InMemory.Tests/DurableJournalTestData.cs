@@ -14,6 +14,7 @@ internal static class DurableJournalTestData
     internal static OperationId OperationId { get; } = new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
     internal static TurnId TurnId { get; } = new(Guid.Parse("50000000-0000-0000-0000-000000000001"));
     internal static CheckpointId CheckpointId { get; } = new(Guid.Parse("60000000-0000-0000-0000-000000000001"));
+    internal static DurableJournalKey JournalKey { get; } = new("journal");
 
     internal static DurableOperationAddress Address(OperationId? operationId = null) =>
         new(AgentId, SessionId, RunId, operationId ?? OperationId, TurnId);
@@ -48,7 +49,7 @@ internal static class DurableJournalTestData
         new DurabilityProfileKey("profile"),
         new DurabilityProfileVersion(1),
         new DurableBackendKey("backend"),
-        new DurableJournalKey("journal"),
+        JournalKey,
         new DurableLeaseManagerKey("leases"),
         new RecoveryPolicyKey("policy"),
         authorization ?? Authorization(operationId));
@@ -83,4 +84,21 @@ internal static class DurableJournalTestData
         SideEffectCertainty certainty = SideEffectCertainty.DefinitelyPerformed,
         byte marker = 3) =>
         new(Address(operationId), context ?? Context(operationId: operationId), state, certainty, Payload(marker), token, Now);
+
+    internal static DurableOperationWaiting Waiting(
+        FencingToken token,
+        OperationId? operationId = null,
+        DurableExecutionContext? context = null,
+        DateTimeOffset? notBefore = null,
+        SideEffectCertainty certainty = SideEffectCertainty.Unknown,
+        ExternalOperationReference? externalReference = null,
+        IdempotencyKey? externalIdempotencyKey = null) =>
+        new(
+            new DurableOperationBinding(Address(operationId), context ?? Context(operationId: operationId)),
+            token,
+            Now,
+            certainty,
+            externalReference,
+            externalIdempotencyKey,
+            notBefore ?? Now.AddMinutes(1));
 }

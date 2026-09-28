@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
+    <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj" />
     <ProjectReference Include="../AgentKit.Tools/AgentKit.Tools.csproj" />
   </ItemGroup>
 </Project>

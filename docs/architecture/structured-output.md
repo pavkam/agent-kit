@@ -25,8 +25,12 @@ allowed. That cut prevents output → provider → context → output cycles.
 
 `AgentDefinition.Output` and `AgentLoopRunRequest.Output` carry the selected
 definition; `AgentRunServices.OutputProcessor` carries the processor the run
-scope resolved. `DefaultAgentLoop` validates only a terminal response (a
-committed assistant message that requested no tools) and hands the processor's
+scope resolved. `DefaultContextAssembler` copies the selected `OutputDefinition`
+onto `LlmRequestContext.Output` for provider translation. `DefaultAgentLoop`
+sets `ModelRequirements.RequiresStructuredOutput` when the run's output mode is
+`NativeSchema`, validates terminal responses (no application tool calls, or only
+the reserved synthetic output channel), and applies `OutputEndStrategy` when
+synthetic output calls mix with function tools. It hands the processor's
 decision to the continuation policy on a `CommittedTurnContinuationBoundary`
 with `RequiresOutputValidation` set:
 
@@ -87,11 +91,14 @@ public sealed record OutputDefinition(
     OutputEndStrategy EndStrategy);
 
 public sealed record OutputProcessingRequest(
-    AgentRunView Run,
     OutputDefinition Definition,
     ModelResponse Response,
     int ValidationAttempt,
-    BudgetExecutionCapability Budget);
+    ModelDescriptor? Model = null,
+    BudgetExecutionCapability? Budget = null,
+    AgentId AgentId = default,
+    SessionId SessionId = default,
+    int Turn = 0);
 
 public abstract record OutputProcessingResult;
 
@@ -137,11 +144,12 @@ structural, and canonical schema validation. The resulting typed value remains
 provisional until the selected semantic validators accept it. Conversion failure
 is a typed validation failure; successful conversion alone never accepts output.
 Partial streamed JSON remains provisional. Synthetic output tools are internal
-output channels: they do not enter the application tool catalog or permission
-pipeline because they cannot perform an external effect. `Prompted` means schema
-and bounded formatting instructions are sent as ordinary model context and the
-candidate is parsed locally; it is never reported as provider-enforced native
-output.
+output channels identified by the reserved name `agentkit_structured_output`
+(`StructuredOutputToolConvention`); they do not enter the application tool
+catalog or permission pipeline because they cannot perform an external effect.
+`Prompted` means schema and bounded formatting instructions are sent as ordinary
+model context and the candidate is parsed locally; it is never reported as
+provider-enforced native output.
 
 ## Schema engine and preflight evidence
 

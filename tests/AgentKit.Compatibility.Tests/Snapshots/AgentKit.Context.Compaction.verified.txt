@@ -3,6 +3,19 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Context.Compaction
 {
+    public enum CompactionEventDelivery
+    {
+        Required = 0,
+        BestEffort = 1,
+    }
+    public sealed class CompactionEventSinkRegistration : System.IEquatable<AgentKit.Context.Compaction.CompactionEventSinkRegistration>
+    {
+        public CompactionEventSinkRegistration(AgentKit.CompactionEventSinkId id, int order, AgentKit.Context.Compaction.CompactionEventDelivery delivery, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime) { }
+        public AgentKit.Context.Compaction.CompactionEventDelivery Delivery { get; }
+        public AgentKit.CompactionEventSinkId Id { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+    }
     public sealed class CompactionOptions
     {
         public CompactionOptions() { }
@@ -14,6 +27,60 @@ namespace AgentKit.Context.Compaction
         public AgentKit.ModelSelectionPolicy? SummaryModelPolicy { get; set; }
         public string SummaryPrompt { get; set; }
     }
+    public sealed class CompactionProfileOptions
+    {
+        public CompactionProfileOptions() { }
+        public bool AllowOversizedTurnRepair { get; set; }
+        public bool Enabled { get; set; }
+        public System.Collections.Generic.List<AgentKit.CompactionStrategyKey> StrategyOrder { get; set; }
+        public AgentKit.CompactionProfileVersion Version { get; set; }
+    }
+    public static class CompactionStrategyKeys
+    {
+        public static AgentKit.CompactionStrategyKey Extractive { get; }
+    }
+    public sealed class CompactionStrategyRegistration : System.IEquatable<AgentKit.Context.Compaction.CompactionStrategyRegistration>
+    {
+        public CompactionStrategyRegistration(AgentKit.CompactionStrategyDescriptor descriptor, int order, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> before, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> after, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> After { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> Before { get; }
+        public AgentKit.CompactionStrategyDescriptor Descriptor { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+    }
+    public sealed class CompactionSummaryGeneratorRegistration : System.IEquatable<AgentKit.Context.Compaction.CompactionSummaryGeneratorRegistration>
+    {
+        public CompactionSummaryGeneratorRegistration(AgentKit.CompactionSummaryGeneratorDescriptor descriptor, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime) { }
+        public AgentKit.CompactionSummaryGeneratorDescriptor Descriptor { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+    }
+    public sealed class ContextCompactionOptions
+    {
+        public ContextCompactionOptions() { }
+        public System.TimeSpan AttemptTimeout { get; set; }
+        public int MaximumAttempts { get; set; }
+        public long MaximumSourceBytes { get; set; }
+        public int MaximumSourceEntries { get; set; }
+        public int MaximumSummaryTokens { get; set; }
+        public int MaximumValidationIssues { get; set; }
+        public double MinimumReductionRatio { get; set; }
+        public int MinimumRetainedEntries { get; set; }
+        public bool PersistRejectedCandidates { get; set; }
+    }
+    public sealed class ContextCompactionOptionsSnapshot : System.IEquatable<AgentKit.Context.Compaction.ContextCompactionOptionsSnapshot>
+    {
+        public ContextCompactionOptionsSnapshot(AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, int maximumAttempts, int maximumSourceEntries, long maximumSourceBytes, int maximumSummaryTokens, int minimumRetainedEntries, int maximumValidationIssues, double minimumReductionRatio, System.TimeSpan attemptTimeout, bool persistRejectedCandidates) { }
+        public System.TimeSpan AttemptTimeout { get; }
+        public AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey { get; }
+        public int MaximumAttempts { get; }
+        public long MaximumSourceBytes { get; }
+        public int MaximumSourceEntries { get; }
+        public int MaximumSummaryTokens { get; }
+        public int MaximumValidationIssues { get; }
+        public double MinimumReductionRatio { get; }
+        public int MinimumRetainedEntries { get; }
+        public bool PersistRejectedCandidates { get; }
+    }
     public sealed class DefaultCompactionValidator : AgentKit.ICompactionValidator
     {
         public DefaultCompactionValidator(AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
@@ -22,19 +89,29 @@ namespace AgentKit.Context.Compaction
     public sealed class DefaultCompactor : AgentKit.ICompactor
     {
         public DefaultCompactor(AgentKit.ISessionCoordinator coordinator, AgentKit.ICompactionCutSelector cutSelector, AgentKit.ICompactionStrategy strategy, AgentKit.ICompactionValidator validator, AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, AgentKit.IIdentifierGenerator<AgentKit.CompactionManifestId> manifestIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Compaction.DefaultCompactor>? logger = null) { }
+        public DefaultCompactor(AgentKit.ISessionCoordinator coordinator, AgentKit.ICompactionCutSelector cutSelector, AgentKit.ICompactionStrategyResolver strategies, AgentKit.ICompactionValidator validator, AgentKit.ICompactionActivationCoordinator activation, AgentKit.ICompactionEventDispatcher events, AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, AgentKit.IIdentifierGenerator<AgentKit.CompactionManifestId> manifestIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options, AgentKit.Context.Compaction.ContextCompactionOptionsSnapshot compactionOptions, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Compaction.DefaultCompactor>? logger = null) { }
         public System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability budget, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ExtractiveCompactionStrategy : AgentKit.ICompactionStrategy
     {
         public const string TruncationMarker = "\n...[truncated]...\n";
         public static readonly AgentKit.CompactionStrategyKey StrategyKey;
         public ExtractiveCompactionStrategy(AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
-        public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentKit.CompactionStrategyDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, AgentKit.BudgetExecutionCapability? budget, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public interface ICompactionSizeEstimator
     {
         AgentKit.CompactionSizeEstimate EstimateCheckpoint(AgentKit.CompactionCheckpoint checkpoint);
         AgentKit.CompactionSizeEstimate EstimateEntries(System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntry> entries);
+    }
+    public sealed class ModelBackedSummaryGenerator : AgentKit.ICompactionSummaryGenerator
+    {
+        public static readonly AgentKit.CompactionSummaryGeneratorKey GeneratorKey;
+        public ModelBackedSummaryGenerator(AgentKit.IModelCatalog modelCatalog, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver llmModelResolver, AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Compaction.ModelBackedSummaryGenerator>? logger = null) { }
+        public AgentKit.CompactionSummaryGeneratorDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.CompactionSummaryGenerationResult> GenerateAsync(AgentKit.CompactionSummaryRequest request, AgentKit.BudgetExecutionCapability? budget, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ModelCompactionProvenanceKeys
     {
@@ -54,16 +131,23 @@ namespace AgentKit.Context.Compaction
     {
         public const string TruncationMarker = "\n...[truncated]...\n";
         public static readonly AgentKit.CompactionStrategyKey StrategyKey;
-        public ModelCompactionStrategy(AgentKit.IModelCatalog modelCatalog, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver llmModelResolver, AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Compaction.ModelCompactionStrategy>? logger = null) { }
-        public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public ModelCompactionStrategy(AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, AgentKit.ICompactionSummaryGeneratorResolver generators, AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
+        public AgentKit.CompactionStrategyDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, AgentKit.BudgetExecutionCapability? budget, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddContextCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentContextCompaction(AgentKit.ComponentKey<AgentKit.ICompactor> key, System.Action<AgentKit.Context.Compaction.ContextCompactionOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelBackedContextCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
         }
+    }
+    public sealed class SessionCompactionActivationCoordinator : AgentKit.ICompactionActivationCoordinator
+    {
+        public SessionCompactionActivationCoordinator(AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
+        public System.Threading.Tasks.Task<AgentKit.CompactionActivationResult> ActivateAsync(AgentKit.CompactionActivationRequest request, AgentKit.SessionExecutionCapability session, AgentKit.SecurityGrant activationGrant, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class StructuralCompactionCutSelector : AgentKit.ICompactionCutSelector
     {

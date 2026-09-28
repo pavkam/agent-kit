@@ -15,11 +15,12 @@ internal sealed class RecordingOutputPublisher: IOutputPublisher
 {
     private readonly List<RunEvent> _events = [];
     private readonly Exception? _failure;
+    private AgentError? _requiredSinkFailure;
 
     /// <summary>Initializes a publisher that records every event, optionally failing every call instead.</summary>
     /// <param name="failure">
-    /// When supplied, every call to <see cref="PublishAsync"/> throws this exception instead of recording the
-    /// event; when <see langword="null"/>, every call records and succeeds.
+    /// When supplied, every call to <see cref="PublishAsync"/> records a required-sink failure instead of throwing;
+    /// when <see langword="null"/>, every call records and succeeds.
     /// </param>
     public RecordingOutputPublisher(Exception? failure = null) => _failure = failure;
 
@@ -28,11 +29,27 @@ internal sealed class RecordingOutputPublisher: IOutputPublisher
     public IReadOnlyList<RunEvent> Events => _events;
 
     /// <inheritdoc/>
+    public RunSettlementOutcome SettlementOutcome => _requiredSinkFailure is { } failure
+        ? new RunSettlementRecoveryRequired(failure)
+        : new RunSettlementCompleted();
+
+    /// <inheritdoc/>
     public ValueTask PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default)
     {
         if (_failure is { } failure)
         {
-            throw failure;
+            _requiredSinkFailure ??= new AgentError(
+                AgentErrorCodes.StoreUnavailable,
+                failure.Message,
+                isRetryable: true,
+                SideEffectCertainty.Unknown,
+                new ErrorOrigin("AgentKit.Loop.Tests.RecordingOutputPublisher"),
+                failure.GetType().FullName,
+                operationId: null,
+                externalRequestId: null,
+                retryAfter: null,
+                ExtensionData.Empty);
+            return ValueTask.CompletedTask;
         }
 
         _events.Add(runEvent);

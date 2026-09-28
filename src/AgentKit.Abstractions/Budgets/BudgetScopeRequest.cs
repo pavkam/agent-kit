@@ -14,18 +14,15 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller profile-selection
-/// shape described by the budgets architecture, which additionally resolves
-/// limits and ordered policy keys from a keyed
-/// <c>IBudgetProfileCatalog</c>/<c>IBudgetPolicyCatalog</c> pair. Until that
-/// catalog infrastructure exists — it depends on the not-yet-implemented
-/// keyed-selection (<c>ComponentKey&lt;T&gt;</c>) machinery — a caller
-/// supplies the scope's limits directly.
+/// Callers may supply limits directly as an inline profile, select a named
+/// <see cref="Profile"/> resolved by <see cref="IBudgetProfileCatalog"/>, or
+/// combine a named profile with additional inline limits that attenuate the
+/// resolved profile at scope creation.
 /// </para>
 /// </remarks>
 public sealed record BudgetScopeRequest
 {
-    /// <summary>Initializes a new instance of the <see cref="BudgetScopeRequest"/> record.</summary>
+    /// <summary>Initializes a scope request with inline limits (an inline profile).</summary>
     /// <param name="parentScopeId">
     /// The scope this new scope is a child of, when applicable;
     /// <see langword="null"/> creates a root scope.
@@ -48,6 +45,36 @@ public sealed record BudgetScopeRequest
         BudgetScopeAddress address,
         ImmutableArray<BudgetLimit> limits,
         IdempotencyKey idempotencyKey)
+        : this(parentScopeId, address, profile: null, limits, idempotencyKey, validateProfile: false)
+    {
+    }
+
+    /// <summary>Initializes a scope request that resolves limits from a named profile.</summary>
+    /// <param name="parentScopeId">The optional parent scope identity.</param>
+    /// <param name="address">The hierarchical address of the new scope.</param>
+    /// <param name="profile">The nondefault named profile to resolve.</param>
+    /// <param name="limits">
+    /// Optional inline limits that attenuate the resolved profile; empty when the profile limits alone apply.
+    /// </param>
+    /// <param name="idempotencyKey">The key that makes repeating this exact request safe.</param>
+    /// <exception cref="ArgumentException"><paramref name="profile"/> is default or blank.</exception>
+    public BudgetScopeRequest(
+        BudgetScopeId? parentScopeId,
+        BudgetScopeAddress address,
+        BudgetProfileKey profile,
+        ImmutableArray<BudgetLimit> limits,
+        IdempotencyKey idempotencyKey)
+        : this(parentScopeId, address, profile, limits, idempotencyKey, validateProfile: true)
+    {
+    }
+
+    private BudgetScopeRequest(
+        BudgetScopeId? parentScopeId,
+        BudgetScopeAddress address,
+        BudgetProfileKey? profile,
+        ImmutableArray<BudgetLimit> limits,
+        IdempotencyKey idempotencyKey,
+        bool validateProfile)
     {
         if (parentScopeId is { } parent)
         {
@@ -57,9 +84,15 @@ public sealed record BudgetScopeRequest
         ArgumentNullException.ThrowIfNull(address);
         ArgumentException.ThrowIfInvalidBudgetScopeLimits(limits);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
+        if (validateProfile)
+        {
+            var profileKey = profile!.Value;
+            ArgumentException.ThrowIfNullOrWhiteSpace(profileKey.Value, nameof(profile));
+        }
 
         ParentScopeId = parentScopeId;
         Address = address;
+        Profile = profile is { } named && !string.IsNullOrWhiteSpace(named.Value) ? named : null;
         Limits = limits;
         IdempotencyKey = idempotencyKey;
     }
@@ -94,6 +127,10 @@ public sealed record BudgetScopeRequest
         }
     }
 
+    /// <summary>Gets the named profile to resolve, when one was selected.</summary>
+    /// <value>A profile key, or <see langword="null"/> for an inline-limits-only request.</value>
+    public BudgetProfileKey? Profile { get; init; }
+
     /// <summary>Gets the limits configured directly on the new scope.</summary>
     /// <exception cref="ArgumentException">An initializer assigns invalid limits or repeats a dimension.</exception>
     /// <exception cref="ArgumentNullException">An initializer assigns a collection containing a default dimension or unit.</exception>
@@ -125,6 +162,7 @@ public sealed record BudgetScopeRequest
         other is not null
         && Nullable.Equals(ParentScopeId, other.ParentScopeId)
         && Address.Equals(other.Address)
+        && Nullable.Equals(Profile, other.Profile)
         && Limits.SequenceEqual(other.Limits)
         && IdempotencyKey.Equals(other.IdempotencyKey);
 
@@ -134,6 +172,7 @@ public sealed record BudgetScopeRequest
         var hash = new HashCode();
         hash.Add(ParentScopeId);
         hash.Add(Address);
+        hash.Add(Profile);
         foreach (var limit in Limits)
         {
             hash.Add(limit);

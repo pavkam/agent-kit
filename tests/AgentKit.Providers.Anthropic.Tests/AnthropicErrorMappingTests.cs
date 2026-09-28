@@ -11,7 +11,7 @@ public sealed class AnthropicErrorMappingTests
     [InlineData("authentication_error", ProviderFailureKind.Authentication)]
     [InlineData("permission_error", ProviderFailureKind.Authorization)]
     [InlineData("not_found_error", ProviderFailureKind.InvalidRequest)]
-    [InlineData("request_too_large", ProviderFailureKind.InvalidRequest)]
+    [InlineData("request_too_large", ProviderFailureKind.ContextLengthExceeded)]
     [InlineData("rate_limit_error", ProviderFailureKind.Throttling)]
     [InlineData("overloaded_error", ProviderFailureKind.Unavailable)]
     [InlineData("api_error", ProviderFailureKind.Unavailable)]

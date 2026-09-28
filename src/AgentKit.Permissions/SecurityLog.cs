@@ -172,4 +172,29 @@ internal static partial class SecurityLog
     internal static partial void ProfilePublicationReadCancelled(
         ILogger logger,
         SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs that a deferred approval's wait was durably recorded.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityRequestId">The request whose decision deferred.</param>
+    /// <param name="approvalRequestId">The pending approval the durable wait names as its external reference.</param>
+    /// <remarks>The event carries identities only; it never includes the requested resources or approval prompt.</remarks>
+    [LoggerMessage(5028, LogLevel.Debug, "Recorded a durable approval wait for security request {SecurityRequestId} on approval {ApprovalRequestId}.")]
+    internal static partial void ApprovalWaitRecorded(
+        ILogger logger,
+        SecurityRequestId securityRequestId,
+        ApprovalRequestId approvalRequestId);
+
+    /// <summary>Logs that a selected durability profile could not journal a deferred approval's wait.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityRequestId">The request whose wait could not be journaled.</param>
+    /// <param name="reason">The safe, bounded reason the wait was not recorded; never policy or resource detail.</param>
+    /// <remarks>
+    /// The decision itself is unaffected: approval remains required and nothing is authorized. The event is an error
+    /// because the composition promised evidence for this boundary and could not produce it.
+    /// </remarks>
+    [LoggerMessage(5029, LogLevel.Error, "A durable approval wait for security request {SecurityRequestId} was not recorded: {Reason}.")]
+    internal static partial void ApprovalWaitNotRecorded(
+        ILogger logger,
+        SecurityRequestId securityRequestId,
+        string reason);
 }

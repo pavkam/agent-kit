@@ -134,10 +134,10 @@ public sealed class AgentTests
         await using var engine = Build(new MutableAgentDefinitionCatalog(definition), effects, new CountingRunIdGenerator());
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
         using var activities = AdmissionActivities(definition.Id);
-        using var metrics = new AdmissionMetricCollector();
+        using var metrics = new MetricCollector(AgentKitMetricNames.AgentAdmissionCount);
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken));
         activities.Snapshot().ShouldHaveSingleItem().GetTagItem(AgentKitTagNames.Outcome).ShouldBe("admitted");
-        metrics.Snapshot().ShouldBe(["admitted"], ignoreOrder: false);
+        MetricOutcomes(metrics).ShouldBe(["admitted"], ignoreOrder: false);
     }
 
     [Fact]
@@ -153,10 +153,10 @@ public sealed class AgentTests
         await using var engine = Build(new MutableAgentDefinitionCatalog(definition), effects, new CountingRunIdGenerator());
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
         using var activities = AdmissionActivities(definition.Id);
-        using var metrics = new AdmissionMetricCollector();
+        using var metrics = new MetricCollector(AgentKitMetricNames.AgentAdmissionCount);
         _ = await Should.ThrowAsync<OperationCanceledException>(async () => await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken));
         activities.Snapshot().ShouldHaveSingleItem().GetTagItem(AgentKitTagNames.Outcome).ShouldBe("admitted");
-        metrics.Snapshot().ShouldBe(["admitted"], ignoreOrder: false);
+        MetricOutcomes(metrics).ShouldBe(["admitted"], ignoreOrder: false);
     }
 
     [Fact]
@@ -177,11 +177,11 @@ public sealed class AgentTests
         await using var engine = new AgentEngine(new AgentEngineRuntime(new ThrowingScopeServiceProvider(provider), ownedProvider: null, new AgentCompositionSnapshot(new AgentRunProfilePublicationSnapshot([CompositionTestData.RunProfile(definition)]), successfullyBuilt.ComponentRegistrations)));
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
         using var activities = AdmissionActivities(definition.Id);
-        using var metrics = new AdmissionMetricCollector();
+        using var metrics = new MetricCollector(AgentKitMetricNames.AgentAdmissionCount);
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken));
         runIds.Created.ShouldBe(0);
         activities.Snapshot().ShouldHaveSingleItem().GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
-        metrics.Snapshot().ShouldBe(["failed"], ignoreOrder: false);
+        MetricOutcomes(metrics).ShouldBe(["failed"], ignoreOrder: false);
     }
 
     [Fact]
@@ -890,4 +890,7 @@ public sealed class AgentTests
         effects.Scopes.ShouldBe(baselineScopes);
         effects.Requests.ShouldBeEmpty();
     }
+
+    private static string[] MetricOutcomes(MetricCollector metrics) =>
+        [.. metrics.Snapshot().Select(static observation => observation.Tags[AgentKitTagNames.Outcome] as string ?? string.Empty)];
 }

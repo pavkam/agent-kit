@@ -65,15 +65,15 @@ public sealed class DefaultOutputPublisherTests
     }
 
     [Fact]
-    public async Task PublishAsync_WhenARequiredSinkFaults_PropagatesTheFaultAndStillDeliversTheHubEvent()
+    public async Task PublishAsync_WhenARequiredSinkFaults_RecordsRecoveryRequiredAndStillDeliversTheHubEvent()
     {
         await using var hub = Hub();
         await using var subscription = hub.Subscribe();
         var sink = new FakeRunEventSink((_, _) => throw new InvalidOperationException("simulated"));
         var publisher = Publisher([Required(sink)], eventHub: hub);
 
-        _ = await Should.ThrowAsync<InvalidOperationException>(
-            () => publisher.PublishAsync(RunResultTestData.Event(1), TestContext.Current.CancellationToken).AsTask());
+        await publisher.PublishAsync(RunResultTestData.Event(1), TestContext.Current.CancellationToken);
+        _ = publisher.SettlementOutcome.ShouldBeOfType<RunSettlementRecoveryRequired>();
         hub.Complete();
 
         _ = sink.Received.ShouldHaveSingleItem();

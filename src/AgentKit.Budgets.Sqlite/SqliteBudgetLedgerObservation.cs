@@ -56,7 +56,7 @@ internal sealed class SqliteBudgetLedgerObservation
             Try(() => activity?.Activity?.SetTag(AgentKitTagNames.BudgetScopeId, effectiveScopeId?.ToString()));
             Try(() => activity?.Activity?.SetTag(AgentKitTagNames.Outcome, outcome));
             Try(() => activity?.Activity?.SetStatus(IsErrorOutcome(outcome) ? ActivityStatusCode.Error : ActivityStatusCode.Ok));
-            Try(() => SqliteBudgetLedgerLog.Completed(_logger, operation, outcome, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), effectiveScopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
+            Try(() => BudgetLedgerLog.Completed(_logger, operation, outcome, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), effectiveScopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
             Record(operation, outcome, started);
             return result;
         }
@@ -69,11 +69,11 @@ internal sealed class SqliteBudgetLedgerObservation
             Try(() => activity?.Activity?.SetStatus(ActivityStatusCode.Error, errorType));
             if (exception is OperationCanceledException)
             {
-                Try(() => SqliteBudgetLedgerLog.Completed(_logger, operation, outcome, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), scopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
+                Try(() => BudgetLedgerLog.Completed(_logger, operation, outcome, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), scopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
             }
             else
             {
-                Try(() => SqliteBudgetLedgerLog.Failed(_logger, operation, outcome, errorType, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), scopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
+                Try(() => BudgetLedgerLog.Failed(_logger, operation, outcome, errorType, address?.TenantId.ToString(), address?.PrincipalId.ToString(), address?.AgentId.ToString(), address?.SessionId?.ToString(), address?.RunId?.ToString(), scopeId?.ToString(), reservationId?.ToString(), (operationId ?? address?.OperationId)?.ToString()));
             }
             Record(operation, outcome, started);
             throw;

@@ -42,6 +42,12 @@ public enum ProviderFailureKind
     InvalidRequest,
 
     /// <summary>
+    /// The provider rejected the request because the assembled input exceeded
+    /// the model's context window or another documented length limit.
+    /// </summary>
+    ContextLengthExceeded,
+
+    /// <summary>
     /// The provider is temporarily unavailable, such as a transient service
     /// outage or connectivity failure.
     /// </summary>

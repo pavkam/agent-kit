@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Diagnostics.CodeAnalysis;
+
 /// <summary>
 /// The typed coordinates that locate one recoverable operation's durable
 /// records without needing the operation's input or live run state.
@@ -23,11 +25,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableOperationAddress
 {
-    private readonly AgentId _agentId;
-    private readonly SessionId _sessionId;
-    private readonly RunId _runId;
-    private readonly OperationId _operationId;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="DurableOperationAddress"/> record.
@@ -59,11 +56,53 @@ public sealed record DurableOperationAddress
         ArgumentOutOfRangeException.ThrowIfEqual(operationId, default, nameof(operationId));
         ThrowIfDefaultTurn(turnId, nameof(turnId));
 
-        _agentId = agentId;
-        _sessionId = sessionId;
-        _runId = runId;
-        _operationId = operationId;
+        AgentId = agentId;
+        SessionId = sessionId;
+        RunId = runId;
+        OperationId = operationId;
         TurnId = turnId;
+    }
+
+    /// <summary>
+    /// Derives the one address a captured authorization can be durably
+    /// addressed under, or reports that the present address shape cannot
+    /// represent it.
+    /// </summary>
+    /// <param name="authorization">The non-null captured authorization whose scope names the operation.</param>
+    /// <param name="address">
+    /// The derived address when this method returns <see langword="true"/>; otherwise <see langword="null"/>.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when the scope carries a session and an in-run or after-run correlation;
+    /// <see langword="false"/> for sessionless or before-run work.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// Deriving the address rather than accepting one alongside an authorization removes the only way the two could
+    /// disagree. A binding validates that agreement anyway, so a caller that built both by hand would simply learn
+    /// about its mistake later and less clearly.
+    /// </para>
+    /// <para>
+    /// Before-run and sessionless work is refused rather than given an invented run identity. Fabricating one would
+    /// make recovery report work as belonging to a run that never contained it.
+    /// </para>
+    /// </remarks>
+    public static bool TryCreateFrom(
+        SecurityAuthorizationContext authorization,
+        [NotNullWhen(true)] out DurableOperationAddress? address)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        var scope = authorization.Scope;
+        address = scope switch
+        {
+            { SessionId: { } session, Correlation: InRunOperationCorrelation inRun } =>
+                new DurableOperationAddress(scope.AgentId, session, inRun.RunId, inRun.OperationId, inRun.TurnId),
+            { SessionId: { } session, Correlation: AfterRunOperationCorrelation afterRun } =>
+                new DurableOperationAddress(scope.AgentId, session, afterRun.CausalRunId, afterRun.OperationId),
+            _ => null,
+        };
+        return address is not null;
     }
 
     /// <summary>Gets the agent that owns the operation.</summary>
@@ -72,11 +111,11 @@ public sealed record DurableOperationAddress
     /// </exception>
     public AgentId AgentId
     {
-        get => _agentId;
+        get;
         init
         {
             ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(AgentId));
-            _agentId = value;
+            field = value;
         }
     }
 
@@ -86,11 +125,11 @@ public sealed record DurableOperationAddress
     /// </exception>
     public SessionId SessionId
     {
-        get => _sessionId;
+        get;
         init
         {
             ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(SessionId));
-            _sessionId = value;
+            field = value;
         }
     }
 
@@ -105,11 +144,11 @@ public sealed record DurableOperationAddress
     /// </exception>
     public RunId RunId
     {
-        get => _runId;
+        get;
         init
         {
             ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(RunId));
-            _runId = value;
+            field = value;
         }
     }
 
@@ -119,11 +158,11 @@ public sealed record DurableOperationAddress
     /// </exception>
     public OperationId OperationId
     {
-        get => _operationId;
+        get;
         init
         {
             ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(OperationId));
-            _operationId = value;
+            field = value;
         }
     }
 

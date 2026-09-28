@@ -8,25 +8,30 @@ internal sealed class BudgetScope: IBudgetScope
 {
     private readonly IBudgetLedger _ledger;
     private readonly BudgetLedgerScopeReference _reference;
+    private readonly AgentBudgetOptionsSnapshot _options;
     private readonly ILogger<BudgetScope> _logger;
     private readonly ILogger<BudgetReservation> _reservationLogger;
 
     /// <summary>Initializes a scope handle.</summary>
     /// <param name="ledger">The ledger owning all authoritative state.</param>
     /// <param name="reference">The exact persisted scope locator.</param>
+    /// <param name="options">The captured runtime options governing unknown-cost behavior.</param>
     /// <param name="logger">The optional structured logger; null disables log publication.</param>
     /// <param name="reservationLogger">The optional reservation-category logger; null disables its log publication.</param>
     /// <exception cref="ArgumentNullException">A parameter is null.</exception>
     public BudgetScope(
         IBudgetLedger ledger,
         BudgetLedgerScopeReference reference,
+        AgentBudgetOptionsSnapshot options,
         ILogger<BudgetScope>? logger = null,
         ILogger<BudgetReservation>? reservationLogger = null)
     {
         ArgumentNullException.ThrowIfNull(ledger);
         ArgumentNullException.ThrowIfNull(reference);
+        ArgumentNullException.ThrowIfNull(options);
         _ledger = ledger;
         _reference = reference;
+        _options = options;
         _logger = logger ?? NullLogger<BudgetScope>.Instance;
         _reservationLogger = reservationLogger ?? NullLogger<BudgetReservation>.Instance;
     }
@@ -54,17 +59,31 @@ internal sealed class BudgetScope: IBudgetScope
 
     /// <inheritdoc/>
     public async ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
-        ImmutableArray<BudgetReservationRequest> requests,
+        ImmutableArray<BudgetReservationRequest> originalRequests,
         CancellationToken cancellationToken = default)
     {
-        var request = new BudgetLedgerBatchReserveRequest(_reference, requests);
+        ArgumentException.ThrowIfInvalidBudgetReservationBatch(originalRequests, Id, nameof(originalRequests));
+
+        foreach (var item in originalRequests)
+        {
+            if (item.CostEstimateUnknown && item.Dimension.Equals(BudgetDimensions.Cost))
+            {
+                var rejection = await BudgetUnknownCostGuard.EvaluateAsync(_ledger, _reference, _options, cancellationToken).ConfigureAwait(false);
+                if (rejection is not null)
+                {
+                    return new BudgetBatchRejected(rejection);
+                }
+            }
+        }
+
+        var request = new BudgetLedgerBatchReserveRequest(_reference, originalRequests);
         using var observation = BudgetRuntimeObservation.Start(AgentKitActivityNames.BudgetReserve);
         observation.Tag(AgentKitTagNames.BudgetScopeId, Id.ToString());
-        observation.Tag(AgentKitTagNames.BudgetDimension, requests[0].Dimension.ToString());
+        observation.Tag(AgentKitTagNames.BudgetDimension, originalRequests[0].Dimension.ToString());
         observation.Tag(AgentKitTagNames.AgentId, Address.AgentId.ToString());
         observation.Tag(AgentKitTagNames.SessionId, Address.SessionId?.ToString());
         observation.Tag(AgentKitTagNames.RunId, Address.RunId?.ToString());
-        observation.Tag(AgentKitTagNames.OperationId, requests[0].OperationId.ToString());
+        observation.Tag(AgentKitTagNames.OperationId, originalRequests[0].OperationId.ToString());
         try
         {
             var ledgerResult = await _ledger.ReserveBatchAsync(request, cancellationToken).ConfigureAwait(false);
@@ -93,7 +112,7 @@ internal sealed class BudgetScope: IBudgetScope
             }
 
             TryMetric(outcome);
-            TryLog(() => BudgetLog.ReservationCompleted(_logger, Id, requests[0].Dimension, outcome));
+            TryLog(() => BudgetLog.ReservationCompleted(_logger, Id, originalRequests[0].Dimension, outcome));
             return mapped;
         }
         catch (Exception exception)
@@ -103,12 +122,12 @@ internal sealed class BudgetScope: IBudgetScope
             TryMetric(outcome);
             if (outcome == "cancelled")
             {
-                TryLog(() => BudgetLog.ReservationCancelled(_logger, Id, requests[0].Dimension));
+                TryLog(() => BudgetLog.ReservationCancelled(_logger, Id, originalRequests[0].Dimension));
             }
             else
             {
                 TryLog(() => BudgetLog.ReservationFailed(
-                    _logger, Id, requests[0].Dimension, exception.GetType().FullName ?? exception.GetType().Name));
+                    _logger, Id, originalRequests[0].Dimension, exception.GetType().FullName ?? exception.GetType().Name));
             }
             throw;
         }

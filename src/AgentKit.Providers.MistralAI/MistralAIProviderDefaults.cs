@@ -94,7 +94,7 @@ public static class MistralAIProviderDefaults
         supportsStreaming: true,
         supportsToolCalls: true,
         supportsParallelToolCalls: true,
-        supportsStructuredOutput: false,
+        supportsStructuredOutput: true,
         supportsReasoning: false,
         supportsVisionInput: false,
         ExtensionData.Empty);

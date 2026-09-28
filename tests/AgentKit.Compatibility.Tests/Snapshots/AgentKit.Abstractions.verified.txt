@@ -123,6 +123,10 @@ namespace AgentKit
         public AgentKit.ComponentKey<AgentKit.IOutputPublisher> Output { get; }
         public AgentKit.ComponentKey<AgentKit.IOutputProcessor> OutputProcessor { get; }
     }
+    public static class AgentContextCompactionComponentDefaults
+    {
+        public static AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey { get; }
+    }
     public static class AgentContextComponentDefaults
     {
         public static AgentKit.ComponentKey<AgentKit.IContextAssembler> AssemblerKey { get; }
@@ -133,6 +137,7 @@ namespace AgentKit
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, AgentKit.AgentInstructionSources instructionSources, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
         public AgentDefinition(AgentKit.AgentId id, AgentKit.AgentDefinitionRevision revision, string displayName, AgentKit.ModelSelectionPolicy models, AgentKit.ModelRequirements modelRequirements, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, AgentKit.LlmRequestSettings settings, AgentKit.RunPolicyDefaults runDefaults, AgentKit.ExtensionData extensions, AgentKit.SecurityProfileKey securityProfile, AgentKit.SessionProfileKey sessionProfile) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
+        public AgentKit.BudgetProfileKey? BudgetProfile { get; init; }
         public string DisplayName { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.HookProfileKey HookProfile { get; init; }
@@ -280,6 +285,8 @@ namespace AgentKit
         public static AgentKit.HookPointDefinitionRegistration BeforeToolInvocationRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IContextAssembledHook, AgentKit.ContextAssembledEventArgs> ContextAssembled { get; }
         public static AgentKit.HookPointDefinitionRegistration ContextAssembledRegistration { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IOutputValidatingHook, AgentKit.OutputValidatingEventArgs> OutputValidating { get; }
+        public static AgentKit.HookPointDefinitionRegistration OutputValidatingRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IRunStartedHook, AgentKit.RunStartedEventArgs> RunStarted { get; }
         public static AgentKit.HookPointDefinitionRegistration RunStartedRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IToolResultHook, AgentKit.ToolResultHookEventArgs> ToolResult { get; }
@@ -290,6 +297,7 @@ namespace AgentKit
         public static AgentKit.HookPointId BeforeModelRequest { get; }
         public static AgentKit.HookPointId BeforeToolInvocation { get; }
         public static AgentKit.HookPointId ContextAssembled { get; }
+        public static AgentKit.HookPointId OutputValidating { get; }
         public static AgentKit.HookPointId RunStarted { get; }
         public static AgentKit.HookPointId ToolResult { get; }
     }
@@ -368,6 +376,7 @@ namespace AgentKit
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
         public AgentKit.BranchId BranchId { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> BudgetLimits { get; init; }
+        public AgentKit.BudgetProfileKey? BudgetProfile { get; init; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.HookProfileKey HookProfile { get; init; }
@@ -409,6 +418,7 @@ namespace AgentKit
         public AgentOptionalCapabilitySelection(AgentKit.ComponentKey<AgentKit.IToolExecutor>? toolExecutor, AgentKit.ComponentKey<AgentKit.IArtifactCoordinator>? artifactCoordinator, AgentKit.DurabilityProfileKey? durabilityProfile, AgentKit.MemoryProfileKey? memoryProfile, AgentKit.GoalProfileKey? goalProfile, System.Collections.Immutable.ImmutableArray<AgentKit.AgentCapabilityReference> capabilities) { }
         public AgentKit.ComponentKey<AgentKit.IArtifactCoordinator>? ArtifactCoordinator { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentCapabilityReference> Capabilities { get; }
+        public AgentKit.CompactionProfileKey? CompactionProfile { get; init; }
         public AgentKit.DurabilityProfileKey? DurabilityProfile { get; }
         public AgentKit.GoalProfileKey? GoalProfile { get; }
         public AgentKit.MemoryProfileKey? MemoryProfile { get; }
@@ -497,10 +507,12 @@ namespace AgentKit
                     AgentKit.IOutputProcessor? outputProcessor = null,
                     AgentKit.ICompactor? compactor = null,
                     AgentKit.IBudgetAuthority? budgets = null,
+                    AgentKit.IBudgetProfileCatalog? budgetProfiles = null,
                     AgentKit.ISessionRunCoordinator? runCoordinator = null,
                     AgentKit.IInputCoordinator? input = null,
                     AgentKit.IOutputPublisher? publisher = null,
                     AgentKit.IModelRequestExecutor? modelExecutor = null) { }
+        public AgentKit.IBudgetProfileCatalog? BudgetProfiles { get; }
         public AgentKit.IBudgetAuthority? Budgets { get; }
         public AgentKit.ICompactor? Compactor { get; }
         public AgentKit.IContextAssembler Context { get; }
@@ -791,6 +803,8 @@ namespace AgentKit
             public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
             public static void ThrowIfInvalidDurableOperationBinding(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, [System.Runtime.CompilerServices.CallerArgumentExpression("executionContext")] string? paramName = null) { }
             public static void ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(AgentKit.DurableOperationBinding binding, AgentKit.DurableCheckpoint? latestCheckpoint, [System.Runtime.CompilerServices.CallerArgumentExpression("latestCheckpoint")] string? paramName = null) { }
+            public static void ThrowIfRecoveryEvidenceRecordedResultInconsistent(AgentKit.DurableOperationBinding binding, bool terminalResultRecorded, AgentKit.DurableOperationResult? recordedResult, [System.Runtime.CompilerServices.CallerArgumentExpression("recordedResult")] string? paramName = null) { }
+            public static void ThrowIfRecoveryEvidenceNotBeforeInconsistent(AgentKit.DurableOperationState state, System.DateTimeOffset? notBefore, [System.Runtime.CompilerServices.CallerArgumentExpression("notBefore")] string? paramName = null) { }
             public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.JsonSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
             public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.JsonSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? paramName = null) { }
@@ -1304,6 +1318,15 @@ namespace AgentKit
         public AgentKit.SecurityGrant Grant { get; init; }
         public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
     }
+    public sealed class AuthorizedDurableRequest<TRequest> : System.IEquatable<AgentKit.AuthorizedDurableRequest<TRequest>>
+        where TRequest :  class
+    {
+        public AuthorizedDurableRequest(TRequest request, AgentKit.DurableJournalKey journalKey, AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementIntent intent) { }
+        public AgentKit.SecurityGrant Grant { get; }
+        public AgentKit.SecurityEnforcementIntent Intent { get; }
+        public AgentKit.DurableJournalKey JournalKey { get; }
+        public TRequest Request { get; }
+    }
     public sealed class AuthorizedFileMetadataRead : System.IEquatable<AgentKit.AuthorizedFileMetadataRead>
     {
         public AuthorizedFileMetadataRead(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
@@ -1514,6 +1537,8 @@ namespace AgentKit
         public static AgentKit.BudgetDimension BufferedStreamBytes { get; }
         public static AgentKit.BudgetDimension CachedReadTokens { get; }
         public static AgentKit.BudgetDimension CachedWriteTokens { get; }
+        public static AgentKit.BudgetDimension CompactionAttempts { get; }
+        public static AgentKit.BudgetDimension CompactionSummaryTokens { get; }
         public static AgentKit.BudgetDimension ConcurrentDelegations { get; }
         public static AgentKit.BudgetDimension ConcurrentModelRequests { get; }
         public static AgentKit.BudgetDimension ConcurrentToolCalls { get; }
@@ -1525,6 +1550,7 @@ namespace AgentKit
         public static AgentKit.BudgetDimension InputTokens { get; }
         public static AgentKit.BudgetDimension ModelRequests { get; }
         public static AgentKit.BudgetDimension OperationElapsedTime { get; }
+        public static AgentKit.BudgetDimension OutputRepairs { get; }
         public static AgentKit.BudgetDimension OutputTokens { get; }
         public static AgentKit.BudgetDimension OutputValidationRetries { get; }
         public static AgentKit.BudgetDimension PerRequestInputTokens { get; }
@@ -1803,11 +1829,46 @@ namespace AgentKit
         public static bool Matches(AgentKit.BudgetOverrunHoldReference hold, AgentKit.SecurityEnforcementIntentReceipt receipt) { }
         public static AgentKit.ProtectedResource Resource(AgentKit.BudgetOverrunHoldReference hold) { }
     }
+    public sealed class BudgetPolicyAllowed : AgentKit.BudgetPolicyDecision, System.IEquatable<AgentKit.BudgetPolicyAllowed>
+    {
+        public BudgetPolicyAllowed() { }
+    }
+    public abstract class BudgetPolicyDecision : System.IEquatable<AgentKit.BudgetPolicyDecision>
+    {
+        protected BudgetPolicyDecision() { }
+    }
+    public sealed class BudgetPolicyDenied : AgentKit.BudgetPolicyDecision, System.IEquatable<AgentKit.BudgetPolicyDenied>
+    {
+        public BudgetPolicyDenied(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public readonly struct BudgetPolicyKey : System.IEquatable<AgentKit.BudgetPolicyKey>
+    {
+        public BudgetPolicyKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class BudgetPolicyRequest : System.IEquatable<AgentKit.BudgetPolicyRequest>
+    {
+        public BudgetPolicyRequest(AgentKit.BudgetProfileSnapshot profile, AgentKit.BudgetScopeRequest scopeRequest, AgentKit.BudgetReservationRequest? proposedReservation = null) { }
+        public AgentKit.BudgetProfileSnapshot Profile { get; }
+        public AgentKit.BudgetReservationRequest? ProposedReservation { get; }
+        public AgentKit.BudgetScopeRequest ScopeRequest { get; }
+    }
     public readonly struct BudgetProfileKey : System.IEquatable<AgentKit.BudgetProfileKey>
     {
         public BudgetProfileKey(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class BudgetProfileSnapshot : System.IEquatable<AgentKit.BudgetProfileSnapshot>
+    {
+        public BudgetProfileSnapshot(AgentKit.BudgetProfileKey key, AgentKit.BudgetProfileVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> limits, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetPolicyKey> policies, AgentKit.ContentHash configurationFingerprint) { }
+        public AgentKit.ContentHash ConfigurationFingerprint { get; }
+        public AgentKit.BudgetProfileKey Key { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> Limits { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetPolicyKey> Policies { get; }
+        public AgentKit.BudgetProfileVersion Version { get; }
     }
     public readonly struct BudgetProfileVersion : System.IEquatable<AgentKit.BudgetProfileVersion>
     {
@@ -1852,8 +1913,9 @@ namespace AgentKit
     }
     public sealed class BudgetReservationRequest : System.IEquatable<AgentKit.BudgetReservationRequest>
     {
-        public BudgetReservationRequest(AgentKit.BudgetScopeId scopeId, AgentKit.BudgetDimension dimension, decimal amount, AgentKit.BudgetUnit unit, AgentKit.OperationId operationId, System.DateTimeOffset? expiresAt, AgentKit.IdempotencyKey idempotencyKey) { }
+        public BudgetReservationRequest(AgentKit.BudgetScopeId scopeId, AgentKit.BudgetDimension dimension, decimal amount, AgentKit.BudgetUnit unit, AgentKit.OperationId operationId, System.DateTimeOffset? expiresAt, AgentKit.IdempotencyKey idempotencyKey, bool costEstimateUnknown = false) { }
         public decimal Amount { get; init; }
+        public bool CostEstimateUnknown { get; init; }
         public AgentKit.BudgetDimension Dimension { get; init; }
         public System.DateTimeOffset? ExpiresAt { get; init; }
         public AgentKit.IdempotencyKey IdempotencyKey { get; init; }
@@ -1906,6 +1968,8 @@ namespace AgentKit
         MaximumDepthExceeded = 1,
         LimitWiderThanAncestor = 2,
         InvalidLimit = 3,
+        ProfileNotFound = 4,
+        PolicyDenied = 5,
     }
     public readonly struct BudgetScopeId : System.IEquatable<AgentKit.BudgetScopeId>
     {
@@ -1916,10 +1980,12 @@ namespace AgentKit
     public sealed class BudgetScopeRequest : System.IEquatable<AgentKit.BudgetScopeRequest>
     {
         public BudgetScopeRequest(AgentKit.BudgetScopeId? parentScopeId, AgentKit.BudgetScopeAddress address, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> limits, AgentKit.IdempotencyKey idempotencyKey) { }
+        public BudgetScopeRequest(AgentKit.BudgetScopeId? parentScopeId, AgentKit.BudgetScopeAddress address, AgentKit.BudgetProfileKey profile, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> limits, AgentKit.IdempotencyKey idempotencyKey) { }
         public AgentKit.BudgetScopeAddress Address { get; init; }
         public AgentKit.IdempotencyKey IdempotencyKey { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> Limits { get; init; }
         public AgentKit.BudgetScopeId? ParentScopeId { get; init; }
+        public AgentKit.BudgetProfileKey? Profile { get; init; }
         public bool Equals(AgentKit.BudgetScopeRequest? other) { }
         public override int GetHashCode() { }
     }
@@ -2068,6 +2134,45 @@ namespace AgentKit
         public AgentKit.AssistantMessage Response { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.CommittedToolResultReference> ToolResults { get; }
     }
+    public sealed class CompactionActivationRequest : System.IEquatable<AgentKit.CompactionActivationRequest>
+    {
+        public CompactionActivationRequest(AgentKit.CompactionRequest request, AgentKit.ValidatedCompaction compaction, AgentKit.SessionVersion expectedVersion, AgentKit.SessionSequence branchTip, AgentKit.SessionEntryId lastCoveredEntryId, AgentKit.IdempotencyKey idempotencyKey, AgentKit.CompactionId? supersedes) { }
+        public AgentKit.SessionSequence BranchTip { get; }
+        public AgentKit.ValidatedCompaction Compaction { get; }
+        public AgentKit.SessionVersion ExpectedVersion { get; }
+        public AgentKit.IdempotencyKey IdempotencyKey { get; }
+        public AgentKit.SessionEntryId LastCoveredEntryId { get; }
+        public AgentKit.CompactionRequest Request { get; }
+        public AgentKit.CompactionId? Supersedes { get; }
+    }
+    public abstract class CompactionActivationResult : System.IEquatable<AgentKit.CompactionActivationResult>
+    {
+        protected CompactionActivationResult() { }
+    }
+    public sealed class CompactionAttemptFinishedEvent : AgentKit.CompactionEvent, System.IEquatable<AgentKit.CompactionAttemptFinishedEvent>
+    {
+        public CompactionAttemptFinishedEvent(AgentKit.CompactionOperationContext Context, System.DateTimeOffset OccurredAt, AgentKit.CompactionOutcomeSummary Outcome) { }
+        public AgentKit.CompactionOutcomeSummary Outcome { get; init; }
+    }
+    public sealed class CompactionAttemptStartedEvent : AgentKit.CompactionEvent, System.IEquatable<AgentKit.CompactionAttemptStartedEvent>
+    {
+        public CompactionAttemptStartedEvent(AgentKit.CompactionOperationContext Context, System.DateTimeOffset OccurredAt, AgentKit.CompactionTrigger Trigger) { }
+        public AgentKit.CompactionTrigger Trigger { get; init; }
+    }
+    public sealed class CompactionCancellation : System.IEquatable<AgentKit.CompactionCancellation>
+    {
+        public CompactionCancellation(AgentKit.CompactionCancellationReason reason, AgentKit.CompactionCommitState commitState, string safeMessage, AgentKit.CompactionRecord? committedRecord = null) { }
+        public AgentKit.CompactionCommitState CommitState { get; }
+        public AgentKit.CompactionRecord? CommittedRecord { get; }
+        public AgentKit.CompactionCancellationReason Reason { get; }
+        public string SafeMessage { get; }
+    }
+    public enum CompactionCancellationReason
+    {
+        CallerCancelled = 0,
+        DeadlineExceeded = 1,
+        EngineStopping = 2,
+    }
     public sealed class CompactionCancelled : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionCancelled>
     {
         public CompactionCancelled(AgentKit.CompactionOperationContext context, AgentKit.CompactionCommitState commitState, string safeMessage, AgentKit.CompactionRecord? committedRecord = null) { }
@@ -2079,6 +2184,11 @@ namespace AgentKit
     {
         public CompactionCandidate(AgentKit.CompactionManifest manifest, AgentKit.CompactionCheckpoint checkpoint) { }
         public AgentKit.CompactionCheckpoint Checkpoint { get; init; }
+        public AgentKit.CompactionManifest Manifest { get; init; }
+    }
+    public sealed class CompactionCandidateValidatedEvent : AgentKit.CompactionEvent, System.IEquatable<AgentKit.CompactionCandidateValidatedEvent>
+    {
+        public CompactionCandidateValidatedEvent(AgentKit.CompactionOperationContext Context, System.DateTimeOffset OccurredAt, AgentKit.CompactionManifest Manifest) { }
         public AgentKit.CompactionManifest Manifest { get; init; }
     }
     public sealed class CompactionCheckpoint : System.IEquatable<AgentKit.CompactionCheckpoint>
@@ -2137,6 +2247,26 @@ namespace AgentKit
         public AgentKit.CompactionSourceSnapshot Source { get; init; }
     }
     public abstract class CompactionCutSelectionResult : System.IEquatable<AgentKit.CompactionCutSelectionResult> { }
+    public abstract class CompactionEvent : System.IEquatable<AgentKit.CompactionEvent>
+    {
+        protected CompactionEvent(AgentKit.CompactionOperationContext context, System.DateTimeOffset occurredAt) { }
+        public AgentKit.CompactionOperationContext Context { get; }
+        public System.DateTimeOffset OccurredAt { get; }
+    }
+    public abstract class CompactionEventDispatchResult : System.IEquatable<AgentKit.CompactionEventDispatchResult>
+    {
+        protected CompactionEventDispatchResult() { }
+    }
+    public sealed class CompactionEventPublished : AgentKit.CompactionEventDispatchResult, System.IEquatable<AgentKit.CompactionEventPublished>
+    {
+        public CompactionEventPublished() { }
+    }
+    public readonly struct CompactionEventSinkId : System.IEquatable<AgentKit.CompactionEventSinkId>
+    {
+        public CompactionEventSinkId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class CompactionFailed : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionFailed>
     {
         public CompactionFailed(AgentKit.CompactionOperationContext context, AgentKit.CompactionFailure failure) { }
@@ -2156,7 +2286,20 @@ namespace AgentKit
         StrategyFailure = 1,
         ValidationFailure = 2,
         ActivationFailure = 3,
-        Unknown = 4,
+        RequiredObservationUnavailable = 4,
+        Unknown = 5,
+    }
+    public sealed class CompactionGeneratedSummary : System.IEquatable<AgentKit.CompactionGeneratedSummary>
+    {
+        public CompactionGeneratedSummary(System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> content, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStateReference> state, AgentKit.ProviderId? providerId, AgentKit.ModelId? modelId, AgentKit.ProviderModelRevision? modelRevision, AgentKit.ProviderResponseId? providerResponseId, AgentKit.ModelUsage? usage, AgentKit.ExtensionData extensions) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> Content { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ModelId? ModelId { get; }
+        public AgentKit.ProviderModelRevision? ModelRevision { get; }
+        public AgentKit.ProviderId? ProviderId { get; }
+        public AgentKit.ProviderResponseId? ProviderResponseId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStateReference> State { get; }
+        public AgentKit.ModelUsage? Usage { get; }
     }
     public readonly struct CompactionId : System.IEquatable<AgentKit.CompactionId>
     {
@@ -2204,12 +2347,59 @@ namespace AgentKit
         public AgentKit.SessionId SessionId { get; }
         public AgentKit.SessionProfileSnapshot SessionProfile { get; }
     }
+    public enum CompactionOutcomeKind
+    {
+        Succeeded = 0,
+        Conflict = 1,
+        Cancelled = 2,
+        Rejected = 3,
+        NotReducing = 4,
+        Failed = 5,
+    }
+    public sealed class CompactionOutcomeSummary : System.IEquatable<AgentKit.CompactionOutcomeSummary>
+    {
+        public CompactionOutcomeSummary(AgentKit.CompactionOutcomeKind kind, AgentKit.CompactionManifestId? manifestId, AgentKit.CompactionRecordVersion? recordVersion, AgentKit.SessionVersion? activatedSessionVersion, string? safeMessage) { }
+        public AgentKit.SessionVersion? ActivatedSessionVersion { get; }
+        public AgentKit.CompactionOutcomeKind Kind { get; }
+        public AgentKit.CompactionManifestId? ManifestId { get; }
+        public AgentKit.CompactionRecordVersion? RecordVersion { get; }
+        public string? SafeMessage { get; }
+    }
+    public sealed class CompactionPolicySnapshot : System.IEquatable<AgentKit.CompactionPolicySnapshot>
+    {
+        public CompactionPolicySnapshot(AgentKit.CompactionProfileKey profileKey, AgentKit.CompactionProfileVersion profileVersion, AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> strategyOrder, int maximumAttempts, int maximumSourceEntries, long maximumSourceBytes, int maximumSummaryTokens, int minimumRetainedEntries, int maximumValidationIssues, double minimumReductionRatio, bool allowOversizedTurnRepair, bool persistRejectedCandidates, AgentKit.ContentHash configurationFingerprint) { }
+        public bool AllowOversizedTurnRepair { get; }
+        public AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey { get; }
+        public AgentKit.ContentHash ConfigurationFingerprint { get; }
+        public int MaximumAttempts { get; }
+        public long MaximumSourceBytes { get; }
+        public int MaximumSourceEntries { get; }
+        public int MaximumSummaryTokens { get; }
+        public int MaximumValidationIssues { get; }
+        public double MinimumReductionRatio { get; }
+        public int MinimumRetainedEntries { get; }
+        public bool PersistRejectedCandidates { get; }
+        public AgentKit.CompactionProfileKey ProfileKey { get; }
+        public AgentKit.CompactionProfileVersion ProfileVersion { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStrategyKey> StrategyOrder { get; }
+    }
     public sealed class CompactionProducer : System.IEquatable<AgentKit.CompactionProducer>
     {
         public CompactionProducer(AgentKit.CompactionStrategyKey strategyKey, bool deterministic, AgentKit.ExtensionData extensions) { }
         public bool Deterministic { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.CompactionStrategyKey StrategyKey { get; init; }
+    }
+    public readonly struct CompactionProfileKey : System.IEquatable<AgentKit.CompactionProfileKey>
+    {
+        public CompactionProfileKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct CompactionProfileVersion : System.IEquatable<AgentKit.CompactionProfileVersion>
+    {
+        public CompactionProfileVersion(long value) { }
+        public long Value { get; }
     }
     public sealed class CompactionRecord : System.IEquatable<AgentKit.CompactionRecord>
     {
@@ -2225,10 +2415,45 @@ namespace AgentKit
         public AgentKit.CompactionRecordStatus Status { get; init; }
         public AgentKit.CompactionId? Supersedes { get; init; }
     }
+    public sealed class CompactionRecordActivated : AgentKit.CompactionActivationResult, System.IEquatable<AgentKit.CompactionRecordActivated>
+    {
+        public CompactionRecordActivated(AgentKit.CompactionRecord Record) { }
+        public AgentKit.CompactionRecord Record { get; init; }
+    }
+    public sealed class CompactionRecordActivationCancelled : AgentKit.CompactionActivationResult, System.IEquatable<AgentKit.CompactionRecordActivationCancelled>
+    {
+        public CompactionRecordActivationCancelled(AgentKit.CompactionCancellation Cancellation) { }
+        public AgentKit.CompactionCancellation Cancellation { get; init; }
+    }
+    public sealed class CompactionRecordActivationFailed : AgentKit.CompactionActivationResult, System.IEquatable<AgentKit.CompactionRecordActivationFailed>
+    {
+        public CompactionRecordActivationFailed(AgentKit.CompactionFailure Failure, AgentKit.SessionVersion? ActivatedVersionClaim = default, AgentKit.SessionVersion? StoreReportedVersion = default) { }
+        public AgentKit.SessionVersion? ActivatedVersionClaim { get; init; }
+        public AgentKit.CompactionFailure Failure { get; init; }
+        public AgentKit.SessionVersion? StoreReportedVersion { get; init; }
+    }
+    public sealed class CompactionRecordActivationRejected : AgentKit.CompactionActivationResult, System.IEquatable<AgentKit.CompactionRecordActivationRejected>
+    {
+        public CompactionRecordActivationRejected(AgentKit.CompactionRejection Rejection) { }
+        public AgentKit.CompactionRejection Rejection { get; init; }
+    }
+    public sealed class CompactionRecordConflict : AgentKit.CompactionActivationResult, System.IEquatable<AgentKit.CompactionRecordConflict>
+    {
+        public CompactionRecordConflict(AgentKit.SessionVersion ExpectedVersion, AgentKit.SessionVersion ActualVersion, AgentKit.CompactionManifest Manifest) { }
+        public AgentKit.SessionVersion ActualVersion { get; init; }
+        public AgentKit.SessionVersion ExpectedVersion { get; init; }
+        public AgentKit.CompactionManifest Manifest { get; init; }
+    }
     public enum CompactionRecordStatus
     {
         Active = 0,
         Rejected = 1,
+    }
+    public readonly struct CompactionRecordVersion : System.IEquatable<AgentKit.CompactionRecordVersion>
+    {
+        public CompactionRecordVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
     }
     public sealed class CompactionRejected : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionRejected>
     {
@@ -2257,9 +2482,11 @@ namespace AgentKit
         public AgentKit.CompactionOperationContext Context { get; init; }
         public AgentKit.ContextEpoch ContextEpoch { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.ContentHash? EffectiveInstructionsFingerprint { get; init; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public double MinimumReductionRatio { get; init; }
         public int MinimumRetainedEntries { get; init; }
+        public AgentKit.CompactionPolicySnapshot? Policy { get; init; }
         public System.DateTimeOffset RequestedAt { get; init; }
         public AgentKit.SessionSequence SourceThrough { get; init; }
         public AgentKit.SessionVersion SourceVersion { get; init; }
@@ -2305,6 +2532,47 @@ namespace AgentKit
         public bool Equals(AgentKit.CompactionSourceSnapshot? other) { }
         public override int GetHashCode() { }
     }
+    public enum CompactionStateKind
+    {
+        PendingToolCall = 0,
+        ToolEffect = 1,
+        Approval = 2,
+        DeferredOperation = 3,
+        Goal = 4,
+        Resource = 5,
+        InstructionEpoch = 6,
+    }
+    public sealed class CompactionStateReference : System.IEquatable<AgentKit.CompactionStateReference>
+    {
+        public CompactionStateReference(AgentKit.CompactionStateKind kind, AgentKit.SessionEntryId sourceEntryId, AgentKit.ContentHash contentHash, AgentKit.ExtensionData state) { }
+        public AgentKit.ContentHash ContentHash { get; }
+        public AgentKit.CompactionStateKind Kind { get; }
+        public AgentKit.SessionEntryId SourceEntryId { get; }
+        public AgentKit.ExtensionData State { get; }
+    }
+    public sealed class CompactionStrategyCancelled : AgentKit.CompactionStrategyResult, System.IEquatable<AgentKit.CompactionStrategyCancelled>
+    {
+        public CompactionStrategyCancelled(AgentKit.CompactionCancellation Cancellation) { }
+        public AgentKit.CompactionCancellation Cancellation { get; init; }
+    }
+    [System.Flags]
+    public enum CompactionStrategyCapabilities
+    {
+        None = 0,
+        Extractive = 1,
+        SemanticSummary = 2,
+        StructuredState = 4,
+        OversizedTurnRepair = 8,
+    }
+    public sealed class CompactionStrategyDescriptor : System.IEquatable<AgentKit.CompactionStrategyDescriptor>
+    {
+        public CompactionStrategyDescriptor(AgentKit.CompactionStrategyKey key, AgentKit.CompactionStrategyVersion version, AgentKit.CompactionStrategyCapabilities capabilities, bool deterministic, AgentKit.CompactionSummaryGeneratorKey? summaryGeneratorKey) { }
+        public AgentKit.CompactionStrategyCapabilities Capabilities { get; }
+        public bool Deterministic { get; }
+        public AgentKit.CompactionStrategyKey Key { get; }
+        public AgentKit.CompactionSummaryGeneratorKey? SummaryGeneratorKey { get; }
+        public AgentKit.CompactionStrategyVersion Version { get; }
+    }
     public sealed class CompactionStrategyFailed : AgentKit.CompactionStrategyResult, System.IEquatable<AgentKit.CompactionStrategyFailed>
     {
         public CompactionStrategyFailed(AgentKit.CompactionFailure failure) { }
@@ -2316,6 +2584,12 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class CompactionStrategyNotFound : AgentKit.CompactionStrategyResolution, System.IEquatable<AgentKit.CompactionStrategyNotFound>
+    {
+        public CompactionStrategyNotFound(AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey, AgentKit.CompactionStrategyKey StrategyKey) { }
+        public AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey { get; init; }
+        public AgentKit.CompactionStrategyKey StrategyKey { get; init; }
+    }
     public sealed class CompactionStrategyRequest : System.IEquatable<AgentKit.CompactionStrategyRequest>
     {
         public CompactionStrategyRequest(AgentKit.CompactionRequest request, AgentKit.CompactionSourceSnapshot source, AgentKit.CompactionCut cut) { }
@@ -2323,16 +2597,112 @@ namespace AgentKit
         public AgentKit.CompactionRequest Request { get; init; }
         public AgentKit.CompactionSourceSnapshot Source { get; init; }
     }
+    public abstract class CompactionStrategyResolution : System.IEquatable<AgentKit.CompactionStrategyResolution>
+    {
+        protected CompactionStrategyResolution() { }
+    }
+    public sealed class CompactionStrategyResolved : AgentKit.CompactionStrategyResolution, System.IEquatable<AgentKit.CompactionStrategyResolved>
+    {
+        public CompactionStrategyResolved(AgentKit.ICompactionStrategy Strategy) { }
+        public AgentKit.ICompactionStrategy Strategy { get; init; }
+    }
     public abstract class CompactionStrategyResult : System.IEquatable<AgentKit.CompactionStrategyResult> { }
     public sealed class CompactionStrategyUnsupported : AgentKit.CompactionStrategyResult, System.IEquatable<AgentKit.CompactionStrategyUnsupported>
     {
         public CompactionStrategyUnsupported(AgentKit.CompactionRejection rejection) { }
         public AgentKit.CompactionRejection Rejection { get; init; }
     }
+    public readonly struct CompactionStrategyVersion : System.IEquatable<AgentKit.CompactionStrategyVersion>
+    {
+        public CompactionStrategyVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class CompactionSucceeded : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionSucceeded>
     {
         public CompactionSucceeded(AgentKit.CompactionOperationContext context, AgentKit.CompactionRecord record) { }
         public AgentKit.CompactionRecord Record { get; init; }
+    }
+    public sealed class CompactionSummaryGenerated : AgentKit.CompactionSummaryGenerationResult, System.IEquatable<AgentKit.CompactionSummaryGenerated>
+    {
+        public CompactionSummaryGenerated(AgentKit.CompactionGeneratedSummary Summary) { }
+        public AgentKit.CompactionGeneratedSummary Summary { get; init; }
+    }
+    public sealed class CompactionSummaryGenerationCancelled : AgentKit.CompactionSummaryGenerationResult, System.IEquatable<AgentKit.CompactionSummaryGenerationCancelled>
+    {
+        public CompactionSummaryGenerationCancelled(AgentKit.CompactionCancellation Cancellation) { }
+        public AgentKit.CompactionCancellation Cancellation { get; init; }
+    }
+    public sealed class CompactionSummaryGenerationFailed : AgentKit.CompactionSummaryGenerationResult, System.IEquatable<AgentKit.CompactionSummaryGenerationFailed>
+    {
+        public CompactionSummaryGenerationFailed(AgentKit.CompactionFailure Failure) { }
+        public AgentKit.CompactionFailure Failure { get; init; }
+    }
+    public abstract class CompactionSummaryGenerationResult : System.IEquatable<AgentKit.CompactionSummaryGenerationResult>
+    {
+        protected CompactionSummaryGenerationResult() { }
+    }
+    public sealed class CompactionSummaryGenerationUnsupported : AgentKit.CompactionSummaryGenerationResult, System.IEquatable<AgentKit.CompactionSummaryGenerationUnsupported>
+    {
+        public CompactionSummaryGenerationUnsupported(AgentKit.CompactionRejection Rejection) { }
+        public AgentKit.CompactionRejection Rejection { get; init; }
+    }
+    public sealed class CompactionSummaryGeneratorDescriptor : System.IEquatable<AgentKit.CompactionSummaryGeneratorDescriptor>
+    {
+        public CompactionSummaryGeneratorDescriptor(AgentKit.CompactionSummaryGeneratorKey key, AgentKit.CompactionSummaryGeneratorVersion version, bool modelBacked, bool deterministic, int maximumInputTokens, int maximumOutputTokens) { }
+        public bool Deterministic { get; }
+        public AgentKit.CompactionSummaryGeneratorKey Key { get; }
+        public int MaximumInputTokens { get; }
+        public int MaximumOutputTokens { get; }
+        public bool ModelBacked { get; }
+        public AgentKit.CompactionSummaryGeneratorVersion Version { get; }
+    }
+    public readonly struct CompactionSummaryGeneratorKey : System.IEquatable<AgentKit.CompactionSummaryGeneratorKey>
+    {
+        public CompactionSummaryGeneratorKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class CompactionSummaryGeneratorNotFound : AgentKit.CompactionSummaryGeneratorResolution, System.IEquatable<AgentKit.CompactionSummaryGeneratorNotFound>
+    {
+        public CompactionSummaryGeneratorNotFound(AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey, AgentKit.CompactionSummaryGeneratorKey GeneratorKey) { }
+        public AgentKit.ComponentKey<AgentKit.ICompactor> CompactorKey { get; init; }
+        public AgentKit.CompactionSummaryGeneratorKey GeneratorKey { get; init; }
+    }
+    public abstract class CompactionSummaryGeneratorResolution : System.IEquatable<AgentKit.CompactionSummaryGeneratorResolution>
+    {
+        protected CompactionSummaryGeneratorResolution() { }
+    }
+    public sealed class CompactionSummaryGeneratorResolved : AgentKit.CompactionSummaryGeneratorResolution, System.IEquatable<AgentKit.CompactionSummaryGeneratorResolved>
+    {
+        public CompactionSummaryGeneratorResolved(AgentKit.ICompactionSummaryGenerator Generator) { }
+        public AgentKit.ICompactionSummaryGenerator Generator { get; init; }
+    }
+    public readonly struct CompactionSummaryGeneratorVersion : System.IEquatable<AgentKit.CompactionSummaryGeneratorVersion>
+    {
+        public CompactionSummaryGeneratorVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class CompactionSummaryRequest : System.IEquatable<AgentKit.CompactionSummaryRequest>
+    {
+        public CompactionSummaryRequest(AgentKit.CompactionOperationContext context, AgentKit.CompactionSummaryGeneratorKey generatorKey, AgentKit.CompactionSourceRange coveredRange, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionSummarySegment> segments, int maximumOutputTokens, AgentKit.ContentHash effectiveInstructionsFingerprint, System.DateTimeOffset deadline, AgentKit.ExtensionData extensions) { }
+        public AgentKit.CompactionOperationContext Context { get; }
+        public AgentKit.CompactionSourceRange CoveredRange { get; }
+        public System.DateTimeOffset Deadline { get; }
+        public AgentKit.ContentHash EffectiveInstructionsFingerprint { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.CompactionSummaryGeneratorKey GeneratorKey { get; }
+        public int MaximumOutputTokens { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionSummarySegment> Segments { get; }
+    }
+    public sealed class CompactionSummarySegment : System.IEquatable<AgentKit.CompactionSummarySegment>
+    {
+        public CompactionSummarySegment(System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntryId> sourceEntryIds, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStateReference> state, AgentKit.ContentHash contentHash) { }
+        public AgentKit.ContentHash ContentHash { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntryId> SourceEntryIds { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionStateReference> State { get; }
     }
     public sealed class CompactionTrigger : System.IEquatable<AgentKit.CompactionTrigger>
     {
@@ -2351,7 +2721,15 @@ namespace AgentKit
     public sealed class CompactionValidated : AgentKit.CompactionValidationResult, System.IEquatable<AgentKit.CompactionValidated>
     {
         public CompactionValidated(AgentKit.CompactionCandidate candidate) { }
-        public AgentKit.CompactionCandidate Candidate { get; init; }
+        public CompactionValidated(AgentKit.ValidatedCompaction compaction) { }
+        public AgentKit.CompactionCandidate Candidate { get; }
+        public AgentKit.ValidatedCompaction Compaction { get; init; }
+    }
+    public sealed class CompactionValidationEvidence : System.IEquatable<AgentKit.CompactionValidationEvidence>
+    {
+        public CompactionValidationEvidence(string ruleId, AgentKit.ContentHash evidenceHash) { }
+        public AgentKit.ContentHash EvidenceHash { get; }
+        public string RuleId { get; }
     }
     public sealed class CompactionValidationFailed : AgentKit.CompactionValidationResult, System.IEquatable<AgentKit.CompactionValidationFailed>
     {
@@ -2391,6 +2769,19 @@ namespace AgentKit
         public AgentKit.CompactionSourceSnapshot Source { get; init; }
     }
     public abstract class CompactionValidationResult : System.IEquatable<AgentKit.CompactionValidationResult> { }
+    public sealed class CompactionValidationStamp : System.IEquatable<AgentKit.CompactionValidationStamp>
+    {
+        public CompactionValidationStamp(AgentKit.CompactionValidatorVersion validatorVersion, AgentKit.ContentHash candidateHash, System.DateTimeOffset validatedAt) { }
+        public AgentKit.ContentHash CandidateHash { get; }
+        public System.DateTimeOffset ValidatedAt { get; }
+        public AgentKit.CompactionValidatorVersion ValidatorVersion { get; }
+    }
+    public readonly struct CompactionValidatorVersion : System.IEquatable<AgentKit.CompactionValidatorVersion>
+    {
+        public CompactionValidatorVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class CompatibilityProfile : System.IEquatable<AgentKit.CompatibilityProfile>
     {
         public CompatibilityProfile(AgentKit.CompatibilityProfileKey key, AgentKit.CompatibilityProfileVersion version, AgentKit.ContentHash fingerprint, AgentKit.ModelCandidateMultiplicity requestMultiplicity, AgentKit.ModelCandidateMultiplicity responseMultiplicity, AgentKit.ModelUsageReportingMode usageReporting, System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> supportedToolSchemaDialects, AgentKit.ExtensionData extensions) { }
@@ -2606,6 +2997,7 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
         public AgentKit.ModelDescriptor Model { get; init; }
         public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.OutputDefinition? Output { get; init; }
         public AgentKit.RunId RunId { get; init; }
         public AgentKit.SessionId SessionId { get; init; }
         public AgentKit.LlmRequestSettings Settings { get; init; }
@@ -3098,11 +3490,55 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class DurabilityProfileSnapshot : System.IEquatable<AgentKit.DurabilityProfileSnapshot>
+    {
+        public DurabilityProfileSnapshot(AgentKit.DurabilityProfileKey key, AgentKit.DurabilityProfileVersion version, AgentKit.DurableBackendKey backendKey, AgentKit.DurableJournalKey journalKey, AgentKit.DurableLeaseManagerKey leaseManagerKey, AgentKit.RecoveryPolicyKey recoveryPolicyKey, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> enabledOperations, AgentKit.ContentHash configurationFingerprint) { }
+        public AgentKit.DurableBackendKey BackendKey { get; }
+        public AgentKit.ContentHash ConfigurationFingerprint { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> EnabledOperations { get; }
+        public AgentKit.DurableJournalKey JournalKey { get; }
+        public AgentKit.DurabilityProfileKey Key { get; }
+        public AgentKit.DurableLeaseManagerKey LeaseManagerKey { get; }
+        public AgentKit.RecoveryPolicyKey RecoveryPolicyKey { get; }
+        public AgentKit.DurabilityProfileVersion Version { get; }
+    }
     public readonly struct DurabilityProfileVersion : System.IEquatable<AgentKit.DurabilityProfileVersion>
     {
         public DurabilityProfileVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class DurabilityRuntimeActivated : AgentKit.DurabilityRuntimeActivationResult, System.IEquatable<AgentKit.DurabilityRuntimeActivated>
+    {
+        public DurabilityRuntimeActivated(AgentKit.IDurabilityRuntimeLease lease) { }
+        public AgentKit.IDurabilityRuntimeLease Lease { get; }
+    }
+    public sealed class DurabilityRuntimeActivationFailed : AgentKit.DurabilityRuntimeActivationResult, System.IEquatable<AgentKit.DurabilityRuntimeActivationFailed>
+    {
+        public DurabilityRuntimeActivationFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class DurabilityRuntimeActivationResult : System.IEquatable<AgentKit.DurabilityRuntimeActivationResult> { }
+    public sealed class DurabilityUnavailable : System.IEquatable<AgentKit.DurabilityUnavailable>
+    {
+        public DurabilityUnavailable(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public readonly struct DurableBackendCapabilities : System.IEquatable<AgentKit.DurableBackendCapabilities>
+    {
+        public DurableBackendCapabilities(bool SupportsDistributedOwnership, bool SupportsExternalHandoff, bool SupportsReconciliation) { }
+        public bool SupportsDistributedOwnership { get; init; }
+        public bool SupportsExternalHandoff { get; init; }
+        public bool SupportsReconciliation { get; init; }
+    }
+    public sealed class DurableBackendDescriptor : System.IEquatable<AgentKit.DurableBackendDescriptor>
+    {
+        public DurableBackendDescriptor(AgentKit.DurableBackendKey key, AgentKit.DurableBackendCapabilities capabilities, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> supportedOperations, bool supportsFencing, bool supportsReconciliation) { }
+        public AgentKit.DurableBackendCapabilities Capabilities { get; init; }
+        public AgentKit.DurableBackendKey Key { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> SupportedOperations { get; init; }
+        public bool SupportsFencing { get; init; }
+        public bool SupportsReconciliation { get; init; }
     }
     public readonly struct DurableBackendKey : System.IEquatable<AgentKit.DurableBackendKey>
     {
@@ -3110,6 +3546,17 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class DurableBackendSelected : AgentKit.DurableBackendSelectionResult, System.IEquatable<AgentKit.DurableBackendSelected>
+    {
+        public DurableBackendSelected(AgentKit.DurableBackendDescriptor descriptor) { }
+        public AgentKit.DurableBackendDescriptor Descriptor { get; }
+    }
+    public sealed class DurableBackendSelectionRejected : AgentKit.DurableBackendSelectionResult, System.IEquatable<AgentKit.DurableBackendSelectionRejected>
+    {
+        public DurableBackendSelectionRejected(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public abstract class DurableBackendSelectionResult : System.IEquatable<AgentKit.DurableBackendSelectionResult> { }
     public sealed class DurableCheckpoint : System.IEquatable<AgentKit.DurableCheckpoint>
     {
         public DurableCheckpoint(AgentKit.CheckpointId id, AgentKit.DurableOperationBinding binding, AgentKit.DurableCheckpointKind kind, AgentKit.OperationPayload state, AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt) { }
@@ -3146,6 +3593,23 @@ namespace AgentKit
         public DurableDecoded(TState state) { }
         public TState State { get; init; }
     }
+    public sealed class DurableDispatchFailed : AgentKit.DurableDispatchResult, System.IEquatable<AgentKit.DurableDispatchFailed>
+    {
+        public DurableDispatchFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class DurableDispatchRequest : System.IEquatable<AgentKit.DurableDispatchRequest>
+    {
+        public DurableDispatchRequest(AgentKit.RecoverableOperationDescriptor descriptor, AgentKit.DurableExecutionContext executionContext) { }
+        public AgentKit.RecoverableOperationDescriptor Descriptor { get; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
+    }
+    public abstract class DurableDispatchResult : System.IEquatable<AgentKit.DurableDispatchResult> { }
+    public sealed class DurableDispatched : AgentKit.DurableDispatchResult, System.IEquatable<AgentKit.DurableDispatched>
+    {
+        public DurableDispatched(AgentKit.ExternalOperationReference externalReference) { }
+        public AgentKit.ExternalOperationReference ExternalReference { get; }
+    }
     public sealed class DurableExecutionContext : System.IEquatable<AgentKit.DurableExecutionContext>
     {
         public DurableExecutionContext(AgentKit.DurabilityProfileKey profileKey, AgentKit.DurabilityProfileVersion profileVersion, AgentKit.DurableBackendKey backendKey, AgentKit.DurableJournalKey journalKey, AgentKit.DurableLeaseManagerKey leaseManagerKey, AgentKit.RecoveryPolicyKey recoveryPolicyKey, AgentKit.SecurityAuthorizationContext authorization) { }
@@ -3160,17 +3624,54 @@ namespace AgentKit
         public AgentKit.DurabilityProfileVersion ProfileVersion { get; init; }
         public AgentKit.RecoveryPolicyKey RecoveryPolicyKey { get; init; }
     }
+    public abstract class DurableExecutionEvent : System.IEquatable<AgentKit.DurableExecutionEvent>
+    {
+        protected DurableExecutionEvent(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt) { }
+        public AgentKit.DurableOperationBinding Binding { get; }
+        public System.DateTimeOffset OccurredAt { get; }
+    }
+    public readonly struct DurableExecutionEventSinkId : System.IEquatable<AgentKit.DurableExecutionEventSinkId>
+    {
+        public DurableExecutionEventSinkId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct DurableJournalEnforcementReceipt : System.IEquatable<AgentKit.DurableJournalEnforcementReceipt>
+    {
+        public DurableJournalEnforcementReceipt(AgentKit.GrantId GrantId, AgentKit.SecurityEnforcementIntentId IntentId, AgentKit.SecurityAuditRecordId? AuditRecordId, System.DateTimeOffset ConsumedAt) { }
+        public AgentKit.SecurityAuditRecordId? AuditRecordId { get; init; }
+        public System.DateTimeOffset ConsumedAt { get; init; }
+        public AgentKit.GrantId GrantId { get; init; }
+        public AgentKit.SecurityEnforcementIntentId IntentId { get; init; }
+    }
     public readonly struct DurableJournalKey : System.IEquatable<AgentKit.DurableJournalKey>
     {
         public DurableJournalKey(string value) { }
         public string Value { get; }
         public override string ToString() { }
     }
+    public static class DurableJournalSecurityBinding
+    {
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.DurableCheckpoint checkpoint) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.DurableOperationAddress address) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.DurableOperationResult result) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.DurableOperationStart start) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.DurableOperationWaiting waiting) { }
+        public static AgentKit.ContentHash FingerprintResource(AgentKit.ProtectedResource resource) { }
+        public static AgentKit.ProtectedResource Resource(AgentKit.DurableJournalKey journalKey, AgentKit.DurableOperationAddress address) { }
+    }
     public readonly struct DurableLeaseManagerKey : System.IEquatable<AgentKit.DurableLeaseManagerKey>
     {
         public DurableLeaseManagerKey(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class DurableOperationAccepted : AgentKit.DurableExecutionEvent, System.IEquatable<AgentKit.DurableOperationAccepted>
+    {
+        public DurableOperationAccepted(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt, AgentKit.DurableOperationName name, AgentKit.DurableOperationVersion version, AgentKit.FencingToken fencingToken) { }
+        public AgentKit.FencingToken FencingToken { get; }
+        public AgentKit.DurableOperationName Name { get; }
+        public AgentKit.DurableOperationVersion Version { get; }
     }
     public sealed class DurableOperationAddress : System.IEquatable<AgentKit.DurableOperationAddress>
     {
@@ -3187,11 +3688,33 @@ namespace AgentKit
         public AgentKit.DurableOperationAddress Address { get; }
         public AgentKit.DurableExecutionContext ExecutionContext { get; }
     }
+    public sealed class DurableOperationCheckpointed : AgentKit.DurableExecutionEvent, System.IEquatable<AgentKit.DurableOperationCheckpointed>
+    {
+        public DurableOperationCheckpointed(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt, AgentKit.CheckpointId checkpointId, AgentKit.DurableCheckpointKind kind, AgentKit.FencingToken fencingToken) { }
+        public AgentKit.CheckpointId CheckpointId { get; }
+        public AgentKit.FencingToken FencingToken { get; }
+        public AgentKit.DurableCheckpointKind Kind { get; }
+    }
+    public sealed class DurableOperationDeferred : AgentKit.DurableExecutionEvent, System.IEquatable<AgentKit.DurableOperationDeferred>
+    {
+        public DurableOperationDeferred(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.FencingToken fencingToken, System.DateTimeOffset? notBefore = default, AgentKit.ExternalOperationReference? externalReference = null) { }
+        public AgentKit.ExternalOperationReference? ExternalReference { get; }
+        public AgentKit.FencingToken FencingToken { get; }
+        public System.DateTimeOffset? NotBefore { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+    }
     public readonly struct DurableOperationName : System.IEquatable<AgentKit.DurableOperationName>
     {
         public DurableOperationName(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class DurableOperationRecoveryPlanned : AgentKit.DurableExecutionEvent, System.IEquatable<AgentKit.DurableOperationRecoveryPlanned>
+    {
+        public DurableOperationRecoveryPlanned(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt, AgentKit.DurableRecoveryAction action, AgentKit.DurableOperationState evidenceState, AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public AgentKit.DurableRecoveryAction Action { get; }
+        public AgentKit.DurableOperationState EvidenceState { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
     }
     public sealed class DurableOperationResult : System.IEquatable<AgentKit.DurableOperationResult>
     {
@@ -3206,6 +3729,13 @@ namespace AgentKit
         public string? SafeFailureMessage { get; init; }
         public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
         public AgentKit.DurableOperationState State { get; init; }
+    }
+    public sealed class DurableOperationSettled : AgentKit.DurableExecutionEvent, System.IEquatable<AgentKit.DurableOperationSettled>
+    {
+        public DurableOperationSettled(AgentKit.DurableOperationBinding binding, System.DateTimeOffset occurredAt, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.FencingToken fencingToken) { }
+        public AgentKit.FencingToken FencingToken { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+        public AgentKit.DurableOperationState State { get; }
     }
     public sealed class DurableOperationStart : System.IEquatable<AgentKit.DurableOperationStart>
     {
@@ -3230,6 +3760,36 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class DurableOperationWaiting : System.IEquatable<AgentKit.DurableOperationWaiting>
+    {
+        public DurableOperationWaiting(AgentKit.DurableOperationBinding binding, AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, System.DateTimeOffset? notBefore = default) { }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableOperationBinding Binding { get; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
+        public AgentKit.IdempotencyKey? ExternalIdempotencyKey { get; init; }
+        public AgentKit.ExternalOperationReference? ExternalReference { get; init; }
+        public AgentKit.FencingToken FencingToken { get; init; }
+        public System.DateTimeOffset? NotBefore { get; init; }
+        public System.DateTimeOffset RecordedAt { get; init; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class DurableReconciled : AgentKit.DurableReconciliationResult, System.IEquatable<AgentKit.DurableReconciled>
+    {
+        public DurableReconciled(AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class DurableReconciliationFailed : AgentKit.DurableReconciliationResult, System.IEquatable<AgentKit.DurableReconciliationFailed>
+    {
+        public DurableReconciliationFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class DurableReconciliationRequest : System.IEquatable<AgentKit.DurableReconciliationRequest>
+    {
+        public DurableReconciliationRequest(AgentKit.RecoverableOperationDescriptor descriptor, AgentKit.RecoveryEvidence evidence) { }
+        public AgentKit.RecoverableOperationDescriptor Descriptor { get; }
+        public AgentKit.RecoveryEvidence Evidence { get; }
+    }
+    public abstract class DurableReconciliationResult : System.IEquatable<AgentKit.DurableReconciliationResult> { }
     public sealed class DurableRecordFailed : AgentKit.DurableRecordResult, System.IEquatable<AgentKit.DurableRecordFailed>
     {
         public DurableRecordFailed(string safeMessage, bool? committed = default) { }
@@ -3245,9 +3805,19 @@ namespace AgentKit
     public abstract class DurableRecordResult : System.IEquatable<AgentKit.DurableRecordResult> { }
     public sealed class DurableRecorded : AgentKit.DurableRecordResult, System.IEquatable<AgentKit.DurableRecorded>
     {
-        public DurableRecorded(AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt) { }
+        public DurableRecorded(AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt, AgentKit.DurableJournalEnforcementReceipt? enforcement = default) { }
+        public AgentKit.DurableJournalEnforcementReceipt? Enforcement { get; init; }
         public AgentKit.FencingToken FencingToken { get; init; }
         public System.DateTimeOffset RecordedAt { get; init; }
+    }
+    public enum DurableRecoveryAction
+    {
+        Start = 0,
+        Reconcile = 1,
+        Retry = 2,
+        CommitRecordedResult = 3,
+        RequireOperator = 4,
+        NotPossible = 5,
     }
     public enum DurableRetryOwner
     {
@@ -4822,6 +5392,18 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(AgentKit.BudgetOverrunHoldResolutionRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IBudgetPolicy
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetPolicyDecision> EvaluateAsync(AgentKit.BudgetPolicyRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IBudgetPolicyCatalog
+    {
+        bool TryGet(AgentKit.BudgetPolicyKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.IBudgetPolicy? policy);
+    }
+    public interface IBudgetProfileCatalog
+    {
+        bool TryGet(AgentKit.BudgetProfileKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.BudgetProfileSnapshot? profile);
+    }
     public interface IBudgetReservation : System.IAsyncDisposable
     {
         AgentKit.BudgetDimension Dimension { get; }
@@ -4840,13 +5422,39 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.BudgetReservationResult> ReserveAsync(AgentKit.BudgetReservationRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetBatchReservationResult> ReserveBatchAsync(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetReservationRequest> requests, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ICompactionActivationCoordinator
+    {
+        System.Threading.Tasks.Task<AgentKit.CompactionActivationResult> ActivateAsync(AgentKit.CompactionActivationRequest request, AgentKit.SessionExecutionCapability session, AgentKit.SecurityGrant activationGrant, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ICompactionCutSelector
     {
         System.Threading.Tasks.ValueTask<AgentKit.CompactionCutSelectionResult> SelectAsync(AgentKit.CompactionCutSelectionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ICompactionEventDispatcher
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.CompactionEventDispatchResult> PublishAsync(AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, AgentKit.CompactionEvent compactionEvent, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ICompactionEventSink
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.CompactionEvent compactionEvent, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ICompactionStrategy
     {
-        System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, System.Threading.CancellationToken cancellationToken = default);
+        AgentKit.CompactionStrategyDescriptor Descriptor { get; }
+        System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, AgentKit.BudgetExecutionCapability? budget, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ICompactionStrategyResolver
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.CompactionStrategyResolution> ResolveAsync(AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, AgentKit.CompactionStrategyKey strategyKey, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ICompactionSummaryGenerator
+    {
+        AgentKit.CompactionSummaryGeneratorDescriptor Descriptor { get; }
+        System.Threading.Tasks.Task<AgentKit.CompactionSummaryGenerationResult> GenerateAsync(AgentKit.CompactionSummaryRequest request, AgentKit.BudgetExecutionCapability? budget, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ICompactionSummaryGeneratorResolver
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.CompactionSummaryGeneratorResolution> ResolveAsync(AgentKit.ComponentKey<AgentKit.ICompactor> compactorKey, AgentKit.CompactionSummaryGeneratorKey generatorKey, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ICompactionValidator
     {
@@ -4855,6 +5463,7 @@ namespace AgentKit
     public interface ICompactor
     {
         System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability budget, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ICompiledToolSchema
     {
@@ -4896,6 +5505,49 @@ namespace AgentKit
     {
         System.Collections.Generic.IAsyncEnumerable<AgentKit.FileSystemEntry> EnumerateAsync(AgentKit.AuthorizedDirectoryEnumeration operation, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IDurabilityProfileCatalog
+    {
+        bool TryGet(AgentKit.DurabilityProfileKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.DurabilityProfileSnapshot? profile);
+    }
+    public interface IDurabilityRuntimeLease : System.IAsyncDisposable
+    {
+        AgentKit.IDurableExecutionBackend Backend { get; }
+        AgentKit.DurableExecutionContext Context { get; }
+        AgentKit.IDurableOperationJournal Journal { get; }
+        AgentKit.IDurableLeaseManager LeaseManager { get; }
+        AgentKit.IRecoveryPolicy RecoveryPolicy { get; }
+    }
+    public interface IDurabilityRuntimeSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.DurabilityRuntimeActivationResult> ActivateAsync(AgentKit.DurableExecutionContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDurableBackendCatalog
+    {
+        System.Collections.Immutable.ImmutableArray<AgentKit.DurableBackendDescriptor> GetDescriptors();
+    }
+    public interface IDurableBackendSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.DurableBackendSelectionResult> SelectAsync(AgentKit.RecoverableOperationDescriptor operation, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDurableExecutionBackend
+    {
+        AgentKit.DurableBackendDescriptor Descriptor { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.DurableDispatchResult> DispatchAsync(AgentKit.DurableDispatchRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.DurableReconciliationResult> ReconcileAsync(AgentKit.DurableReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDurableExecutionCoordinator
+    {
+        System.Threading.Tasks.Task<AgentKit.DurableOperationResult> ExecuteAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.DurableOperationResult> RecoverAsync(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext context, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDurableExecutionEventDispatcher
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.DurableExecutionContext context, AgentKit.DurableExecutionEvent executionEvent, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDurableExecutionEventSink
+    {
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.DurableExecutionEvent executionEvent, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IDurableLeaseManager
     {
         System.Threading.Tasks.ValueTask<AgentKit.ExecutionLeaseResult> AcquireAsync(AgentKit.ExecutionLeaseRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -4907,12 +5559,19 @@ namespace AgentKit
         AgentKit.DurableDecodeResult<TState> Decode(AgentKit.OperationPayload payload);
         AgentKit.OperationPayload Encode(TState value);
     }
+    public interface IDurableOperationHandler
+    {
+        AgentKit.DurableOperationName OperationName { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.DurableOperationResult> InvokeAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.IExecutionLease lease, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IDurableOperationJournal
     {
-        System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.DurableOperationAddress address, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.DurableCheckpoint checkpoint, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.DurableOperationStart start, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.DurableOperationResult result, System.Threading.CancellationToken cancellationToken = default);
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationAddress> address, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableCheckpoint> checkpoint, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationStart> start, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationResult> result, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordWaitingAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationWaiting> waiting, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IEmbeddingModel
     {
@@ -5197,6 +5856,7 @@ namespace AgentKit
     public interface IOutputProcessor
     {
         System.Threading.Tasks.ValueTask<AgentKit.OutputProcessingResult> ProcessAsync(AgentKit.OutputProcessingRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.OutputProcessingResult> ProcessAsync(AgentKit.OutputProcessingRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IOutputPublisher
     {
@@ -5208,6 +5868,10 @@ namespace AgentKit
         AgentKit.OutputSchemaEngineProfile Profile { get; }
         AgentKit.OutputSchemaEvaluationResult Evaluate(AgentKit.OutputSchemaEvaluationRequest request, System.Threading.CancellationToken cancellationToken = default);
         AgentKit.OutputSchemaPreflightResult Preflight(AgentKit.OutputSchemaPreflightRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IOutputValidatingHook
+    {
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.OutputValidatingEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IOutputValidator
     {
@@ -6160,6 +6824,7 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; init; }
         public AgentKit.ModelDescriptor Model { get; init; }
         public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.OutputDefinition? Output { get; init; }
         public AgentKit.LlmRequestSettings Settings { get; init; }
         public AgentKit.LlmToolChoice ToolChoice { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> Tools { get; init; }
@@ -7034,6 +7699,11 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class OperatorActionRequired : System.IEquatable<AgentKit.OperatorActionRequired>
+    {
+        public OperatorActionRequired(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
     public sealed class OutputAccepted : AgentKit.OutputProcessingResult, System.IEquatable<AgentKit.OutputAccepted>
     {
         public OutputAccepted(AgentKit.ValidatedOutput output, AgentKit.OutputValidationManifest manifest) { }
@@ -7115,8 +7785,14 @@ namespace AgentKit
     public sealed class OutputProcessingRequest : System.IEquatable<AgentKit.OutputProcessingRequest>
     {
         public OutputProcessingRequest(AgentKit.OutputDefinition definition, AgentKit.ModelResponse response, int validationAttempt) { }
+        public OutputProcessingRequest(AgentKit.OutputDefinition definition, AgentKit.ModelResponse response, int validationAttempt, AgentKit.ModelDescriptor? model, AgentKit.BudgetExecutionCapability? budget, AgentKit.AgentId agentId = default, AgentKit.SessionId sessionId = default, int turn = 0) { }
+        public AgentKit.AgentId AgentId { get; init; }
+        public AgentKit.BudgetExecutionCapability? Budget { get; init; }
         public AgentKit.OutputDefinition Definition { get; init; }
+        public AgentKit.ModelDescriptor? Model { get; init; }
         public AgentKit.ModelResponse Response { get; init; }
+        public AgentKit.SessionId SessionId { get; init; }
+        public int Turn { get; init; }
         public int ValidationAttempt { get; init; }
     }
     public abstract class OutputProcessingResult : System.IEquatable<AgentKit.OutputProcessingResult> { }
@@ -7172,6 +7848,7 @@ namespace AgentKit
         ResourceLimitExceeded = 4,
         PreflightEvidenceMismatch = 5,
         UnsupportedRuntimeType = 6,
+        ProviderCapabilityMismatch = 7,
     }
     public sealed class OutputSchemaEngineProfile : System.IEquatable<AgentKit.OutputSchemaEngineProfile>
     {
@@ -7250,6 +7927,19 @@ namespace AgentKit
         public OutputSchemaProfileVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class OutputValidatingEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
+    {
+        public OutputValidatingEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, int turn, AgentKit.OutputDefinition definition, AgentKit.ValidatedOutput candidate, int validationAttempt) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ValidatedOutput Candidate { get; }
+        public AgentKit.OutputDefinition Definition { get; }
+        public bool Reject { get; set; }
+        public string? RejectMessage { get; set; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId? SessionId { get; }
+        public int Turn { get; }
+        public int ValidationAttempt { get; }
     }
     public sealed class OutputValidationFailure : System.IEquatable<AgentKit.OutputValidationFailure>
     {
@@ -7989,11 +8679,12 @@ namespace AgentKit
         Authorization = 1,
         Throttling = 2,
         InvalidRequest = 3,
-        Unavailable = 4,
-        Timeout = 5,
-        Cancellation = 6,
-        ProtocolViolation = 7,
-        Unknown = 8,
+        ContextLengthExceeded = 4,
+        Unavailable = 5,
+        Timeout = 6,
+        Cancellation = 7,
+        ProtocolViolation = 8,
+        Unknown = 9,
     }
     public readonly struct ProviderId : System.IEquatable<AgentKit.ProviderId>
     {
@@ -8153,15 +8844,18 @@ namespace AgentKit
     public abstract class RecoveryDecision : System.IEquatable<AgentKit.RecoveryDecision> { }
     public sealed class RecoveryEvidence : System.IEquatable<AgentKit.RecoveryEvidence>
     {
-        public RecoveryEvidence(AgentKit.DurableOperationBinding binding, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default) { }
-        public RecoveryEvidence(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default) { }
+        public RecoveryEvidence(AgentKit.DurableOperationBinding binding, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableOperationResult? recordedResult = null, System.DateTimeOffset? notBefore = default, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default, AgentKit.RecoverableOperationDescriptor? descriptor = null) { }
+        public RecoveryEvidence(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableOperationResult? recordedResult = null, System.DateTimeOffset? notBefore = default, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default, AgentKit.RecoverableOperationDescriptor? descriptor = null) { }
         public AgentKit.DurableOperationAddress Address { get; }
         public AgentKit.DurableOperationBinding Binding { get; }
+        public AgentKit.RecoverableOperationDescriptor? Descriptor { get; init; }
         public AgentKit.DurableExecutionContext ExecutionContext { get; }
         public AgentKit.IdempotencyKey? ExternalIdempotencyKey { get; init; }
         public AgentKit.ExternalOperationReference? ExternalReference { get; init; }
         public AgentKit.FencingToken? LastWriterToken { get; init; }
         public AgentKit.DurableCheckpoint? LatestCheckpoint { get; init; }
+        public System.DateTimeOffset? NotBefore { get; init; }
+        public AgentKit.DurableOperationResult? RecordedResult { get; init; }
         public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
         public bool StartDefinitelyAbsent { get; init; }
         public AgentKit.DurableOperationState State { get; init; }
@@ -8181,6 +8875,11 @@ namespace AgentKit
     public sealed class RecoveryEvidenceUnavailable : AgentKit.RecoveryEvidenceResult, System.IEquatable<AgentKit.RecoveryEvidenceUnavailable>
     {
         public RecoveryEvidenceUnavailable(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class RecoveryIncompatible : System.IEquatable<AgentKit.RecoveryIncompatible>
+    {
+        public RecoveryIncompatible(string safeMessage) { }
         public string SafeMessage { get; init; }
     }
     public sealed class RecoveryNotPossible : AgentKit.RecoveryDecision, System.IEquatable<AgentKit.RecoveryNotPossible>
@@ -8233,6 +8932,12 @@ namespace AgentKit
     {
         public RejectedInput(AgentKit.InputRejection rejection) { }
         public AgentKit.InputRejection Rejection { get; }
+    }
+    public sealed class RequiredCompactionEventUnavailable : AgentKit.CompactionEventDispatchResult, System.IEquatable<AgentKit.RequiredCompactionEventUnavailable>
+    {
+        public RequiredCompactionEventUnavailable(AgentKit.CompactionEventSinkId SinkId, AgentKit.CompactionFailure Failure) { }
+        public AgentKit.CompactionFailure Failure { get; init; }
+        public AgentKit.CompactionEventSinkId SinkId { get; init; }
     }
     public sealed class RerankDocument : System.IEquatable<AgentKit.RerankDocument>
     {
@@ -10306,6 +11011,14 @@ namespace AgentKit
         public bool Equals(AgentKit.StructuredDataPart? other) { }
         public override int GetHashCode() { }
     }
+    public static class StructuredOutputToolConvention
+    {
+        public static AgentKit.ToolId ToolId { get; }
+        public static string ToolName { get; }
+        public static AgentKit.ToolReference ToolReference { get; }
+        public static AgentKit.LlmToolDefinition CreateToolDefinition(AgentKit.OutputDefinition definition) { }
+        public static bool IsSyntheticOutputCall(AgentKit.ToolCallPart call) { }
+    }
     public sealed class SystemMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.SystemMessage>
     {
         public SystemMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
@@ -11466,6 +12179,13 @@ namespace AgentKit
     public sealed class UserMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.UserMessage>
     {
         public UserMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
+    }
+    public sealed class ValidatedCompaction : System.IEquatable<AgentKit.ValidatedCompaction>
+    {
+        public ValidatedCompaction(AgentKit.CompactionCandidate candidate, AgentKit.CompactionValidationStamp stamp, System.Collections.Immutable.ImmutableArray<AgentKit.CompactionValidationEvidence> evidence) { }
+        public AgentKit.CompactionCandidate Candidate { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompactionValidationEvidence> Evidence { get; }
+        public AgentKit.CompactionValidationStamp Stamp { get; }
     }
     public sealed class ValidatedOutput : System.IEquatable<AgentKit.ValidatedOutput>
     {

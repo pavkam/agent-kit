@@ -60,7 +60,7 @@ public sealed class GoogleGeminiProviderDefaultsTests
     {
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsReasoning.ShouldBeTrue();
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
-        GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
+        GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeTrue();
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
     }
 

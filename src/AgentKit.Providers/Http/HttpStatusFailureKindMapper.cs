@@ -20,7 +20,7 @@ using System.Net;
 /// <item><term>403</term><description><see cref="ProviderFailureKind.Authorization"/></description></item>
 /// <item><term>429</term><description><see cref="ProviderFailureKind.Throttling"/></description></item>
 /// <item><term>408, 504</term><description><see cref="ProviderFailureKind.Timeout"/></description></item>
-/// <item><term>413</term><description><see cref="ProviderFailureKind.InvalidRequest"/></description></item>
+/// <item><term>413</term><description><see cref="ProviderFailureKind.ContextLengthExceeded"/></description></item>
 /// <item><term>529</term><description><see cref="ProviderFailureKind.Unavailable"/></description></item>
 /// <item><term>other 4xx</term><description><see cref="ProviderFailureKind.InvalidRequest"/></description></item>
 /// <item><term>other 5xx</term><description><see cref="ProviderFailureKind.Unavailable"/></description></item>
@@ -34,8 +34,9 @@ using System.Net;
 /// retry and budget signal as a <c>408</c>, and callers that budget by
 /// elapsed time should treat both alike. <c>529</c> is the de facto
 /// "overloaded" status used by several model vendors and is transient.
-/// <c>413</c> is a caller fault (the payload exceeds the provider's limit)
-/// and is never transient.
+/// <c>413</c> means the payload exceeds the provider's limit and maps to
+/// <see cref="ProviderFailureKind.ContextLengthExceeded"/> so callers can
+/// compact or trim before retrying; it is not treated as a transient outage.
 /// </para>
 /// <para>
 /// A <c>1xx</c>, <c>2xx</c>, or <c>3xx</c> status only reaches this mapper
@@ -104,7 +105,7 @@ public static class HttpStatusFailureKindMapper
             (int) HttpStatusCode.Forbidden => ProviderFailureKind.Authorization,
             (int) HttpStatusCode.TooManyRequests => ProviderFailureKind.Throttling,
             (int) HttpStatusCode.RequestTimeout or (int) HttpStatusCode.GatewayTimeout => ProviderFailureKind.Timeout,
-            (int) HttpStatusCode.RequestEntityTooLarge => ProviderFailureKind.InvalidRequest,
+            (int) HttpStatusCode.RequestEntityTooLarge => ProviderFailureKind.ContextLengthExceeded,
             529 => ProviderFailureKind.Unavailable,
             >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
             >= 500 and < 600 => ProviderFailureKind.Unavailable,

@@ -14,4 +14,7 @@ internal enum DurableJournalWriteOperation
 
     /// <summary>Committing the operation's authoritative terminal record.</summary>
     RecordTerminal,
+
+    /// <summary>Committing a waiting state for external or deferred work.</summary>
+    RecordWaiting,
 }

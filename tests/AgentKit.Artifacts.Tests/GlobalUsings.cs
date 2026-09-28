@@ -7,6 +7,7 @@ global using AgentKit;
 global using AgentKit.Artifacts;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;
 
 global using Shouldly;

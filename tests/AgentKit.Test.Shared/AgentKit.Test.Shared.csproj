@@ -6,10 +6,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Shouldly" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
     <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Observability/AgentKit.Observability.csproj" />
   </ItemGroup>
 </Project>

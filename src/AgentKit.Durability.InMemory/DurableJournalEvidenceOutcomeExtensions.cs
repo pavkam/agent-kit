@@ -18,6 +18,7 @@ internal static class DurableJournalEvidenceOutcomeExtensions
             {
                 DurableJournalEvidenceOutcome.Loaded => "loaded",
                 DurableJournalEvidenceOutcome.NotFound => "not_found",
+                DurableJournalEvidenceOutcome.Denied => "denied",
                 DurableJournalEvidenceOutcome.Cancelled => "cancelled",
                 _ => throw new UnreachableException(),
             };

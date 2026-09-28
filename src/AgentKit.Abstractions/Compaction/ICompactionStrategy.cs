@@ -18,8 +18,19 @@ namespace AgentKit;
 /// </remarks>
 public interface ICompactionStrategy
 {
+    /// <summary>Gets the descriptor for this strategy implementation.</summary>
+    /// <value>The default implementation is a placeholder; every production strategy overrides it.</value>
+    public CompactionStrategyDescriptor Descriptor =>
+        new(
+            new CompactionStrategyKey("unknown"),
+            new CompactionStrategyVersion("0"),
+            CompactionStrategyCapabilities.None,
+            deterministic: true,
+            summaryGeneratorKey: null);
+
     /// <summary>Produces checkpoint content for one compaction attempt.</summary>
     /// <param name="request">The checkpoint-production request.</param>
+    /// <param name="budget">Optional budget capability for model-backed production; null when no budget is reserved.</param>
     /// <param name="cancellationToken">A token used to cancel production.</param>
     /// <returns>
     /// A task that resolves to the closed production outcome: a produced
@@ -27,5 +38,7 @@ public interface ICompactionStrategy
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public Task<CompactionStrategyResult> ProduceAsync(
-        CompactionStrategyRequest request, CancellationToken cancellationToken = default);
+        CompactionStrategyRequest request,
+        BudgetExecutionCapability? budget,
+        CancellationToken cancellationToken = default);
 }

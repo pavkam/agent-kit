@@ -39,6 +39,9 @@ internal sealed class AgentEngineRuntime
     private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
     private readonly IIdentifierGenerator<InputId> _inputIds;
     private readonly AgentRunScopeFactory _scopes;
+    private readonly IDurableExecutionCoordinator? _durableExecution;
+    private readonly IDurabilityProfileCatalog? _durabilityProfiles;
+    private readonly DurableBoundaryRegistry _durableInvocations;
     private readonly InProcessSessionGate _gate = new();
     private readonly ActiveRunRegistry _activeRuns = new();
     private readonly ILogger<AgentEngine> _logger;
@@ -272,9 +275,19 @@ internal sealed class AgentEngineRuntime
         lock (_disposeLock)
         {
             _disposed = true;
-            _disposeTask ??= DisposeOwnedProviderAsync(_ownedProvider);
+            _disposeTask ??= DisposeOwnedProviderWithDrainAsync(_ownedProvider);
             return new ValueTask(_disposeTask);
         }
+    }
+
+    private async Task DisposeOwnedProviderWithDrainAsync(IAsyncDisposable? ownedProvider)
+    {
+        if (Services.GetService<IRequiredRunEventSinkCoordinator>() is { } coordinator)
+        {
+            await coordinator.DrainAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+        }
+
+        await DisposeOwnedProviderAsync(ownedProvider).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -416,6 +429,88 @@ internal sealed class AgentEngineRuntime
                 await lease.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>Runs explicit compaction maintenance for one session branch.</summary>
+    /// <param name="agent">The pinned handle whose definition is revalidated.</param>
+    /// <param name="sessionId">The session to compact.</param>
+    /// <param name="branchId">The branch to compact.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels the maintenance attempt.</param>
+    /// <returns>The closed compaction outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="agent"/> or <paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or <paramref name="branchId"/> is default.</exception>
+    /// <exception cref="ObjectDisposedException">This runtime has been disposed.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The session is unavailable or no compactor is composed.</exception>
+    internal async Task<CompactionResult> CompactAsync(
+        Agent agent,
+        SessionId sessionId,
+        BranchId branchId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default);
+        ArgumentNullException.ThrowIfNull(identity);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var resolution = await _catalog.ResolveAsync(agent.Id, cancellationToken).ConfigureAwait(false);
+        if (resolution is not ResolvedAgentDefinition { Definition: var definition, CatalogVersion: var catalogVersion })
+        {
+            throw AdmissionRejected(agent.Definition, agent.CatalogVersion, "The requested agent is not hosted by this engine.");
+        }
+
+        if (!_pinnedRunProfiles.TryGetValue((definition.Id, definition.Revision), out var publication))
+        {
+            throw AdmissionRejected(definition, catalogVersion, "The built composition has no pinned run-profile publication for this definition.");
+        }
+
+        await using var scope = Services.CreateAsyncScope();
+        var provider = scope.ServiceProvider;
+        var compactor = provider.GetService<ICompactor>()
+            ?? throw AdmissionRejected(definition, catalogVersion, "No compactor is composed for this engine.");
+        var compactionIds = provider.GetRequiredService<IIdentifierGenerator<CompactionId>>();
+        var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+        var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(provider, loopKey);
+        var operationId = _operationIds.Create();
+        var correlation = new BeforeRunOperationCorrelation(operationId, admissionId: null);
+        var authorization = await DefaultAgentRunPlanCompiler.CaptureAsync(
+            _securityProfiles, definition, catalogVersion, publication.SecurityProfile, sessionId, correlation, identity, cancellationToken)
+            .ConfigureAwait(false);
+        var sessionContext = new SessionOperationContext(
+            definition.Id, sessionId, executionLaneId: null, correlation, identity, authorization);
+        var page = await sessions.ReadAsync(
+            new SessionReadRequest(sessionContext, branchId, new SessionSequence(0), pageSize: 512),
+            publication.SessionProfile,
+            cancellationToken).ConfigureAwait(false);
+        if (page is not SessionPage branchPage || branchPage.Snapshot is not { } snapshot)
+        {
+            throw AdmissionRejected(definition, catalogVersion, "The session branch could not be read for compaction maintenance.");
+        }
+
+        var contextEpoch = definition.Revision.Value;
+        var now = TimeProvider.GetUtcNow();
+        var compactionId = compactionIds.Create();
+        return await compactor.CompactAsync(
+            new CompactionRequest(
+                new CompactionOperationContext(
+                    compactionId, definition.Id, sessionId, correlation, identity, authorization, publication.SessionProfile),
+                branchId,
+                snapshot.Version,
+                snapshot.UpperSequence,
+                new ContextEpoch(contextEpoch),
+                new CompactionTrigger(
+                    CompactionTriggerKind.ExplicitMaintenance,
+                    "Explicit compaction maintenance was requested for this session branch.",
+                    operationId),
+                targetInputTokens: 0,
+                minimumReductionRatio: 0.1,
+                minimumRetainedEntries: 1,
+                now,
+                now + definition.RunDefaults.AttemptTimeout,
+                ExtensionData.Empty),
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Records a durable abort for one in-process active run.</summary>
@@ -1524,6 +1619,7 @@ internal sealed class AgentEngineRuntime
                 compiled.OutputProcessor,
                 compiled.Compactor,
                 compiled.Budgets,
+                compiled.BudgetProfiles,
                 compiled.RunCoordinator,
                 input,
                 publisher,

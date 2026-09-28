@@ -34,7 +34,7 @@ public sealed class InMemoryDurableLeaseManager: IDurableLeaseManager
         ArgumentNullException.ThrowIfNull(timeProvider);
         _leaseIds = leaseIds;
         _timeProvider = timeProvider;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<InMemoryDurableLeaseManager>.Instance;
+        _logger = logger ?? NullLogger<InMemoryDurableLeaseManager>.Instance;
     }
 
     /// <inheritdoc/>

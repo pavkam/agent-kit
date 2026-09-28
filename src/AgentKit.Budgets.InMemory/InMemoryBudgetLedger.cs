@@ -706,7 +706,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                 _ = activityScope?.Activity?.SetTag(AgentKitTagNames.ErrorType, errorType);
                 _ = (activityScope?.Activity?.SetStatus(ActivityStatusCode.Error, errorType));
             });
-            TryObserve(() => BudgetLedgerLog.Failed(_logger, operation, errorType, tenantId, principalId, agentId, sessionId, runId, scopeId, reservationId, operationId));
+            TryObserve(() => BudgetLedgerLog.Failed(_logger, operation, "faulted", errorType, tenantId, principalId, agentId, sessionId, runId, scopeId, reservationId, operationId));
             RecordMetrics(operation, "faulted", started);
             throw;
         }

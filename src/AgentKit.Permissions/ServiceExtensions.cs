@@ -71,11 +71,15 @@ public static class ServiceExtensions
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),
                 provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
                 provider.GetService<ILogger<SecurityAuthority>>(),
-                provider.GetService<IIdentityValidationPolicy>()));
+                provider.GetService<IIdentityValidationPolicy>(),
+                provider.GetService<IDurableExecutionCoordinator>(),
+                provider.GetService<IDurabilityProfileCatalog>(),
+                provider.GetRequiredService<DurableBoundaryRegistry>()));
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
             services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();
             services.TryAddSingleton<ISecurityProfileSelector, DefaultSecurityProfileSelector>();
             services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
+            PermissionServiceRegistration.RegisterDurableBoundaries(services);
             return services;
         }
 
@@ -111,6 +115,22 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(registration);
             ArgumentNullException.ThrowIfNull(sink);
             _ = services.AddSingleton(new SecurityAuditSinkBinding(registration, sink));
+            return services;
+        }
+
+        /// <summary>Additively registers one <see cref="ISecurityAuditSink"/> resolved from dependency injection.</summary>
+        /// <typeparam name="TSink">The sink implementation activated through the service provider.</typeparam>
+        /// <param name="registration">The immutable event support, delivery, and durable-acceptance declaration.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="registration"/> is null.</exception>
+        public IServiceCollection AddSecurityAuditSink<TSink>(SecurityAuditSinkRegistration registration)
+            where TSink : class, ISecurityAuditSink
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(registration);
+            _ = services.AddSingleton<TSink>();
+            _ = services.AddSingleton(provider =>
+                new SecurityAuditSinkBinding(registration, provider.GetRequiredService<TSink>()));
             return services;
         }
 

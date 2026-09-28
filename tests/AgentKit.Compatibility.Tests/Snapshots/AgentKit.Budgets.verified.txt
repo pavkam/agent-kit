@@ -17,6 +17,13 @@ namespace AgentKit.Budgets
         RecordAndBlockFurtherReservations = 0,
         RequireOperatorReconciliation = 1,
     }
+    public sealed class BudgetProfileOptions
+    {
+        public BudgetProfileOptions() { }
+        public System.Collections.Generic.List<AgentKit.BudgetLimit> Limits { get; }
+        public System.Collections.Generic.List<AgentKit.BudgetPolicyKey> Policies { get; }
+        public AgentKit.BudgetProfileVersion Version { get; set; }
+    }
     public enum BudgetUnknownCostBehavior
     {
         AllowOnlyWithoutCostLimit = 0,
@@ -27,10 +34,24 @@ namespace AgentKit.Budgets
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentBudgets(System.Action<AgentKit.Budgets.AgentBudgetOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBudgetProfile(AgentKit.BudgetProfileKey key, System.Action<AgentKit.Budgets.BudgetProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetProfile(AgentKit.BudgetProfileKey key, System.Action<AgentKit.Budgets.BudgetProfileOptions> configure) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBudgetDimension(AgentKit.BudgetDimensionDescriptor descriptor) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetDimension(AgentKit.BudgetDimensionDescriptor descriptor) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetAuthority<TAuthority>()
                 where TAuthority :  class, AgentKit.IBudgetAuthority { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetLedger<TLedger>()
+                where TLedger :  class, AgentKit.IBudgetLedger { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetProfileCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IBudgetProfileCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetPolicyCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IBudgetPolicyCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetDimensionCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IBudgetDimensionCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBudgetPolicy<TPolicy>(AgentKit.BudgetPolicyKey key)
+                where TPolicy :  class, AgentKit.IBudgetPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetPolicy<TPolicy>(AgentKit.BudgetPolicyKey key)
+                where TPolicy :  class, AgentKit.IBudgetPolicy { }
         }
     }
 }

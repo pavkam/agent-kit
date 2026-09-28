@@ -28,7 +28,7 @@ public sealed class DefaultArtifactCoordinatorTests
                 new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
                 new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
                 new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
-                new FixedTimeProvider(), Options.Create(options));
+                new FixedTimeProvider(), Options.Create(options), NullLogger<DefaultArtifactCoordinator>.Instance);
 
         var exception = Should.Throw<ArgumentException>(Construct);
         exception.GetType().ShouldBe(expectedExceptionType);
@@ -149,7 +149,7 @@ public sealed class DefaultArtifactCoordinatorTests
             store, new FixedSecurityAuthoritySelector(authority), new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
             new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
             new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
-            new FixedTimeProvider(), Options.Create(options));
+            new FixedTimeProvider(), Options.Create(options), NullLogger<DefaultArtifactCoordinator>.Instance);
         var request = ArtifactTestData.CreatePrepare("content"u8.ToArray());
 
         var pending = coordinator.PrepareAsync(request, TestContext.Current.CancellationToken);
@@ -332,5 +332,6 @@ public sealed class DefaultArtifactCoordinatorTests
             new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
             new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
             new FixedTimeProvider(),
-            Options.Create(new AgentArtifactOptions { MaximumArtifactBytes = maximumBytes, CopyBufferBytes = 2 }));
+            Options.Create(new AgentArtifactOptions { MaximumArtifactBytes = maximumBytes, CopyBufferBytes = 2 }),
+            NullLogger<DefaultArtifactCoordinator>.Instance);
 }

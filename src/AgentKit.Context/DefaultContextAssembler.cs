@@ -203,6 +203,20 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         var tools = await _services.Tools.ResolveToolsAsync(
             new ToolSnapshotRequest(catalog: null, fallbackTools),
             cancellationToken).ConfigureAwait(false);
+        var output = request.Output;
+        if (output is { Mode: OutputMode.SyntheticTool })
+        {
+            var syntheticTool = StructuredOutputToolConvention.CreateToolDefinition(output);
+            if (!tools.Any(static tool => tool.Id == StructuredOutputToolConvention.ToolId))
+            {
+                tools = tools.Add(syntheticTool);
+            }
+
+            if (toolChoice.Mode is not LlmToolChoiceMode.None)
+            {
+                toolChoice = LlmToolChoice.Named(StructuredOutputToolConvention.ToolName);
+            }
+        }
 
         ContextManifest? manifest = null;
         if (request.Evidence is not null && _services.Contributors.Count > 0)
@@ -230,6 +244,7 @@ internal sealed class DefaultContextAssembler: IContextAssembler
             request.Extensions)
         {
             Manifest = manifest,
+            Output = output,
         };
 
         SafeSetActivity(() => activity.SetSuccessful("ready"));

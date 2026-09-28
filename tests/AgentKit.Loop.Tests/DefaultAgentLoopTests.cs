@@ -2937,6 +2937,29 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenOutputIsNativeSchema_SetsRequiresStructuredOutputOnModelSelection()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), _ => TestFactory.CompletedWithText(requestId));
+        var selector = FakeModelSelector.Selecting(descriptor);
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            selector,
+            new FakeLlmModelResolver(adapter),
+            outputProcessor: new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request)));
+        var nativeSchema = ScriptedOutputProcessor.Definition() with { Mode = OutputMode.NativeSchema };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = nativeSchema };
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        selector.LastRequest.ShouldNotBeNull().Requirements.RequiresStructuredOutput.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOutputIsSelectedAndTheModelCallsATool_ValidatesOnlyTheTerminalResponse()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -3349,6 +3372,78 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenTheProviderReportsContextLengthExceeded_CompactsOnceAndRetriesTheTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        FakeSessionCoordinator? store = null;
+        var modelCalls = 0;
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request =>
+            {
+                var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 2, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "summary");
+                store!.SimulateConcurrentAppend([checkpoint]);
+                return new CompactionSucceeded(request.Context, checkpoint.Record);
+            },
+        };
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ =>
+            {
+                modelCalls++;
+                return modelCalls == 1
+                    ? new ModelAttemptFailed(TestFactory.ContextLengthFailure(), [], null)
+                    : TestFactory.CompletedWithText(requestId);
+            },
+            contextAssembler: assembler,
+            compactor: compactor);
+        store = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "hello")]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        modelCalls.ShouldBe(2);
+        var compaction = compactor.Requests.ShouldHaveSingleItem();
+        compaction.Trigger.Kind.ShouldBe(CompactionTriggerKind.ProviderOverflow);
+        assembler.Requests.Count.ShouldBe(2);
+        assembler.Requests[1].ModelRequestId.ShouldNotBe(assembler.Requests[0].ModelRequestId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContextLengthExceededPersistsAfterCompaction_SettlesAsFailed()
+    {
+        FakeSessionCoordinator? store = null;
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request =>
+            {
+                var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 2, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "summary");
+                store!.SimulateConcurrentAppend([checkpoint]);
+                return new CompactionSucceeded(request.Context, checkpoint.Record);
+            },
+        };
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        store = coordinator;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "hello")]);
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog()),
+            FakeModelSelector.Selecting(TestFactory.Model()),
+            new FakeLlmModelResolver(new RespondingLlmModel(
+                new ModelAlias("chat"),
+                _ => new ModelAttemptFailed(TestFactory.ContextLengthFailure(), [], null))),
+            compactor: compactor);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunFailed>();
+        compactor.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenTheModelDeclaresNoContextWindow_DoesNotAskTheCompactor()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -3378,6 +3473,14 @@ public sealed class DefaultAgentLoopTests
             Requests.Add(request);
             return Task.FromResult(OnRequest?.Invoke(request) ?? throw new InvalidOperationException("No compaction was scripted."));
         }
+
+        public Task<CompactionResult> CompactAsync(
+            CompactionRequest request,
+            SessionExecutionCapability session,
+            BudgetExecutionCapability budget,
+            HookDispatchContext? hooks,
+            CancellationToken cancellationToken = default) =>
+            CompactAsync(request, cancellationToken);
     }
 
 
@@ -3947,7 +4050,7 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenARequiredSinkFailsThroughThePublisher_PropagatesTheFailureRatherThanCompleting()
+    public async Task RunAsync_WhenARequiredSinkFailsThroughThePublisher_RecordsRecoveryRequiredSettlement()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var fault = new InvalidOperationException("required sink failed");
@@ -3957,10 +4060,10 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
-        var exception = await Should.ThrowAsync<InvalidOperationException>(
-            () => loop.RunAsync(request, _services, TestContext.Current.CancellationToken));
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
-        exception.ShouldBeSameAs(fault);
+        _ = result.Settlement.ShouldBeOfType<RunSettlementRecoveryRequired>();
+        publisher.Events.ShouldNotBeEmpty();
     }
 
     private (AgentLoopRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
@@ -4039,6 +4142,7 @@ public sealed class DefaultAgentLoopTests
             outputProcessor,
             compactor,
             budgets,
+            budgetProfiles: null,
             runCoordinator,
             inputCoordinator,
             outputPublisher);
@@ -4083,7 +4187,8 @@ public sealed class DefaultAgentLoopTests
         ILlmModelResolver resolver,
         IContextAssembler? contextAssembler = null,
         Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
-        ICompactor? compactor = null)
+        ICompactor? compactor = null,
+        IOutputProcessor? outputProcessor = null)
     {
         _services = new AgentRunServices(
             coordinator,
@@ -4095,7 +4200,7 @@ public sealed class DefaultAgentLoopTests
             selector,
             resolver,
             new DefaultRunContinuationPolicy(TimeProvider.System),
-            outputProcessor: null,
+            outputProcessor,
             compactor);
 
         return new DefaultAgentLoop(

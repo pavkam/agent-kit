@@ -8,7 +8,7 @@ namespace AgentKit.Context.Compaction;
 /// by <c>AddContextCompaction</c>.
 /// </summary>
 /// <remarks>
-/// This is a mutable options type bound through <see cref="Microsoft.Extensions.Options.IOptions{TOptions}"/>;
+/// This is a mutable options type bound through <see cref="IOptions{TOptions}"/>;
 /// it is configured once at composition time and treated as read-only by
 /// every consumer afterward.
 /// </remarks>

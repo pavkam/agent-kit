@@ -25,6 +25,10 @@ internal static class BuiltInAgentHookPointDefinitions
     internal static HookPointDefinition<IToolResultHook, ToolResultHookEventArgs> ToolResult =>
         AgentHookPointDefinitions.ToolResult;
 
+    /// <inheritdoc cref="AgentHookPointDefinitions.OutputValidating"/>
+    internal static HookPointDefinition<IOutputValidatingHook, OutputValidatingEventArgs> OutputValidating =>
+        AgentHookPointDefinitions.OutputValidating;
+
     /// <inheritdoc cref="AgentHookPointDefinitions.RunStartedRegistration"/>
     internal static HookPointDefinitionRegistration RunStartedRegistration => AgentHookPointDefinitions.RunStartedRegistration;
 
@@ -43,4 +47,8 @@ internal static class BuiltInAgentHookPointDefinitions
     /// <inheritdoc cref="AgentHookPointDefinitions.ToolResultRegistration"/>
     internal static HookPointDefinitionRegistration ToolResultRegistration =>
         AgentHookPointDefinitions.ToolResultRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.OutputValidatingRegistration"/>
+    internal static HookPointDefinitionRegistration OutputValidatingRegistration =>
+        AgentHookPointDefinitions.OutputValidatingRegistration;
 }

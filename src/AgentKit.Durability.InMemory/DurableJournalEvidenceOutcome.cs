@@ -12,6 +12,9 @@ internal enum DurableJournalEvidenceOutcome
     /// <summary>No record exists for the requested operation address.</summary>
     NotFound,
 
+    /// <summary>Authorization refused the read, or a required security prerequisite was unavailable.</summary>
+    Denied,
+
     /// <summary>The caller cancelled the attempt before a terminal outcome.</summary>
     Cancelled,
 }

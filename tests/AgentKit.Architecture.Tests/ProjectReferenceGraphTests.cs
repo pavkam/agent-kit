@@ -90,6 +90,7 @@ public sealed class ProjectReferenceGraphTests
         var graph = Graph(
             ("AgentKit.Evaluation", ["AgentKit"]),
             ("AgentKit.Mcp.Client", ["AgentKit.Mcp"]),
+            ("AgentKit.Observability.OpenTelemetry", ["AgentKit.IO", "AgentKit.Permissions", "AgentKit.Observability", "AgentKit.Abstractions"]),
             ("AgentKit", []),
             ("AgentKit.Mcp", []));
 

@@ -41,11 +41,16 @@ public static class AgentEngineExtensions
         {
             ArgumentNullException.ThrowIfNull(engine);
             ArgumentException.ThrowIfNullOrWhiteSpace(text);
-            var result = await engine.Conversation.SendAsync(text, cancellationToken).ConfigureAwait(false);
-            var reply = string.Concat(result.Events.OfType<ConversationAssistantTextEvent>().Select(static e => e.Text));
-            return result.Succeeded
-                ? reply
-                : throw new SimpleAgentException(reply.Length > 0 ? reply : "The run ended without a final assistant message.", result);
+            var logger = engine.Services.GetService<ILoggerFactory>()?.CreateLogger("AgentKit.Simple")
+                ?? NullLogger.Instance;
+            return await SimpleAskObservability.RunAsync(logger, agentId: null, sessionId: null, async () =>
+            {
+                var result = await engine.Conversation.SendAsync(text, cancellationToken).ConfigureAwait(false);
+                var reply = string.Concat(result.Events.OfType<ConversationAssistantTextEvent>().Select(static e => e.Text));
+                return result.Succeeded
+                    ? reply
+                    : throw new SimpleAgentException(reply.Length > 0 ? reply : "The run ended without a final assistant message.", result);
+            }).ConfigureAwait(false);
         }
 
         /// <summary>

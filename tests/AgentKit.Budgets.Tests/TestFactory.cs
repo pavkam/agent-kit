@@ -3,6 +3,8 @@
 
 namespace AgentKit.Budgets.Tests;
 
+using System.Diagnostics.CodeAnalysis;
+
 internal static class TestFactory
 {
     public static readonly BudgetUnit Count = new("count");
@@ -13,6 +15,31 @@ internal static class TestFactory
 
     public static BudgetScopeRequest ScopeRequest(BudgetScopeId? parentScopeId = null) =>
         new(parentScopeId, Address(), [], new IdempotencyKey(Guid.NewGuid().ToString()));
+
+    public static IBudgetProfileCatalog EmptyProfileCatalog() => new EmptyBudgetProfileCatalog();
+
+    public static IBudgetPolicyCatalog EmptyPolicyCatalog() => new EmptyBudgetPolicyCatalog();
+
+    public static BudgetAuthority Authority(IBudgetLedger ledger, AgentBudgetOptionsSnapshot? options = null, ILoggerFactory? loggerFactory = null) =>
+        new(ledger, EmptyProfileCatalog(), EmptyPolicyCatalog(), options ?? DefaultOptions(), loggerFactory);
+
+    private sealed class EmptyBudgetProfileCatalog: IBudgetProfileCatalog
+    {
+        public bool TryGet(BudgetProfileKey key, [NotNullWhen(true)] out BudgetProfileSnapshot? profile)
+        {
+            profile = null;
+            return false;
+        }
+    }
+
+    private sealed class EmptyBudgetPolicyCatalog: IBudgetPolicyCatalog
+    {
+        public bool TryGet(BudgetPolicyKey key, [NotNullWhen(true)] out IBudgetPolicy? policy)
+        {
+            policy = null;
+            return false;
+        }
+    }
 
     public static BudgetReservationRequest ReservationRequest(
         BudgetScopeId scopeId, decimal amount = 1m, OperationId? operationId = null) =>

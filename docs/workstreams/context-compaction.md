@@ -11,14 +11,14 @@ Owning documents: [Context compaction](../architecture/context-compaction.md),
 
 ## Progress
 
-- [ ] WS10-C1 provider overflow classification
-- [ ] WS10-C2 loop overflow retry with `CompactionRetryContinuationCause`
-- [ ] WS10-C3 `ExplicitMaintenance` and `InstructionEpochChanged`
-- [ ] WS10-C4 summary generator seam
-- [ ] WS10-C5 keyed registration, profiles, strategy resolver
-- [ ] WS10-C6 events and five-argument `CompactAsync`
-- [ ] WS10-C7 activation coordinator
-- [ ] WS10-C8 validator
+- [x] WS10-C1 provider overflow classification
+- [x] WS10-C2 loop overflow retry with `CompactionRetryContinuationCause`
+- [x] WS10-C3 `ExplicitMaintenance` and `InstructionEpochChanged`
+- [x] WS10-C4 summary generator seam
+- [x] WS10-C5 keyed registration, profiles, strategy resolver
+- [x] WS10-C6 events and five-argument `CompactAsync`
+- [x] WS10-C7 activation coordinator
+- [x] WS10-C8 validator
 
 ## Verified current state
 

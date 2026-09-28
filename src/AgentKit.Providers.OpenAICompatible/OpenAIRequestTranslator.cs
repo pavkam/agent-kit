@@ -102,8 +102,36 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
 
         ProviderJson.ApplyExtensions(body, context.Settings.Extensions);
         ProviderJson.ApplyExtensions(body, request.Options.Extensions);
+        TryAddNativeSchemaResponseFormat(body, context, profile);
 
         return body;
+    }
+
+    private static void TryAddNativeSchemaResponseFormat(
+        JsonObject body, LlmRequestContext context, OpenAICompatibilityProfile profile)
+    {
+        if (!profile.SupportsJsonSchemaResponseFormat)
+        {
+            return;
+        }
+
+        var output = context.Output;
+        if (output is not { Mode: OutputMode.NativeSchema, Schema: { } schema })
+        {
+            return;
+        }
+
+        var schemaNode = JsonNode.Parse(schema.Schema.GetRawText());
+        body["response_format"] = new JsonObject
+        {
+            ["type"] = "json_schema",
+            ["json_schema"] = new JsonObject
+            {
+                ["name"] = output.Name,
+                ["schema"] = schemaNode,
+                ["strict"] = true,
+            },
+        };
     }
 
     private static JsonArray TranslateMessages(

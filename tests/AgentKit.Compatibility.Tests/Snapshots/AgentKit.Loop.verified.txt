@@ -54,8 +54,35 @@ namespace AgentKit.Loop
                     AgentKit.IHookProfileSelector? hookProfileSelector = null,
                     AgentKit.IIdentifierGenerator<AgentKit.HookDispatchId>? hookDispatchIds = null,
                     AgentKit.IIdentifierGenerator<AgentKit.CompactionId>? compactionIds = null,
-                    AgentKit.IIdentifierGenerator<AgentKit.UsageEntryId>? usageEntryIds = null) { }
+                    AgentKit.IIdentifierGenerator<AgentKit.UsageEntryId>? usageEntryIds = null,
+                    AgentKit.Loop.LoopDurableInvocationRegistry? durableInvocations = null,
+                    AgentKit.IDurableExecutionCoordinator? durableExecution = null,
+                    AgentKit.IDurabilityProfileCatalog? durabilityProfiles = null) { }
         public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentLoopRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public delegate System.Threading.Tasks.ValueTask<AgentKit.DurableOperationResult> LoopDurableInvocation(AgentKit.RecoverableOperationDescriptor operation, AgentKit.IExecutionLease lease, System.Threading.CancellationToken cancellationToken);
+    public sealed class LoopDurableInvocationRegistry
+    {
+        public LoopDurableInvocationRegistry() { }
+        public System.IDisposable Register(AgentKit.OperationId operationId, AgentKit.Loop.LoopDurableInvocation invoke) { }
+    }
+    public abstract class LoopDurableOperationHandler : AgentKit.IDurableOperationHandler
+    {
+        protected LoopDurableOperationHandler(AgentKit.DurableOperationName operationName, AgentKit.Loop.LoopDurableInvocationRegistry registry) { }
+        public AgentKit.DurableOperationName OperationName { get; }
+        public virtual System.Threading.Tasks.ValueTask<AgentKit.DurableOperationResult> InvokeAsync(AgentKit.RecoverableOperationDescriptor operation, AgentKit.IExecutionLease lease, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class LoopDurableOperations
+    {
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> All { get; }
+        public static AgentKit.DurableOperationName ModelRequest { get; }
+        public static AgentKit.DurableOperationVersion ModelRequestVersion { get; }
+        public static AgentKit.DurableOperationName ToolCall { get; }
+        public static AgentKit.DurableOperationVersion ToolCallVersion { get; }
+    }
+    public sealed class ModelRequestDurableOperationHandler : AgentKit.Loop.LoopDurableOperationHandler
+    {
+        public ModelRequestDurableOperationHandler(AgentKit.Loop.LoopDurableInvocationRegistry registry) { }
     }
     public static class RunPolicyVersioning
     {
@@ -73,5 +100,9 @@ namespace AgentKit.Loop
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunContinuationPolicy<TPolicy>(AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> key)
                 where TPolicy :  class, AgentKit.IRunContinuationPolicy { }
         }
+    }
+    public sealed class ToolCallDurableOperationHandler : AgentKit.Loop.LoopDurableOperationHandler
+    {
+        public ToolCallDurableOperationHandler(AgentKit.Loop.LoopDurableInvocationRegistry registry) { }
     }
 }

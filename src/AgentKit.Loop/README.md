@@ -98,6 +98,32 @@ and treated as nothing eligible; it never fails the run.
 `AgentLoopOptions.MaximumPromotionsPerBoundary` bounds one atomic promotion
 transition.
 
+## Durable boundaries
+
+When a run's agent definition selects a durability profile, `DefaultAgentLoop`
+journals two boundaries through the composed `IDurableExecutionCoordinator`:
+`agentkit.loop.model_request` for a turn's single model attempt, and
+`agentkit.loop.tool_call` for each requested call. A boundary is journaled only
+when the profile's enabled-operation set names it, so durability is additive and
+never changes what the loop computes; a profile that enables neither leaves the
+run exactly as an undurable run. A definition that selects a profile the
+composition cannot resolve fails the run rather than running undurably, because
+the selection is a promise that evidence will exist.
+
+Each boundary publishes its live continuation into the engine-wide
+`DurableBoundaryRegistry` under the exact operation identity it is about to
+declare, and the registered handler (`ModelRequestDurableOperationHandler` or
+`ToolCallDurableOperationHandler`) invokes it. A recovering process holds no
+continuation and refuses rather than inventing a terminal record for work it
+never ran; recovery that only needs to commit an already-recorded terminal
+result never reaches a handler at all. Both boundaries declare themselves
+non-idempotent, so an unknown outcome escalates to an operator instead of being
+retried.
+
+Durable payloads are manifests: turn, request, and call identities, the model
+alias, and a message count. Prompts, tool arguments, and results are content and
+never enter a durable record.
+
 ## Related projects
 
 - [AgentKit.Context](../AgentKit.Context/README.md) — assemble provider-ready

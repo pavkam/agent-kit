@@ -38,4 +38,10 @@ public static class AgentHookPoints
     /// replace normalized content only; a failure fails the turn.
     /// </summary>
     public static HookPointId ToolResult { get; } = new("agentkit.tool.result");
+
+    /// <summary>
+    /// Dispatched after schema validation succeeds and before the processor accepts a candidate. Hooks may veto
+    /// acceptance with a safe message; a failure fails the turn.
+    /// </summary>
+    public static HookPointId OutputValidating { get; } = new("agentkit.output.validating");
 }

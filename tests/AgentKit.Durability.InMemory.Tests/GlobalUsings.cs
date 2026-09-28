@@ -4,6 +4,7 @@
 global using System.Diagnostics;
 global using System.Diagnostics.Metrics;
 
+global using AgentKit.Conformance;
 global using AgentKit.Durability.InMemory;
 global using AgentKit.Observability;
 global using AgentKit.TestSupport;

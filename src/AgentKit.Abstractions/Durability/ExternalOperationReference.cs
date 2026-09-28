@@ -28,8 +28,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record ExternalOperationReference
 {
-    private readonly string _handle;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="ExternalOperationReference"/> record.
@@ -48,7 +46,7 @@ public sealed record ExternalOperationReference
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(handle);
         BackendKey = backendKey;
-        _handle = handle;
+        Handle = handle;
     }
 
     /// <summary>Gets the backend that issued the handle.</summary>
@@ -60,11 +58,11 @@ public sealed record ExternalOperationReference
     /// </exception>
     public string Handle
     {
-        get => _handle;
+        get;
         init
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(Handle));
-            _handle = value;
+            field = value;
         }
     }
 }

@@ -46,6 +46,15 @@ public sealed record RecoveryEvidence
     /// <see langword="true"/> when a complete terminal result exists and may
     /// be committed without reinvocation.
     /// </param>
+    /// <param name="recordedResult">
+    /// The complete terminal result staged for commit-only recovery, or
+    /// <see langword="null"/> when <paramref name="terminalResultRecorded"/> is
+    /// <see langword="false"/>.
+    /// </param>
+    /// <param name="notBefore">
+    /// The instant before which a waiting operation must not be re-driven, or
+    /// <see langword="null"/> when no deferral applies.
+    /// </param>
     /// <param name="latestCheckpoint">
     /// The most recent complete state snapshot, when one was recorded.
     /// </param>
@@ -58,6 +67,11 @@ public sealed record RecoveryEvidence
     /// <param name="lastWriterToken">
     /// The ownership generation of the last successful durable write.
     /// </param>
+    /// <param name="descriptor">
+    /// The declaration accepted when the operation started, so recovery can
+    /// classify it without a live caller-supplied descriptor, or
+    /// <see langword="null"/> when no start record was retained.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="address"/> or <paramref name="executionContext"/> is
     /// <see langword="null"/>.
@@ -65,7 +79,8 @@ public sealed record RecoveryEvidence
     /// <exception cref="ArgumentException">
     /// <paramref name="address"/> and <paramref name="executionContext"/>
     /// cannot form one exact durable binding, or a supplied
-    /// <paramref name="latestCheckpoint"/> does not retain that binding.
+    /// <paramref name="latestCheckpoint"/> or <paramref name="descriptor"/>
+    /// does not retain that binding.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="state"/> or <paramref name="sideEffectCertainty"/> is
@@ -79,11 +94,14 @@ public sealed record RecoveryEvidence
         SideEffectCertainty sideEffectCertainty,
         bool startDefinitelyAbsent,
         bool terminalResultRecorded,
+        DurableOperationResult? recordedResult = null,
+        DateTimeOffset? notBefore = null,
         DurableCheckpoint? latestCheckpoint = null,
         ExternalOperationReference? externalReference = null,
         IdempotencyKey? externalIdempotencyKey = null,
-        FencingToken? lastWriterToken = null)
-        : this(new DurableOperationBinding(address, executionContext), state, sideEffectCertainty, startDefinitelyAbsent, terminalResultRecorded, latestCheckpoint, externalReference, externalIdempotencyKey, lastWriterToken)
+        FencingToken? lastWriterToken = null,
+        RecoverableOperationDescriptor? descriptor = null)
+        : this(new DurableOperationBinding(address, executionContext), state, sideEffectCertainty, startDefinitelyAbsent, terminalResultRecorded, recordedResult, notBefore, latestCheckpoint, externalReference, externalIdempotencyKey, lastWriterToken, descriptor)
     {
     }
 
@@ -93,12 +111,15 @@ public sealed record RecoveryEvidence
     /// <param name="sideEffectCertainty">The defined certainty actually known for the external effect.</param>
     /// <param name="startDefinitelyAbsent">Whether durable evidence proves dispatch never began.</param>
     /// <param name="terminalResultRecorded">Whether a complete result is available without reinvoking the effect.</param>
+    /// <param name="recordedResult">The staged terminal result when <paramref name="terminalResultRecorded"/> is true.</param>
+    /// <param name="notBefore">The deferred wake instant when the operation is waiting.</param>
     /// <param name="latestCheckpoint">The latest complete checkpoint, or <see langword="null"/> when none exists.</param>
     /// <param name="externalReference">The external-owner reference, or <see langword="null"/> when no handoff occurred.</param>
     /// <param name="externalIdempotencyKey">The external idempotency key, or <see langword="null"/> when none was established.</param>
     /// <param name="lastWriterToken">The last allocated write token, or <see langword="null"/> when no durable write occurred.</param>
+    /// <param name="descriptor">The declaration accepted at start, or <see langword="null"/> when no start record was retained.</param>
     /// <exception cref="ArgumentNullException"><paramref name="binding"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">A supplied <paramref name="latestCheckpoint"/> does not retain <paramref name="binding"/> exactly.</exception>
+    /// <exception cref="ArgumentException">A supplied <paramref name="latestCheckpoint"/> or <paramref name="descriptor"/> does not retain <paramref name="binding"/> exactly.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> or <paramref name="sideEffectCertainty"/> is undefined, or a supplied <paramref name="lastWriterToken"/> is default.</exception>
     public RecoveryEvidence(
         DurableOperationBinding binding,
@@ -106,26 +127,35 @@ public sealed record RecoveryEvidence
         SideEffectCertainty sideEffectCertainty,
         bool startDefinitelyAbsent,
         bool terminalResultRecorded,
+        DurableOperationResult? recordedResult = null,
+        DateTimeOffset? notBefore = null,
         DurableCheckpoint? latestCheckpoint = null,
         ExternalOperationReference? externalReference = null,
         IdempotencyKey? externalIdempotencyKey = null,
-        FencingToken? lastWriterToken = null)
+        FencingToken? lastWriterToken = null,
+        RecoverableOperationDescriptor? descriptor = null)
     {
         ArgumentNullException.ThrowIfNull(binding);
         ArgumentException.ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(binding, latestCheckpoint);
+        ArgumentException.ThrowIfRecoveryEvidenceRecordedResultInconsistent(binding, terminalResultRecorded, recordedResult);
+        ArgumentException.ThrowIfRecoveryEvidenceNotBeforeInconsistent(state, notBefore);
         ArgumentOutOfRangeException.ThrowIfUndefined(state);
         ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
         ThrowIfDefaultToken(lastWriterToken, nameof(lastWriterToken));
+        ThrowIfDescriptorDoesNotMatchBinding(binding, descriptor, nameof(descriptor));
 
         Binding = binding;
         State = state;
         SideEffectCertainty = sideEffectCertainty;
         StartDefinitelyAbsent = startDefinitelyAbsent;
         TerminalResultRecorded = terminalResultRecorded;
+        RecordedResult = recordedResult;
+        NotBefore = notBefore;
         LatestCheckpoint = latestCheckpoint;
         ExternalReference = externalReference;
         ExternalIdempotencyKey = externalIdempotencyKey;
         LastWriterToken = lastWriterToken;
+        Descriptor = descriptor;
     }
 
     /// <summary>Gets the exact immutable binding for this durable record.</summary>
@@ -187,6 +217,44 @@ public sealed record RecoveryEvidence
     public bool TerminalResultRecorded { get; init; }
 
     /// <summary>
+    /// Gets the complete terminal result staged for commit-only recovery, or
+    /// <see langword="null"/> when <see cref="TerminalResultRecorded"/> is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// An initializer supplies a result whose binding differs from
+    /// <see cref="Binding"/>, or disagrees with
+    /// <see cref="TerminalResultRecorded"/>.
+    /// </exception>
+    public DurableOperationResult? RecordedResult
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfRecoveryEvidenceRecordedResultInconsistent(Binding, TerminalResultRecorded, value);
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets the instant before which a waiting operation must not be
+    /// re-driven, or <see langword="null"/> when no deferral applies.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// An initializer supplies a not-before instant while
+    /// <see cref="State"/> is not <see cref="DurableOperationState.Waiting"/>.
+    /// </exception>
+    public DateTimeOffset? NotBefore
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfRecoveryEvidenceNotBeforeInconsistent(State, value);
+            field = value;
+        }
+    }
+
+    /// <summary>
     /// Gets the most recent complete state snapshot, or
     /// <see langword="null"/> when none was recorded.
     /// </summary>
@@ -232,11 +300,41 @@ public sealed record RecoveryEvidence
         }
     }
 
+    /// <summary>Gets the declaration accepted when the operation started.</summary>
+    /// <value>
+    /// The retained declaration, which lets a recovery policy classify the operation without a live caller-supplied
+    /// descriptor, or <see langword="null"/> when no start record was retained. Absence is a truthful statement that
+    /// the declaration is unknown; it never licenses reconstructing one from a checkpoint payload.
+    /// </value>
+    /// <exception cref="ArgumentException">An initializer supplies a declaration for a different durable binding.</exception>
+    public RecoverableOperationDescriptor? Descriptor
+    {
+        get;
+        init
+        {
+            ThrowIfDescriptorDoesNotMatchBinding(Binding, value, nameof(Descriptor));
+            field = value;
+        }
+    }
+
     private static void ThrowIfDefaultToken(FencingToken? token, string paramName)
     {
         if (token is { } value)
         {
             ArgumentOutOfRangeException.ThrowIfEqual(value, default, paramName);
+        }
+    }
+
+    private static void ThrowIfDescriptorDoesNotMatchBinding(
+        DurableOperationBinding binding,
+        RecoverableOperationDescriptor? descriptor,
+        string paramName)
+    {
+        if (descriptor is not null && descriptor.Binding != binding)
+        {
+            throw new ArgumentException(
+                "Recovery evidence must retain the accepted declaration for its own durable binding.",
+                paramName);
         }
     }
 }

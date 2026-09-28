@@ -24,9 +24,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableOperationStart
 {
-    private readonly RecoverableOperationDescriptor _descriptor;
-    private readonly OperationPayload _initialState;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="DurableOperationStart"/> record.
@@ -61,8 +58,8 @@ public sealed record DurableOperationStart
         ArgumentNullException.ThrowIfNull(initialState);
         ArgumentOutOfRangeException.ThrowIfEqual(fencingToken, default, nameof(fencingToken));
 
-        _descriptor = descriptor;
-        _initialState = initialState;
+        Descriptor = descriptor;
+        InitialState = initialState;
         FencingToken = fencingToken;
         AcceptedAt = acceptedAt;
     }
@@ -73,11 +70,11 @@ public sealed record DurableOperationStart
     /// </exception>
     public RecoverableOperationDescriptor Descriptor
     {
-        get => _descriptor;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Descriptor));
-            _descriptor = value;
+            field = value;
         }
     }
 
@@ -87,11 +84,11 @@ public sealed record DurableOperationStart
     /// </exception>
     public OperationPayload InitialState
     {
-        get => _initialState;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(InitialState));
-            _initialState = value;
+            field = value;
         }
     }
 

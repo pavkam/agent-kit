@@ -51,27 +51,62 @@ public sealed class DefaultCompactor: ICompactor
 {
     private readonly ISessionCoordinator _coordinator;
     private readonly ICompactionCutSelector _cutSelector;
-    private readonly ICompactionStrategy _strategy;
+    private readonly ICompactionStrategyResolver _strategies;
     private readonly ICompactionValidator _validator;
+    private readonly ICompactionActivationCoordinator _activation;
+    private readonly ICompactionEventDispatcher _events;
     private readonly ICompactionSizeEstimator _estimator;
     private readonly IIdentifierGenerator<CompactionManifestId> _manifestIds;
-    private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
     private readonly TimeProvider _timeProvider;
+    private readonly ComponentKey<ICompactor> _compactorKey;
     private readonly int _sourceReadPageSize;
     private readonly ILogger<DefaultCompactor> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultCompactor"/> class.</summary>
-    /// <param name="coordinator">The session coordinator used to load source entries and activate a candidate.</param>
-    /// <param name="cutSelector">The cut selector used to choose a structurally safe boundary.</param>
-    /// <param name="strategy">The strategy used to produce checkpoint content.</param>
-    /// <param name="validator">The validator used to check a produced candidate before activation.</param>
-    /// <param name="estimator">The size estimator used to compute manifest before/after sizes.</param>
-    /// <param name="manifestIds">Generates identities for produced manifests.</param>
-    /// <param name="entryIds">Generates identities for the appended compaction entry.</param>
-    /// <param name="timeProvider">The clock used to timestamp produced manifests and records.</param>
-    /// <param name="options">The validated compaction options carrying the source read page size.</param>
-    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
-    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
+    public DefaultCompactor(
+        ISessionCoordinator coordinator,
+        ICompactionCutSelector cutSelector,
+        ICompactionStrategyResolver strategies,
+        ICompactionValidator validator,
+        ICompactionActivationCoordinator activation,
+        ICompactionEventDispatcher events,
+        ICompactionSizeEstimator estimator,
+        IIdentifierGenerator<CompactionManifestId> manifestIds,
+        IIdentifierGenerator<SessionEntryId> entryIds,
+        TimeProvider timeProvider,
+        IOptions<CompactionOptions> options,
+        ContextCompactionOptionsSnapshot compactionOptions,
+        ILogger<DefaultCompactor>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(coordinator);
+        ArgumentNullException.ThrowIfNull(cutSelector);
+        ArgumentNullException.ThrowIfNull(strategies);
+        ArgumentNullException.ThrowIfNull(validator);
+        ArgumentNullException.ThrowIfNull(activation);
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(estimator);
+        ArgumentNullException.ThrowIfNull(manifestIds);
+        ArgumentNullException.ThrowIfNull(entryIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(compactionOptions);
+
+        _coordinator = coordinator;
+        _cutSelector = cutSelector;
+        _strategies = strategies;
+        _validator = validator;
+        _activation = activation;
+        _events = events;
+        _estimator = estimator;
+        _manifestIds = manifestIds;
+        _timeProvider = timeProvider;
+        _compactorKey = compactionOptions.CompactorKey;
+        _sourceReadPageSize = options.Value.SourceReadPageSize;
+        _logger = logger ?? NullLogger<DefaultCompactor>.Instance;
+        _ = entryIds;
+    }
+
+    /// <summary>Initializes a compactor for tests and legacy call sites with one fixed strategy.</summary>
     public DefaultCompactor(
         ISessionCoordinator coordinator,
         ICompactionCutSelector cutSelector,
@@ -83,27 +118,51 @@ public sealed class DefaultCompactor: ICompactor
         TimeProvider timeProvider,
         IOptions<CompactionOptions> options,
         ILogger<DefaultCompactor>? logger = null)
-    {
-        ArgumentNullException.ThrowIfNull(coordinator);
-        ArgumentNullException.ThrowIfNull(cutSelector);
-        ArgumentNullException.ThrowIfNull(strategy);
-        ArgumentNullException.ThrowIfNull(validator);
-        ArgumentNullException.ThrowIfNull(estimator);
-        ArgumentNullException.ThrowIfNull(manifestIds);
-        ArgumentNullException.ThrowIfNull(entryIds);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(options);
+        : this(
+            coordinator,
+            cutSelector,
+            new FixedCompactionStrategyResolver(strategy),
+            validator,
+            new SessionCompactionActivationCoordinator(
+                entryIds,
+                timeProvider,
+                options ?? throw new ArgumentNullException(nameof(options))),
+            new DefaultCompactionEventDispatcher(
+                AgentContextCompactionComponentDefaults.CompactorKey,
+                [],
+                EmptyServiceProvider.Instance),
+            estimator,
+            manifestIds,
+            entryIds,
+            timeProvider,
+            options,
+            new ContextCompactionOptionsSnapshot(
+                AgentContextCompactionComponentDefaults.CompactorKey,
+                maximumAttempts: 2,
+                maximumSourceEntries: options.Value.MaximumSourceEntries,
+                maximumSourceBytes: 8 * 1024 * 1024,
+                maximumSummaryTokens: 2048,
+                minimumRetainedEntries: 8,
+                maximumValidationIssues: 64,
+                minimumReductionRatio: 0.20,
+                attemptTimeout: TimeSpan.FromMinutes(2),
+                persistRejectedCandidates: false),
+            logger) => ArgumentNullException.ThrowIfNull(options);
 
-        _coordinator = coordinator;
-        _cutSelector = cutSelector;
-        _strategy = strategy;
-        _validator = validator;
-        _estimator = estimator;
-        _manifestIds = manifestIds;
-        _entryIds = entryIds;
-        _timeProvider = timeProvider;
-        _sourceReadPageSize = options.Value.SourceReadPageSize;
-        _logger = logger ?? NullLogger<DefaultCompactor>.Instance;
+    /// <inheritdoc/>
+    public Task<CompactionResult> CompactAsync(
+        CompactionRequest request,
+        SessionExecutionCapability session,
+        BudgetExecutionCapability budget,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(budget);
+        return session.Profile.Reference.Key != request.Context.SessionProfile.Reference.Key
+            ? throw new ArgumentException("The session capability does not match the compaction request profile.")
+            : CompactCoreWithObservationAsync(request, session, budget, hooks, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -125,7 +184,8 @@ public sealed class DefaultCompactor: ICompactor
             CompactionResult result;
             try
             {
-                result = await CompactCoreAsync(request, cancellationToken).ConfigureAwait(false);
+                result = await CompactCoreAsync(request, session: null, budget: null, hooks: null, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -181,15 +241,47 @@ public sealed class DefaultCompactor: ICompactor
         }
     }
 
+    private async Task<CompactionResult> CompactCoreWithObservationAsync(
+        CompactionRequest request,
+        SessionExecutionCapability session,
+        BudgetExecutionCapability budget,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken)
+    {
+        var started = await _events.PublishAsync(
+            _compactorKey,
+            new CompactionAttemptStartedEvent(request.Context, _timeProvider.GetUtcNow(), request.Trigger),
+            cancellationToken).ConfigureAwait(false);
+        if (started is RequiredCompactionEventUnavailable unavailable)
+        {
+            return new CompactionFailed(
+                request.Context,
+                unavailable.Failure);
+        }
+
+        var result = await CompactCoreAsync(request, session, budget, hooks, cancellationToken).ConfigureAwait(false);
+        _ = await _events.PublishAsync(
+            _compactorKey,
+            new CompactionAttemptFinishedEvent(request.Context, _timeProvider.GetUtcNow(), ToOutcomeSummary(result)),
+            cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
     /// <summary>
     /// Runs the attempt pipeline: deadline check, source load, cut selection, production, validation, activation.
     /// </summary>
     private async Task<CompactionResult> CompactCoreAsync(
-        CompactionRequest request, CancellationToken cancellationToken)
+        CompactionRequest request,
+        SessionExecutionCapability? session,
+        BudgetExecutionCapability? budget,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "The public entry point validates the request.");
+        _ = hooks;
 
         var context = request.Context;
+        var coordinator = session?.Coordinator ?? _coordinator;
         if (_timeProvider.GetUtcNow() >= request.Deadline)
         {
             // Deadline is enforced before any protected read or append so an expired request has no side effect.
@@ -209,7 +301,8 @@ public sealed class DefaultCompactor: ICompactor
             context.Identity,
             context.Authorization);
 
-        var (loaded, loadTerminal) = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
+        var (loaded, loadTerminal) = await LoadSourceAsync(sessionContext, request, coordinator, cancellationToken)
+            .ConfigureAwait(false);
         if (loaded is null)
         {
             Debug.Assert(loadTerminal is not null, "A load that yields no source must yield a typed terminal result.");
@@ -245,8 +338,28 @@ public sealed class DefaultCompactor: ICompactor
                     ExtensionData.Empty));
         }
 
-        var strategyResult = await _strategy.ProduceAsync(
-            new CompactionStrategyRequest(request, source, cut), cancellationToken).ConfigureAwait(false);
+        var strategyKey = request.Policy?.StrategyOrder is { Length: > 0 } order
+            ? order[0]
+            : ExtractiveCompactionStrategy.StrategyKey;
+        var strategyResolution = await _strategies
+            .ResolveAsync(_compactorKey, strategyKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (strategyResolution is CompactionStrategyNotFound notFound)
+        {
+            return new CompactionFailed(
+                context,
+                new CompactionFailure(
+                    CompactionFailureKind.StrategyFailure,
+                    $"No compaction strategy '{notFound.StrategyKey}' is registered for compactor '{notFound.CompactorKey}'.",
+                    retryable: false,
+                    ExtensionData.Empty));
+        }
+
+        var strategy = ((CompactionStrategyResolved) strategyResolution).Strategy;
+        var strategyResult = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(request, source, cut),
+            budget,
+            cancellationToken).ConfigureAwait(false);
 
         switch (strategyResult)
         {
@@ -321,9 +434,92 @@ public sealed class DefaultCompactor: ICompactor
             .LastOrDefault(static entry => entry.Record.Status == CompactionRecordStatus.Active)
             ?.Record.Context.CompactionId;
 
-        return await ActivateAsync(sessionContext, context, request, loaded.BranchTip, cut, manifest, candidate, supersedes, cancellationToken)
-            .ConfigureAwait(false);
+        var validated = (CompactionValidated) validationResult;
+        var validatedEvent = await _events.PublishAsync(
+            _compactorKey,
+            new CompactionCandidateValidatedEvent(context, _timeProvider.GetUtcNow(), manifest),
+            cancellationToken).ConfigureAwait(false);
+        if (validatedEvent is RequiredCompactionEventUnavailable requiredUnavailable)
+        {
+            return new CompactionFailed(context, requiredUnavailable.Failure);
+        }
+
+        var sessionCapability = session
+            ?? new SessionExecutionCapability(context.SessionProfile, coordinator, InertSessionRunCoordinator.Instance);
+        var activationRequest = new CompactionActivationRequest(
+            request,
+            validated.Compaction,
+            request.SourceVersion,
+            loaded.BranchTip,
+            cut.CoveredEntryIds[^1],
+            new IdempotencyKey($"compaction:{context.CompactionId}"),
+            supersedes);
+        var activationResult = await _activation.ActivateAsync(
+            activationRequest,
+            sessionCapability,
+            CompactionActivationGrantFactory.Create(context, _timeProvider),
+            cancellationToken).ConfigureAwait(false);
+        return MapActivationResult(activationResult, context, manifest);
     }
+
+    private CompactionResult MapActivationResult(
+        CompactionActivationResult activation,
+        CompactionOperationContext context,
+        CompactionManifest manifest) =>
+        activation switch
+        {
+            CompactionRecordActivated activated => new CompactionSucceeded(context, activated.Record),
+            CompactionRecordConflict conflict => new CompactionConflict(
+                context, conflict.ExpectedVersion, conflict.ActualVersion, manifest),
+            CompactionRecordActivationRejected rejected => new CompactionRejected(context, rejected.Rejection),
+            CompactionRecordActivationFailed failed => MapActivationFailed(context, failed),
+            CompactionRecordActivationCancelled cancelled => new CompactionCancelled(
+                context,
+                cancelled.Cancellation.CommitState,
+                cancelled.Cancellation.SafeMessage,
+                cancelled.Cancellation.CommittedRecord),
+            _ => new CompactionFailed(
+                context,
+                new CompactionFailure(
+                    CompactionFailureKind.Unknown,
+                    "Unrecognized activation outcome.",
+                    retryable: false,
+                    ExtensionData.Empty))
+        };
+
+    private CompactionFailed MapActivationFailed(
+        CompactionOperationContext context,
+        CompactionRecordActivationFailed failed)
+    {
+        if (failed.ActivatedVersionClaim is { } expected && failed.StoreReportedVersion is { } reported)
+        {
+            CompactionLog.ActivatedVersionMismatch(
+                _logger,
+                context.CompactionId,
+                context.SessionId,
+                expected,
+                reported);
+        }
+
+        return new CompactionFailed(context, failed.Failure);
+    }
+
+    private static CompactionOutcomeSummary ToOutcomeSummary(CompactionResult result) =>
+        result switch
+        {
+            CompactionSucceeded succeeded => new(
+                CompactionOutcomeKind.Succeeded,
+                succeeded.Record.Manifest.Id,
+                null,
+                succeeded.Record.ActivatedSessionVersion,
+                null),
+            CompactionConflict => new(CompactionOutcomeKind.Conflict, null, null, null, null),
+            CompactionCancelled => new(CompactionOutcomeKind.Cancelled, null, null, null, null),
+            CompactionRejected => new(CompactionOutcomeKind.Rejected, null, null, null, null),
+            CompactionNotReducing => new(CompactionOutcomeKind.NotReducing, null, null, null, null),
+            CompactionFailed failed => new(CompactionOutcomeKind.Failed, null, null, null, failed.Failure.SafeMessage),
+            _ => new(CompactionOutcomeKind.Failed, null, null, null, "Unknown compaction outcome.")
+        };
 
     /// <summary>
     /// Reads the whole branch, splits it at <see cref="CompactionRequest.SourceThrough"/>, and returns either the
@@ -347,7 +543,10 @@ public sealed class DefaultCompactor: ICompactor
     /// </para>
     /// </remarks>
     private async Task<(LoadedCompactionSource? Source, CompactionResult? Terminal)> LoadSourceAsync(
-        SessionOperationContext sessionContext, CompactionRequest request, CancellationToken cancellationToken)
+        SessionOperationContext sessionContext,
+        CompactionRequest request,
+        ISessionCoordinator coordinator,
+        CancellationToken cancellationToken)
     {
         Debug.Assert(sessionContext is not null, "The caller builds the session context before loading.");
         Debug.Assert(request is not null, "The caller validates the request before loading.");
@@ -358,7 +557,7 @@ public sealed class DefaultCompactor: ICompactor
 
         while (true)
         {
-            var pageResult = await _coordinator.ReadAsync(
+            var pageResult = await coordinator.ReadAsync(
                 pinned is null
                     ? new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize)
                     : new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize, pinned),
@@ -400,8 +599,13 @@ public sealed class DefaultCompactor: ICompactor
                     if (pageSnapshot.Version.Value > request.SourceVersion.Value)
                     {
                         var (existing, _) = await FindCommittedRecordAsync(
-                            sessionContext, request, request.SourceThrough, pageSnapshot, maximumPages: int.MaxValue, cancellationToken)
-                            .ConfigureAwait(false);
+                            coordinator,
+                            sessionContext,
+                            request,
+                            request.SourceThrough,
+                            pageSnapshot,
+                            maximumPages: int.MaxValue,
+                            cancellationToken).ConfigureAwait(false);
                         if (existing is not null)
                         {
                             return (null, new CompactionSucceeded(request.Context, existing));
@@ -465,198 +669,6 @@ public sealed class DefaultCompactor: ICompactor
         return (new LoadedCompactionSource(snapshot, branchTip, tailParents.ToImmutable()), null);
     }
 
-    private async Task<CompactionResult> ActivateAsync(
-        SessionOperationContext sessionContext,
-        CompactionOperationContext context,
-        CompactionRequest request,
-        SessionSequence branchTip,
-        CompactionCut cut,
-        CompactionManifest manifest,
-        CompactionCandidate candidate,
-        CompactionId? supersedes,
-        CancellationToken cancellationToken)
-    {
-        // Version and sequence advance independently (one version per append, one sequence per entry), so the
-        // new entry's sequence follows the branch tip actually read, never "version + 1" or "SourceThrough + 1".
-        // The activated version is precomputed as SourceVersion + 1 (one version per append) because the record must
-        // carry it before the append; the store's reported NewVersion is reconciled against it afterwards.
-        var activatedVersion = new SessionVersion(request.SourceVersion.Value + 1);
-        var nextSequence = new SessionSequence(branchTip.Value + 1);
-        var lastCoveredId = cut.CoveredEntryIds[^1];
-
-        var record = new CompactionRecord(
-            context,
-            request.SourceVersion,
-            activatedVersion,
-            CompactionRecordStatus.Active,
-            manifest,
-            candidate.Checkpoint,
-            supersedes,
-            rejection: null,
-            _timeProvider.GetUtcNow(),
-            ExtensionData.Empty);
-
-        var entry = new CompactionSessionEntry(
-            _entryIds.Create(),
-            sessionContext.ToAddress(),
-            context.Correlation,
-            request.BranchId,
-            nextSequence,
-            lastCoveredId,
-            _timeProvider.GetUtcNow(),
-            new SchemaVersion("1"),
-            record);
-
-        var appendRequest = new SessionAppendRequest(
-            sessionContext,
-            request.BranchId,
-            request.SourceVersion,
-            new IdempotencyKey($"compaction:{context.CompactionId}"),
-            [entry]);
-
-        try
-        {
-            var appendResult = await _coordinator.AppendAsync(appendRequest, request.Context.SessionProfile, cancellationToken)
-                .ConfigureAwait(false);
-
-            return appendResult switch
-            {
-                SessionAppended appended => ReconcileActivatedVersion(context, record, activatedVersion, appended),
-                SessionAppendConflict conflict => await ReconcileConflictAsync(
-                    sessionContext, request, branchTip, manifest, conflict, cancellationToken).ConfigureAwait(false),
-                SessionAppendNotFound => new CompactionFailed(
-                    context,
-                    new CompactionFailure(
-                        CompactionFailureKind.ActivationFailure,
-                        "The session or branch no longer exists.",
-                        retryable: false,
-                        ExtensionData.Empty)),
-                SessionAppendFailed failed => await ReconcileFailedAppendAsync(
-                    sessionContext, request, branchTip, failed, cancellationToken).ConfigureAwait(false),
-                _ => new CompactionFailed(
-                    context,
-                    new CompactionFailure(
-                        CompactionFailureKind.Unknown, "Unrecognized append outcome.", retryable: false, ExtensionData.Empty))
-            };
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // The append was issued; the caller's token no longer governs whether it committed. Reconcile without it.
-            return await ReconcileCancelledActivationAsync(sessionContext, request, branchTip).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>
-    /// Establishes the truthful commit state after cancellation was observed during or after the activation append,
-    /// using a bounded reconciliation read that is deliberately not governed by the caller's cancellation token.
-    /// </summary>
-    private async Task<CompactionResult> ReconcileCancelledActivationAsync(
-        SessionOperationContext sessionContext, CompactionRequest request, SessionSequence branchTip)
-    {
-        Debug.Assert(sessionContext is not null, "The caller builds the session context before activating.");
-        Debug.Assert(request is not null, "The caller validates the request before activating.");
-
-        var (existing, reconciled) = await FindCommittedRecordAsync(
-            sessionContext, request, branchTip, pinned: null, maximumPages: 1, CancellationToken.None).ConfigureAwait(false);
-
-        return existing is not null
-            ? new CompactionCancelled(
-                request.Context,
-                CompactionCommitState.Committed,
-                "The compaction attempt was cancelled after its record was committed.",
-                existing)
-            : reconciled
-            ? new CompactionCancelled(
-                request.Context,
-                CompactionCommitState.NotCommitted,
-                "The compaction attempt was cancelled during activation; no record was committed.")
-            : new CompactionCancelled(
-                request.Context,
-                CompactionCommitState.Unknown,
-                "The compaction attempt was cancelled during activation and its commit state could not be reconciled.");
-    }
-
-    /// <summary>
-    /// Confirms that the store's reported version equals the version the persisted record claims. The record is
-    /// built before the append under the one-version-per-append assumption; a store that reports anything else has
-    /// committed a record whose <see cref="CompactionRecord.ActivatedSessionVersion"/> is false, which is logged and
-    /// surfaced as a non-retryable <see cref="CompactionFailureKind.ActivationFailure"/> rather than a clean success.
-    /// </summary>
-    private CompactionResult ReconcileActivatedVersion(
-        CompactionOperationContext context,
-        CompactionRecord record,
-        SessionVersion activatedVersion,
-        SessionAppended appended)
-    {
-        Debug.Assert(context is not null && record is not null && appended is not null, "The caller supplies the append outcome.");
-
-        if (appended.NewVersion == activatedVersion)
-        {
-            return new CompactionSucceeded(context, record);
-        }
-
-        CompactionLog.ActivatedVersionMismatch(_logger, context.CompactionId, context.SessionId, activatedVersion, appended.NewVersion);
-        return new CompactionFailed(
-            context,
-            new CompactionFailure(
-                CompactionFailureKind.ActivationFailure,
-                $"The record was committed claiming activated version {activatedVersion.Value} but the store reported version {appended.NewVersion.Value}; the persisted version claim is false.",
-                retryable: false,
-                ExtensionData.Empty));
-    }
-
-    /// <summary>
-    /// Resolves an append conflict: a duplicate attempt of the same checkpoint may have won the version check, in
-    /// which case the checkpoint is already active and the conflict is not reported.
-    /// </summary>
-    private async Task<CompactionResult> ReconcileConflictAsync(
-        SessionOperationContext sessionContext,
-        CompactionRequest request,
-        SessionSequence branchTip,
-        CompactionManifest manifest,
-        SessionAppendConflict conflict,
-        CancellationToken cancellationToken)
-    {
-        Debug.Assert(conflict is not null, "The caller matched an append conflict.");
-        Debug.Assert(manifest is not null, "A candidate exists once activation is attempted.");
-
-        var (existing, _) = await FindCommittedRecordAsync(
-            sessionContext, request, branchTip, pinned: null, maximumPages: 1, cancellationToken).ConfigureAwait(false);
-        return existing is not null
-            ? new CompactionSucceeded(request.Context, existing)
-            : new CompactionConflict(request.Context, conflict.ExpectedVersion, conflict.ActualVersion, manifest);
-    }
-
-    /// <summary>
-    /// Resolves a failed append. The store does not distinguish a deterministic rejection (a reused idempotency key
-    /// with different evidence, a sequence mismatch) from a lost response after commit, so the branch is reconciled by
-    /// <see cref="CompactionId"/> first; when no record exists the failure is reported as non-retryable because a
-    /// blind repeat cannot present identical idempotency evidence and must not drive an unbounded retry loop.
-    /// </summary>
-    private async Task<CompactionResult> ReconcileFailedAppendAsync(
-        SessionOperationContext sessionContext,
-        CompactionRequest request,
-        SessionSequence branchTip,
-        SessionAppendFailed failed,
-        CancellationToken cancellationToken)
-    {
-        Debug.Assert(failed is not null, "The caller matched a failed append.");
-
-        var (existing, reconciled) = await FindCommittedRecordAsync(
-            sessionContext, request, branchTip, pinned: null, maximumPages: 1, cancellationToken).ConfigureAwait(false);
-        return existing is not null
-            ? new CompactionSucceeded(request.Context, existing)
-            : new CompactionFailed(
-            request.Context,
-            new CompactionFailure(
-                CompactionFailureKind.ActivationFailure,
-                reconciled
-                    ? $"{failed.SafeMessage} No record for this compaction was committed."
-                    : $"{failed.SafeMessage} The commit state could not be reconciled.",
-                retryable: false,
-                ExtensionData.Empty));
-    }
-
     /// <summary>
     /// Scans the branch after <paramref name="fromSequenceExclusive"/> for an active
     /// <see cref="CompactionSessionEntry"/> whose record carries the request's <see cref="CompactionId"/>.
@@ -677,6 +689,7 @@ public sealed class DefaultCompactor: ICompactor
     /// <see langword="false"/> when the scan could not be completed.
     /// </returns>
     private async Task<(CompactionRecord? Record, bool Reconciled)> FindCommittedRecordAsync(
+        ISessionCoordinator coordinator,
         SessionOperationContext sessionContext,
         CompactionRequest request,
         SessionSequence fromSequenceExclusive,
@@ -684,6 +697,7 @@ public sealed class DefaultCompactor: ICompactor
         int maximumPages,
         CancellationToken cancellationToken)
     {
+        Debug.Assert(coordinator is not null, "The caller supplies the session coordinator.");
         Debug.Assert(sessionContext is not null, "The caller builds the session context before reconciling.");
         Debug.Assert(request is not null, "The caller validates the request before reconciling.");
         Debug.Assert(maximumPages > 0, "Reconciliation reads at least one page.");
@@ -691,7 +705,7 @@ public sealed class DefaultCompactor: ICompactor
         var cursor = fromSequenceExclusive;
         for (var pagesRead = 0; pagesRead < maximumPages; pagesRead++)
         {
-            var pageResult = await _coordinator.ReadAsync(
+            var pageResult = await coordinator.ReadAsync(
                 pinned is null
                     ? new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize)
                     : new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize, pinned),

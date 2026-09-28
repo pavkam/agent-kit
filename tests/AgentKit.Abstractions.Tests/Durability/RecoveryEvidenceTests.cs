@@ -44,6 +44,53 @@ public sealed class RecoveryEvidenceTests
         evidence.ExternalReference.ShouldBeNull();
         evidence.ExternalIdempotencyKey.ShouldBeNull();
         evidence.LastWriterToken.ShouldBeNull();
+        evidence.RecordedResult.ShouldBeNull();
+        evidence.NotBefore.ShouldBeNull();
+    }
+
+    [Fact]
+    public void RecoveryEvidence_Constructor_WhenTerminalResultRecordedWithoutResult_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new RecoveryEvidence(
+            DurabilityTestData.Address(),
+            DurabilityTestData.Context(),
+            DurableOperationState.OutcomeReady,
+            SideEffectCertainty.Unknown,
+            startDefinitelyAbsent: false,
+            terminalResultRecorded: true));
+
+        exception.ParamName.ShouldBe("recordedResult");
+    }
+
+    [Fact]
+    public void RecoveryEvidence_Constructor_WhenNotBeforeSetOutsideWaiting_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new RecoveryEvidence(
+            DurabilityTestData.Address(),
+            DurabilityTestData.Context(),
+            DurableOperationState.EffectPending,
+            SideEffectCertainty.Unknown,
+            startDefinitelyAbsent: false,
+            terminalResultRecorded: false,
+            notBefore: DurabilityTestData.Now.AddMinutes(1)));
+
+        exception.ParamName.ShouldBe("notBefore");
+    }
+
+    [Fact]
+    public void RecoveryEvidence_Constructor_WhenWaitingWithNotBefore_RetainsInstant()
+    {
+        var notBefore = DurabilityTestData.Now.AddMinutes(5);
+        var evidence = new RecoveryEvidence(
+            DurabilityTestData.Address(),
+            DurabilityTestData.Context(),
+            DurableOperationState.Waiting,
+            SideEffectCertainty.Unknown,
+            startDefinitelyAbsent: false,
+            terminalResultRecorded: false,
+            notBefore: notBefore);
+
+        evidence.NotBefore.ShouldBe(notBefore);
     }
 
     [Fact]
@@ -108,7 +155,17 @@ public sealed class RecoveryEvidenceTests
         evidence.State.ShouldBe(DurableOperationState.EffectPending);
     }
 
-    private static RecoveryEvidence Evidence(DurableOperationBinding binding, DurableCheckpoint? latestCheckpoint = null) => new(binding, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true, latestCheckpoint);
+    private static RecoveryEvidence Evidence(DurableOperationBinding binding, DurableCheckpoint? latestCheckpoint = null)
+    {
+        var result = new DurableOperationResult(
+            binding,
+            DurableOperationState.OutcomeReady,
+            SideEffectCertainty.Unknown,
+            DurabilityTestData.Payload(),
+            DurabilityTestData.Token,
+            DurabilityTestData.Now);
+        return new(binding, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true, recordedResult: result, latestCheckpoint: latestCheckpoint);
+    }
     private static DurableCheckpoint Checkpoint(DurableOperationBinding binding) => new(DurabilityTestData.CheckpointId, binding, DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
 
     private enum BindingMismatch

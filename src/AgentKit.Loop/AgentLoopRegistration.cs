@@ -131,6 +131,25 @@ internal static class AgentLoopRegistration
             _ => new GuidIdentifierGenerator<MessageId>(static value => new MessageId(value)));
         services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
             _ => new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)));
+        RegisterDurableBoundaries(services);
+    }
+
+    /// <summary>Registers the bridge that lets the durability coordinator drive this loop's journaled boundaries.</summary>
+    /// <param name="services">The service collection to register into.</param>
+    /// <remarks>
+    /// The registry and its two handlers are registered unconditionally because they are inert without a composed
+    /// durability runtime: no coordinator means nothing resolves them, and a profile that enables neither loop
+    /// operation name means nothing publishes a continuation into them. Registering them here keeps the loop's
+    /// durable boundaries available to any durability profile the application later selects, without the loop
+    /// package depending on the durability runtime.
+    /// </remarks>
+    private static void RegisterDurableBoundaries(IServiceCollection services)
+    {
+        services.TryAddSingleton<DurableBoundaryRegistry>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IDurableOperationHandler, ModelRequestDurableOperationHandler>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IDurableOperationHandler, ToolCallDurableOperationHandler>());
     }
 
     /// <summary>Throws when a different <see cref="IAgentLoop"/> implementation is already registered under this exact key.</summary>

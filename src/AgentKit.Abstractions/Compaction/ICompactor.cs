@@ -21,7 +21,7 @@ namespace AgentKit;
 /// </remarks>
 public interface ICompactor
 {
-    /// <summary>Runs one complete compaction attempt.</summary>
+    /// <summary>Runs one complete compaction attempt using the reduced two-argument surface.</summary>
     /// <param name="request">The compaction request.</param>
     /// <param name="cancellationToken">A token used to cancel the attempt.</param>
     /// <returns>
@@ -29,4 +29,19 @@ public interface ICompactor
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public Task<CompactionResult> CompactAsync(CompactionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Runs one complete compaction attempt with explicit session, budget, and hook context.</summary>
+    /// <param name="request">The compaction request.</param>
+    /// <param name="session">The session capability compiled for this invocation.</param>
+    /// <param name="budget">The budget capability for this invocation.</param>
+    /// <param name="hooks">Optional hook dispatch context for the active run.</param>
+    /// <param name="cancellationToken">A token used to cancel the attempt.</param>
+    /// <returns>A task that resolves to the closed outcome of the attempt.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public Task<CompactionResult> CompactAsync(
+        CompactionRequest request,
+        SessionExecutionCapability session,
+        BudgetExecutionCapability budget,
+        HookDispatchContext? hooks,
+        CancellationToken cancellationToken = default);
 }

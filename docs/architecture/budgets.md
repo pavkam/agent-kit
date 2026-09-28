@@ -362,6 +362,28 @@ public interface IBudgetPolicyCatalog
         [NotNullWhen(true)] out IBudgetPolicy? policy);
 }
 
+public sealed record BudgetPolicyRequest(
+    BudgetProfileSnapshot Profile,
+    BudgetScopeRequest ScopeRequest,
+    BudgetReservationRequest? ProposedReservation = null);
+
+public abstract record BudgetPolicyDecision;
+
+public sealed record BudgetPolicyAllowed : BudgetPolicyDecision;
+
+public sealed record BudgetPolicyDenied(string SafeMessage) : BudgetPolicyDecision;
+
+public sealed record BudgetPolicyRequest(
+    BudgetProfileSnapshot Profile,
+    BudgetScopeRequest ScopeRequest,
+    BudgetReservationRequest? ProposedReservation = null);
+
+public abstract record BudgetPolicyDecision;
+
+public sealed record BudgetPolicyAllowed : BudgetPolicyDecision;
+
+public sealed record BudgetPolicyDenied(string SafeMessage) : BudgetPolicyDecision;
+
 public interface IBudgetPolicy
 {
     ValueTask<BudgetPolicyDecision> EvaluateAsync(

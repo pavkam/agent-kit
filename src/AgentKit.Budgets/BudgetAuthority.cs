@@ -8,21 +8,34 @@ namespace AgentKit.Budgets;
 internal sealed class BudgetAuthority: IBudgetAuthority
 {
     private readonly IBudgetLedger _ledger;
+    private readonly IBudgetProfileCatalog _profiles;
+    private readonly IBudgetPolicyCatalog _policies;
     private readonly AgentBudgetOptionsSnapshot _options;
     private readonly ILogger<BudgetAuthority> _logger;
     private readonly ILoggerFactory _loggerFactory;
 
-    /// <summary>Initializes the runtime over the application-selected ledger.</summary>
+    /// <summary>Initializes the runtime over the application-selected ledger and catalogs.</summary>
     /// <param name="ledger">The singular authoritative ledger selected by application composition.</param>
+    /// <param name="profiles">The profile catalog used to resolve named profiles.</param>
+    /// <param name="policies">The policy catalog used to evaluate configured profile policies.</param>
     /// <param name="options">The validated admission policy captured for newly created scopes.</param>
     /// <param name="loggerFactory">The optional structured logger factory; null disables log publication.</param>
     /// <exception cref="ArgumentNullException">A required parameter is null or <paramref name="ledger"/> exposes a null descriptor.</exception>
-    public BudgetAuthority(IBudgetLedger ledger, AgentBudgetOptionsSnapshot options, ILoggerFactory? loggerFactory = null)
+    public BudgetAuthority(
+        IBudgetLedger ledger,
+        IBudgetProfileCatalog profiles,
+        IBudgetPolicyCatalog policies,
+        AgentBudgetOptionsSnapshot options,
+        ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(ledger);
+        ArgumentNullException.ThrowIfNull(profiles);
+        ArgumentNullException.ThrowIfNull(policies);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(ledger.Descriptor, nameof(ledger));
         _ledger = ledger;
+        _profiles = profiles;
+        _policies = policies;
         _options = options;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = CreateLogger<BudgetAuthority>(_loggerFactory);
@@ -33,6 +46,12 @@ internal sealed class BudgetAuthority: IBudgetAuthority
         BudgetScopeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var (Request, Failure) = await ResolveScopeRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        if (Failure is { } failure)
+        {
+            return failure;
+        }
+
         var admission = new BudgetScopeAdmission(
             _options.MaximumScopeDepth,
             _options.MaximumOpenReservationsPerScope,
@@ -43,7 +62,7 @@ internal sealed class BudgetAuthority: IBudgetAuthority
                 BudgetOverrunBehavior.RequireOperatorReconciliation => BudgetOverrunHoldPolicy.RequireAuthorizedResolution,
                 _ => throw new UnreachableException(),
             });
-        var ledgerRequest = new BudgetLedgerScopeCreateRequest(request, admission);
+        var ledgerRequest = new BudgetLedgerScopeCreateRequest(Request!, admission);
         using var observation = BudgetRuntimeObservation.Start(AgentKitActivityNames.BudgetScopeCreate);
         observation.Tag(AgentKitTagNames.AgentId, request.Address.AgentId.ToString());
         observation.Tag(AgentKitTagNames.SessionId, request.Address.SessionId?.ToString());
@@ -58,6 +77,7 @@ internal sealed class BudgetAuthority: IBudgetAuthority
                     new BudgetScope(
                         _ledger,
                         created.Scope,
+                        _options,
                         CreateLogger<BudgetScope>(_loggerFactory),
                         CreateLogger<BudgetReservation>(_loggerFactory))),
                 BudgetLedgerScopeCreateRejected rejected => rejected.Failure,
@@ -72,9 +92,9 @@ internal sealed class BudgetAuthority: IBudgetAuthority
             }
             else
             {
-                var failure = (BudgetScopeCreationFailed) mapped;
+                var scopeFailure = (BudgetScopeCreationFailed) mapped;
                 observation.Rejected("rejected");
-                TryLog(() => BudgetLog.ScopeCreationRejected(_logger, failure.Kind.ToString()));
+                TryLog(() => BudgetLog.ScopeCreationRejected(_logger, scopeFailure.Kind.ToString()));
                 TryMetric("rejected");
             }
             return mapped;
@@ -94,6 +114,45 @@ internal sealed class BudgetAuthority: IBudgetAuthority
             TryMetric("failed");
             throw;
         }
+    }
+
+    private async ValueTask<(BudgetScopeRequest? Request, BudgetScopeCreationFailed? Failure)> ResolveScopeRequestAsync(
+        BudgetScopeRequest request,
+        CancellationToken cancellationToken)
+    {
+        BudgetProfileSnapshot? profile = null;
+        if (request.Profile is { Value.Length: > 0 } profileKey)
+        {
+            if (!_profiles.TryGet(profileKey, out profile))
+            {
+                return (null, new BudgetScopeCreationFailed(
+                    BudgetScopeCreationFailureKind.ProfileNotFound,
+                    $"The budget profile '{profileKey.Value}' is not registered."));
+            }
+        }
+
+        var limits = request.Limits.IsEmpty && profile is not null ? profile.Limits : request.Limits;
+        var resolved = request with { Limits = limits };
+        if (profile is not null)
+        {
+            foreach (var policyKey in profile.Policies)
+            {
+                if (!_policies.TryGet(policyKey, out var policy))
+                {
+                    return (null, new BudgetScopeCreationFailed(
+                        BudgetScopeCreationFailureKind.PolicyDenied,
+                        $"The budget policy '{policyKey.Value}' configured on profile '{profile.Key.Value}' is not registered."));
+                }
+
+                var decision = await policy.EvaluateAsync(new BudgetPolicyRequest(profile, resolved), cancellationToken).ConfigureAwait(false);
+                if (decision is BudgetPolicyDenied denied)
+                {
+                    return (null, new BudgetScopeCreationFailed(BudgetScopeCreationFailureKind.PolicyDenied, denied.SafeMessage));
+                }
+            }
+        }
+
+        return (resolved, null);
     }
 
     private static void TryLog(Action publish)

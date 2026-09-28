@@ -158,6 +158,7 @@ public sealed record AgentLoopRunRequest
         Agent = agent;
         Output = agent.Output;
         BudgetLimits = agent.BudgetLimits;
+        BudgetProfile = agent.BudgetProfile;
         Configuration = configuration;
         HookProfile = agent.HookProfile;
     }
@@ -382,6 +383,23 @@ public sealed record AgentLoopRunRequest
         }
     } = [];
 
+    /// <summary>Gets the named budget profile this run resolves when creating its scope.</summary>
+    /// <value>A profile key, or <see langword="null"/> when the run uses inline limits only.</value>
+    public BudgetProfileKey? BudgetProfile
+    {
+        get;
+        init
+        {
+            if (Agent is not null && !Nullable.Equals(Agent.BudgetProfile, value))
+            {
+                throw new ArgumentException(
+                    "A record copy must not diverge from the pinned Agent's own budget profile.", nameof(BudgetProfile));
+            }
+
+            field = value;
+        }
+    }
+
     /// <summary>Gets the hook profile whose captured catalog this run dispatches through.</summary>
     /// <value>
     /// Defaults to <see cref="HookRegistrationDescriptors.DefaultProfileKey"/>. When <see cref="Agent"/> is pinned,
@@ -459,6 +477,7 @@ public sealed record AgentLoopRunRequest
         && AttemptTimeout == other.AttemptTimeout
         && Equals(Output, other.Output)
         && BudgetLimits.SequenceEqual(other.BudgetLimits)
+        && Nullable.Equals(BudgetProfile, other.BudgetProfile)
         && HookProfile.Equals(other.HookProfile)
         && Extensions.Equals(other.Extensions)
         && Equals(LaneAdmission, other.LaneAdmission);
@@ -498,6 +517,7 @@ public sealed record AgentLoopRunRequest
             hash.Add(limit);
         }
 
+        hash.Add(BudgetProfile);
         hash.Add(HookProfile);
         hash.Add(Extensions);
         hash.Add(LaneAdmission);

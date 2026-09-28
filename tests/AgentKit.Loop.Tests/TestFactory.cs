@@ -353,6 +353,18 @@ internal static class TestFactory
             safeMessage,
             diagnosticCause: null, ExtensionData.Empty);
 
+    public static ProviderFailure ContextLengthFailure(string safeMessage = "context length exceeded") =>
+        new(
+            ProviderFailureKind.ContextLengthExceeded,
+            new ProviderId("test-provider"),
+            requestId: null,
+            statusCode: 413,
+            providerCode: "context_length_exceeded",
+            retryAfter: null,
+            safeMessage,
+            diagnosticCause: null,
+            ExtensionData.Empty);
+
     public static ProviderFailure Cancellation(string safeMessage = "cancelled") =>
         new(
             ProviderFailureKind.Cancellation,

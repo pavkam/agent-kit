@@ -1,0 +1,83 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Durability.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Durability.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteDurableExecutionBackend(AgentKit.DurableBackendKey key, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> supportedOperations = default) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteDurableLeaseManager(AgentKit.DurableLeaseManagerKey key, AgentKit.Durability.Sqlite.SqliteDurableDatabase database) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteDurableOperationJournal(AgentKit.DurableJournalKey key, AgentKit.Durability.Sqlite.SqliteDurableDatabase database) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public sealed class SqliteDurableDatabase
+    {
+        public SqliteDurableDatabase(AgentKit.Durability.Sqlite.SqliteDurableStoreTarget target, AgentKit.Durability.Sqlite.SqliteDurableStoreSettings settings) { }
+        public AgentKit.Durability.Sqlite.SqliteDurableStoreSettings Settings { get; }
+        public AgentKit.Durability.Sqlite.SqliteDurableStoreTarget Target { get; }
+    }
+    public sealed class SqliteDurableExecutionBackend : AgentKit.IDurableExecutionBackend
+    {
+        public SqliteDurableExecutionBackend(AgentKit.DurableBackendKey key, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> supportedOperations = default) { }
+        public AgentKit.DurableBackendDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableDispatchResult> DispatchAsync(AgentKit.DurableDispatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableReconciliationResult> ReconcileAsync(AgentKit.DurableReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SqliteDurableLeaseManager : AgentKit.IDurableLeaseManager
+    {
+        public SqliteDurableLeaseManager(AgentKit.Durability.Sqlite.SqliteDurableDatabase database, AgentKit.IIdentifierGenerator<AgentKit.ExecutionLeaseId> leaseIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.Sqlite.SqliteDurableLeaseManager>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ExecutionLeaseResult> AcquireAsync(AgentKit.ExecutionLeaseRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SqliteDurableOperationJournal : AgentKit.IDurableOperationJournal
+    {
+        public SqliteDurableOperationJournal(AgentKit.DurableJournalKey key, AgentKit.Durability.Sqlite.SqliteDurableDatabase database, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.Sqlite.SqliteDurableOperationJournal>? logger = null) { }
+        public AgentKit.DurableJournalKey Key { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationAddress> address, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableCheckpoint> checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationStart> start, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationResult> result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordWaitingAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationWaiting> waiting, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteDurableStoreInstanceId : System.IEquatable<AgentKit.Durability.Sqlite.SqliteDurableStoreInstanceId>
+    {
+        public SqliteDurableStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteDurableStoreOptions
+    {
+        public SqliteDurableStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteDurableStoreSettings : System.IEquatable<AgentKit.Durability.Sqlite.SqliteDurableStoreSettings>
+    {
+        public SqliteDurableStoreSettings(System.TimeSpan lockTimeout, int maximumRecordBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Durability.Sqlite.SqliteDurableStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteDurableStoreTarget : System.IEquatable<AgentKit.Durability.Sqlite.SqliteDurableStoreTarget>
+    {
+        public SqliteDurableStoreTarget(string databasePath, AgentKit.Durability.Sqlite.SqliteDurableStoreInstanceId expectedStoreInstanceId, AgentKit.Durability.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Durability.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Durability.Sqlite.SqliteDurableStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Durability.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Durability.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+}

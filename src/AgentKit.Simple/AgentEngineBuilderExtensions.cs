@@ -788,6 +788,7 @@ public static class AgentEngineBuilderExtensions
         /// How many times the model may be asked to correct a rejected candidate before the turn fails; the composed
         /// processor's own ceiling also applies. Defaults to 2.
         /// </param>
+        /// <param name="mode"></param>
         /// <returns>The same builder.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="schemaJson"/> is blank or not a JSON object, or <paramref name="name"/> is empty or whitespace.</exception>
@@ -798,7 +799,11 @@ public static class AgentEngineBuilderExtensions
         /// the processor validates the text it returns. Read the accepted value with <c>AskAsync&lt;T&gt;</c> or from
         /// <see cref="ConversationTurnResult.Output"/>.
         /// </remarks>
-        public AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2)
+        public AgentEngineBuilder WithOutput<T>(
+            string schemaJson,
+            string? name = null,
+            int maximumRepairAttempts = 2,
+            OutputMode mode = OutputMode.Prompted)
         {
             ArgumentNullException.ThrowIfNull(builder);
             ArgumentException.ThrowIfNullOrWhiteSpace(schemaJson);
@@ -808,6 +813,7 @@ public static class AgentEngineBuilderExtensions
             }
 
             ArgumentOutOfRangeException.ThrowIfNegative(maximumRepairAttempts);
+            ArgumentOutOfRangeException.ThrowIfUndefined(mode);
 
             using var document = System.Text.Json.JsonDocument.Parse(schemaJson);
             if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
@@ -821,7 +827,7 @@ public static class AgentEngineBuilderExtensions
                 new OutputDefinitionId($"agentkit.simple.output/{contractName}"),
                 new OutputDefinitionVersion("1"),
                 contractName,
-                OutputMode.Prompted,
+                mode,
                 new JsonSchemaDocument(contractName, new SchemaVersion("1"), schema),
                 typeof(T),
                 alternatives: [],
@@ -832,9 +838,13 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.Output = definition;
-            plan.Instructions.Add(
-                $"Your final answer must be a single JSON object that validates against this JSON Schema, with no " +
-                $"prose, code fences, or commentary before or after it:\n{schema.GetRawText()}");
+            if (mode is OutputMode.Prompted)
+            {
+                plan.Instructions.Add(
+                    $"Your final answer must be a single JSON object that validates against this JSON Schema, with no " +
+                    $"prose, code fences, or commentary before or after it:\n{schema.GetRawText()}");
+            }
+
             return builder;
         }
     }

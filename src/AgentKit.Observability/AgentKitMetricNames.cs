@@ -285,9 +285,29 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for durable-journal evidence-load duration in seconds.</summary>
     public const string DurableJournalLoadEvidenceDuration = "agentkit.durable.journal.load_evidence.duration";
 
+    /// <summary>Gets the counter for terminal coordinated durable-operation outcomes.</summary>
+    /// <remarks>Dimensions are limited to the bounded coordinator stage and outcome vocabularies.</remarks>
+    public const string DurableOperationCount = "agentkit.durable.operation.count";
+
+    /// <summary>Gets the histogram for coordinated durable-operation duration in seconds.</summary>
+    /// <remarks>An unavailable or negative clock measurement is omitted rather than reported as zero.</remarks>
+    public const string DurableOperationDuration = "agentkit.durable.operation.duration";
+
+    /// <summary>Gets the counter for terminal durable execution-event dispatch outcomes.</summary>
+    public const string DurableEventDispatchCount = "agentkit.durable.event.dispatch.count";
+
     /// <summary>Gets the counter for terminal conversational-turn outcomes.</summary>
     public const string ConversationTurnCount = "agentkit.conversation.turn.count";
 
     /// <summary>Gets the histogram for conversational-turn duration in seconds.</summary>
     public const string ConversationTurnDuration = "agentkit.conversation.turn.duration";
+
+    /// <summary>Gets the counter for terminal artifact coordinator outcomes.</summary>
+    public const string ArtifactOperationCount = "agentkit.artifact.operation.count";
+
+    /// <summary>Gets the counter for terminal MCP server operation outcomes.</summary>
+    public const string McpServerOperationCount = "agentkit.mcp.server.operation.count";
+
+    /// <summary>Gets the counter for terminal built-in tool leaf invocations.</summary>
+    public const string ToolLeafOperationCount = "agentkit.tool.leaf.operation.count";
 }

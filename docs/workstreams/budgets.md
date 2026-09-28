@@ -11,12 +11,12 @@ Owning documents: [Budgets](../architecture/budgets.md),
 
 ## Progress
 
-- [ ] WS11-C1 profile and policy catalog contracts and `AddBudgetProfile`
-- [ ] WS11-C2 `BudgetScopeRequest` accepts a profile key
-- [ ] WS11-C3 capability producer in the loop, `AgentDefinition.BudgetProfile`
-- [ ] WS11-C4 unknown-cost enforcement
-- [ ] WS11-C5 consumer dimensions and defaults
-- [ ] WS11-C6 validator and concurrent aggregate conformance
+- [x] WS11-C1 profile and policy catalog contracts and `AddBudgetProfile`
+- [x] WS11-C2 `BudgetScopeRequest` accepts a profile key
+- [x] WS11-C3 capability producer in the loop, `AgentDefinition.BudgetProfile`
+- [x] WS11-C4 unknown-cost enforcement
+- [x] WS11-C5 consumer dimensions and defaults
+- [x] WS11-C6 validator and concurrent aggregate conformance
 
 ## Verified current state
 

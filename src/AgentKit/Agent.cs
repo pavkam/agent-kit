@@ -300,6 +300,28 @@ public sealed class Agent
         return _runtime.AdmitInputAsync(this, sessionId, identity, input, executionLaneId, cancellationToken);
     }
 
+    /// <summary>Runs explicit context compaction maintenance against one session branch.</summary>
+    /// <param name="sessionId">The session whose branch should be compacted.</param>
+    /// <param name="branchId">The branch to compact.</param>
+    /// <param name="identity">The already-authenticated caller.</param>
+    /// <param name="cancellationToken">Cancels the maintenance attempt.</param>
+    /// <returns>The closed compaction outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="identity"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> or <paramref name="branchId"/> is default.</exception>
+    /// <exception cref="AgentAdmissionRejectedException">The session is unavailable or no compactor is composed.</exception>
+    /// <exception cref="ObjectDisposedException">The owning engine has been disposed.</exception>
+    public Task<CompactionResult> CompactAsync(
+        SessionId sessionId,
+        BranchId branchId,
+        ExecutionIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(branchId, default);
+        return _runtime.CompactAsync(this, sessionId, branchId, identity, cancellationToken);
+    }
+
     /// <summary>Requests durable abort for one active run in this process.</summary>
     /// <param name="runId">The accepted run to abort.</param>
     /// <param name="identity">The already-authenticated caller.</param>

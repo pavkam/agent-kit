@@ -277,4 +277,12 @@ internal static partial class LoopLog
     /// <summary>Logs that a promotion attempt faulted; the run continues without it.</summary>
     [LoggerMessage(1112, LogLevel.Error, "Run {RunId}: input promotion at boundary {Boundary} faulted with {ErrorType}; the run continues without it.")]
     internal static partial void InputPromotionFaulted(ILogger logger, RunId runId, PromotionBoundary boundary, string errorType);
+
+    /// <summary>Logs that the run's settlement was journaled as a recoverable operation.</summary>
+    [LoggerMessage(1113, LogLevel.Debug, "Run {RunId}: settlement was journaled as {Outcome} over {MessageCount} committed messages.")]
+    internal static partial void RunSettlementJournaled(ILogger logger, RunId runId, string outcome, int messageCount);
+
+    /// <summary>Logs that the run's settlement could not be journaled; the already-determined outcome is unchanged.</summary>
+    [LoggerMessage(1114, LogLevel.Error, "Run {RunId}: settlement could not be journaled ({Reason}); the run's settled outcome is unchanged.")]
+    internal static partial void RunSettlementNotJournaled(ILogger logger, RunId runId, string reason);
 }

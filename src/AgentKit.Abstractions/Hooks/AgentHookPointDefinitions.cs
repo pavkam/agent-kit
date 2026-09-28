@@ -85,4 +85,20 @@ public static class AgentHookPointDefinitions
         typeof(ToolResultHookEventArgs),
         HookPointKind.Mutating,
         HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.OutputValidating"/>.</summary>
+    public static HookPointDefinition<IOutputValidatingHook, OutputValidatingEventArgs> OutputValidating { get; } = new(
+        AgentHookPoints.OutputValidating,
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<OutputValidatingEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.OutputValidating"/>.</summary>
+    public static HookPointDefinitionRegistration OutputValidatingRegistration { get; } = new(
+        AgentHookPoints.OutputValidating,
+        typeof(IOutputValidatingHook),
+        typeof(OutputValidatingEventArgs),
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation);
 }

@@ -41,6 +41,11 @@ concrete fixture inherits the suite for its own production class.
 - [IdentityIssuerConformanceTests](IdentityIssuerConformanceTests.cs)
 - [IdentityValidationPolicyConformanceTests](IdentityValidationPolicyConformanceTests.cs)
 - [DelegatedIdentityDeriverConformanceTests](DelegatedIdentityDeriverConformanceTests.cs)
+- [DurableLeaseManagerConformanceTests](DurableLeaseManagerConformanceTests.cs)
+  — ownership, fencing-token monotonicity, renewal, expiry takeover and release.
+- [DurableOperationJournalConformanceTests](DurableOperationJournalConformanceTests.cs)
+  — acceptance, checkpoints, waiting, terminal idempotence, fencing, evidence
+  and single-use grant consumption.
 - [InputPromotionPolicyConformanceTests](InputPromotionPolicyConformanceTests.cs)
 - [OutputSchemaEngineConformanceTests](OutputSchemaEngineConformanceTests.cs)
 - [RunContinuationPolicyConformanceTests](RunContinuationPolicyConformanceTests.cs)

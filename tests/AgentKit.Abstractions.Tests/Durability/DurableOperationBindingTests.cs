@@ -105,7 +105,14 @@ public sealed class DurableOperationBindingTests
         var binding = new DurableOperationBinding(DurabilityTestData.Address(), DurabilityTestData.Context());
         var checkpoint = new DurableCheckpoint(DurabilityTestData.CheckpointId, binding, DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
         var result = new DurableOperationResult(binding, DurableOperationState.Completed, SideEffectCertainty.DefinitelyPerformed, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
-        var evidence = new RecoveryEvidence(binding, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true);
+        var recordedResult = new DurableOperationResult(
+            binding,
+            DurableOperationState.OutcomeReady,
+            SideEffectCertainty.Unknown,
+            DurabilityTestData.Payload(),
+            DurabilityTestData.Token,
+            DurabilityTestData.Now);
+        var evidence = new RecoveryEvidence(binding, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true, recordedResult: recordedResult);
         var descriptor = new RecoverableOperationDescriptor(binding, new DurableOperationName("operation"), new DurableOperationVersion("v1"), new IdempotencyKey("key"), DurabilityTestData.Payload(), DurableRetryOwner.Caller, DurableTimeoutOwner.Caller, CancellationSemantics.LocalWaitOnly, SecurityEffect.Execute, IdempotencyClassification.NonIdempotent, DurabilityTestData.Now);
         var copiedResult = result with
         {
@@ -124,7 +131,7 @@ public sealed class DurableOperationBindingTests
     {
         var checkpointException = Should.Throw<ArgumentNullException>(() => new DurableCheckpoint(DurabilityTestData.CheckpointId, null!, DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now));
         var resultException = Should.Throw<ArgumentNullException>(() => new DurableOperationResult(null!, DurableOperationState.Completed, SideEffectCertainty.DefinitelyPerformed, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now));
-        var evidenceException = Should.Throw<ArgumentNullException>(() => new RecoveryEvidence(null!, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true));
+        var evidenceException = Should.Throw<ArgumentNullException>(() => new RecoveryEvidence(null!, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true, recordedResult: DurabilityTestData.Result()));
         var descriptorException = Should.Throw<ArgumentNullException>(() => new RecoverableOperationDescriptor(null!, new DurableOperationName("operation"), new DurableOperationVersion("v1"), new IdempotencyKey("key"), DurabilityTestData.Payload(), DurableRetryOwner.Caller, DurableTimeoutOwner.Caller, CancellationSemantics.LocalWaitOnly, SecurityEffect.Execute, IdempotencyClassification.NonIdempotent, DurabilityTestData.Now));
         foreach (var exception in new[]
         {

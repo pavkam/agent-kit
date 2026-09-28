@@ -3,6 +3,13 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Durability.InMemory
 {
+    public sealed class InMemoryDurableExecutionBackend : AgentKit.IDurableExecutionBackend
+    {
+        public InMemoryDurableExecutionBackend(AgentKit.DurableBackendKey key, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> supportedOperations = default) { }
+        public AgentKit.DurableBackendDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableDispatchResult> DispatchAsync(AgentKit.DurableDispatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableReconciliationResult> ReconcileAsync(AgentKit.DurableReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class InMemoryDurableLeaseManager : AgentKit.IDurableLeaseManager
     {
         public InMemoryDurableLeaseManager(AgentKit.IIdentifierGenerator<AgentKit.ExecutionLeaseId> leaseIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableLeaseManager>? logger = null) { }
@@ -10,18 +17,22 @@ namespace AgentKit.Durability.InMemory
     }
     public sealed class InMemoryDurableOperationJournal : AgentKit.IDurableOperationJournal
     {
-        public InMemoryDurableOperationJournal(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableOperationJournal>? logger = null) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.DurableOperationAddress address, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.DurableCheckpoint checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.DurableOperationStart start, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.DurableOperationResult result, System.Threading.CancellationToken cancellationToken = default) { }
+        public InMemoryDurableOperationJournal(AgentKit.DurableJournalKey key, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableOperationJournal>? logger = null) { }
+        public AgentKit.DurableJournalKey Key { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationAddress> address, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableCheckpoint> checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationStart> start, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationResult> result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordWaitingAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationWaiting> waiting, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableLeaseManager() { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableOperationJournal() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableExecutionBackend(AgentKit.DurableBackendKey key, System.Collections.Immutable.ImmutableArray<AgentKit.DurableOperationName> supportedOperations = default) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableLeaseManager(AgentKit.DurableLeaseManagerKey key) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableOperationJournal(AgentKit.DurableJournalKey key) { }
         }
     }
 }

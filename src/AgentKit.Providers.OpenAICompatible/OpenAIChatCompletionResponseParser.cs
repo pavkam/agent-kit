@@ -570,15 +570,9 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     {
         // OpenRouter does not send the common `type` member; its error category instead arrives as
         // `error.metadata.error_type`, so that is consulted only when `type` itself is absent.
-        var kind = (error.Type ?? error.Metadata?.ErrorType) switch
-        {
-            "rate_limit_error" or "rate_limit_exceeded" or "insufficient_quota" => ProviderFailureKind.Throttling,
-            "authentication_error" => ProviderFailureKind.Authentication,
-            "permission_error" => ProviderFailureKind.Authorization,
-            "invalid_request_error" => ProviderFailureKind.InvalidRequest,
-            "server_error" or "overloaded_error" => ProviderFailureKind.Unavailable,
-            _ => ProviderFailureKind.Unknown,
-        };
+        var kind = OpenAIProviderFailureKindMapper.MapFromErrorBody(
+            error.Type ?? error.Metadata?.ErrorType,
+            error.Code);
         var failure = new ProviderFailure(
             kind,
             context.ProviderId,

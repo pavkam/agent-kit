@@ -9,9 +9,9 @@ reservation handles while the ledger owns all authoritative accounting.
 
 ## Use this project
 
-Start with `AddAgentBudgets`, `AddBudgetDimension`, `ReplaceBudgetDimension` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
+Start with `AddAgentBudgets`, `AddBudgetProfile`, `AddBudgetDimension`, and the
+`Replace*` helpers in [ServiceExtensions.cs](ServiceExtensions.cs). Read the
+overload XML for required collaborators, lifetimes, and duplicate-registration
 behavior.
 
 `AddAgentBudgets` does not select storage. Applications using the first-party
@@ -26,11 +26,13 @@ reservations before each turn, model request, and tool call, and post-response
 accounting of reported tokens and cost, settling as `RunLimitReached` naming the
 dimension when a reservation is refused with full evidence, or `RunFailed` when
 the authority reports a held overrun or an unsupported outcome with no such
-evidence. Unknown-cost pre-effect estimation remains a separate runtime contract
-gap; the presence of `BudgetUnknownCostBehavior` does not imply that policy is
-enforced here. Named run profiles and parent host/tenant scopes are also
-pending: ordinary created scopes implement `IBudgetScope` and are never promoted
-to `IRunBudget` by guessing from nullable address fields.
+evidence. `BudgetUnknownCostBehavior` governs unknown cost reservations on the
+`agentkit.cost` dimension through
+`BudgetReservationRequest.CostEstimateUnknown`. Named profiles resolve through
+`IBudgetProfileCatalog`; the loop publishes a run-scoped
+`BudgetExecutionCapability` for output repair, tools, and other consumers.
+`RunBudget` implements `IRunBudget` for the owned run scope handle. Parent
+host/tenant scopes remain application-owned.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

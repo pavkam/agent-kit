@@ -363,6 +363,54 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when recovery evidence carries an inconsistent terminal result snapshot.</summary>
+        /// <param name="binding">The non-null exact binding retained by the recovery evidence.</param>
+        /// <param name="terminalResultRecorded">Whether a complete terminal result exists.</param>
+        /// <param name="recordedResult">The optional staged terminal result.</param>
+        /// <param name="paramName">The parameter attributed to an inconsistent <paramref name="recordedResult"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="binding"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="terminalResultRecorded"/> and <paramref name="recordedResult"/> disagree, or the result binding differs.</exception>
+        public static void ThrowIfRecoveryEvidenceRecordedResultInconsistent(
+            DurableOperationBinding binding,
+            bool terminalResultRecorded,
+            DurableOperationResult? recordedResult,
+            [CallerArgumentExpression(nameof(recordedResult))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(binding);
+
+            if (terminalResultRecorded != (recordedResult is not null))
+            {
+                throw new ArgumentException(
+                    "TerminalResultRecorded must be true exactly when RecordedResult is present.",
+                    paramName);
+            }
+
+            if (recordedResult is not null && recordedResult.Binding != binding)
+            {
+                throw new ArgumentException(
+                    "The recorded result must retain the recovery evidence binding exactly.",
+                    paramName);
+            }
+        }
+
+        /// <summary>Throws when recovery evidence carries a not-before instant outside the waiting state.</summary>
+        /// <param name="state">The persisted lifecycle position.</param>
+        /// <param name="notBefore">The optional deferred retry or wake instant.</param>
+        /// <param name="paramName">The parameter attributed to an inconsistent <paramref name="notBefore"/>.</param>
+        /// <exception cref="ArgumentException"><paramref name="notBefore"/> is set while <paramref name="state"/> is not <see cref="DurableOperationState.Waiting"/>.</exception>
+        public static void ThrowIfRecoveryEvidenceNotBeforeInconsistent(
+            DurableOperationState state,
+            DateTimeOffset? notBefore,
+            [CallerArgumentExpression(nameof(notBefore))] string? paramName = null)
+        {
+            if (notBefore is not null && state != DurableOperationState.Waiting)
+            {
+                throw new ArgumentException(
+                    "NotBefore is valid only while the operation is in the Waiting state.",
+                    paramName);
+            }
+        }
+
         /// <summary>Throws when an output-schema profile has inconsistent dialect or vocabulary sets.</summary>
         /// <param name="defaultDialect">The default dialect that must be one supported dialect.</param>
         /// <param name="supportedDialects">The initialized, non-empty unique dialect set.</param>

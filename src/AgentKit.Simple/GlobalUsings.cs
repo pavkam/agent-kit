@@ -18,6 +18,7 @@ global using AgentKit.Loop;
 global using AgentKit.Mcp;
 global using AgentKit.Mcp.Client;
 global using AgentKit.Network;
+global using AgentKit.Observability;
 global using AgentKit.Output;
 global using AgentKit.Permissions;
 global using AgentKit.Permissions.InMemory;
@@ -43,4 +44,6 @@ global using AgentKit.Tools.Write;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.DependencyInjection.Extensions;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;

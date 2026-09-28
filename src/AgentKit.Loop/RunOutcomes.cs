@@ -250,6 +250,7 @@ internal static class RunOutcomes
         ProviderFailureKind.Cancellation => AgentErrorCodes.Cancelled,
         ProviderFailureKind.ProtocolViolation => AgentErrorCodes.ProtocolViolation,
         ProviderFailureKind.Unknown => AgentErrorCodes.Unknown,
+        ProviderFailureKind.ContextLengthExceeded => AgentErrorCodes.ContextLimit,
         _ => AgentErrorCodes.Unknown,
     };
 }

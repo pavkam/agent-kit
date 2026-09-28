@@ -3,9 +3,12 @@
 Provide `InMemoryDurableLeaseManager`, the first-party `IDurableLeaseManager`
 for one process, and `InMemoryDurableOperationJournal`, the first-party
 `IDurableOperationJournal` for one process. Select them explicitly with
-`AddInMemoryDurableLeaseManager()` and `AddInMemoryDurableOperationJournal()`.
-Repeating either leaf is idempotent; a different registration remains visible so
-composition can reject ambiguity.
+`AddInMemoryDurableLeaseManager(DurableLeaseManagerKey)` and
+`AddInMemoryDurableOperationJournal(DurableJournalKey)`. Both registrations are
+keyed, because a durability profile selects its journal and lease manager by
+exact key and registration order must never choose a persistence target.
+Repeating either leaf under the same key is idempotent; a registration under a
+different key remains visible so composition can reject ambiguity.
 
 This package implements execution leases and journal recording only. The
 checkpoint store, recovery policy, and provider-neutral coordinator described in
@@ -46,28 +49,46 @@ so takeover behavior is deterministic in tests.
 
 ## Durable journal recording
 
-`InMemoryDurableOperationJournal` records acceptance, checkpoints, and terminal
-results per `DurableOperationAddress`, and rejects a write whose fencing token
-is older than the current authoritative one with `DurableRecordFenced`. It
-computes `DurableOperationState` from which method committed most recently —
-`Accepted` after acceptance, `EffectPending` after a checkpoint, and the
-caller-supplied terminal state after a terminal record — and derives
+`InMemoryDurableOperationJournal` records acceptance, checkpoints, waiting, and
+terminal results per `DurableOperationAddress`, and rejects a write whose
+fencing token is older than the current authoritative one with
+`DurableRecordFenced`. It computes `DurableOperationState` from which method
+committed most recently — `Accepted` after acceptance, `EffectPending` after a
+checkpoint, `Waiting` after a waiting record, and the caller-supplied terminal
+state after a terminal record — and derives
 `RecoveryEvidence.StartDefinitelyAbsent` and `SideEffectCertainty` from that
-same computed state. A checkpoint or terminal write against an address with no
-accepted record, or a terminal write after a terminal record already exists
-under a different result, returns `DurableRecordFailed`; a checkpoint after any
-terminal record does too. Repeating an equivalent terminal write is idempotent.
+same computed state. A checkpoint, waiting, or terminal write against an address
+with no accepted record, or a terminal write after a terminal record already
+exists under a different result, returns `DurableRecordFailed`; a checkpoint or
+waiting write after any terminal record does too. Repeating an equivalent
+terminal write is idempotent.
 
-**This journal does not perform grant consumption or audit dispatch.** None of
-`IDurableOperationJournal`'s four methods receives a live `SecurityGrant` or
-`SecurityEnforcementIntent` the way `ISessionStore`'s protected methods do
-through `AuthorizedSessionStoreRequest<TRequest>`; `LoadEvidenceAsync` receives
-only a bare `DurableOperationAddress`, with no authorization evidence at all.
-Implementing the "protected operation" behavior the interface's own remarks
-describe is not possible against its current shape — this is a specification
-gap, not an omission in this adapter. It also cannot record `Waiting` state or
-an `ExternalOperationReference`: no method on the interface accepts either as an
-argument.
+## Protected journal access
+
+Every journal operation is protected. The journal consumes the single-use
+`SecurityGrant` carried by `AuthorizedDurableRequest<TRequest>` through
+`ISecurityGrantStore.ValidateAndConsumeAsync`, verifies the returned
+`SecurityEnforcementIntentReceipt` against the evidence it recomputed itself,
+and completes required audit dispatch before it touches any record. The
+committed `DurableRecorded` carries the resulting
+`DurableJournalEnforcementReceipt`, so a caller can prove which grant, intent,
+and audit record authorized the write.
+
+The journal fails closed. A grant naming a different journal key, an enforcement
+intent whose required fence differs from the presented token, an authorization
+capture that cannot describe the operation address, an unconsumed or exhausted
+grant, missing or unrelated intent evidence, and unavailable or refused audit
+delivery all deny before any record changes. Writes require the caller's current
+fence; an authorized evidence read is unfenced, because a recovering worker must
+be able to learn what happened before it seeks ownership.
+
+Audit records carry only bounded redacted values: the consuming audience, the
+operation kind, the effect, and fingerprints of the request and the protected
+resource. No payload, address text, or credential reaches an audit sink.
+
+Because journal access is protected, the registration does not create the
+security boundaries it depends on. Composition must supply `ISecurityGrantStore`
+and `ISecurityAuditDispatcher` before the journal resolves.
 
 ## Related projects
 

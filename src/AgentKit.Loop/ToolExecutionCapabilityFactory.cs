@@ -11,6 +11,7 @@ internal static class ToolExecutionCapabilityFactory
     /// <param name="services">The compiled run services.</param>
     /// <param name="turnCorrelation">The turn operation correlation.</param>
     /// <param name="runBudget">The run budget when the run declared limits; otherwise null.</param>
+    /// <param name="runBudgetCapability">The run-scoped budget capability when the run is budgeted; otherwise null.</param>
     /// <param name="hooks">Optional hook binding forwarded to the tool executor; null when hooks are inactive.</param>
     /// <returns>The capability passed to <see cref="IToolExecutor.ExecuteAsync"/>.</returns>
     /// <exception cref="ArgumentNullException">A required reference is null.</exception>
@@ -19,6 +20,7 @@ internal static class ToolExecutionCapabilityFactory
         AgentRunServices services,
         InRunOperationCorrelation turnCorrelation,
         RunBudget? runBudget,
+        BudgetExecutionCapability? runBudgetCapability,
         ToolExecutionHookBinding? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -26,15 +28,18 @@ internal static class ToolExecutionCapabilityFactory
 
         var runCoordinator = services.RunCoordinator ?? UnsupportedRunCoordinator.Instance;
         var session = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
-        // The legacy adapter does not reserve through this capability; the loop still counts through
-        // <see cref="RunBudget"/> when present. Bind a shape-valid scope address for the active turn only.
-        _ = runBudget;
-        var budget = new BudgetExecutionCapability(
-            new BudgetProfileKey("tool-batch"),
-            new BudgetProfileVersion(1),
-            request.Identity,
-            turnCorrelation,
-            new ToolBatchBudgetScope(
+        IBudgetScope scope;
+        BudgetProfileKey profileKey;
+        BudgetProfileVersion profileVersion;
+        if (runBudget is not null && runBudgetCapability is not null)
+        {
+            scope = runBudget.GetScopeForToolExecution();
+            profileKey = runBudgetCapability.ProfileKey;
+            profileVersion = runBudgetCapability.ProfileVersion;
+        }
+        else
+        {
+            scope = new ToolBatchBudgetScope(
                 new BudgetScopeId(Guid.Parse("00000000-0000-0000-0000-000000000001")),
                 new BudgetScopeAddress(
                     request.Identity.TenantId,
@@ -42,7 +47,17 @@ internal static class ToolExecutionCapabilityFactory
                     request.AgentId,
                     request.SessionId,
                     request.RunId,
-                    turnCorrelation.OperationId)));
+                    turnCorrelation.OperationId));
+            profileKey = new BudgetProfileKey("tool-batch");
+            profileVersion = new BudgetProfileVersion(1);
+        }
+
+        var budget = new BudgetExecutionCapability(
+            profileKey,
+            profileVersion,
+            request.Identity,
+            turnCorrelation,
+            scope);
 
         return new ToolExecutionCapability(session, budget, hooks);
     }
@@ -62,8 +77,8 @@ internal static class ToolExecutionCapabilityFactory
                     request.Dimension,
                     BudgetLimitKind.Hard,
                     configuredValue: 0,
-                    observedValue: new BudgetQuantity(System.Numerics.BigInteger.Zero, 0),
-                    requestedAmount: new BudgetQuantity(System.Numerics.BigInteger.One, 0),
+                    observedValue: BudgetQuantity.FromDecimal(0),
+                    requestedAmount: BudgetQuantity.FromDecimal(1),
                     request.Unit,
                     "Unbudgeted runs do not reserve tool budget dimensions through this scope.")));
         }

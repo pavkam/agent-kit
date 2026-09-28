@@ -47,6 +47,7 @@ namespace AgentKit.Providers.OpenAICompatible
         public bool PreferStreaming { get; }
         public bool SendDeveloperRoleAsSystem { get; }
         public bool SupportsEmbeddingPurpose { get; }
+        public bool SupportsJsonSchemaResponseFormat { get; init; }
         public bool UseMaxCompletionTokensField { get; }
     }
     public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel

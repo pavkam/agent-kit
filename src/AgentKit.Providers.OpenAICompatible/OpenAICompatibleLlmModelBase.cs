@@ -514,7 +514,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         // The provider's message is untrusted content: it is retained only as bounded diagnostic evidence under a
         // dedicated extension key and never promoted into the safe message.
         return new ProviderFailure(
-            HttpStatusFailureKindMapper.Map(response.StatusCode),
+            OpenAIProviderFailureKindMapper.Map(response.StatusCode, providerCode),
             Descriptor.ProviderId,
             ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,

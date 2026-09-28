@@ -33,6 +33,14 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
     /// <summary>The strategy key this implementation records as provenance.</summary>
     public static readonly CompactionStrategyKey StrategyKey = new("agentkit.extractive.v1");
 
+    /// <inheritdoc/>
+    public CompactionStrategyDescriptor Descriptor { get; } = new(
+        StrategyKey,
+        new CompactionStrategyVersion("1"),
+        CompactionStrategyCapabilities.Extractive,
+        deterministic: true,
+        summaryGeneratorKey: null);
+
     /// <summary>
     /// The marker inserted between the retained head and tail when an extract exceeds
     /// <see cref="CompactionOptions.MaximumCheckpointCharacters"/>.
@@ -63,7 +71,9 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
 
     /// <inheritdoc/>
     public Task<CompactionStrategyResult> ProduceAsync(
-        CompactionStrategyRequest request, CancellationToken cancellationToken = default)
+        CompactionStrategyRequest request,
+        BudgetExecutionCapability? budget,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();

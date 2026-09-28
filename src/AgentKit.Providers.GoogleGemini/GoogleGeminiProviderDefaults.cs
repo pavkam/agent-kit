@@ -94,7 +94,7 @@ public static class GoogleGeminiProviderDefaults
         supportsStreaming: true,
         supportsToolCalls: true,
         supportsParallelToolCalls: true,
-        supportsStructuredOutput: false,
+        supportsStructuredOutput: true,
         supportsReasoning: true,
         supportsVisionInput: false,
         ExtensionData.Empty);

@@ -39,6 +39,22 @@ internal static partial class AgentAdmissionLog
     [LoggerMessage(18006, LogLevel.Error, "Agent {AgentId} session {SessionId}: releasing the admitted lane faulted with {ErrorType}; the lane was not released.")]
     internal static partial void LaneReleaseFaulted(ILogger logger, AgentId agentId, SessionId sessionId, string errorType);
 
+    /// <summary>Logs that an accepted run's admission was journaled as a recoverable operation.</summary>
+    /// <param name="logger">The destination logger.</param>
+    /// <param name="agentId">The agent whose run was admitted.</param>
+    /// <param name="sessionId">The session the run belongs to.</param>
+    /// <param name="runId">The accepted run.</param>
+    [LoggerMessage(18007, LogLevel.Debug, "Agent {AgentId} session {SessionId}: run {RunId} admission was journaled as a recoverable operation.")]
+    internal static partial void RunAdmissionJournaled(ILogger logger, AgentId agentId, SessionId sessionId, RunId runId);
+
+    /// <summary>Logs that an accepted run's admission could not be journaled under its selected profile.</summary>
+    /// <param name="logger">The destination logger.</param>
+    /// <param name="agentId">The agent whose run was admitted.</param>
+    /// <param name="sessionId">The session the run belongs to.</param>
+    /// <param name="reason">The safe reason the selected profile could not be honored.</param>
+    [LoggerMessage(18008, LogLevel.Error, "Agent {AgentId} session {SessionId}: the run's admission was not journaled ({Reason}); the run itself fails on the same selection.")]
+    internal static partial void RunAdmissionNotJournaled(ILogger logger, AgentId agentId, SessionId sessionId, string reason);
+
     /// <summary>Logs that admission rejected identity evidence before any session mutation.</summary>
     /// <param name="logger">The destination logger.</param>
     /// <param name="agentId">The agent whose admission was rejected.</param>

@@ -275,6 +275,22 @@ public sealed class AgentEngineBuilderExtensionsTests
         Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithOutput<string>("{}", maximumRepairAttempts: -1)).ParamName.ShouldBe("maximumRepairAttempts");
 
     [Fact]
+    public async Task WithOutputOfT_WhenModeIsNativeSchema_PublishesNativeSchemaWithoutPromptedInstruction()
+    {
+        await using var engine = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithOutput<int>(/*lang=json,strict*/ """{"type":"object","properties":{"n":{"type":"integer"}}}""", mode: OutputMode.NativeSchema)
+            .Build();
+
+        var definition = (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single().Output.ShouldNotBeNull();
+        definition.Mode.ShouldBe(OutputMode.NativeSchema);
+        (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.Single().Instructions
+            .OfType<SystemMessage>()
+            .ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task WithOutputOfT_WhenBuilt_PublishesTheDefinitionOnTheAgentAndAnInstructionCarryingTheSchema()
     {
         await using var engine = AgentEngine.CreateBuilder()

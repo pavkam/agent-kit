@@ -113,14 +113,14 @@ public sealed partial class JsonBudgetLedger
         {
             if (successful)
             {
-                JsonBudgetLedgerLog.OperationCompleted(
+                BudgetLedgerLog.Completed(
                     _logger, operation, outcome, correlation.TenantId, correlation.PrincipalId, correlation.AgentId,
                     correlation.SessionId, correlation.RunId, correlation.ScopeId, correlation.ReservationId,
                     correlation.OperationId);
             }
             else
             {
-                JsonBudgetLedgerLog.OperationFailed(
+                BudgetLedgerLog.Failed(
                     _logger, operation, outcome, GetBoundedFailureCode(outcome, exception), correlation.TenantId,
                     correlation.PrincipalId, correlation.AgentId, correlation.SessionId, correlation.RunId,
                     correlation.ScopeId, correlation.ReservationId, correlation.OperationId);

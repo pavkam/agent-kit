@@ -237,6 +237,7 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
             provider.GetService<IOutputProcessor>(),
             provider.GetService<ICompactor>(),
             provider.GetService<IBudgetAuthority>(),
+            provider.GetService<IBudgetProfileCatalog>(),
             provider.GetService<ISessionRunCoordinator>(),
             provider.GetService<IInputCoordinator>(),
             provider.GetService<IOutputPublisher>(),

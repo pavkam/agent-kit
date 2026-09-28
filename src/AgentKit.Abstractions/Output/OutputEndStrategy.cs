@@ -8,13 +8,8 @@ namespace AgentKit;
 /// its winning output candidate.
 /// </summary>
 /// <remarks>
-/// This value is carried on every <see cref="OutputDefinition"/> for
-/// forward compatibility with the full tool-scheduling architecture, but is
-/// not yet behaviorally applied by the first-party <c>AgentKit.Output</c>
-/// processor: that processor always evaluates the single terminal
-/// <see cref="ModelResponse"/> it is given rather than scheduling and
-/// racing multiple output-tool candidates, since multi-candidate scheduling
-/// depends on the not-yet-implemented application tool-call scheduler.
+/// When a terminal response mixes synthetic output-tool calls with application function-tool calls, the agent loop
+/// applies this strategy before invoking avoidable side effects.
 /// </remarks>
 public enum OutputEndStrategy
 {

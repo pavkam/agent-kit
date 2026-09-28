@@ -198,6 +198,12 @@ public sealed record OpenAICompatibilityProfile
     /// </summary>
     public bool SupportsEmbeddingPurpose { get; }
 
+    /// <summary>
+    /// Gets whether chat completions accept OpenAI-style <c>response_format</c> JSON schema enforcement.
+    /// </summary>
+    /// <value>Defaults to <see langword="true"/> for profiles that verified native schema support.</value>
+    public bool SupportsJsonSchemaResponseFormat { get; init; } = true;
+
     /// <summary>Gets the maximum UTF-16 character count of one serialized tool-result envelope.</summary>
     /// <value>A positive bound, defaulting to 262,144 characters. Oversized results reject translation before provider I/O.</value>
     /// <remarks>The translator also bounds source text and part count before constructing the envelope. It never silently truncates status or tool content.</remarks>

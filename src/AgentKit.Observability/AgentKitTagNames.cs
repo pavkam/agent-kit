@@ -245,4 +245,17 @@ public static class AgentKitTagNames
     /// <summary>Gets the stable name for the bounded durable-journal write operation dimension.</summary>
     /// <remarks>Values identify package-defined write stages (start, checkpoint, terminal), never operation content.</remarks>
     public const string DurableJournalOperation = "agentkit.durable.journal.operation";
+
+    /// <summary>Gets the stable name for the bounded durable-coordinator stage dimension.</summary>
+    /// <remarks>Values identify package-defined coordinator stages, never operation names, payloads, or identities.</remarks>
+    public const string DurableOperationStage = "agentkit.durable.operation.stage";
+
+    /// <summary>Gets the durable artifact identity attribute for traces and structured logs.</summary>
+    public const string ArtifactId = "agentkit.artifact.id";
+
+    /// <summary>Gets the staged artifact preparation identity attribute for traces and structured logs.</summary>
+    public const string ArtifactPreparationId = "agentkit.artifact.preparation.id";
+
+    /// <summary>Gets the bounded artifact operation attribute.</summary>
+    public const string ArtifactOperation = "agentkit.artifact.operation";
 }

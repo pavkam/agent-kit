@@ -24,7 +24,7 @@ public sealed class CohereProviderDefaultsTests
     {
         CohereProviderDefaults.DefaultCapabilities.SupportsReasoning.ShouldBeTrue();
         CohereProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
-        CohereProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
+        CohereProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeTrue();
         CohereProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
         CohereProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
     }

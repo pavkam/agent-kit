@@ -4,6 +4,7 @@
 namespace AgentKit.Observability;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>Registers the Microsoft logging foundation used by AgentKit instrumentation.</summary>
 public static class ServiceExtensions
@@ -21,6 +22,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddLogging();
+            services.TryAddSingleton<IObservationRedactor, OmissionOnlyObservationRedactor>();
             return services;
         }
     }

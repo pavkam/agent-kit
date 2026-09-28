@@ -29,9 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record RecoverableOperationDescriptor
 {
-    private readonly OperationPayload _input;
-    private readonly ExtensionData _extensions;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="RecoverableOperationDescriptor"/> record.
@@ -155,7 +152,7 @@ public sealed record RecoverableOperationDescriptor
         Name = name;
         Version = version;
         IdempotencyKey = idempotencyKey;
-        _input = input;
+        Input = input;
         RetryOwner = retryOwner;
         TimeoutOwner = timeoutOwner;
         Cancellation = cancellation;
@@ -163,7 +160,7 @@ public sealed record RecoverableOperationDescriptor
         Idempotency = idempotency;
         Deadline = deadline;
         CausalParentId = causalParentId;
-        _extensions = extensions ?? ExtensionData.Empty;
+        Extensions = extensions ?? ExtensionData.Empty;
     }
 
     /// <summary>Gets the exact immutable binding for this durable record.</summary>
@@ -223,11 +220,11 @@ public sealed record RecoverableOperationDescriptor
     /// </exception>
     public OperationPayload Input
     {
-        get => _input;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Input));
-            _input = value;
+            field = value;
         }
     }
 
@@ -342,11 +339,11 @@ public sealed record RecoverableOperationDescriptor
     /// </exception>
     public ExtensionData Extensions
     {
-        get => _extensions;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Extensions));
-            _extensions = value;
+            field = value;
         }
     }
 

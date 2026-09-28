@@ -61,6 +61,7 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
         }
 
         var generationConfig = TranslateGenerationConfig(context.Settings);
+        ApplyNativeSchemaGenerationConfig(generationConfig, context);
         if (generationConfig.Count > 0)
         {
             body["generationConfig"] = generationConfig;
@@ -113,6 +114,18 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
         }
 
         return generationConfig;
+    }
+
+    private static void ApplyNativeSchemaGenerationConfig(JsonObject generationConfig, LlmRequestContext context)
+    {
+        var output = context.Output;
+        if (output is not { Mode: OutputMode.NativeSchema, Schema: { } schema })
+        {
+            return;
+        }
+
+        generationConfig["responseMimeType"] = "application/json";
+        generationConfig["responseSchema"] = JsonNode.Parse(schema.Schema.GetRawText());
     }
 
     private static JsonArray TranslateMessages(

@@ -114,11 +114,17 @@ public sealed class DefaultCompactionValidator: ICompactionValidator
                 []));
         }
 
-        CompactionValidationResult result = issues.Count > 0
-            ? new CompactionValidationRejected([.. issues])
-            : new CompactionValidated(request.Candidate);
+        if (issues.Count > 0)
+        {
+            return ValueTask.FromResult<CompactionValidationResult>(new CompactionValidationRejected([.. issues]));
+        }
 
-        return ValueTask.FromResult(result);
+        var stamp = new CompactionValidationStamp(
+            new CompactionValidatorVersion("1"),
+            new ContentHash($"candidate:{request.Candidate.Manifest.Id}"),
+            DateTimeOffset.UtcNow);
+        return ValueTask.FromResult<CompactionValidationResult>(
+            new CompactionValidated(new ValidatedCompaction(request.Candidate, stamp, [])));
     }
 
     /// <summary>

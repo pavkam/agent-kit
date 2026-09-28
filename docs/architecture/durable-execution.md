@@ -14,13 +14,19 @@ AgentKit.Durability.BackendName, such as a future Temporal or Restate package.
 They register durable operation ownership without changing AgentEngine or the
 loop contract.
 
-Storage adaptation and workflow ownership remain distinct. A
-`AgentKit.Durability.Sqlite` leaf may implement a durable local journal,
-checkpoint store, and only those lease semantics SQLite can prove; it is not a
-workflow engine or distributed owner. An `AgentKit.Durability.InMemory` journal
-is useful for conformance and explicitly ephemeral execution but cannot satisfy
-a crash-recovery profile. Both leaves run the same journal contract suite, and
-the host selects their key and persistence target explicitly.
+Storage adaptation and workflow ownership remain distinct. The
+`AgentKit.Durability.Sqlite` leaf implements a durable local journal and only
+those lease semantics SQLite can prove; it is not a workflow engine or
+distributed owner. Its journal and lease manager share one host-supplied
+database, which is what makes a fencing generation allocated by the lease
+manager actually fence a journal write. The `AgentKit.Durability.Json` leaf
+implements the same journal contract over a flushed append-only record log for
+durable inspectable local files; it holds an advisory exclusive lock, rejects a
+second writer, and therefore ships no lease manager. An
+`AgentKit.Durability.InMemory` journal is useful for conformance and explicitly
+ephemeral execution but cannot satisfy a crash-recovery profile. Every leaf runs
+the same journal contract suite, and the host selects their key and persistence
+target explicitly.
 
 The optional provider-neutral coordinator lives in AgentKit.Durability.
 `AgentEngine` remains one process-level host for many agents; durability
@@ -115,6 +121,8 @@ public sealed record RecoveryEvidence(
     bool StartDefinitelyAbsent,
     bool TerminalResultRecorded,
     SideEffectCertainty SideEffectCertainty,
+    DurableOperationResult? RecordedResult,
+    DateTimeOffset? NotBefore,
     IdempotencyKey? ExternalIdempotencyKey,
     ExternalOperationReference? ExternalReference,
     DurableCheckpoint? LatestCheckpoint,
@@ -592,6 +600,13 @@ checkpoint or terminal record.
 Model requests, tool calls, compaction, approval waits, and selected hooks may
 become durable operations. Pure deterministic preparation normally replays from
 captured manifests rather than serializing the runtime object graph.
+
+The first-party loop journals two of these: `agentkit.loop.model_request` for a
+turn's single model attempt and `agentkit.loop.tool_call` for each requested
+call. A boundary is journaled only when the selected profile enables its name,
+so durability is additive and never changes what the loop computes. Their
+payloads are manifests of identities and counts, because prompts, tool
+arguments, and results are content and never enter a durable record.
 
 Useful checkpoints occur after admission and promotion, context manifest
 creation, provider terminal validation, tool-call recording, every terminal tool

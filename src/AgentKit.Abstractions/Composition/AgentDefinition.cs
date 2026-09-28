@@ -282,6 +282,13 @@ public sealed record AgentDefinition
         }
     } = [];
 
+    /// <summary>Gets the named budget profile selected for every run of this definition.</summary>
+    /// <value>
+    /// A profile key resolved through <see cref="IBudgetProfileCatalog"/> at run scope creation, or
+    /// <see langword="null"/> when the definition relies on inline <see cref="BudgetLimits"/> only.
+    /// </value>
+    public BudgetProfileKey? BudgetProfile { get; init; }
+
     /// <summary>Gets the human-readable name used in diagnostics.</summary>
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set null, empty, or whitespace-only text.
@@ -441,6 +448,7 @@ public sealed record AgentDefinition
         && OutputPublisherKey.Equals(other.OutputPublisherKey)
         && Equals(Output, other.Output)
         && BudgetLimits.SequenceEqual(other.BudgetLimits)
+        && Nullable.Equals(BudgetProfile, other.BudgetProfile)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -475,6 +483,7 @@ public sealed record AgentDefinition
             hash.Add(limit);
         }
 
+        hash.Add(BudgetProfile);
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);

@@ -36,6 +36,7 @@ internal sealed class DefaultOutputPublisher: ISubscribableOutputPublisher
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Type? _outputType;
     private object? _finalResult;
+    private AgentError? _requiredSinkFailure;
 
     /// <summary>Initializes the publisher over its run-scoped hub and the composition's registered sinks.</summary>
     /// <param name="sinks">Every sink registered for this run's composition, in registration order.</param>
@@ -68,6 +69,11 @@ internal sealed class DefaultOutputPublisher: ISubscribableOutputPublisher
         _backpressurePollInterval = effectivePollInterval;
         _logger = logger;
     }
+
+    /// <inheritdoc/>
+    public RunSettlementOutcome SettlementOutcome => _requiredSinkFailure is { } failure
+        ? new RunSettlementRecoveryRequired(failure)
+        : new RunSettlementCompleted();
 
     /// <inheritdoc/>
     public async ValueTask PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default)
@@ -182,7 +188,17 @@ internal sealed class DefaultOutputPublisher: ISubscribableOutputPublisher
         catch (Exception exception)
         {
             IOLog.RequiredRunEventSinkFaulted(_logger, sinkName, ErrorType(exception));
-            throw;
+            _requiredSinkFailure ??= new AgentError(
+                AgentErrorCodes.StoreUnavailable,
+                $"Required run-event sink '{sinkName}' failed before the run could settle cleanly.",
+                isRetryable: true,
+                SideEffectCertainty.Unknown,
+                new ErrorOrigin("AgentKit.IO.DefaultOutputPublisher"),
+                ErrorType(exception),
+                operationId: null,
+                externalRequestId: null,
+                retryAfter: null,
+                ExtensionData.Empty);
         }
     }
 

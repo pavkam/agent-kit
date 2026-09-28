@@ -1,0 +1,57 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Durability.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Durability.Json
+{
+    public sealed class JsonDurableOperationJournal : AgentKit.IDurableOperationJournal, System.IDisposable
+    {
+        public JsonDurableOperationJournal(AgentKit.DurableJournalKey key, AgentKit.Durability.Json.JsonDurableStoreTarget target, AgentKit.Durability.Json.JsonDurableStoreSettings settings, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.Json.JsonDurableOperationJournal>? logger = null) { }
+        public AgentKit.DurableJournalKey Key { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationAddress> address, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableCheckpoint> checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationStart> start, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationResult> result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordWaitingAsync(AgentKit.AuthorizedDurableRequest<AgentKit.DurableOperationWaiting> waiting, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonDurableStoreInstanceId : System.IEquatable<AgentKit.Durability.Json.JsonDurableStoreInstanceId>
+    {
+        public JsonDurableStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonDurableStoreOptions
+    {
+        public JsonDurableStoreOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; set; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonDurableStoreSettings : System.IEquatable<AgentKit.Durability.Json.JsonDurableStoreSettings>
+    {
+        public JsonDurableStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Durability.Json.JsonDurableStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonDurableStoreTarget : System.IEquatable<AgentKit.Durability.Json.JsonDurableStoreTarget>
+    {
+        public JsonDurableStoreTarget(string directoryPath, AgentKit.Durability.Json.JsonDurableStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Durability.Json.JsonDurableStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonDurableOperationJournal(AgentKit.DurableJournalKey key, AgentKit.Durability.Json.JsonDurableStoreTarget target, System.Action<AgentKit.Durability.Json.JsonDurableStoreOptions>? configure = null) { }
+        }
+    }
+}

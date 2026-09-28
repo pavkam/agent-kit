@@ -36,6 +36,14 @@ namespace AgentKit;
 /// </remarks>
 public interface IDurableOperationJournal
 {
+    /// <summary>Gets the component identity that enforces and performs this journal's protected writes.</summary>
+    /// <value>
+    /// The stable audience a caller must name when it authorizes a journal write, and the same audience the
+    /// implementation revalidates before consuming the supplied grant. It identifies the enforcing component only and
+    /// grants no authority of its own.
+    /// </value>
+    public ComponentId SecurityAudience { get; }
+
     /// <summary>
     /// Commits the acceptance record for an operation before any effect
     /// occurs.
@@ -59,7 +67,7 @@ public interface IDurableOperationJournal
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     public ValueTask<DurableRecordResult> RecordStartAsync(
-        DurableOperationStart start,
+        AuthorizedDurableRequest<DurableOperationStart> start,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -80,7 +88,7 @@ public interface IDurableOperationJournal
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     public ValueTask<DurableRecordResult> RecordCheckpointAsync(
-        DurableCheckpoint checkpoint,
+        AuthorizedDurableRequest<DurableCheckpoint> checkpoint,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -108,7 +116,28 @@ public interface IDurableOperationJournal
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     public ValueTask<DurableRecordResult> RecordTerminalAsync(
-        DurableOperationResult result,
+        AuthorizedDurableRequest<DurableOperationResult> result,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Commits that an operation is waiting on an external owner, approval, or
+    /// deferred not-before instant.
+    /// </summary>
+    /// <param name="waiting">The complete waiting record and authorization evidence.</param>
+    /// <param name="cancellationToken">A token that cancels the write.</param>
+    /// <returns>
+    /// <see cref="DurableRecorded"/> when the waiting state is durable,
+    /// <see cref="DurableRecordFenced"/> when the caller has lost ownership,
+    /// or <see cref="DurableRecordFailed"/> when the store could not commit.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="waiting"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was signalled.
+    /// </exception>
+    public ValueTask<DurableRecordResult> RecordWaitingAsync(
+        AuthorizedDurableRequest<DurableOperationWaiting> waiting,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -135,6 +164,6 @@ public interface IDurableOperationJournal
     /// <paramref name="cancellationToken"/> was signalled.
     /// </exception>
     public ValueTask<RecoveryEvidenceResult> LoadEvidenceAsync(
-        DurableOperationAddress address,
+        AuthorizedDurableRequest<DurableOperationAddress> address,
         CancellationToken cancellationToken = default);
 }

@@ -107,6 +107,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly int _maximumPromotionsPerBoundary;
     private readonly IIdentifierGenerator<CompactionId> _compactionIds;
     private readonly IIdentifierGenerator<UsageEntryId> _usageEntryIds;
+    private readonly IDurableExecutionCoordinator? _durableExecution;
+    private readonly IDurabilityProfileCatalog? _durabilityProfiles;
+    private readonly DurableBoundaryRegistry _durableInvocations;
+
+    /// <summary>The window added to the clock for each journaled boundary's declared deadline.</summary>
+    /// <remarks>
+    /// A recoverable declaration must carry a deadline, and the loop's own per-attempt bound governs a live attempt.
+    /// This window only bounds how long a recovered owner may still consider the declaration current; it is generous
+    /// because expiring a declaration early would turn a slow but live operation into recoverable work.
+    /// </remarks>
+    private static readonly TimeSpan _durableOperationTimeout = TimeSpan.FromHours(1);
 
     /// <summary>
     /// The first backoff before a required terminal commit that the store reported as failed is retried under its
@@ -168,6 +179,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="hookDispatchIds">The generator for hook dispatch identities, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="compactionIds">The generator for compaction identities the pressure trigger allocates, or <see langword="null"/> for a GUID generator.</param>
     /// <param name="usageEntryIds">The generator for usage-accounting entry identities, or <see langword="null"/> for a GUID generator.</param>
+    /// <param name="durableInvocations">
+    /// The engine-wide registry this loop publishes a journaled boundary's live continuation into, or
+    /// <see langword="null"/> for a private registry. A private registry is correct only when no durable operation
+    /// handler is composed, because the coordinator resolves continuations through the registered instance.
+    /// </param>
+    /// <param name="durableExecution">
+    /// The composed durability coordinator, or <see langword="null"/> when durability is not composed; a run whose
+    /// definition selects a durability profile then fails closed instead of running undurably.
+    /// </param>
+    /// <param name="durabilityProfiles">
+    /// The composed durability profile catalog, or <see langword="null"/> when durability is not composed.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
@@ -196,7 +219,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IHookProfileSelector? hookProfileSelector = null,
         IIdentifierGenerator<HookDispatchId>? hookDispatchIds = null,
         IIdentifierGenerator<CompactionId>? compactionIds = null,
-        IIdentifierGenerator<UsageEntryId>? usageEntryIds = null)
+        IIdentifierGenerator<UsageEntryId>? usageEntryIds = null,
+        DurableBoundaryRegistry? durableInvocations = null,
+        IDurableExecutionCoordinator? durableExecution = null,
+        IDurabilityProfileCatalog? durabilityProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
@@ -235,6 +261,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _maximumPromotionsPerBoundary = loopOptions.MaximumPromotionsPerBoundary;
         _compactionIds = compactionIds ?? new GuidIdentifierGenerator<CompactionId>(static value => new CompactionId(value));
         _usageEntryIds = usageEntryIds ?? new GuidIdentifierGenerator<UsageEntryId>(static value => new UsageEntryId(value));
+        _durableInvocations = durableInvocations ?? new DurableBoundaryRegistry();
+        _durableExecution = durableExecution;
+        _durabilityProfiles = durabilityProfiles;
         _hookDispatcher = hookDispatcher;
         _hookCatalog = hookCatalog;
         _hookInstanceFactory = hookInstanceFactory;
@@ -330,9 +359,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request.LaneAdmission?.OperationStateRevision ?? new OperationStateRevision(1),
             request.RunId);
 
+        var tracking = new RunTracking();
         try
         {
-            var result = await RunCoreAsync(request, services, operationId, activity, laneState, cancellationToken).ConfigureAwait(false);
+            var result = await RunCoreAsync(request, services, operationId, activity, laneState, tracking, cancellationToken)
+                .ConfigureAwait(false);
+            await FinalizeRunSettlementAsync(request, services, tracking, result, cancellationToken).ConfigureAwait(false);
             if (request.LaneAdmission is { } admission && result.FinalVersion is { } finalVersion)
             {
                 await ReleaseLaneAsync(request, services, admission, laneState, finalVersion).ConfigureAwait(false);
@@ -367,6 +399,87 @@ public sealed class DefaultAgentLoop: IAgentLoop
             RecordRunMetrics("faulted", startedTimestamp);
             LoopLog.RunFaulted(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
             throw;
+        }
+    }
+
+    /// <summary>Journals the run's settlement as a recoverable operation when the run's profile enables it.</summary>
+    /// <param name="request">The settled run, supplying the durable address's agent, session, and run identities.</param>
+    /// <param name="services">The compiled per-run collaborator bundle used to capture the boundary's authorization.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope, when this run has one.</param>
+    /// <param name="result">The run's already-determined result, whose outcome kind and message count are journaled.</param>
+    /// <param name="cancellationToken">Cancels local awaiting of the durable write.</param>
+    /// <remarks>
+    /// <para>
+    /// This is evidence, not a decision: the settlement boundary runs after the outcome exists and cannot change
+    /// it. A profile that cannot be honored here is therefore logged and the settled result returned unchanged,
+    /// unlike an enabled boundary that wraps work still to be performed. Turning a completed run into a thrown
+    /// exception would discard the committed messages the caller must still receive.
+    /// </para>
+    /// <para>
+    /// Only the outcome's kind and the committed message count are recorded. The messages are already durable
+    /// session truth, and their content never enters the journal.
+    /// </para>
+    /// </remarks>
+    private async Task FinalizeRunSettlementAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        RunTracking tracking,
+        AgentLoopResult result,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required to journal its settlement.");
+        Debug.Assert(result is not null, "A settled run always has a result.");
+        if (tracking.Durability is not { } durability || !durability.Enables(IoDurableOperations.RunSettlement))
+        {
+            return;
+        }
+
+        var outcome = result.Outcome.GetType().Name;
+        try
+        {
+            var (authorization, _) = await CaptureAuthorizationAsync(
+                request,
+                services,
+                new InRunOperationCorrelation(_operationIds.Create(), request.RunId, turnId: null),
+                cancellationToken).ConfigureAwait(false);
+            if (authorization is null)
+            {
+                LoopLog.RunSettlementNotJournaled(_logger, request.RunId, "authorization_unavailable");
+                return;
+            }
+
+            if (!durability.Journals(IoDurableOperations.RunSettlement, authorization))
+            {
+                LoopLog.RunSettlementNotJournaled(_logger, request.RunId, "unaddressable_authorization");
+                return;
+            }
+
+            var manifest = new DurableRunSettlementManifest(
+                request.RunId.Value, result.NewMessages.Length, outcome);
+            _ = await durability.ExecuteAsync(
+                IoDurableOperations.RunSettlement,
+                IoDurableOperations.RunSettlementVersion,
+                authorization,
+                DurableBoundaryPayload.Encode(manifest),
+                SecurityEffect.Append,
+                hooks: null,
+                async (context, token) =>
+                {
+                    _ = await context.Checkpoints.RecordCheckpointAsync(
+                        DurableCheckpointKind.RunSettled, context.Operation.Input, token).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+            LoopLog.RunSettlementJournaled(_logger, request.RunId, outcome, result.NewMessages.Length);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LoopLog.RunSettlementNotJournaled(
+                _logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
         }
     }
 
@@ -436,6 +549,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// host-owned parent when the loop's activity was not sampled.
     /// </param>
     /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
+    /// <param name="tracking">
+    /// The caller-owned run-scoped bundle this method populates. It is created by the caller so the durable scope
+    /// this method resolves remains reachable for the settlement boundary, which runs after the core returns.
+    /// </param>
     /// <param name="cancellationToken">The caller's cancellation.</param>
     /// <returns>The complete result of the run.</returns>
     private async Task<AgentLoopResult> RunCoreAsync(
@@ -444,6 +561,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         OperationId operationId,
         Activity? runActivity,
         LoopLaneState laneState,
+        RunTracking tracking,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated run request is required by the loop core.");
@@ -454,7 +572,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         if (runAuthorization is null)
         {
             // Nothing has been observed or committed: no branch version exists to report truthfully.
-            return BuildResult(request, runCaptureFailure!, [], finalVersion: null, laneState.Usage);
+            return BuildResult(request, runCaptureFailure!, [], finalVersion: null, laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
         var sessionContext = new SessionOperationContext(
@@ -474,7 +592,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 RunOutcomes.SessionOperationFailed("The run's eligible session history could not be loaded."),
                 [],
                 finalVersion: null,
-                laneState.Usage);
+                laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
         var initialCursor = loaded.Cursor;
@@ -504,10 +622,35 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ConfigureAwait(false);
         if (recoveryFailure is not null)
         {
-            return BuildResult(request, recoveryFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage);
+            return BuildResult(request, recoveryFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
         currentVersion = history.SourceCursor.Version;
+
+        var contextEpoch = ResolveContextEpoch(request);
+        if (services.Compactor is { } epochCompactor
+            && loaded.Checkpoint is { Record.Manifest.ContextEpoch: var checkpointEpoch }
+            && checkpointEpoch != contextEpoch)
+        {
+            var epochReload = await ApplyCompactionAndReloadHistoryAsync(
+                request,
+                services,
+                epochCompactor,
+                sessionContext,
+                runCorrelation,
+                runAuthorization,
+                history,
+                runCorrelation.OperationId,
+                CompactionTriggerKind.InstructionEpochChanged,
+                contextEpoch,
+                $"Instruction epoch changed from {checkpointEpoch.Value} to {contextEpoch.Value}.",
+                cancellationToken).ConfigureAwait(false);
+            if (epochReload is not null)
+            {
+                history = epochReload;
+                currentVersion = history.SourceCursor.Version;
+            }
+        }
 
         if (request.LaneAdmission is { } admissionBeforeFirstRequest
             && await IsDurableAbortRequestedAsync(
@@ -518,12 +661,33 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 RunOutcomes.Cancelled("The run was durably aborted before its first model request."),
                 committedMessages.ToImmutable(),
                 currentVersion,
-                laneState.Usage);
+                laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
+        // The durable scope is resolved before the run's first safe input boundary, because promotion is itself one
+        // of the boundaries a profile may enable. Resolving it later would leave exactly the first promotion of
+        // every durable run unjournaled.
+        if (DurableBoundaryScope.TryCreate(
+                request.Agent?.OptionalCapabilities.DurabilityProfile,
+                _durableExecution,
+                _durabilityProfiles,
+                _durableInvocations,
+                _timeProvider,
+                _durableOperationTimeout,
+                out var durability) is { } durabilityFailure)
+        {
+            return BuildResult(
+                request,
+                RunOutcomes.InvalidState(durabilityFailure),
+                committedMessages.ToImmutable(),
+                currentVersion,
+                laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
+        }
+
+        tracking.Durability = durability;
         var beforeFirstModelRequest = request.LaneAdmission is { } admissionForPromotion
             ? await TryPromoteInputAsync(
-                request, services, laneState, PromotionBoundary.BeforeFirstModelRequest, previousTurnId: null,
+                request, services, tracking, laneState, PromotionBoundary.BeforeFirstModelRequest, previousTurnId: null,
                 admissionForPromotion.AcceptedCorrelation.TurnId!.Value, history.SourceCursor, lastEntryId: null,
                 cancellationToken)
                 .ConfigureAwait(false)
@@ -544,7 +708,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (modelResolution.Outcome is { } selectionFailure)
         {
-            return BuildResult(request, selectionFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage);
+            return BuildResult(request, selectionFailure, committedMessages.ToImmutable(), currentVersion, laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
         var model = modelResolution.Model!;
@@ -552,7 +716,6 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
-        var tracking = new RunTracking();
         var (catalogLease, catalogFailure) = await OpenRunToolCatalogAsync(
             request, services, runAuthorization, model, cancellationToken).ConfigureAwait(false);
         if (catalogFailure is not null)
@@ -562,7 +725,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 catalogFailure,
                 committedMessages.ToImmutable(),
                 currentVersion,
-                laneState.Usage);
+                laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
         }
 
         await using (catalogLease)
@@ -578,11 +741,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     hookProfileFailure,
                     committedMessages.ToImmutable(),
                     currentVersion,
-                    laneState.Usage);
+                    laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
             }
 
             await using var hookScope = hookScopeLease;
-            if (!request.BudgetLimits.IsEmpty)
+            if (HasRunBudget(request))
             {
                 if (services.Budgets is not { } budgets)
                 {
@@ -592,17 +755,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         RunOutcomes.InvalidState("The run declares budget limits but the composition provides no budget authority."),
                         committedMessages.ToImmutable(),
                         currentVersion,
-                        laneState.Usage);
+                        laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
                 }
 
-                var scopeResult = await budgets.CreateChildScopeAsync(
-                    new BudgetScopeRequest(
-                        parentScopeId: null,
-                        new BudgetScopeAddress(
-                            request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, null),
-                        request.BudgetLimits,
-                        new IdempotencyKey($"run:{request.RunId}:budget")),
-                    cancellationToken).ConfigureAwait(false);
+                var address = new BudgetScopeAddress(
+                    request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, operationId);
+                var scopeRequest = request.BudgetProfile is { Value.Length: > 0 } profileKey
+                    ? new BudgetScopeRequest(null, address, profileKey, request.BudgetLimits, new IdempotencyKey($"run:{request.RunId}:budget"))
+                    : new BudgetScopeRequest(null, address, request.BudgetLimits, new IdempotencyKey($"run:{request.RunId}:budget"));
+                var scopeResult = await budgets.CreateChildScopeAsync(scopeRequest, cancellationToken).ConfigureAwait(false);
                 if (scopeResult is not BudgetScopeCreated created)
                 {
                     LoopLog.BudgetScopeNotCreated(_logger, request.RunId, scopeResult.GetType().Name);
@@ -611,10 +772,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         RunOutcomes.InvalidState("The run's budget scope could not be created."),
                         committedMessages.ToImmutable(),
                         currentVersion,
-                        laneState.Usage);
+                        laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
                 }
 
+                var capabilityProfileKey = request.BudgetProfile ?? new BudgetProfileKey("inline");
+                var capabilityProfileVersion = ResolveBudgetProfileVersion(services, capabilityProfileKey);
                 tracking.Budget = new RunBudget(created.Scope, request.RunId, _timeProvider);
+                tracking.ExecutionCapability = new BudgetExecutionCapability(
+                    capabilityProfileKey,
+                    capabilityProfileVersion,
+                    request.Identity,
+                    runCorrelation,
+                    created.Scope);
                 _ = runActivity?.SetTag(AgentKitTagNames.BudgetScopeId, created.Scope.Id.ToString());
             }
 
@@ -647,7 +816,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     LoopLog.BudgetExhausted(_logger, request.RunId, turnExhausted.Dimension);
                     return BuildResult(
                         request, RunOutcomes.BudgetExhausted(turnExhausted, hasPartialOutput: committedMessages.Count > 0),
-                        committedMessages.ToImmutable(), currentVersion, laneState.Usage);
+                        committedMessages.ToImmutable(), currentVersion, laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
                 }
 
                 if (!compactionAttempted && services.Compactor is { } compactor && model.Limits.MaxContextTokens is { } contextWindow)
@@ -696,12 +865,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         RunOutcomes.Cancelled("The run was cancelled after at least one message had been committed."),
                         committedMessages.ToImmutable(),
                         currentVersion,
-                        laneState.Usage);
+                        laneState.Usage, settlement: services.Publisher?.SettlementOutcome);
                 }
 
                 if (result.Outcome is not null)
                 {
-                    return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, laneState.Usage, result.Output);
+                    return BuildResult(request, result.Outcome, committedMessages.ToImmutable(), result.Version, laneState.Usage, result.Output, settlement: services.Publisher?.SettlementOutcome);
                 }
 
                 currentVersion = result.Version;
@@ -745,11 +914,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // The selection is correlated to a real attempt: its identity becomes the first turn's model request
         // identity rather than a throwaway value that never matches any attempt.
         var firstModelRequestId = _modelRequestIds.Create();
+        var modelRequirements = request.Agent?.ModelRequirements ?? request.ModelRequirements;
+        if (request.Output?.Mode is OutputMode.NativeSchema)
+        {
+            modelRequirements = modelRequirements with { RequiresStructuredOutput = true };
+        }
+
         var selectionRequest = new ModelSelectionRequest(
             scope,
             firstModelRequestId,
             request.Agent?.Models ?? request.ModelPolicy,
-            request.Agent?.ModelRequirements ?? request.ModelRequirements,
+            modelRequirements,
             catalog);
 
         var selection = await services.ModelSelector
@@ -831,6 +1006,74 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         return settings;
+    }
+
+    /// <summary>Runs one turn's model attempt, journaling it first when the run's profile enables model requests.</summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope, when this run has one.</param>
+    /// <param name="turnId">The turn whose single attempt this is.</param>
+    /// <param name="modelRequestId">The identity the attempt was prepared under.</param>
+    /// <param name="modelAlias">The alias the selection resolved to.</param>
+    /// <param name="messageCount">How many messages the assembled request carried.</param>
+    /// <param name="attempt">The attempt the loop runs either way.</param>
+    /// <param name="cancellationToken">Cancels the attempt.</param>
+    /// <returns>Exactly the attempt's own result.</returns>
+    /// <remarks>
+    /// The journaled operation runs under its own captured authorization, because a durable write is a protected
+    /// effect addressed to this operation rather than to the turn that contains it. A capture failure settles the run
+    /// instead of proceeding unjournaled: the definition promised evidence would exist. No hook dispatch context is
+    /// handed to the coordinator, because the durability hook boundary is not defined yet and fabricating a context
+    /// would let a hook observe a stage that has no published identity.
+    /// </remarks>
+    private async ValueTask<TurnModelExecutionResult> RunModelAttemptAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        RunTracking tracking,
+        TurnId turnId,
+        ModelRequestId modelRequestId,
+        ModelAlias modelAlias,
+        int messageCount,
+        Func<CancellationToken, ValueTask<TurnModelExecutionResult>> attempt,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(attempt is not null, "A model attempt body is required.");
+        if (tracking.Durability is not { } durability || !durability.Enables(LoopDurableOperations.ModelRequest))
+        {
+            return await attempt(cancellationToken).ConfigureAwait(false);
+        }
+
+        var operationId = _operationIds.Create();
+        var (authorization, captureFailure) = await CaptureAuthorizationAsync(
+            request,
+            services,
+            new InRunOperationCorrelation(operationId, request.RunId, turnId),
+            cancellationToken).ConfigureAwait(false);
+        if (authorization is null)
+        {
+            Debug.Assert(captureFailure is not null, "A failed capture always reports a typed outcome.");
+            throw new InvalidOperationException(
+                "The durable model-request operation could not capture its own authorization.");
+        }
+
+        return await durability.ExecuteAsync(
+            LoopDurableOperations.ModelRequest,
+            LoopDurableOperations.ModelRequestVersion,
+            authorization,
+            DurableBoundaryPayload.Encode(new DurableModelRequestState(
+                turnId.Value, modelRequestId.Value, modelAlias.Value, messageCount)),
+            SecurityEffect.Execute,
+            hooks: null,
+            async (context, token) =>
+            {
+                // The manifest that fixed this attempt's versioned inputs is already committed as the start
+                // record, so the checkpoint marks the boundary recovery dispatches from rather than restating it.
+                _ = await context.Checkpoints.RecordCheckpointAsync(
+                    DurableCheckpointKind.ContextManifestCreated, context.Operation.Input, token)
+                    .ConfigureAwait(false);
+                return await attempt(token).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<TurnModelExecutionResult> ExecuteTurnModelAsync(
@@ -1059,6 +1302,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request.Identity,
             turnAuthorization);
         var modelRequestId = reservedModelRequestId ?? _modelRequestIds.Create();
+        var providerOverflowRetried = false;
+        var turnHistory = history;
         using var turnActivity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.AgentTurn,
             ActivityKind.Internal,
@@ -1084,179 +1329,228 @@ public sealed class DefaultAgentLoop: IAgentLoop
             LoopLog.FinalTurnToolsDisabled(_logger, request.RunId, turnId, request.MaxTurns);
         }
 
-        var assembleRequest = request is { Agent: { } agent, Configuration: { } configuration }
-            ? new ContextAssemblyRequest(
-                request.AgentId,
-                request.SessionId,
-                request.BranchId,
-                request.RunId,
-                turnId,
-                modelRequestId,
-                model,
-                agent.Instructions,
-                new ContextAssemblyEvidence(agent, request.Identity, history, turnAuthorization, configuration),
-                finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
-                finalTurnWithoutTools ? LlmToolChoice.None : _defaultToolChoice,
-                ApplySelectionAdjustments(agent.Settings, selectionAdjustments),
-                ExtensionData.Empty)
-            : new ContextAssemblyRequest(
-                request.AgentId,
-                request.SessionId,
-                request.BranchId,
-                request.RunId,
-                turnId,
-                modelRequestId,
-                model,
-                request.Instructions,
-                history.Messages,
-                finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
-                finalTurnWithoutTools ? LlmToolChoice.None : request.ToolChoice,
-                ApplySelectionAdjustments(request.Settings, selectionAdjustments),
-                ExtensionData.Empty);
-
-        var assembleResult = await services.Context.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
-
-        if (assembleResult is ContextPreparationFailed prepFailed)
-        {
-            turnActivity.SetFailed("context_preparation_failed", prepFailed.Failure.Kind.ToString());
-            LoopLog.TurnFailed(_logger, request.RunId, turnId, "context_preparation_failed");
-            return TurnOutcome.Settled(RunOutcomes.ContextPreparationFailed(prepFailed.Failure), currentVersion);
-        }
-
-        var contextReady = (ContextReady) assembleResult;
-        var context = contextReady.Context;
-        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.ContextAssembled))
-        {
-            var contextAssembledDispatch = CreateHookDispatch(AgentHookPoints.ContextAssembled, turnCorrelation);
-            var contextAssembledArgs = new ContextAssembledEventArgs(
-                contextAssembledDispatch,
-                request.AgentId,
-                request.SessionId,
-                turn,
-                context,
-                contextReady.Repairs);
-            try
-            {
-                var hookContext = hookScope.CreateDispatch(contextAssembledDispatch);
-                await _hookDispatcher!.DispatchAsync(
-                    AgentHookPointDefinitions.ContextAssembled,
-                    hookContext,
-                    contextAssembledArgs,
-                    HookFailureMode.IsolateAndDiagnose,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.ContextAssembled, exception.GetType().FullName ?? exception.GetType().Name);
-            }
-        }
-
-        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeModelRequest))
-        {
-            var beforeModelDispatch = CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation);
-            var hookArgs = new BeforeModelRequestEventArgs(
-                beforeModelDispatch, request.AgentId, request.SessionId, turn, context);
-            try
-            {
-                var hookContext = hookScope.CreateDispatch(beforeModelDispatch);
-                await _hookDispatcher!.DispatchAsync(
-                    AgentHookPointDefinitions.BeforeModelRequest,
-                    hookContext,
-                    hookArgs,
-                    HookFailureMode.FailOperation,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.BeforeModelRequest, exception.GetType().FullName ?? exception.GetType().Name);
-                turnActivity.SetFailed("hook_failed", exception.GetType().Name);
-                return TurnOutcome.Settled(
-                    RunOutcomes.InvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
-            }
-
-            if (hookArgs.SettingsChanged)
-            {
-                context = context with { Settings = hookArgs.Settings };
-            }
-        }
-
-        if (tracking.Budget is { } requestBudget
-            && await requestBudget.CountAsync(BudgetDimensions.ModelRequests, turnCorrelation.OperationId, $"turn:{turnId}:request", cancellationToken).ConfigureAwait(false) is { } requestExhausted)
-        {
-            LoopLog.BudgetExhausted(_logger, request.RunId, requestExhausted.Dimension);
-            turnActivity.SetFailed("budget_exhausted", requestExhausted.Dimension.Value);
-            return TurnOutcome.Settled(
-                RunOutcomes.BudgetExhausted(requestExhausted, hasPartialOutput: committedMessages.Count > 0), currentVersion);
-        }
-
-        IModelResponseObserver responseObserver = request.Observer is null && services.Publisher is null
-            ? NoOpModelResponseObserver.Instance
-            : new RunModelResponseObserver(
-                turnId,
-                (runEvent, token) => ObserveAsync(request, services, laneState, history.SourceCursor.ConversationId, runEvent, token));
-
         ModelAttemptResult attemptResult;
-        using (var modelActivity = AgentKitDiagnostics.Activities.StartActivity(
-            AgentKitActivityNames.Chat,
-            ActivityKind.Client,
-            parentContext: Activity.Current?.Context ?? default,
-            tags: new ActivityTagsCollection
-            {
-                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.Chat },
-                { AgentKitTagNames.ModelRequestId, modelRequestId.ToString() },
-                { AgentKitTagNames.RequestModel, model.ModelId.ToString() },
-                { AgentKitTagNames.ProviderName, model.ProviderId.ToString() },
-            }))
+        while (true)
         {
-            LoopLog.ModelRequestStarted(_logger, request.RunId, turnId, modelRequestId, model.Alias);
-            try
+            var assembleRequest = request is { Agent: { } agent, Configuration: { } configuration }
+                ? new ContextAssemblyRequest(
+                    request.AgentId,
+                    request.SessionId,
+                    request.BranchId,
+                    request.RunId,
+                    turnId,
+                    modelRequestId,
+                    model,
+                    agent.Instructions,
+                    new ContextAssemblyEvidence(agent, request.Identity, turnHistory, turnAuthorization, configuration),
+                    finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
+                    finalTurnWithoutTools ? LlmToolChoice.None : _defaultToolChoice,
+                    ApplySelectionAdjustments(agent.Settings, selectionAdjustments),
+                    ExtensionData.Empty)
+                {
+                    Output = request.Output,
+                }
+                : new ContextAssemblyRequest(
+                    request.AgentId,
+                    request.SessionId,
+                    request.BranchId,
+                    request.RunId,
+                    turnId,
+                    modelRequestId,
+                    model,
+                    request.Instructions,
+                    turnHistory.Messages,
+                    finalTurnWithoutTools ? [] : tracking.AdvertisedTools,
+                    finalTurnWithoutTools ? LlmToolChoice.None : request.ToolChoice,
+                    ApplySelectionAdjustments(request.Settings, selectionAdjustments),
+                    ExtensionData.Empty)
+                {
+                    Output = request.Output,
+                };
+
+            var assembleResult = await services.Context.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
+
+            if (assembleResult is ContextPreparationFailed prepFailed)
             {
-                var execution = await ExecuteTurnModelAsync(
+                turnActivity.SetFailed("context_preparation_failed", prepFailed.Failure.Kind.ToString());
+                LoopLog.TurnFailed(_logger, request.RunId, turnId, "context_preparation_failed");
+                return TurnOutcome.Settled(RunOutcomes.ContextPreparationFailed(prepFailed.Failure), currentVersion);
+            }
+
+            var contextReady = (ContextReady) assembleResult;
+            var context = contextReady.Context;
+            if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.ContextAssembled))
+            {
+                var contextAssembledDispatch = CreateHookDispatch(AgentHookPoints.ContextAssembled, turnCorrelation);
+                var contextAssembledArgs = new ContextAssembledEventArgs(
+                    contextAssembledDispatch,
+                    request.AgentId,
+                    request.SessionId,
+                    turn,
+                    context,
+                    contextReady.Repairs);
+                try
+                {
+                    var hookContext = hookScope.CreateDispatch(contextAssembledDispatch);
+                    await _hookDispatcher!.DispatchAsync(
+                        AgentHookPointDefinitions.ContextAssembled,
+                        hookContext,
+                        contextAssembledArgs,
+                        HookFailureMode.IsolateAndDiagnose,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.ContextAssembled, exception.GetType().FullName ?? exception.GetType().Name);
+                }
+            }
+
+            if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeModelRequest))
+            {
+                var beforeModelDispatch = CreateHookDispatch(AgentHookPoints.BeforeModelRequest, turnCorrelation);
+                var hookArgs = new BeforeModelRequestEventArgs(
+                    beforeModelDispatch, request.AgentId, request.SessionId, turn, context);
+                try
+                {
+                    var hookContext = hookScope.CreateDispatch(beforeModelDispatch);
+                    await _hookDispatcher!.DispatchAsync(
+                        AgentHookPointDefinitions.BeforeModelRequest,
+                        hookContext,
+                        hookArgs,
+                        HookFailureMode.FailOperation,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    LoopLog.HookFailedTurn(_logger, request.RunId, turnId, AgentHookPoints.BeforeModelRequest, exception.GetType().FullName ?? exception.GetType().Name);
+                    turnActivity.SetFailed("hook_failed", exception.GetType().Name);
+                    return TurnOutcome.Settled(
+                        RunOutcomes.InvalidState("A before-model-request hook failed; the request was not sent."), currentVersion);
+                }
+
+                if (hookArgs.SettingsChanged)
+                {
+                    context = context with { Settings = hookArgs.Settings };
+                }
+            }
+
+            if (tracking.Budget is { } requestBudget
+                && await requestBudget.CountAsync(BudgetDimensions.ModelRequests, turnCorrelation.OperationId, $"turn:{turnId}:request", cancellationToken).ConfigureAwait(false) is { } requestExhausted)
+            {
+                LoopLog.BudgetExhausted(_logger, request.RunId, requestExhausted.Dimension);
+                turnActivity.SetFailed("budget_exhausted", requestExhausted.Dimension.Value);
+                return TurnOutcome.Settled(
+                    RunOutcomes.BudgetExhausted(requestExhausted, hasPartialOutput: committedMessages.Count > 0), currentVersion);
+            }
+
+            IModelResponseObserver responseObserver = request.Observer is null && services.Publisher is null
+                ? NoOpModelResponseObserver.Instance
+                : new RunModelResponseObserver(
+                    turnId,
+                    (runEvent, token) => ObserveAsync(request, services, laneState, turnHistory.SourceCursor.ConversationId, runEvent, token));
+
+            using (var modelActivity = AgentKitDiagnostics.Activities.StartActivity(
+                AgentKitActivityNames.Chat,
+                ActivityKind.Client,
+                parentContext: Activity.Current?.Context ?? default,
+                tags: new ActivityTagsCollection
+                {
+                    { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.Chat },
+                    { AgentKitTagNames.ModelRequestId, modelRequestId.ToString() },
+                    { AgentKitTagNames.RequestModel, model.ModelId.ToString() },
+                    { AgentKitTagNames.ProviderName, model.ProviderId.ToString() },
+                }))
+            {
+                LoopLog.ModelRequestStarted(_logger, request.RunId, turnId, modelRequestId, model.Alias);
+                try
+                {
+                    var attemptModel = model;
+                    var execution = await RunModelAttemptAsync(
+                        request,
+                        services,
+                        tracking,
+                        turnId,
+                        modelRequestId,
+                        model.Alias,
+                        context.Messages.Length,
+                        token => new ValueTask<TurnModelExecutionResult>(ExecuteTurnModelAsync(
+                            request,
+                            services,
+                            llmModel,
+                            attemptModel,
+                            selectionDecision,
+                            modelPolicy,
+                            context,
+                            modelRequestId,
+                            turnId,
+                            turnCorrelation,
+                            turnAuthorization,
+                            turnHistory.SourceCursor.ConversationId,
+                            responseObserver,
+                            token)),
+                        cancellationToken).ConfigureAwait(false);
+                    attemptResult = execution.AttemptResult;
+                    model = execution.Model;
+                    if (attemptResult is ModelAttemptCompleted)
+                    {
+                        modelActivity.SetSuccessful("completed");
+                    }
+                    else
+                    {
+                        modelActivity.SetFailed(attemptResult.GetType().Name, attemptResult.GetType().Name);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    modelActivity.SetFailed("cancelled", "cancellation");
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    modelActivity.SetFailed("faulted", exception.GetType().FullName ?? exception.GetType().Name);
+                    throw;
+                }
+            }
+
+            if (attemptResult is ModelAttemptFailed { Failure.Kind: ProviderFailureKind.ContextLengthExceeded }
+                && services.Compactor is { } overflowCompactor
+                && !providerOverflowRetried)
+            {
+                providerOverflowRetried = true;
+                var reloaded = await ApplyCompactionAndReloadHistoryAsync(
                     request,
                     services,
-                    llmModel,
-                    model,
-                    selectionDecision,
-                    modelPolicy,
-                    context,
-                    modelRequestId,
-                    turnId,
+                    overflowCompactor,
+                    turnSessionContext,
                     turnCorrelation,
                     turnAuthorization,
-                    history.SourceCursor.ConversationId,
-                    responseObserver,
+                    turnHistory,
+                    turnCorrelation.OperationId,
+                    CompactionTriggerKind.ProviderOverflow,
+                    ResolveContextEpoch(request),
+                    "The provider reported that the request exceeded its context length limit.",
                     cancellationToken).ConfigureAwait(false);
-                attemptResult = execution.AttemptResult;
-                model = execution.Model;
-                if (attemptResult is ModelAttemptCompleted)
+                if (reloaded is not null)
                 {
-                    modelActivity.SetSuccessful("completed");
-                }
-                else
-                {
-                    modelActivity.SetFailed(attemptResult.GetType().Name, attemptResult.GetType().Name);
+                    turnHistory = reloaded;
+                    currentVersion = turnHistory.SourceCursor.Version;
+                    modelRequestId = _modelRequestIds.Create();
+                    continue;
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                modelActivity.SetFailed("cancelled", "cancellation");
-                throw;
-            }
-            catch (Exception exception)
-            {
-                modelActivity.SetFailed("faulted", exception.GetType().FullName ?? exception.GetType().Name);
-                throw;
-            }
+
+            break;
         }
 
+        history = turnHistory;
         var turnOutcome = attemptResult switch
         {
             ModelAttemptFailed failed => await SettleInterruptedAsync(
@@ -1474,14 +1768,28 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return toolCalls switch
         {
             { IsEmpty: true } when request.Output is { } outputDefinition => await ValidateOutputAsync(
-                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
-                assistantMessage, response, outputDefinition, tracking, committedMessages, currentVersion, committedSequence,
+                request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                assistantMessage, response, outputDefinition, tracking, hookScope, committedMessages, currentVersion, committedSequence,
                 laneState, cancellationToken)
                 .ConfigureAwait(false),
+            _ when request.Output is { } outputDefinition
+                && toolCalls.All(static call => StructuredOutputToolConvention.IsSyntheticOutputCall(call)) =>
+                await ValidateOutputAsync(
+                    request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                    assistantMessage, response, outputDefinition, tracking, hookScope, committedMessages, currentVersion, committedSequence,
+                    laneState, cancellationToken)
+                    .ConfigureAwait(false),
+            _ when request.Output is { } outputDefinition
+                && toolCalls.Any(static call => StructuredOutputToolConvention.IsSyntheticOutputCall(call)) =>
+                await SettleMixedOutputToolCallsAsync(
+                    request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                    assistantMessage, response, outputDefinition, toolCalls, tracking, hookScope, committedMessages, currentVersion,
+                    committedSequence, laneState, cancellationToken)
+                    .ConfigureAwait(false),
             { IsEmpty: true } => await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
-                committedMessages, cancellationToken)
+                tracking, committedMessages, cancellationToken)
                 .ConfigureAwait(false),
             _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
                 request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
@@ -1500,6 +1808,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     /// <param name="request">The run being driven.</param>
     /// <param name="services">The compiled per-run collaborator bundle, whose <see cref="AgentRunServices.OutputProcessor"/> performs the validation.</param>
+    /// <param name="model"></param>
     /// <param name="sourceCursor">The history cursor the turn started from.</param>
     /// <param name="turnSessionContext">The turn's session operation context.</param>
     /// <param name="turnCorrelation">The turn's in-run correlation.</param>
@@ -1510,6 +1819,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="response">The provider response the assistant message was built from.</param>
     /// <param name="definition">The output contract the run must satisfy.</param>
     /// <param name="tracking">The run-scoped attempt counter the processor's retry policy is evaluated against.</param>
+    /// <param name="hookScope"></param>
     /// <param name="committedMessages">Every message this run has committed so far.</param>
     /// <param name="currentVersion">The branch version after the assistant commit.</param>
     /// <param name="committedSequence">The sequence of the committed assistant entry.</param>
@@ -1535,6 +1845,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private async Task<TurnOutcome> ValidateOutputAsync(
         AgentLoopRunRequest request,
         AgentRunServices services,
+        ModelDescriptor model,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
@@ -1545,6 +1856,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ModelResponse response,
         OutputDefinition definition,
         RunTracking tracking,
+        HookActivationScope? hookScope,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         SessionSequence committedSequence,
@@ -1562,11 +1874,47 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var attempt = tracking.NextAttempt();
+        if (tracking.Budget is { } outputBudget)
+        {
+            var repairExhausted = await outputBudget
+                .CountAsync(
+                    BudgetDimensions.OutputRepairs,
+                    turnCorrelation.OperationId,
+                    $"output-repair:{attempt}",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (repairExhausted is not null)
+            {
+                LoopLog.BudgetExhausted(_logger, request.RunId, repairExhausted.Dimension);
+                return TurnOutcome.Settled(RunOutcomes.BudgetExhausted(repairExhausted, hasPartialOutput: true), currentVersion);
+            }
+        }
+
+        BudgetExecutionCapability? repairBudget = null;
+        if (tracking.ExecutionCapability is { } runCapability && tracking.Budget is { } scopedBudget)
+        {
+            repairBudget = new BudgetExecutionCapability(
+                runCapability.ProfileKey,
+                runCapability.ProfileVersion,
+                request.Identity,
+                turnCorrelation,
+                scopedBudget.GetScopeForToolExecution());
+        }
+
+        HookDispatchContext? outputHooks = null;
+        if (hookScope is not null && CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.OutputValidating))
+        {
+            outputHooks = hookScope.CreateDispatch(CreateHookDispatch(AgentHookPoints.OutputValidating, turnCorrelation));
+        }
+
         OutputProcessingResult decision;
         try
         {
             decision = await processor.ProcessAsync(
-                new OutputProcessingRequest(definition, response, attempt), cancellationToken).ConfigureAwait(false);
+                new OutputProcessingRequest(
+                    definition, response, attempt, model, repairBudget, request.AgentId, request.SessionId, turn),
+                outputHooks,
+                cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1590,7 +1938,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, laneState,
-                committedMessages, cancellationToken, decision).ConfigureAwait(false);
+                tracking, committedMessages, cancellationToken, decision).ConfigureAwait(false);
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -1640,7 +1988,73 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request, services, turnCorrelation, turn, assistantMessage, [], repairEntry.Id,
             NextCursor(sourceCursor, appended.NewVersion, repairSequence),
             [assistantMessage, .. appendAttempt.InterleavedMessages, repairMessage], appended.NewVersion, laneState,
-            committedMessages, cancellationToken, retry).ConfigureAwait(false);
+            tracking, committedMessages, cancellationToken, retry).ConfigureAwait(false);
+    }
+
+    private async Task<TurnOutcome> SettleMixedOutputToolCallsAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        ModelDescriptor model,
+        MessageCursor sourceCursor,
+        SessionOperationContext turnSessionContext,
+        InRunOperationCorrelation turnCorrelation,
+        TurnId turnId,
+        int turn,
+        SessionEntryId assistantEntryId,
+        AssistantMessage assistantMessage,
+        ModelResponse response,
+        OutputDefinition definition,
+        ImmutableArray<ToolCallPart> toolCalls,
+        RunTracking tracking,
+        HookActivationScope? hookScope,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
+        SessionVersion currentVersion,
+        SessionSequence committedSequence,
+        LoopLaneState laneState,
+        CancellationToken cancellationToken)
+    {
+        var outputCalls = toolCalls.Where(static call => StructuredOutputToolConvention.IsSyntheticOutputCall(call)).ToImmutableArray();
+        var functionCalls = toolCalls.Where(static call => !StructuredOutputToolConvention.IsSyntheticOutputCall(call)).ToImmutableArray();
+        var candidates = definition.EndStrategy switch
+        {
+            OutputEndStrategy.Early => outputCalls.Take(1),
+            OutputEndStrategy.Exhaustive => outputCalls,
+            OutputEndStrategy.Graceful => outputCalls,
+            _ => outputCalls,
+        };
+
+        ValidatedOutput? acceptedOutput = null;
+        foreach (var outputCall in candidates)
+        {
+            var candidateResponse = response with { Parts = [outputCall] };
+            var attemptOutcome = await ValidateOutputAsync(
+                request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId,
+                assistantMessage, candidateResponse, definition, tracking, hookScope, committedMessages, currentVersion,
+                committedSequence, laneState, cancellationToken).ConfigureAwait(false);
+            if (attemptOutcome.Outcome is RunSucceeded && attemptOutcome.Output is { } validated)
+            {
+                acceptedOutput = validated;
+                if (definition.EndStrategy is OutputEndStrategy.Early or OutputEndStrategy.Graceful)
+                {
+                    break;
+                }
+            }
+        }
+
+        return acceptedOutput is not null
+            && (definition.EndStrategy is OutputEndStrategy.Early || functionCalls.IsEmpty)
+            ? TurnOutcome.Settled(RunOutcomes.Completed(), currentVersion, acceptedOutput)
+            : functionCalls.IsEmpty
+            ? TurnOutcome.Settled(
+                RunOutcomes.OutputRejected(new OutputRejected(new OutputValidationFailure(
+                    OutputValidationFailureKind.SchemaValidationFailed,
+                    "The model's structured output did not validate.",
+                    []))),
+                currentVersion)
+            : await InvokeToolsAsync(
+            request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage,
+            functionCalls, tracking, hookScope, model.Capabilities, committedMessages, currentVersion, committedSequence, laneState,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Reads whether a durable abort marker is committed for this run before the next promotion attempt.</summary>
@@ -1684,6 +2098,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     /// <param name="request">The run being driven; promotion is skipped entirely when it carries no <see cref="AgentLoopRunRequest.LaneAdmission"/>.</param>
     /// <param name="services">The compiled per-run collaborator bundle; promotion is skipped entirely when <see cref="AgentRunServices.Input"/> is <see langword="null"/>.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope, when this run has one.</param>
     /// <param name="laneState">
     /// The run's tracked lane identity and current total-state revision. Not mutated here on a successful
     /// commit: the caller applies the returned <see cref="PromotionAttemptOutcome.NewOperationStateRevision"/>
@@ -1699,14 +2114,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="cancellationToken">Cancels the attempt.</param>
     /// <returns>The committed promotion's evidence and newly visible messages, or <see langword="null"/> when nothing was promoted.</returns>
     /// <remarks>
+    /// <para>
     /// A committed promotion's messages are not reconstructed from the coordinator's evidence: the session store
     /// alone materializes the exact <see cref="UserMessage"/> records (identity, timestamp, and causal placement),
     /// so this method reloads them by reading forward from <paramref name="fromCursor"/> rather than re-appending
     /// anything the store already committed.
+    /// </para>
+    /// <para>
+    /// When the run's profile enables <see cref="IoDurableOperations.InputPromotion"/>, the coordinator call runs
+    /// inside a recoverable operation and a committed promotion records an
+    /// <see cref="DurableCheckpointKind.InputAdmitted"/> checkpoint. The durable record describes the attempt, not
+    /// its semantic outcome: a rejection or a stale-evidence conflict still consumed a real transition attempt
+    /// against the lane, and the promoted messages themselves stay in the session rather than in the journal.
+    /// </para>
     /// </remarks>
     private async Task<PromotionAttemptOutcome?> TryPromoteInputAsync(
         AgentLoopRunRequest request,
         AgentRunServices services,
+        RunTracking tracking,
         LoopLaneState laneState,
         PromotionBoundary boundary,
         TurnId? previousTurnId,
@@ -1748,7 +2173,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 previousTurnId,
                 targetTurnId,
                 _maximumPromotionsPerBoundary);
-            result = await coordinator.PromoteAsync(promotionRequest, cancellationToken).ConfigureAwait(false);
+            result = await PromoteAsync(
+                request, services, tracking, coordinator, promotionRequest, boundary, targetTurnId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1799,6 +2226,79 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 LoopLog.InputPromotionFaulted(_logger, request.RunId, boundary, "unrecognized_result");
                 return null;
         }
+    }
+
+    /// <summary>Runs one already-built promotion request, journaling it when the run's profile enables the boundary.</summary>
+    /// <param name="request">The run being driven, supplying the durable address's run identity.</param>
+    /// <param name="services">The compiled per-run collaborator bundle used to capture the boundary's authorization.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope, when this run has one.</param>
+    /// <param name="coordinator">The non-null input coordinator whose transition is wrapped.</param>
+    /// <param name="promotionRequest">The non-null fully built promotion request, which this method never alters.</param>
+    /// <param name="boundary">The exact safe boundary this attempt occurs at, recorded in the manifest.</param>
+    /// <param name="targetTurnId">The turn the transition targets, correlating the boundary's own operation.</param>
+    /// <param name="cancellationToken">Cancels the attempt.</param>
+    /// <returns>Exactly the result the input coordinator produced.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The boundary is enabled but could not capture its own authorization. The caller treats this as a faulted
+    /// attempt and promotes nothing, so a selected profile is never silently downgraded to an unjournaled promotion.
+    /// </exception>
+    /// <remarks>
+    /// The boundary captures a fresh in-run operation identity rather than reusing the admission correlation the
+    /// promotion request itself carries, because every promotion in a run would otherwise claim the same durable
+    /// address and idempotency key as the admission that started it.
+    /// </remarks>
+    private async Task<InputPromotionResult> PromoteAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        RunTracking tracking,
+        IInputCoordinator coordinator,
+        InputPromotionRequest promotionRequest,
+        PromotionBoundary boundary,
+        TurnId targetTurnId,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(coordinator is not null, "An input coordinator is required to promote.");
+        Debug.Assert(promotionRequest is not null, "A built promotion request is required.");
+        if (tracking.Durability is not { } durability || !durability.Enables(IoDurableOperations.InputPromotion))
+        {
+            return await coordinator.PromoteAsync(promotionRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        var (captured, _) = await CaptureAuthorizationAsync(
+            request,
+            services,
+            new InRunOperationCorrelation(_operationIds.Create(), request.RunId, targetTurnId),
+            cancellationToken).ConfigureAwait(false);
+        var authorization = captured ?? throw new InvalidOperationException(
+            "The durable input-promotion operation could not capture its own authorization.");
+        return !durability.Journals(IoDurableOperations.InputPromotion, authorization)
+            ? await coordinator.PromoteAsync(promotionRequest, cancellationToken).ConfigureAwait(false)
+            : await durability.ExecuteAsync(
+                IoDurableOperations.InputPromotion,
+                IoDurableOperations.InputPromotionVersion,
+                authorization,
+                DurableBoundaryPayload.Encode(new DurableInputPromotionManifest(
+                    request.RunId.Value, targetTurnId.Value, boundary.ToString(), promotedMessageCount: 0)),
+                SecurityEffect.Append,
+                hooks: null,
+                async (context, token) =>
+                {
+                    var result = await coordinator.PromoteAsync(promotionRequest, token).ConfigureAwait(false);
+                    if (result is InputPromoted promoted)
+                    {
+                        // Only a committed transition is checkpointed, and the checkpoint restates the manifest with
+                        // the count the store actually made visible so recovery can tell a rejected attempt from a
+                        // promotion whose reload never finished.
+                        _ = await context.Checkpoints.RecordCheckpointAsync(
+                            DurableCheckpointKind.InputAdmitted,
+                            DurableBoundaryPayload.Encode(new DurableInputPromotionManifest(
+                                request.RunId.Value, targetTurnId.Value, boundary.ToString(), promoted.Promoted.Length)),
+                            token).ConfigureAwait(false);
+                    }
+
+                    return result;
+                },
+                cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Reads every entry committed after <paramref name="fromCursor"/> and projects the messages among them.</summary>
@@ -2018,6 +2518,65 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return appendAttempt;
     }
 
+    /// <summary>Invokes one requested tool call, journaling it first when the run's profile enables tool calls.</summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope, when this run has one.</param>
+    /// <param name="turnId">The turn that requested the call.</param>
+    /// <param name="toolCall">The exact requested call, whose identity and alias are journaled.</param>
+    /// <param name="invoke">The invocation the loop performs either way.</param>
+    /// <param name="cancellationToken">Cancels the invocation.</param>
+    /// <returns>Exactly the tool runtime's own batch result.</returns>
+    /// <remarks>
+    /// Each call is journaled separately because each reaches exactly one terminal result. A durable-write failure
+    /// propagates rather than being swallowed: the caller settles the call with an interrupted or faulted terminal
+    /// result, so the requested call still receives exactly one result even when its evidence could not be written.
+    /// No hook dispatch context is handed to the coordinator, for the reason given on the model-attempt boundary.
+    /// </remarks>
+    private async ValueTask<ToolBatchResult> RunToolCallAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        RunTracking tracking,
+        TurnId turnId,
+        ToolCallPart toolCall,
+        Func<CancellationToken, ValueTask<ToolBatchResult>> invoke,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(invoke is not null, "A tool invocation body is required.");
+        Debug.Assert(toolCall is not null, "A requested tool call is required.");
+        if (tracking.Durability is not { } durability || !durability.Enables(LoopDurableOperations.ToolCall))
+        {
+            return await invoke(cancellationToken).ConfigureAwait(false);
+        }
+
+        var operationId = _operationIds.Create();
+        var (authorization, _) = await CaptureAuthorizationAsync(
+            request,
+            services,
+            new InRunOperationCorrelation(operationId, request.RunId, turnId),
+            cancellationToken).ConfigureAwait(false);
+        return authorization is null
+            ? throw new InvalidOperationException(
+                "The durable tool-call operation could not capture its own authorization.")
+            : await durability.ExecuteAsync(
+                LoopDurableOperations.ToolCall,
+                LoopDurableOperations.ToolCallVersion,
+                authorization,
+                DurableBoundaryPayload.Encode(new DurableToolCallState(
+                    turnId.Value, toolCall.CallId.ToString(), toolCall.Tool.ProviderAlias.Value)),
+                SecurityEffect.Execute,
+                hooks: null,
+                async (context, token) =>
+                {
+                    // The accepted call is checkpointed immediately before its side effect could occur, which is
+                    // the boundary that distinguishes "requested" from "may already have happened" in recovery.
+                    _ = await context.Checkpoints.RecordCheckpointAsync(
+                        DurableCheckpointKind.ToolCallRecorded, context.Operation.Input, token).ConfigureAwait(false);
+                    return await invoke(token).ConfigureAwait(false);
+                },
+                cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<TurnOutcome> InvokeToolsAsync(
         AgentLoopRunRequest request,
         AgentRunServices services,
@@ -2102,7 +2661,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 ? null
                 : new ToolExecutionHookBinding(hookScope, turnCorrelation, CreateHookDispatch);
             var toolCapability = ToolExecutionCapabilityFactory.Create(
-                request, services, turnCorrelation, tracking.Budget, hookBinding);
+                request, services, turnCorrelation, tracking.Budget, tracking.ExecutionCapability, hookBinding);
             var catalogVersion = catalogCapture.Snapshot.Version;
             var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
             var interrupted = false;
@@ -2157,10 +2716,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         toolCall.Tool.ProviderAlias,
                         rawArguments,
                         _timeProvider.GetUtcNow());
-                    var batch = await services.Tools.ExecuteAsync(
-                        catalogCapture,
-                        [callRequest],
-                        toolCapability,
+                    var batch = await RunToolCallAsync(
+                        request,
+                        services,
+                        tracking,
+                        turnId,
+                        toolCall,
+                        async token => await services.Tools.ExecuteAsync(
+                            catalogCapture,
+                            [callRequest],
+                            toolCapability,
+                            token).ConfigureAwait(false),
                         cancellationToken).ConfigureAwait(false);
                     resultPart = ToolCallResultProjection.ToToolResultPart(batch.Results[0], toolCall.Tool);
                 }
@@ -2268,7 +2834,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             return await DecideContinuationAsync(
                 request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
                 [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, laneState,
-                committedMessages, cancellationToken)
+                tracking, committedMessages, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -2310,6 +2876,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
     /// <param name="version">The branch version after this turn's commits.</param>
     /// <param name="laneState">The run's tracked lane identity and current total-state revision.</param>
+    /// <param name="tracking">The run-scoped bundle carrying the durable scope the promotions at this boundary journal under.</param>
     /// <param name="committedMessages">Every message this run has committed so far; a committed promotion's messages are added here.</param>
     /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
     /// <param name="outputDecision">
@@ -2358,6 +2925,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<AgentMessage> newMessages,
         SessionVersion version,
         LoopLaneState laneState,
+        RunTracking tracking,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         CancellationToken cancellationToken,
         OutputProcessingResult? outputDecision = null)
@@ -2383,7 +2951,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var afterTurnCommitted = await TryPromoteInputAsync(
-            request, services, laneState, PromotionBoundary.AfterTurnCommitted, turnId, _turnIds.Create(), nextCursor,
+            request, services, tracking, laneState, PromotionBoundary.AfterTurnCommitted, turnId, _turnIds.Create(), nextCursor,
             lastEntryId, cancellationToken).ConfigureAwait(false);
 
         RunContinuationContext context;
@@ -2453,7 +3021,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
 
             var otherwiseIdle = await TryPromoteInputAsync(
-                request, services, laneState, PromotionBoundary.OtherwiseIdle, turnId, _turnIds.Create(), nextCursor,
+                request, services, tracking, laneState, PromotionBoundary.OtherwiseIdle, turnId, _turnIds.Create(), nextCursor,
                 lastEntryId, cancellationToken).ConfigureAwait(false);
             if (otherwiseIdle is { } idlePromotion)
             {
@@ -3420,6 +3988,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
         LoopMetrics.RunDuration.Record(_timeProvider.GetElapsedTime(startedTimestamp).TotalSeconds, tags);
     }
 
+    private static bool HasRunBudget(AgentLoopRunRequest request) =>
+        !request.BudgetLimits.IsEmpty || request.BudgetProfile is { Value.Length: > 0 };
+
+    private static BudgetProfileVersion ResolveBudgetProfileVersion(AgentRunServices services, BudgetProfileKey profileKey) => services.BudgetProfiles?.TryGet(profileKey, out var profile) == true ? profile.Version : new BudgetProfileVersion(1);
+
     /// <summary>
     /// Estimates the tokens the model-facing history occupies from the UTF-16 length of its text-bearing parts.
     /// </summary>
@@ -3465,6 +4038,52 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(history is not null, "Pressure is evaluated over a loaded history.");
         var compactionId = _compactionIds.Create();
         LoopLog.CompactionTriggered(_logger, request.RunId, compactionId, estimatedTokens, contextWindow);
+        var reason =
+            $"Estimated {estimatedTokens} tokens exceed {threshold:F0} of a {contextWindow}-token window.";
+        var reloaded = await ApplyCompactionAndReloadHistoryAsync(
+            request,
+            services,
+            compactor,
+            sessionContext,
+            runCorrelation,
+            authorization,
+            history,
+            runCorrelation.OperationId,
+            CompactionTriggerKind.ContextPressure,
+            ResolveContextEpoch(request),
+            reason,
+            cancellationToken,
+            targetInputTokens: (int) Math.Min(int.MaxValue, Math.Max(1, threshold / 2)),
+            compactionId: compactionId).ConfigureAwait(false);
+        return reloaded ?? history;
+    }
+
+    /// <summary>Derives the instruction epoch observed for this run from compiled configuration or definition revision.</summary>
+    private static ContextEpoch ResolveContextEpoch(AgentLoopRunRequest request) =>
+        request.Configuration is { } configuration
+            ? new ContextEpoch(configuration.Version.Value)
+            : new ContextEpoch(request.Agent?.Revision.Value ?? 0);
+
+    /// <summary>Runs one compaction attempt and reloads model-facing history when it succeeds.</summary>
+    private async Task<HistoryView?> ApplyCompactionAndReloadHistoryAsync(
+        AgentLoopRunRequest request,
+        AgentRunServices services,
+        ICompactor compactor,
+        SessionOperationContext sessionContext,
+        OperationCorrelation correlation,
+        SecurityAuthorizationContext authorization,
+        HistoryView history,
+        OperationId causalOperationId,
+        CompactionTriggerKind triggerKind,
+        ContextEpoch contextEpoch,
+        string triggerReason,
+        CancellationToken cancellationToken,
+        int targetInputTokens = 0,
+        CompactionId? compactionId = null,
+        double minimumReductionRatio = 0.1)
+    {
+        Debug.Assert(history is not null, "Compaction requires a loaded history view.");
+        var id = compactionId ?? _compactionIds.Create();
         var now = _timeProvider.GetUtcNow();
         CompactionResult outcome;
         try
@@ -3472,21 +4091,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
             outcome = await compactor.CompactAsync(
                 new CompactionRequest(
                     new CompactionOperationContext(
-                        compactionId, request.AgentId, request.SessionId, runCorrelation, request.Identity, authorization, request.SessionProfile),
+                        id, request.AgentId, request.SessionId, correlation, request.Identity, authorization, request.SessionProfile),
                     request.BranchId,
                     history.SourceCursor.Version,
                     history.SourceCursor.Sequence,
-                    new ContextEpoch(0),
-                    new CompactionTrigger(
-                        CompactionTriggerKind.ContextPressure,
-                        $"Estimated {estimatedTokens} tokens exceed {threshold:F0} of a {contextWindow}-token window.",
-                        runCorrelation.OperationId),
-                    targetInputTokens: (int) Math.Min(int.MaxValue, Math.Max(1, threshold / 2)),
-                    minimumReductionRatio: 0.1,
+                    contextEpoch,
+                    new CompactionTrigger(triggerKind, triggerReason, causalOperationId),
+                    targetInputTokens,
+                    minimumReductionRatio,
                     minimumRetainedEntries: 1,
                     now,
                     now + request.AttemptTimeout,
-                    ExtensionData.Empty),
+                    ExtensionData.Empty)
+                {
+                    // Compaction activation is journaled under the same definition-selected profile as the loop's
+                    // own boundaries. The key travels on the request because the activation coordinator is an
+                    // engine-wide component with no per-agent selection of its own.
+                    DurabilityProfile = request.Agent?.OptionalCapabilities.DurabilityProfile,
+                },
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -3495,32 +4117,32 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
         catch (Exception exception)
         {
-            LoopLog.CompactionFaulted(_logger, request.RunId, compactionId, exception.GetType().FullName ?? exception.GetType().Name);
-            return history;
+            LoopLog.CompactionFaulted(_logger, request.RunId, id, exception.GetType().FullName ?? exception.GetType().Name);
+            return null;
         }
 
         if (outcome is not CompactionSucceeded)
         {
-            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, outcome.GetType().Name);
-            return history;
+            LoopLog.CompactionNotApplied(_logger, request.RunId, id, outcome.GetType().Name);
+            return null;
         }
 
-        var reloaded = await LoadHistoryAsync(
+        var loaded = await LoadHistoryAsync(
             request.RunId, services, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
-        if (reloaded is not { } loaded)
+        if (loaded is not { } loadedHistory)
         {
-            LoopLog.CompactionNotApplied(_logger, request.RunId, compactionId, "history_reload_failed");
-            return history;
+            LoopLog.CompactionNotApplied(_logger, request.RunId, id, "history_reload_failed");
+            return null;
         }
 
-        var messages = ToMessages(loaded.Entries);
-        if (loaded.Checkpoint is { } checkpoint)
+        var messages = ToMessages(loadedHistory.Entries);
+        if (loadedHistory.Checkpoint is { } checkpoint)
         {
-            messages = messages.Insert(0, CompactionCheckpointProjector.Project(checkpoint, loaded.Cursor));
+            messages = messages.Insert(0, CompactionCheckpointProjector.Project(checkpoint, loadedHistory.Cursor));
         }
 
-        LoopLog.CompactionApplied(_logger, request.RunId, compactionId, history.Messages.Length, messages.Length);
-        return new HistoryView(loaded.Cursor, messages, []);
+        LoopLog.CompactionApplied(_logger, request.RunId, id, history.Messages.Length, messages.Length);
+        return new HistoryView(loadedHistory.Cursor, messages, []);
     }
 
     private static ImmutableArray<AgentMessage> ToMessages(ImmutableArray<SessionEntry> entries)
@@ -3549,9 +4171,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private static AgentLoopResult BuildResult(
         AgentLoopRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion,
-        RunUsage usage, ValidatedOutput? output = null) =>
+        RunUsage usage, ValidatedOutput? output = null, RunSettlementOutcome? settlement = null) =>
         new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion, output,
-            usage, new RunSettlementCompleted());
+            usage, settlement ?? new RunSettlementCompleted());
 
     /// <summary>
     /// The result of choosing this run's model: either a terminal outcome
@@ -3797,11 +4419,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// <summary>Gets or sets the run's budget, or <see langword="null"/> for an unbudgeted run.</summary>
         public RunBudget? Budget { get; set; }
 
+        /// <summary>Gets or sets the run-scoped budget execution capability offered to consumers during this run.</summary>
+        public BudgetExecutionCapability? ExecutionCapability { get; set; }
+
         /// <summary>Gets or sets the tools offered to the model on every turn of this run.</summary>
         public ImmutableArray<LlmToolDefinition> AdvertisedTools { get; set; } = [];
 
         /// <summary>Gets or sets the run-scoped catalog capture reused for every tool batch, when one was opened.</summary>
         public IToolCatalogCapture? CatalogCapture { get; set; }
+
+        /// <summary>Gets or sets the run's durable-boundary scope, or <see langword="null"/> when this run journals nothing.</summary>
+        public DurableBoundaryScope? Durability { get; set; }
 
         /// <summary>Allocates the next one-based output validation attempt number.</summary>
         /// <returns>1 for the first validation of the run, then 2, 3, and so on.</returns>

@@ -29,8 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableCheckpoint
 {
-    private readonly OperationPayload _state;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="DurableCheckpoint"/>
     /// record.
@@ -101,7 +99,7 @@ public sealed record DurableCheckpoint
         Id = id;
         Binding = binding;
         Kind = kind;
-        _state = state;
+        State = state;
         FencingToken = fencingToken;
         RecordedAt = recordedAt;
     }
@@ -156,11 +154,11 @@ public sealed record DurableCheckpoint
     /// </exception>
     public OperationPayload State
     {
-        get => _state;
+        get;
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(State));
-            _state = value;
+            field = value;
         }
     }
 

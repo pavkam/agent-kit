@@ -21,6 +21,10 @@ internal sealed class DurableOperationRecord
     /// <summary>Gets the exact durable coordinates and captured authorization this operation was accepted under.</summary>
     internal DurableOperationBinding Binding { get; }
 
+    /// <summary>Gets or sets the declaration accepted at start, so recovery evidence can carry it back.</summary>
+    /// <value>The retained declaration, or <see langword="null"/> before acceptance committed one.</value>
+    internal RecoverableOperationDescriptor? Descriptor { get; set; }
+
     /// <summary>Gets or sets the persisted lifecycle position.</summary>
     internal DurableOperationState State { get; set; }
 
@@ -35,6 +39,15 @@ internal sealed class DurableOperationRecord
 
     /// <summary>Gets whether a complete terminal result exists and may be committed without reinvoking the effect.</summary>
     internal bool TerminalResultRecorded => TerminalResult is not null;
+
+    /// <summary>Gets or sets the deferred wake instant when the operation is waiting.</summary>
+    internal DateTimeOffset? NotBefore { get; set; }
+
+    /// <summary>Gets or sets the external owner's handle when waiting on handoff.</summary>
+    internal ExternalOperationReference? ExternalReference { get; set; }
+
+    /// <summary>Gets or sets the external idempotency key established while waiting.</summary>
+    internal IdempotencyKey? ExternalIdempotencyKey { get; set; }
 
     /// <summary>Gets or sets the ownership generation of the last successful durable write.</summary>
     internal FencingToken LastWriterToken { get; set; }

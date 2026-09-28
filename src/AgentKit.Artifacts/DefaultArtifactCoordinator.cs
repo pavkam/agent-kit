@@ -13,19 +13,22 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     private readonly IIdentifierGenerator<ArtifactPreparationId> _preparationIds;
     private readonly TimeProvider _time;
     private readonly AgentArtifactOptions _options;
+    private readonly ILogger<DefaultArtifactCoordinator> _logger;
 
     /// <summary>Initializes the coordinator over one selected backend and captured profile.</summary>
     /// <param name="store">The effecting artifact backend.</param><param name="authoritySelector">The selector that activates the captured authority for each request.</param>
     /// <param name="securityIds">The security request identity source.</param><param name="artifactIds">The artifact identity source.</param>
     /// <param name="preparationIds">The staging identity source.</param><param name="time">The deterministic clock.</param>
     /// <param name="options">The captured mechanics and profile.</param>
+    /// <param name="logger">The configured logger.</param>
     /// <exception cref="ArgumentNullException">A dependency is null or the selected profile key has a null value.</exception>
     /// <exception cref="ArgumentException">The selected profile key is empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound or profile version is invalid.</exception>
-    public DefaultArtifactCoordinator(IArtifactStore store, ISecurityAuthoritySelector authoritySelector, IIdentifierGenerator<SecurityRequestId> securityIds, IIdentifierGenerator<ArtifactId> artifactIds, IIdentifierGenerator<ArtifactPreparationId> preparationIds, TimeProvider time, IOptions<AgentArtifactOptions> options)
+    public DefaultArtifactCoordinator(IArtifactStore store, ISecurityAuthoritySelector authoritySelector, IIdentifierGenerator<SecurityRequestId> securityIds, IIdentifierGenerator<ArtifactId> artifactIds, IIdentifierGenerator<ArtifactPreparationId> preparationIds, TimeProvider time, IOptions<AgentArtifactOptions> options, ILogger<DefaultArtifactCoordinator> logger)
     {
         ArgumentNullException.ThrowIfNull(store); ArgumentNullException.ThrowIfNull(authoritySelector); ArgumentNullException.ThrowIfNull(securityIds);
         ArgumentNullException.ThrowIfNull(artifactIds); ArgumentNullException.ThrowIfNull(preparationIds); ArgumentNullException.ThrowIfNull(time); ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         var configured = options.Value;
         var snapshot = new AgentArtifactOptions
         {
@@ -43,13 +46,23 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(snapshot.PreparationLifetime, TimeSpan.Zero, nameof(options));
         ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.ProfileKey.Value, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(snapshot.ProfileVersion.Value, nameof(options));
-        _store = store; _authoritySelector = authoritySelector; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = snapshot;
+        _store = store; _authoritySelector = authoritySelector; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = snapshot; _logger = logger;
     }
 
     /// <inheritdoc/>
-    public async Task<ArtifactPrepareResult> PrepareAsync(ArtifactPrepareRequest request, CancellationToken cancellationToken = default)
+    public Task<ArtifactPrepareResult> PrepareAsync(ArtifactPrepareRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return ArtifactObservability.ObservePrepareAsync(
+            _logger,
+            request.Identity.TenantId,
+            artifactId: null,
+            preparationId: null,
+            () => PrepareCoreAsync(request, cancellationToken));
+    }
+
+    private async Task<ArtifactPrepareResult> PrepareCoreAsync(ArtifactPrepareRequest request, CancellationToken cancellationToken)
+    {
         if (request.Metadata.DeclaredLength > _options.MaximumArtifactBytes)
         {
             return RejectPrepare(ArtifactFailureKind.LimitExceeded, "The artifact exceeds the configured byte limit.");
@@ -99,9 +112,17 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ArtifactFinalizeResult> FinalizeAsync(ArtifactFinalizeRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ArtifactFinalizeResult> FinalizeAsync(ArtifactFinalizeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return ArtifactObservability.ObserveFinalizeAsync(
+            _logger,
+            request.PreparationId,
+            () => FinalizeCoreAsync(request, cancellationToken));
+    }
+
+    private async ValueTask<ArtifactFinalizeResult> FinalizeCoreAsync(ArtifactFinalizeRequest request, CancellationToken cancellationToken)
+    {
         var authorization = request.Authorization;
         var scope = authorization.Scope;
         var decision = await AuthorizeAsync(
@@ -119,9 +140,17 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ArtifactAbortResult> AbortAsync(ArtifactAbortRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ArtifactAbortResult> AbortAsync(ArtifactAbortRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return ArtifactObservability.ObserveAbortAsync(
+            _logger,
+            request.PreparationId,
+            () => AbortCoreAsync(request, cancellationToken));
+    }
+
+    private async ValueTask<ArtifactAbortResult> AbortCoreAsync(ArtifactAbortRequest request, CancellationToken cancellationToken)
+    {
         var authorization = request.Authorization;
         var scope = authorization.Scope;
         var decision = await AuthorizeAsync(
@@ -139,9 +168,18 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ArtifactReadResult> ReadAsync(ArtifactReadRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ArtifactReadResult> ReadAsync(ArtifactReadRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return ArtifactObservability.ObserveReadAsync(
+            _logger,
+            request.Identity.TenantId,
+            request.Reference.Id,
+            () => ReadCoreAsync(request, cancellationToken));
+    }
+
+    private async ValueTask<ArtifactReadResult> ReadCoreAsync(ArtifactReadRequest request, CancellationToken cancellationToken)
+    {
         var authorization = request.Authorization;
         var scope = authorization.Scope;
         var decision = await AuthorizeAsync(
@@ -159,14 +197,22 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ArtifactDeleteResult> DeleteAsync(ArtifactDeleteRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ArtifactDeleteResult> DeleteAsync(ArtifactDeleteRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Reference.Retention.LegalHold)
-        {
-            return new ArtifactDeleteRejected(new ArtifactFailure(ArtifactFailureKind.RetentionConflict, "Artifact retention prohibits deletion."));
-        }
+        return request.Reference.Retention.LegalHold
+            ? ValueTask.FromResult<ArtifactDeleteResult>(
+                new ArtifactDeleteRejected(new ArtifactFailure(ArtifactFailureKind.RetentionConflict, "Artifact retention prohibits deletion.")))
+            : ArtifactObservability.ObserveDeleteAsync(
+            _logger,
+            request.Identity.TenantId,
+            request.Reference.Id,
+            () => DeleteCoreAsync(request, cancellationToken));
+    }
 
+    private async ValueTask<ArtifactDeleteResult> DeleteCoreAsync(ArtifactDeleteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         var authorization = request.Authorization;
         var scope = authorization.Scope;
         var decision = await AuthorizeAsync(
