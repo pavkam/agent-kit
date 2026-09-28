@@ -25,6 +25,9 @@ using AgentKit.Internal;
 /// </remarks>
 internal sealed class AgentEngineRuntime
 {
+    /// <summary>The window added to the engine clock for the run-admission boundary's declared deadline.</summary>
+    private static readonly TimeSpan _durableOperationTimeout = TimeSpan.FromMinutes(5);
+
     private readonly Lock _disposeLock = new();
     private readonly IAsyncDisposable? _ownedProvider;
     private readonly IAgentDefinitionCatalog _catalog;
@@ -83,6 +86,13 @@ internal sealed class AgentEngineRuntime
         _admissionIds = services.GetRequiredService<IIdentifierGenerator<AdmissionId>>();
         _inputIds = services.GetRequiredService<IIdentifierGenerator<InputId>>();
         _scopes = new AgentRunScopeFactory(services.GetRequiredService<IServiceScopeFactory>());
+
+        // Durability is optional composition: the coordinator and profile catalog are absent unless an application
+        // composed a durability runtime, and a registry is always needed so the admission boundary can publish its
+        // own continuation without asking whether one happens to be registered.
+        _durableExecution = services.GetService<IDurableExecutionCoordinator>();
+        _durabilityProfiles = services.GetService<IDurabilityProfileCatalog>();
+        _durableInvocations = services.GetService<DurableBoundaryRegistry>() ?? new DurableBoundaryRegistry();
         ComponentRegistrations = validatedComposition.ComponentRegistrations;
         _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
             static publication => (
@@ -1053,6 +1063,10 @@ internal sealed class AgentEngineRuntime
                 throw AdmissionRejected(definition, catalogVersion, $"The run could not be accepted: {startResult.GetType().Name}.");
             }
 
+            await JournalRunAdmissionAsync(
+                definition, acceptedAuthorization, runId, sessionId, admissionId, cancellationToken)
+                .ConfigureAwait(false);
+
             var previousCursor = new MessageCursor(
                 definition.Id, sessionId, descriptor.ConversationId, branchId, tip.Version, tip.Sequence);
             var inRunContext = new SessionOperationContext(
@@ -1386,6 +1400,82 @@ internal sealed class AgentEngineRuntime
         return tail is SessionPage { Entries.Length: > 0 } page
             ? (snapshot.Version, new SessionBranchCursor(branchId, page.Entries[^1].Id), snapshot.UpperSequence)
             : throw AdmissionRejected(definition, catalogVersion, "The session's current branch tip could not be captured.");
+    }
+
+    /// <summary>Journals an accepted run's admission when the agent's definition enables that boundary.</summary>
+    /// <param name="definition">The pinned definition whose optional capabilities select the durability profile.</param>
+    /// <param name="acceptedAuthorization">
+    /// The in-run capture <c>AcceptRunAsync</c> committed, which both authorizes the durable writes and supplies
+    /// the operation's durable address.
+    /// </param>
+    /// <param name="runId">The accepted run.</param>
+    /// <param name="sessionId">The session the run belongs to.</param>
+    /// <param name="admissionId">The admission whose input the accepted run consumed.</param>
+    /// <param name="cancellationToken">Cancels local awaiting of the durable write.</param>
+    /// <remarks>
+    /// <para>
+    /// The boundary is placed after acceptance rather than around the admit-and-accept pair, because the session
+    /// contracts already make that pair atomic and durable. What is missing without this is a recoverable
+    /// operation a worker can find: the journaled record is what lets recovery learn that this run was admitted at
+    /// all, so the checkpoint is written once the session has committed the acceptance it describes.
+    /// </para>
+    /// <para>
+    /// A selected profile the composition cannot resolve is logged rather than rejected here. The loop resolves
+    /// the same selection from the same catalog and fails the run with a typed invalid-state outcome, so the
+    /// promise is not silently dropped, and admission does not invent a second failure mode for it that would
+    /// leave the lane accepted with no run behind it.
+    /// </para>
+    /// </remarks>
+    private async Task JournalRunAdmissionAsync(
+        AgentDefinition definition,
+        SecurityAuthorizationContext acceptedAuthorization,
+        RunId runId,
+        SessionId sessionId,
+        AdmissionId admissionId,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(definition is not null, "A pinned definition is required to journal its run's admission.");
+        Debug.Assert(acceptedAuthorization is not null, "Acceptance always captures its own authorization.");
+        if (definition.OptionalCapabilities.DurabilityProfile is null)
+        {
+            return;
+        }
+
+        if (DurableBoundaryScope.TryCreate(
+                definition.OptionalCapabilities.DurabilityProfile,
+                _durableExecution,
+                _durabilityProfiles,
+                _durableInvocations,
+                TimeProvider,
+                _durableOperationTimeout,
+                out var durability) is { } failure)
+        {
+            AgentAdmissionLog.RunAdmissionNotJournaled(_logger, definition.Id, sessionId, failure);
+            return;
+        }
+
+        Debug.Assert(durability is not null, "A selected, resolvable profile always produces a scope.");
+        if (!durability.Journals(EngineDurableOperations.RunAdmission, acceptedAuthorization))
+        {
+            return;
+        }
+
+        _ = await durability.ExecuteAsync(
+            EngineDurableOperations.RunAdmission,
+            EngineDurableOperations.RunAdmissionVersion,
+            acceptedAuthorization,
+            DurableBoundaryPayload.Encode(
+                new DurableRunAdmissionManifest(runId.Value, sessionId.Value, admissionId.Value)),
+            SecurityEffect.Append,
+            hooks: null,
+            async (context, token) =>
+            {
+                _ = await context.Checkpoints.RecordCheckpointAsync(
+                    DurableCheckpointKind.InputAdmitted, context.Operation.Input, token).ConfigureAwait(false);
+                return true;
+            },
+            cancellationToken).ConfigureAwait(false);
+        AgentAdmissionLog.RunAdmissionJournaled(_logger, definition.Id, sessionId, runId);
     }
 
     private async Task ReleaseLaneAsync(

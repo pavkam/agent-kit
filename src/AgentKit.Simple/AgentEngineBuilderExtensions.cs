@@ -43,6 +43,20 @@ public static class AgentEngineBuilderExtensions
     /// <summary>The store identity <see cref="UseSqliteSessions"/> stamps into database files when the caller supplies none.</summary>
     internal static SqliteSessionStoreInstanceId DefaultSqliteInstanceId { get; } = new(Guid.Parse("5e1f0a9c-3b2d-4c7e-8f10-a1b2c3d4e5f6"));
 
+    /// <summary>Every first-party recoverable operation name the durability sugar enables and permits its backend to own.</summary>
+    /// <remarks>
+    /// The sugar enables all of them because it configures one profile for one composition: an application that
+    /// wants to journal only some boundaries registers its own profile with the exact names it wants.
+    /// </remarks>
+    internal static ImmutableArray<DurableOperationName> FirstPartyOperations { get; } =
+    [
+        .. LoopDurableOperations.All,
+        .. IoDurableOperations.All,
+        .. CompactionDurableOperations.All,
+        .. PermissionsDurableOperations.All,
+        .. EngineDurableOperations.All,
+    ];
+
     extension(AgentEngineBuilder builder)
     {
         /// <summary>
@@ -752,6 +766,58 @@ public static class AgentEngineBuilderExtensions
             ArgumentNullException.ThrowIfNull(builder);
             _ = Plan(builder);
             _ = builder.Services.AddContextCompaction(configure);
+            return builder;
+        }
+
+        /// <summary>
+        /// Records every first-party boundary as a recoverable operation: run admission, input promotion, each model
+        /// request and tool call, compaction activation, deferred approval waits, and run settlement are journaled
+        /// with checkpoints a recovering worker can read.
+        /// </summary>
+        /// <param name="configure">Optional engine-wide durability settings, such as the unknown-effect mode.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// The selected journal, lease manager, and backend are the process-local in-memory adapters, which are
+        /// explicitly ephemeral: nothing here survives the process, and the lease fencing tokens are authoritative
+        /// only inside it. This makes the boundaries, checkpoints, and recovery decisions real and inspectable
+        /// without claiming crash recovery. For durable storage or cross-process ownership, register your own keyed
+        /// <see cref="IDurableOperationJournal"/>, <see cref="IDurableLeaseManager"/>, and
+        /// <see cref="IDurableExecutionBackend"/> and call <c>AddDurabilityProfile</c> on
+        /// <see cref="AgentEngineBuilder.Services"/> instead.
+        /// </para>
+        /// <para>
+        /// The journal is a protected boundary, so it needs a grant store and an audit dispatcher: pair this with
+        /// <see cref="UseLocalDevelopmentDefaults"/> or register your own. Approval waits are journaled only when
+        /// the composed authority actually defers to an approval broker.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder WithDurability(Action<AgentDurabilityOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            var plan = Plan(builder);
+            plan.DurableExecution = true;
+            var backendKey = new DurableBackendKey("agentkit.simple.in-memory");
+            var journalKey = new DurableJournalKey("agentkit.simple.in-memory");
+            var leaseManagerKey = new DurableLeaseManagerKey("agentkit.simple.in-memory");
+            var recoveryPolicyKey = new RecoveryPolicyKey("agentkit.simple.default");
+            _ = builder.Services.AddAgentDurability(configure);
+            _ = builder.Services.AddInMemoryDurableExecutionBackend(backendKey, FirstPartyOperations);
+            _ = builder.Services.AddInMemoryDurableOperationJournal(journalKey);
+            _ = builder.Services.AddInMemoryDurableLeaseManager(leaseManagerKey);
+            _ = builder.Services.AddRecoveryPolicy<DefaultRecoveryPolicy>(recoveryPolicyKey);
+            _ = builder.Services.AddDurabilityProfile(plan.DurabilityProfileKey, options =>
+            {
+                options.BackendKey = backendKey;
+                options.JournalKey = journalKey;
+                options.LeaseManagerKey = leaseManagerKey;
+                options.RecoveryPolicyKey = recoveryPolicyKey;
+                foreach (var operation in FirstPartyOperations)
+                {
+                    options.EnabledOperations.Add(operation);
+                }
+            });
             return builder;
         }
 

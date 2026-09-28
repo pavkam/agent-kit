@@ -23,5 +23,6 @@
     <ProjectReference Include="../../src/AgentKit.Identity/AgentKit.Identity.csproj"/>
     <ProjectReference Include="../../src/AgentKit.IO/AgentKit.IO.csproj"/>
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
+    <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj"/>
   </ItemGroup>
 </Project>

@@ -21,12 +21,17 @@ internal sealed class DurabilityRuntimeHarness: IDisposable
     /// <param name="backend">The backend the profile selects, or null for the process-local backend.</param>
     /// <param name="configure">An optional callback refining the engine-wide options.</param>
     /// <param name="logger">The logger the coordinator resolves, or null for a discarding logger.</param>
+    /// <param name="configureProfile">
+    /// An optional callback refining the single registered profile after its component keys are selected, for
+    /// example to enable the operation names a boundary scope requires.
+    /// </param>
     internal DurabilityRuntimeHarness(
         RecordingDurableOperationJournal? journal = null,
         IReadOnlyList<IDurableOperationHandler>? handlers = null,
         IDurableExecutionBackend? backend = null,
         Action<AgentDurabilityOptions>? configure = null,
-        ILogger<DurableExecutionCoordinator>? logger = null)
+        ILogger<DurableExecutionCoordinator>? logger = null,
+        Action<DurabilityProfileOptions>? configureProfile = null)
     {
         Journal = journal ?? new RecordingDurableOperationJournal();
         Handler = handlers is null ? new RecordingDurableOperationHandler() : null;
@@ -57,6 +62,7 @@ internal sealed class DurabilityRuntimeHarness: IDisposable
             options.JournalKey = JournalKey;
             options.LeaseManagerKey = LeaseManagerKey;
             options.RecoveryPolicyKey = RecoveryPolicyKey;
+            configureProfile?.Invoke(options);
         });
         _ = services.AddKeyedSingleton<IDurableOperationJournal>(JournalKey.Value, Journal);
         _ = services.AddKeyedSingleton<IDurableLeaseManager>(LeaseManagerKey.Value, LeaseManager);
@@ -118,6 +124,11 @@ internal sealed class DurabilityRuntimeHarness: IDisposable
     /// <value>The singular registered coordinator.</value>
     internal IDurableExecutionCoordinator Coordinator =>
         _provider.GetRequiredService<IDurableExecutionCoordinator>();
+
+    /// <summary>Gets the composed profile catalog naming this harness's single registered profile.</summary>
+    /// <value>The singular registered catalog, so a boundary scope resolves the same snapshot the coordinator does.</value>
+    internal IDurabilityProfileCatalog Profiles =>
+        _provider.GetRequiredService<IDurabilityProfileCatalog>();
 
     /// <summary>Gets a durable execution context naming this harness's registrations.</summary>
     /// <value>The captured composition every operation in these tests runs under.</value>

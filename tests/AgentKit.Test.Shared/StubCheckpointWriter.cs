@@ -1,10 +1,10 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Loop.Tests;
+namespace AgentKit.TestSupport;
 
 /// <summary>Provides a coordinator-shaped checkpoint writer for boundary-handler tests.</summary>
-internal sealed class StubCheckpointWriter(RecoverableOperationDescriptor operation, FencingToken fencingToken): IDurableCheckpointWriter
+public sealed class StubCheckpointWriter(RecoverableOperationDescriptor operation, FencingToken fencingToken): IDurableCheckpointWriter
 {
     /// <inheritdoc/>
     public DurableOperationBinding Binding => operation.Binding;

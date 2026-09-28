@@ -1,11 +1,11 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Loop.Tests;
+namespace AgentKit.TestSupport;
 
 /// <summary>An already-acquired lease whose ownership never changes, for handler tests that perform no durable write.</summary>
 /// <remarks>Fencing behavior is covered by the journal and lease-manager conformance suites, so this stub only has to present a stable generation.</remarks>
-internal sealed class StubExecutionLease(DurableOperationAddress address, FencingToken fencingToken): IExecutionLease
+public sealed class StubExecutionLease(DurableOperationAddress address, FencingToken fencingToken): IExecutionLease
 {
     /// <inheritdoc/>
     public ExecutionLeaseId LeaseId { get; } = new(Guid.Parse("5b2c3d4e-0000-4000-8000-000000000001"));

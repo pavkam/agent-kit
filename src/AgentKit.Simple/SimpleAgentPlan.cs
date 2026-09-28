@@ -118,6 +118,12 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets a value indicating whether sessions were pointed at the durable SQLite store.</summary>
     public bool DurableSessions { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether every hosted definition selects this plan's durability profile, so
+    /// each first-party boundary runs as a recoverable operation.
+    /// </summary>
+    public bool DurableExecution { get; set; }
+
     /// <summary>Gets a value indicating whether the session profile selects the in-memory store.</summary>
     public bool InMemorySessions => LocalDevelopmentDefaults && !DurableSessions;
 
@@ -132,6 +138,14 @@ internal sealed class SimpleAgentPlan
 
     /// <summary>Gets the session profile key the definition selects.</summary>
     public SessionProfileKey SessionProfileKey { get; } = new("agentkit.simple.session");
+
+    /// <summary>Gets the durability profile key every definition selects once <see cref="DurableExecution"/> is set.</summary>
+    /// <value>
+    /// The single key the sugar registers its journal, lease manager, recovery policy, and backend selection under.
+    /// A composition needing more than one durable component selection registers its own profiles on the service
+    /// collection and publishes its own definitions.
+    /// </value>
+    public DurabilityProfileKey DurabilityProfileKey { get; } = new("agentkit.simple.durability");
 
     /// <summary>Gets the security authority key the standalone profile binds.</summary>
     public ComponentKey<ISecurityAuthority> AuthorityKey { get; } = new("agentkit.simple.authority");
@@ -238,7 +252,7 @@ internal sealed class SimpleAgentPlan
         Output = Output,
         BudgetLimits = BudgetLimits,
         Toolsets = AuthoredToolsets(),
-        OptionalCapabilities = ToolOptionalCapabilities(),
+        OptionalCapabilities = OptionalCapabilities(includeTools: true),
     };
 
     /// <summary>Applies the plan to the conversation options.</summary>
@@ -303,7 +317,7 @@ internal sealed class SimpleAgentPlan
         {
             Output = options.Output,
             Toolsets = options.IncludeRegisteredTools ? AuthoredToolsets() : [],
-            OptionalCapabilities = options.IncludeRegisteredTools ? ToolOptionalCapabilities() : AgentOptionalCapabilitySelection.None,
+            OptionalCapabilities = OptionalCapabilities(options.IncludeRegisteredTools),
         };
     }
 
@@ -315,11 +329,23 @@ internal sealed class SimpleAgentPlan
             .Select(static key => new ToolsetReference(key, SimpleToolRuntime.StandardExecutionPolicyKey)),
     ];
 
-    /// <summary>Resolves optional tool capabilities when this plan selects toolsets.</summary>
-    internal AgentOptionalCapabilitySelection ToolOptionalCapabilities() =>
-        ToolsetKeys.Count > 0
-            ? new AgentOptionalCapabilitySelection(SimpleToolRuntime.ToolExecutorKey, null, null, null, null, [])
-            : AgentOptionalCapabilitySelection.None;
+    /// <summary>Resolves the optional capabilities one hosted definition selects.</summary>
+    /// <param name="includeTools">
+    /// Whether this definition is advertised the plan's registered tools. A specialist agent configured without
+    /// them selects no tool executor, but still selects durability: whether work is recoverable is a property of
+    /// the engine's composition, not of whether that agent happens to call tools.
+    /// </param>
+    /// <returns>The selection, which is <see cref="AgentOptionalCapabilitySelection.None"/> when neither applies.</returns>
+    internal AgentOptionalCapabilitySelection OptionalCapabilities(bool includeTools)
+    {
+        var toolExecutor = includeTools && ToolsetKeys.Count > 0
+            ? SimpleToolRuntime.ToolExecutorKey
+            : (ComponentKey<IToolExecutor>?) null;
+        var durabilityProfile = DurableExecution ? DurabilityProfileKey : (DurabilityProfileKey?) null;
+        return toolExecutor is null && durabilityProfile is null
+            ? AgentOptionalCapabilitySelection.None
+            : new AgentOptionalCapabilitySelection(toolExecutor, null, durabilityProfile, null, null, []);
+    }
 
     /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>
     /// <returns>One immutable message per entry in <see cref="Instructions"/>, in call order.</returns>

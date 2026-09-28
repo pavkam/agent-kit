@@ -101,6 +101,12 @@ public static class ServiceExtensions
                     return new AgentEngine(new AgentEngineRuntime(provider, ownedProvider: null, composition));
                 });
 
+            // The facade's run-admission boundary is registered unconditionally so a composition that later selects
+            // a durability profile can recover it. Without a composed durability runtime nothing dispatches to it.
+            services.TryAddSingleton<DurableBoundaryRegistry>();
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IDurableOperationHandler, RunAdmissionDurableOperationHandler>());
+
             return services;
         }
 

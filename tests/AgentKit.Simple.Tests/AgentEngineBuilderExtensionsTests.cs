@@ -6,6 +6,7 @@ namespace AgentKit.Simple.Tests;
 using AgentKit.Context.Compaction;
 using AgentKit.FileSystem.InMemory;
 using AgentKit.Hooks;
+using AgentKit.Loop;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
 using AgentKit.Providers.Anthropic;
@@ -615,6 +616,42 @@ public sealed class AgentEngineBuilderExtensionsTests
         reply.ShouldBe("fine");
         _ = engine.Services.GetRequiredService<ICompactor>().ShouldNotBeNull();
         engine.Services.GetRequiredService<IOptions<CompactionOptions>>().Value.MaximumCheckpointCharacters.ShouldBe(8_000);
+    }
+
+    [Fact]
+    public void WithDurability_WhenBuilderIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithDurability()).ParamName.ShouldBe("builder");
+
+    [Fact]
+    public async Task WithDurability_WhenBuilt_SelectsAProfileEnablingEveryFirstPartyBoundaryAndTurnsStillComplete()
+    {
+        var handler = new StubOpenAIHandler("fine");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .WithDurability();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("fine");
+        var snapshot = await engine.GetAgentsAsync(TestContext.Current.CancellationToken);
+        var definition = snapshot.Definitions.ShouldHaveSingleItem();
+        var profileKey = definition.OptionalCapabilities.DurabilityProfile.ShouldNotBeNull();
+        engine.Services.GetRequiredService<IDurabilityProfileCatalog>()
+            .TryGet(profileKey, out var profile).ShouldBeTrue();
+        profile.ShouldNotBeNull().EnabledOperations.ShouldBe(
+            [
+                LoopDurableOperations.ModelRequest,
+                LoopDurableOperations.ToolCall,
+                IoDurableOperations.InputPromotion,
+                IoDurableOperations.RunSettlement,
+                CompactionDurableOperations.Activation,
+                PermissionsDurableOperations.ApprovalWait,
+                EngineDurableOperations.RunAdmission,
+            ],
+            ignoreOrder: true);
     }
 
     [Fact]
