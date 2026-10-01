@@ -3,10 +3,10 @@
 
 namespace AgentKit.Goals;
 
-/// <summary>Creates distinct local enforcement-intent identities for task-delegation attempts.</summary>
+/// <summary>Creates distinct local enforcement-intent identities for goal-store and task-delegation operations.</summary>
 internal sealed class GuidSecurityEnforcementIntentIdGenerator: IIdentifierGenerator<SecurityEnforcementIntentId>
 {
-    /// <summary>Creates a non-default identity that distinguishes one delegation attempt from every other process-local attempt.</summary>
+    /// <summary>Creates a non-default identity that distinguishes one operation from every other process-local operation.</summary>
     /// <returns>A new non-default enforcement-intent identity.</returns>
     public SecurityEnforcementIntentId Create() => new(Guid.NewGuid());
 }

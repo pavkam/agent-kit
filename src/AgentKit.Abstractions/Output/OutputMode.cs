@@ -5,15 +5,12 @@ namespace AgentKit;
 
 /// <summary>The way one <see cref="OutputDefinition"/> expects its terminal candidate to be produced.</summary>
 /// <remarks>
-/// The first-party <c>AgentKit.Output</c> processor currently implements
-/// candidate extraction and validation for <see cref="Text"/>,
-/// <see cref="NativeSchema"/>, and <see cref="Prompted"/>.
-/// <see cref="SyntheticTool"/>, <see cref="Media"/>, and <see cref="Union"/>
-/// are declared for forward compatibility with the full structured-output
-/// architecture, which resolves them against the not-yet-implemented
-/// application tool catalog, media pipeline, and multi-alternative
-/// selection machinery respectively; selecting one of them today produces a
-/// typed, documented rejection rather than an unsupported-mode crash.
+/// The first-party <c>AgentKit.Output</c> processor implements candidate
+/// extraction and validation for every mode. Before a request is sent, the
+/// processor compares the mode with the selected model's capabilities and
+/// either downgrades it to <see cref="Prompted"/> (when
+/// <c>AgentOutputOptions.AllowProviderModeDowngrade</c> permits) or rejects the
+/// definition as a provider capability mismatch.
 /// </remarks>
 public enum OutputMode
 {

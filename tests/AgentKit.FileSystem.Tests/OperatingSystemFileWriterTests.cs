@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 public sealed class OperatingSystemFileWriterTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_WhenAuditUnavailable_DeniesBeforeMutation()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -38,7 +37,6 @@ public sealed class OperatingSystemFileWriterTests
     [InlineData(FileWriteDisposition.ReplaceExisting, true, typeof(FileWriteSuccess))]
     [InlineData(FileWriteDisposition.Append, false, typeof(FileWriteNotFound))]
     [InlineData(FileWriteDisposition.Append, true, typeof(FileWriteSuccess))]
-    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_DispositionMatrix_ReturnsExpectedOutcome(
         FileWriteDisposition disposition,
         bool seedExisting,
@@ -83,7 +81,6 @@ public sealed class OperatingSystemFileWriterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task WriteAsync_WhenExpectedFingerprintMismatch_ReturnsConflict()
     {
         if (!PosixFileOperations.IsSecureTraversalSupported)
@@ -114,6 +111,232 @@ public sealed class OperatingSystemFileWriterTests
         (await File.ReadAllTextAsync(hostPath, TestContext.Current.CancellationToken)).ShouldBe("original");
     }
 
+    [Fact]
+    public async Task WriteAsync_WhenTargetIsANamedPipe_FailsWithoutHanging()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        await MakeFifoAsync(Path.Combine(root, "fifo.txt"));
+        var writer = CreateWriter(root);
+        var payload = "data"u8.ToArray();
+        var operation = CreateAuthorizedWrite(root, "fifo.txt", payload, FileWriteDisposition.Append, writer);
+
+        var task = writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken).AsTask();
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        completed.ShouldBeSameAs(task, "WriteAsync must not block indefinitely opening a named pipe with no reader");
+        (await task).ShouldNotBeOfType<FileWriteSuccess>();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenCreateOrReplaceTargetsAnExistingFile_ReplacesAtomicallyAndPreservesMode()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var target = Path.Combine(root, "notes.txt");
+        await File.WriteAllTextAsync(target, "old content", TestContext.Current.CancellationToken);
+        const UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        File.SetUnixFileMode(target, mode);
+        var writer = CreateWriter(root);
+        var payload = "new"u8.ToArray();
+        var operation = CreateAuthorizedWrite(root, "notes.txt", payload, FileWriteDisposition.CreateOrReplace, writer);
+
+        var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+        var success = result.ShouldBeOfType<FileWriteSuccess>();
+        success.Outcome.ShouldBe(FileWriteOutcomeKind.Replaced);
+        (await File.ReadAllTextAsync(target, TestContext.Current.CancellationToken)).ShouldBe("new");
+        File.GetUnixFileMode(target).ShouldBe(mode);
+        Directory.GetFiles(root).Select(Path.GetFileName).ShouldBe(["notes.txt"], "no staging file may remain after a committed replace");
+    }
+
+    [Theory]
+    [InlineData(FileWriteDisposition.CreateOnly)]
+    [InlineData(FileWriteDisposition.CreateOrReplace)]
+    [InlineData(FileWriteDisposition.ReplaceExisting)]
+    [InlineData(FileWriteDisposition.Append)]
+    public async Task WriteAsync_WhenTargetIsASymbolicLinkOutsideRoot_HasNoOutsideEffect(FileWriteDisposition disposition)
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var outside = CreateTempRoot();
+        try
+        {
+            var outsideFile = Path.Combine(outside, "victim.txt");
+            await File.WriteAllTextAsync(outsideFile, "untouched", TestContext.Current.CancellationToken);
+            _ = File.CreateSymbolicLink(Path.Combine(root, "link.txt"), outsideFile);
+            var writer = CreateWriter(root);
+            var payload = "attack"u8.ToArray();
+            var operation = CreateAuthorizedWrite(root, "link.txt", payload, disposition, writer);
+
+            var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+            result.ShouldNotBeOfType<FileWriteSuccess>();
+            (await File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken)).ShouldBe("untouched");
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenPathTraversesADirectorySymbolicLink_HasNoOutsideEffect()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var outside = CreateTempRoot();
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(root, "escape"), outside);
+            var writer = CreateWriter(root);
+            var payload = "attack"u8.ToArray();
+            var operation = CreateAuthorizedWrite(root, "escape/new.txt", payload, FileWriteDisposition.CreateOnly, writer);
+
+            var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+            result.ShouldNotBeOfType<FileWriteSuccess>();
+            File.Exists(Path.Combine(outside, "new.txt")).ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenParentDirectoryIsMissing_DoesNotCreateTheParent()
+    {
+        if (!PosixFileOperations.IsSecureTraversalSupported)
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var writer = CreateWriter(root);
+        var payload = "data"u8.ToArray();
+        var operation = CreateAuthorizedWrite(root, "missing/new.txt", payload, FileWriteDisposition.CreateOnly, writer);
+
+        var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<FileWriteSuccess>();
+        Directory.Exists(Path.Combine(root, "missing")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenPayloadExceedsMaximumWriteBytes_ReturnsLimitExceededWithoutMutation()
+    {
+        if (!PosixFileOperations.IsSecureTraversalSupported)
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var writer = CreateWriter(root, configure: options => options.Bounds = new FileSystemBounds(1024, 4));
+        var payload = "too large"u8.ToArray();
+        var operation = CreateAuthorizedWrite(root, "big.txt", payload, FileWriteDisposition.CreateOnly, writer);
+
+        var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWriteLimitExceeded>();
+        File.Exists(Path.Combine(root, "big.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenFingerprintPreconditionCannotBeVerifiedBecauseTheTargetIsTooLarge_FailsWithoutMutation()
+    {
+        if (!PosixFileOperations.IsSecureTraversalSupported)
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var target = Path.Combine(root, "large.bin");
+        await File.WriteAllBytesAsync(target, new byte[32], TestContext.Current.CancellationToken);
+        var writer = CreateWriter(root, configure: options => options.Bounds = new FileSystemBounds(8, 1024));
+        var payload = "new"u8.ToArray();
+        var operation = CreateAuthorizedWrite(
+            root, "large.bin", payload, FileWriteDisposition.ReplaceExisting, writer, FileSecurityBinding.ContentFingerprint(new byte[32]));
+
+        var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWriteFailed>();
+        (await File.ReadAllBytesAsync(target, TestContext.Current.CancellationToken)).Length.ShouldBe(32);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenCreateOnlyRacesOnTheSamePath_CreatesExactlyOnce()
+    {
+        if (!PosixFileOperations.IsSecureTraversalSupported)
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var writer = CreateWriter(root);
+        var payload = "data"u8.ToArray();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(
+            async () => await writer.WriteAsync(
+                CreateAuthorizedWrite(root, "race.txt", payload, FileWriteDisposition.CreateOnly, writer),
+                CreateContent(payload),
+                TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken)));
+
+        results.Count(static result => result is FileWriteSuccess).ShouldBe(1);
+        results.Where(static result => result is not FileWriteSuccess).ShouldAllBe(static result => result is FileWriteConflict);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenGrantIsDenied_DoesNotMutateAndBindsTheWriterAudience()
+    {
+        if (!PosixFileOperations.IsSecureTraversalSupported)
+        {
+            return;
+        }
+
+        var root = CreateTempRoot();
+        var store = new TestSecurity.RecordingGrantStore
+        {
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 1, "Grant does not match.", null),
+        };
+        var writer = CreateWriter(root, grantStore: store);
+        var payload = "data"u8.ToArray();
+        var operation = CreateAuthorizedWrite(root, "denied.txt", payload, FileWriteDisposition.CreateOnly, writer);
+
+        var result = await writer.WriteAsync(operation, CreateContent(payload), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWriteDenied>();
+        File.Exists(Path.Combine(root, "denied.txt")).ShouldBeFalse();
+        var enforcement = store.LastEnforcement.ShouldNotBeNull();
+        enforcement.Kind.ShouldBe(SecurityOperationKind.FileWrite);
+        enforcement.Audience.ShouldBe(writer.SecurityAudience);
+    }
+
+    private static async Task MakeFifoAsync(string path)
+    {
+        using var mkfifo = Process.Start("mkfifo", path)
+            ?? throw new InvalidOperationException("mkfifo could not be started.");
+        await mkfifo.WaitForExitAsync(TestContext.Current.CancellationToken);
+        mkfifo.ExitCode.ShouldBe(0);
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"agentkit-fs-root-{Guid.NewGuid():N}");
@@ -121,15 +344,22 @@ public sealed class OperatingSystemFileWriterTests
         return root;
     }
 
-    [Obsolete("Legacy host surface.")]
-    private static IFileWriter CreateWriter(string root, ISecurityAuditDispatcher? audit = null)
+    private static IFileWriter CreateWriter(
+        string root,
+        ISecurityAuditDispatcher? audit = null,
+        ISecurityGrantStore? grantStore = null,
+        Action<OperatingSystemFileSystemOptions>? configure = null)
     {
         var services = new ServiceCollection();
-        _ = services.AddSingleton(TestSecurity.GrantStore());
+        _ = services.AddSingleton(grantStore ?? TestSecurity.GrantStore());
         _ = services.AddSingleton(audit ?? new AcceptingAuditDispatcher());
         _ = services.AddOperatingSystemFileSystem(
             new FileSystemProfileKey("test"),
-            options => options.Roots.Add(new FileRootRegistration(new FileRootId("workspace"), root)));
+            options =>
+            {
+                options.Roots.Add(new FileRootRegistration(new FileRootId("workspace"), root));
+                configure?.Invoke(options);
+            });
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredKeyedService<IFileWriter>("test");
     }

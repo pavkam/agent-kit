@@ -14,19 +14,17 @@ namespace AgentKit.Storage.Json;
 /// persisted bytes are revalidated exactly as freshly issued evidence is.
 /// </para>
 /// <para>
-/// <see cref="Authorization"/> is optional and its absence is meaningful: a grant issued through the unpinned path captured no
-/// authorization context, and inventing one on read would fabricate snapshot-bound authority the issuing authority never
-/// granted. <see cref="ToDomain"/> therefore selects between the two domain constructors on exactly that distinction, so a
-/// grant persisted without captured authorization never gains one. When authorization is present, the domain constructor also
-/// requires its scope, identity, and policy-snapshot version to match the grant's own, which this mirror satisfies because
-/// both sides are projected from the same original values.
+/// <see cref="Authorization"/> is required: every grant retains the complete captured context its authority evaluated, so a
+/// document without one is corrupt and is rejected rather than reconstructed. The domain constructor requires its scope,
+/// identity, and policy-snapshot version to match the grant's own, which this mirror satisfies because both sides are
+/// projected from the same original values.
 /// </para>
 /// </remarks>
 /// <param name="Id">The raw value of the non-empty grant identity.</param>
 /// <param name="RequestId">The raw value of the non-empty security request that caused the grant.</param>
 /// <param name="Scope">The non-null exact execution scope the grant is bound to.</param>
 /// <param name="Identity">The non-null authenticated execution identity the grant was issued for.</param>
-/// <param name="Authorization">The complete captured authorization evidence evaluated by the authority, or <see langword="null"/> for a grant issued through the unpinned path.</param>
+/// <param name="Authorization">The non-null complete captured authorization evidence evaluated by the authority.</param>
 /// <param name="Audience">The non-blank canonical component identifier of the only component permitted to consume the grant.</param>
 /// <param name="Kind">The protected operation kind.</param>
 /// <param name="Effect">The exact material effect.</param>
@@ -43,7 +41,7 @@ public sealed record JsonSecurityGrant(
     Guid RequestId,
     JsonSecurityAuthorizationScope Scope,
     JsonExecutionIdentity Identity,
-    JsonSecurityAuthorizationContext? Authorization,
+    JsonSecurityAuthorizationContext Authorization,
     string Audience,
     SecurityOperationKind Kind,
     SecurityEffect Effect,
@@ -58,7 +56,7 @@ public sealed record JsonSecurityGrant(
 {
     /// <summary>Projects one domain grant into its portable JSON representation.</summary>
     /// <param name="value">The non-null grant to project.</param>
-    /// <returns>A document carrying every unwrapped identity and bound, a never-default ordered resource array, and a null <see cref="Authorization"/> exactly when the grant captured none.</returns>
+    /// <returns>A document carrying every unwrapped identity and bound, a never-default ordered resource array, and the projected captured authorization.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static JsonSecurityGrant FromDomain(SecurityGrant value)
     {
@@ -70,9 +68,7 @@ public sealed record JsonSecurityGrant(
             value.RequestId.Value,
             JsonSecurityAuthorizationScope.FromDomain(value.Scope),
             JsonExecutionIdentity.FromDomain(value.Identity),
-            value.Authorization is { } authorization
-                ? JsonSecurityAuthorizationContext.FromDomain(authorization)
-                : null,
+            JsonSecurityAuthorizationContext.FromDomain(value.Authorization),
             value.Audience.Value,
             value.Kind,
             value.Effect,
@@ -87,19 +83,19 @@ public sealed record JsonSecurityGrant(
     }
 
     /// <summary>Reconstructs the exact domain grant this document was projected from.</summary>
-    /// <returns>A grant equal to the projected original, retaining captured authorization only when the document carried it.</returns>
+    /// <returns>A grant equal to the projected original, with its captured authorization.</returns>
     /// <remarks>
-    /// The authorization-bearing constructor overload is selected only when <see cref="Authorization"/> is present, so an
-    /// unpinned grant is never silently upgraded to a snapshot-bound one. Both overloads assign the validity window in the
-    /// order the domain type requires, which is why this method never uses a <c>with</c> expression or object initializer.
+    /// The domain constructor assigns the validity window in the order the domain type requires, which is why this method
+    /// never uses a <c>with</c> expression or object initializer for anything but the optional approval binding.
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><see cref="Scope"/> or <see cref="Identity"/> is null, which a well-formed document never is.</exception>
-    /// <exception cref="ArgumentException"><see cref="Audience"/> or <see cref="InputFingerprint"/> is blank, <see cref="Resources"/> is empty or contains a null element, or a present <see cref="Authorization"/> disagrees with the grant's scope, identity, or policy version.</exception>
+    /// <exception cref="ArgumentNullException"><see cref="Scope"/>, <see cref="Identity"/>, or <see cref="Authorization"/> is null, which a well-formed document never is.</exception>
+    /// <exception cref="ArgumentException"><see cref="Audience"/> or <see cref="InputFingerprint"/> is blank, <see cref="Resources"/> is empty or contains a null element, or <see cref="Authorization"/> disagrees with the grant's scope, identity, or policy version.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A persisted identity is empty, <see cref="Kind"/> or <see cref="Effect"/> is undefined, <see cref="PolicyVersion"/>, <see cref="RevocationVersion"/>, or <see cref="AllowedUses"/> is not positive, or <see cref="ExpiresAt"/> is not later than <see cref="NotBefore"/>.</exception>
     public SecurityGrant ToDomain()
     {
         ArgumentNullException.ThrowIfNull(Scope);
         ArgumentNullException.ThrowIfNull(Identity);
+        ArgumentNullException.ThrowIfNull(Authorization);
         var persisted = Resources.IsDefault ? [] : Resources;
         ArgumentException.ThrowIfContainsNull(persisted, nameof(Resources));
         var id = new GrantId(Id);
@@ -112,38 +108,22 @@ public sealed record JsonSecurityGrant(
         var inputFingerprint = new InputFingerprint(InputFingerprint);
         var policyVersion = new SecurityPolicyVersion(PolicyVersion);
         var revocationVersion = new SecurityRevocationVersion(RevocationVersion);
-        var grant = Authorization is { } authorization
-            ? new SecurityGrant(
-                id,
-                requestId,
-                scope,
-                identity,
-                authorization.ToDomain(),
-                audience,
-                Kind,
-                Effect,
-                resources,
-                inputFingerprint,
-                policyVersion,
-                revocationVersion,
-                NotBefore,
-                ExpiresAt,
-                AllowedUses)
-            : new SecurityGrant(
-                id,
-                requestId,
-                scope,
-                identity,
-                audience,
-                Kind,
-                Effect,
-                resources,
-                inputFingerprint,
-                policyVersion,
-                revocationVersion,
-                NotBefore,
-                ExpiresAt,
-                AllowedUses);
+        var grant = new SecurityGrant(
+            id,
+            requestId,
+            scope,
+            identity,
+            Authorization.ToDomain(),
+            audience,
+            Kind,
+            Effect,
+            resources,
+            inputFingerprint,
+            policyVersion,
+            revocationVersion,
+            NotBefore,
+            ExpiresAt,
+            AllowedUses);
         return ApprovalResponseId is Guid approvalId
             ? grant with { Approval = new ApprovalResponseId(approvalId) }
             : grant;

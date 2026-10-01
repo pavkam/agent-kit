@@ -258,8 +258,9 @@ public sealed class SessionCompactionActivationCoordinator: ICompactionActivatio
             hooks: null,
             async (context, token) =>
             {
-                _ = await context.Checkpoints.RecordCheckpointAsync(
-                    DurableCheckpointKind.CompactionActivated, context.Operation.Input, token).ConfigureAwait(false);
+                (await context.Checkpoints.RecordCheckpointAsync(
+                    DurableCheckpointKind.CompactionActivated, context.Operation.Input, token).ConfigureAwait(false))
+                    .ThrowIfNotRecorded();
                 return await coordinator
                     .AppendAsync(appendRequest, compactionRequest.Context.SessionProfile, token)
                     .ConfigureAwait(false);

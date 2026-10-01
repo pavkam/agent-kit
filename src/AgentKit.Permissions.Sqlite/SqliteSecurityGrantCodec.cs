@@ -3,19 +3,17 @@
 
 namespace AgentKit.Permissions.Sqlite;
 
-/// <summary>Encodes and reconstructs complete grant and enforcement evidence using strict version-one binary envelopes.</summary>
+/// <summary>Encodes and reconstructs complete grant and enforcement evidence using one strict binary envelope version.</summary>
 /// <remarks>Strings are stored as exact big-endian UTF-16 code units, preserving unpaired surrogates. Unknown versions, kinds, trailing fields, invalid values, and exceeded bounds fail closed.</remarks>
 internal static class SqliteSecurityGrantCodec
 {
     private const byte _grantKind = 1;
     private const byte _enforcementKind = 2;
-    private const byte _grantEnvelopeVersionOne = 1;
-    private const byte _grantEnvelopeVersionTwo = 2;
 
     /// <summary>Encodes one complete validated immutable grant.</summary>
     /// <param name="grant">The non-null evidence to encode.</param>
     /// <param name="settings">The non-null configured evidence bounds.</param>
-    /// <returns>The strict version-one grant envelope.</returns>
+    /// <returns>The strict grant envelope.</returns>
     /// <exception cref="ArgumentNullException">A parameter is null.</exception>
     /// <exception cref="ArgumentException">Evidence exceeds a configured bound or contains an unsupported correlation leaf.</exception>
     internal static byte[] EncodeGrant(SecurityGrant grant, SqliteSecurityGrantStoreSettings settings)
@@ -23,7 +21,7 @@ internal static class SqliteSecurityGrantCodec
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(settings);
         var writer = new SqliteSecurityGrantCodecWriter(settings, settings.MaximumGrantBytes, nameof(grant));
-        writer.WriteHeader(_grantKind, _grantEnvelopeVersionTwo);
+        writer.WriteHeader(_grantKind);
         writer.WriteGuid(grant.Id.Value);
         writer.WriteGuid(grant.RequestId.Value);
         writer.WriteScope(grant.Scope);
@@ -68,7 +66,7 @@ internal static class SqliteSecurityGrantCodec
         try
         {
             var reader = new SqliteSecurityGrantCodecReader(payload, settings);
-            var envelopeVersion = reader.ReadHeader(_grantKind);
+            reader.ReadHeader(_grantKind);
             var id = new GrantId(reader.ReadGuid());
             var requestId = new SecurityRequestId(reader.ReadGuid());
             var scope = reader.ReadScope();
@@ -84,15 +82,10 @@ internal static class SqliteSecurityGrantCodec
             var notBefore = reader.ReadDateTimeOffset();
             var expiresAt = reader.ReadDateTimeOffset();
             var allowedUses = reader.ReadInt32();
-            ApprovalResponseId? approval = envelopeVersion == _grantEnvelopeVersionTwo
-                ? reader.ReadBoolean() ? new ApprovalResponseId(reader.ReadGuid()) : null
-                : null;
+            ApprovalResponseId? approval = reader.ReadBoolean() ? new ApprovalResponseId(reader.ReadGuid()) : null;
             reader.EnsureComplete();
-            var grant = authorization is null
-                ? new SecurityGrant(id, requestId, scope, identity, audience, kind, effect, resources,
-                    inputFingerprint, policyVersion, revocationVersion, notBefore, expiresAt, allowedUses)
-                : new SecurityGrant(id, requestId, scope, identity, authorization, audience, kind, effect, resources,
-                    inputFingerprint, policyVersion, revocationVersion, notBefore, expiresAt, allowedUses);
+            var grant = new SecurityGrant(id, requestId, scope, identity, authorization, audience, kind, effect, resources,
+                inputFingerprint, policyVersion, revocationVersion, notBefore, expiresAt, allowedUses);
             return approval is null ? grant : grant with { Approval = approval };
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
@@ -104,7 +97,7 @@ internal static class SqliteSecurityGrantCodec
     /// <summary>Encodes one complete validated concrete enforcement request.</summary>
     /// <param name="enforcement">The non-null evidence to encode.</param>
     /// <param name="settings">The non-null configured evidence bounds.</param>
-    /// <returns>The strict version-one enforcement envelope.</returns>
+    /// <returns>The strict enforcement envelope.</returns>
     /// <exception cref="ArgumentNullException">A parameter is null.</exception>
     /// <exception cref="ArgumentException">Evidence exceeds a configured bound or contains an unsupported correlation leaf.</exception>
     internal static byte[] EncodeEnforcement(
@@ -114,7 +107,7 @@ internal static class SqliteSecurityGrantCodec
         ArgumentNullException.ThrowIfNull(enforcement);
         ArgumentNullException.ThrowIfNull(settings);
         var writer = new SqliteSecurityGrantCodecWriter(settings, settings.MaximumEnforcementBytes, nameof(enforcement));
-        writer.WriteHeader(_enforcementKind, _grantEnvelopeVersionOne);
+        writer.WriteHeader(_enforcementKind);
         writer.WriteScope(enforcement.Scope);
         writer.WriteIdentity(enforcement.Identity);
         writer.WriteAuthorization(enforcement.Authorization);
@@ -145,7 +138,7 @@ internal static class SqliteSecurityGrantCodec
         try
         {
             var reader = new SqliteSecurityGrantCodecReader(payload, settings);
-            _ = reader.ReadHeader(_enforcementKind);
+            reader.ReadHeader(_enforcementKind);
             var scope = reader.ReadScope();
             var identity = reader.ReadIdentity();
             var authorization = reader.ReadAuthorization();
@@ -156,11 +149,8 @@ internal static class SqliteSecurityGrantCodec
             var inputFingerprint = new InputFingerprint(reader.ReadString());
             var revocationVersion = new SecurityRevocationVersion(reader.ReadInt64());
             reader.EnsureComplete();
-            return authorization is null
-                ? new SecurityEnforcementRequest(scope, identity, audience, kind, effect, resources,
-                    inputFingerprint, revocationVersion)
-                : new SecurityEnforcementRequest(scope, identity, authorization, audience, kind, effect, resources,
-                    inputFingerprint, revocationVersion);
+            return new SecurityEnforcementRequest(scope, identity, authorization, audience, kind, effect, resources,
+                inputFingerprint, revocationVersion);
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {

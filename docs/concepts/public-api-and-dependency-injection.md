@@ -135,36 +135,57 @@ policy, execution, state, and observation remain separate.
 
 ## Registration surface
 
-The registrations a complete single-agent composition uses today. This is what
-the `AgentKit.Simple` extensions on `AgentEngineBuilder` perform; a host that
-owns its own collection writes them directly:
+The registrations a complete single-agent composition makes. This is what the
+`AgentKit.Simple` extensions on `AgentEngineBuilder` perform; a host that owns
+its own collection writes them directly. Every default is `TryAdd`-based, so
+anything registered first wins:
 
 ```csharp
-services.AddInMemorySecurityGrantStore();
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey);
-services.AddAllowAllSecurityPolicy();
+var builder = AgentEngine.CreateBuilder();
+var services = builder.Services;
 
+// Security: explicit stores, a policy, and the authority the definition selects.
+services.AddInMemorySecurityGrantStore();
+services.AddInMemoryApprovalStore();
+services.AddInMemorySecurityDecisionStore();
+services.AddAllowAllSecurityPolicy();
+services.AddAgentPermissions(options => { /* PolicyVersion, PolicySnapshot */ });
+services.AddSecurityAuthority(authorityKey);
+
+// Session: one explicit store and directory, no fabricated persistence target.
 services.AddAgentSession();
 services.AddInMemorySessionStore();
 services.AddInMemorySessionDirectory(new ComponentId("app.session"));
 
+// Runtime spine, each under the key the definition selects.
 services.AddAgentContext();
 services.AddAgentOutput();
-services.AddAgentLoop();
+services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+services.AddAgentIO(
+    AgentIOComponentDefaults.InputCoordinatorKey,
+    AgentIOComponentDefaults.OutputPublisherKey);
+services.AddSessionBackedInputQueue();
+services.AddAgentHooks();
 services.AddAgentTools();
+services.AddAgentBudgets();
+services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, profile => { });
+services.AddInMemoryBudgetLedger();
 
+// Providers: the catalog, one adapter, its credential, and a model.
 services.AddAgentProviders();
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
 services.AddOpenAIKnownLlmModel(alias, modelId);
 
-services.AddConversationSession(options => { /* identities, profile, alias, instructions */ });
+// The definition catalog and the security and run-profile publications that
+// pin each definition's authority, session, hook, and budget profiles.
+services.AddSingleton<IAgentDefinitionSource>(definitionSource);
+services.AddSingleton(securityProfilePublication);
+services.AddSingleton(runProfilePublication);
+
+var engine = builder.Build();
 ```
 
-Optional packages follow the same pattern (`AddAgentBudgets`, `AddAgentHooks`,
-`AddInputCoordinator`, `AddReadTool`, `AddSandboxedFileSystem`, and so on), and
-the multi-agent facade adds `AddAgentKit` with `AddAgent(definition)`.
 Registration methods MUST return `IServiceCollection`, never build/resolve a
 provider, validate options, and document:
 

@@ -64,7 +64,7 @@ public sealed class SimpleAgentPlanTests
 
         var definition = plan.DefinitionFor(new AgentId(Guid.NewGuid()), options);
 
-        definition.Instructions.ShouldHaveSingleItem().ShouldBeOfType<SystemMessage>().AgentId.ShouldBe(definition.Id);
+        InstructionSourceProjection.ToMessages(definition.Instructions).ShouldHaveSingleItem().ShouldBeOfType<SystemMessage>().AgentId.ShouldBe(definition.Id);
         definition.Models.Candidates.ShouldBe([new ModelAlias("chat")]);
     }
 
@@ -91,12 +91,10 @@ public sealed class SimpleAgentPlanTests
     }
 
     [Fact]
-    public void Definition_AndApply_AgreeOnTheExactInstructionMessages()
+    public void Apply_WhenCalled_PinsTheDefinitionAndConfigurationTheEngineAlsoPublishes()
     {
-        // The engine's pinned AgentDefinition (from Definition()) and the conversation session's
-        // actual sent instructions (from Apply()) are two projections of one plan; minting a fresh
-        // MessageId/timestamp per call made them uncorrelated even though they describe "the same"
-        // instruction.
+        // The engine's pinned AgentDefinition (from Definition()) and the conversation session's pinned definition
+        // (from Apply()) are two projections of one plan, so they carry the exact same instruction identities.
         var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("assistant"), LocalDevelopmentDefaults = true };
         plan.Instructions.Add("Be concise.");
         plan.Instructions.Add("Cite sources.");
@@ -105,7 +103,9 @@ public sealed class SimpleAgentPlanTests
         var options = new ConversationSessionOptions();
         plan.Apply(options);
 
-        definition.Instructions.ShouldBe(options.Instructions);
+        options.Agent.ShouldBe(definition);
+        options.Configuration.ShouldNotBeNull().Version.ShouldBe(plan.ConfigurationVersion);
+        options.Configuration.Fingerprint.ShouldBe(options.SessionProfile.ShouldNotBeNull().ConfigurationFingerprint);
     }
 
     [Fact]
@@ -118,6 +118,59 @@ public sealed class SimpleAgentPlanTests
         var second = plan.Definition();
 
         first.Instructions.ShouldBe(second.Instructions);
+    }
+
+    [Fact]
+    public void DefaultComponents_WhenRead_SelectsEveryFirstPartyDefaultKey()
+    {
+        var components = SimpleAgentPlan.DefaultComponents();
+
+        components.Loop.ShouldBe(AgentLoopComponentDefaults.LoopKey);
+        components.ContinuationPolicy.ShouldBe(AgentLoopComponentDefaults.ContinuationPolicyKey);
+        components.Input.ShouldBe(AgentIOComponentDefaults.InputCoordinatorKey);
+        components.Output.ShouldBe(AgentIOComponentDefaults.OutputPublisherKey);
+        components.OutputProcessor.ShouldBe(AgentOutputComponentDefaults.ProcessorKey);
+        components.Context.ShouldBe(AgentContextComponentDefaults.AssemblerKey);
+        components.ModelSelector.ShouldBe(AgentProviderComponentDefaults.ModelSelectorKey);
+        components.ModelExecutor.ShouldBe(AgentProviderComponentDefaults.ModelExecutorKey);
+        components.BudgetProfile.ShouldBe(AgentBudgetComponentDefaults.ProfileKey);
+    }
+
+    [Fact]
+    public void Definition_WhenNoOutputIsConfigured_SelectsTheFreeTextContract()
+    {
+        var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("assistant"), LocalDevelopmentDefaults = true };
+
+        plan.Definition().Output.ShouldBeSameAs(OutputDefinition.FreeText);
+    }
+
+    [Fact]
+    public void Definition_WhenRequestSettingsAreConfigured_CarriesThemOnTheModelPolicy()
+    {
+        var settings = LlmRequestSettings.Default with { Temperature = 0.4 };
+        var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("assistant"), LocalDevelopmentDefaults = true, RequestSettings = settings };
+
+        var definition = plan.Definition();
+
+        definition.Models.RequestSettings.ShouldBe(settings);
+        definition.Models.Requirements.ShouldBe(ModelRequirements.None);
+        definition.Components.ShouldBe(SimpleAgentPlan.DefaultComponents());
+        definition.HookProfile.ShouldBe(HookRegistrationDescriptors.DefaultProfileKey);
+    }
+
+    [Fact]
+    public void DefinitionFor_WhenAdditionalAgentIsConfigured_SelectsTheSharedDefaultComponentsAndItsOwnOutput()
+    {
+        var plan = new SimpleAgentPlan { ModelAlias = new ModelAlias("chat"), LocalDevelopmentDefaults = true };
+        var output = new OutputDefinition(
+            new OutputDefinitionId("specialist"), new OutputDefinitionVersion("1"), "specialist", OutputMode.Prompted,
+            schema: null, runtimeType: typeof(string), [], [], OutputValidationPolicy.RejectOnFirstFailure, OutputRetryPolicy.None,
+            OutputEndStrategy.Graceful);
+
+        var definition = plan.DefinitionFor(new AgentId(Guid.NewGuid()), new SimpleAgentOptions { Output = output });
+
+        definition.Components.ShouldBe(SimpleAgentPlan.DefaultComponents());
+        definition.Output.ShouldBe(output);
     }
 
     [Fact]

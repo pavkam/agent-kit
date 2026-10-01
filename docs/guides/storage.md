@@ -2,8 +2,10 @@
 
 An agent's conversation lives in a **session**: the ordered record of every user
 message, model reply, and tool result. Where that record lives decides whether
-it survives a restart. This guide covers the two first-party choices, in memory
-and SQLite, and how to come back to a conversation later.
+it survives a restart. This guide covers the two choices the `AgentKit.Simple`
+builder sugar selects, in memory and SQLite, and how to come back to a
+conversation later; the first-party JSON session store is a third, selected with
+the registrations under [Under the hood](#under-the-hood).
 
 ## Start in memory
 
@@ -122,7 +124,10 @@ services.AddSqliteSessionDirectory(new ComponentId("myapp.session"), target);
 Stores are additive and selected by the session profile's store key
 (`agentkit.sqlite` here, `agentkit.in-memory` for the in-memory store), so
 registering both is fine; registration order never chooses where data goes. The
-directory is singular: one per composition. The
+directory is singular: one per composition. `AgentKit.Session.Json` registers
+`AddJsonSessionStore` and `AddJsonSessionDirectory` the same way for inspectable
+single-writer files (key `agentkit.json`); like SQLite, it claims no
+multi-process coordination. The
 [CodingAgent example](../../examples/CodingAgent/README.md) shows this long form
 together with a per-workspace database path.
 

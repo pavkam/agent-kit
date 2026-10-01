@@ -22,7 +22,7 @@ public static class ServiceExtensions
         /// Repeated registration is idempotent and retains the first captured configuration.
         /// </remarks>
         public IServiceCollection AddAgentOutput(Action<AgentOutputOptions>? configure = null) =>
-            services.AddAgentOutput(AgentOutputDefaults.ProcessorKey, configure);
+            services.AddAgentOutput(AgentOutputComponentDefaults.ProcessorKey, configure);
 
         /// <summary>Registers one keyed built-in output-processing profile.</summary>
         /// <param name="processorKey">The stable processor-profile key.</param>
@@ -68,14 +68,14 @@ public static class ServiceExtensions
                     provider.GetService<IHookDispatcher>(),
                     provider.GetService<ILogger<DefaultOutputProcessor>>()));
 
-            if (processorKey.Equals(AgentOutputDefaults.ProcessorKey))
+            if (processorKey.Equals(AgentOutputComponentDefaults.ProcessorKey))
             {
                 services.TryAddSingleton(provider =>
-                    provider.GetRequiredKeyedService<IOutputSchemaEngine>(AgentOutputDefaults.ProcessorKey.Value));
+                    provider.GetRequiredKeyedService<IOutputSchemaEngine>(AgentOutputComponentDefaults.ProcessorKey.Value));
                 services.TryAddSingleton(provider =>
-                    provider.GetRequiredKeyedService<IOutputDefinitionResolver>(AgentOutputDefaults.ProcessorKey.Value));
+                    provider.GetRequiredKeyedService<IOutputDefinitionResolver>(AgentOutputComponentDefaults.ProcessorKey.Value));
                 services.TryAddScoped(provider =>
-                    provider.GetRequiredKeyedService<IOutputProcessor>(AgentOutputDefaults.ProcessorKey.Value));
+                    provider.GetRequiredKeyedService<IOutputProcessor>(AgentOutputComponentDefaults.ProcessorKey.Value));
             }
 
             return services;
@@ -87,7 +87,7 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="definition"/> is <see langword="null"/>.</exception>
         /// <remarks>Definitions are additive singleton registrations under the explicit default profile.</remarks>
         public IServiceCollection AddOutputDefinition(OutputDefinition definition) =>
-            services.AddOutputDefinition(AgentOutputDefaults.ProcessorKey, definition);
+            services.AddOutputDefinition(AgentOutputComponentDefaults.ProcessorKey, definition);
 
         /// <summary>Additively registers a definition for one processor profile.</summary>
         /// <param name="processorKey">The profile that owns the definition.</param>
@@ -113,7 +113,7 @@ public static class ServiceExtensions
         /// <remarks>Every existing default-key processor descriptor is removed before the scoped replacement is added.</remarks>
         public IServiceCollection ReplaceOutputProcessor<TProcessor>()
             where TProcessor : class, IOutputProcessor =>
-            services.ReplaceOutputProcessor<TProcessor>(AgentOutputDefaults.ProcessorKey);
+            services.ReplaceOutputProcessor<TProcessor>(AgentOutputComponentDefaults.ProcessorKey);
 
         /// <summary>Replaces the scoped processor for one output profile without changing its schema engine.</summary>
         /// <typeparam name="TProcessor">The scoped processor implementation.</typeparam>
@@ -139,7 +139,7 @@ public static class ServiceExtensions
         /// <remarks>The replacement is a singleton and does not replace the processor or waive definition preflight.</remarks>
         public IServiceCollection ReplaceOutputSchemaEngine<TEngine>()
             where TEngine : class, IOutputSchemaEngine =>
-            services.ReplaceOutputSchemaEngine<TEngine>(AgentOutputDefaults.ProcessorKey);
+            services.ReplaceOutputSchemaEngine<TEngine>(AgentOutputComponentDefaults.ProcessorKey);
 
         /// <summary>Replaces the singleton schema engine for one profile without changing its processor.</summary>
         /// <typeparam name="TEngine">The stateless schema-engine implementation.</typeparam>
@@ -165,7 +165,7 @@ public static class ServiceExtensions
         /// <remarks>Validators are additive singleton registrations and must be stateless and thread-safe.</remarks>
         public IServiceCollection AddOutputValidator<TValidator>()
             where TValidator : class, IOutputValidator =>
-            services.AddOutputValidator<TValidator>(AgentOutputDefaults.ProcessorKey);
+            services.AddOutputValidator<TValidator>(AgentOutputComponentDefaults.ProcessorKey);
 
         /// <summary>Additively registers a stateless singleton validator for one output profile.</summary>
         /// <typeparam name="TValidator">The validator implementation.</typeparam>

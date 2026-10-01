@@ -21,6 +21,26 @@ described in the [composition guide](../../docs/guides/composition.md).
 Capabilities belong to the configured operation and model. A provider name or
 compatible wire format does not imply support for every feature.
 
+## Provider egress
+
+`ProviderEgress` (registered by `AddAgentProviders`) is the one boundary every
+first-party adapter sends through; there is no `HttpClient` fallback. Per
+attempt it selects the authority captured by the request's
+`ProtectedSemanticOperationContext`, obtains and consumes (with required audit)
+a provider-egress grant bound to the exact endpoint and credential profile
+binding, model, attempt, canonical destination, payload hash, and declared
+classification, then obtains separate resolution and send grants for
+`INetworkNameResolver` and `INetworkTransport`. Denial, an unavailable
+authority, grant store, or required audit, an elapsed deadline, and every
+transport failure return a typed `ProviderEgressRefused` carrying the stable
+`ProviderFailure` taxonomy before any DNS or I/O where the failure precedes it.
+Redirects are never followed, and credentials appear only in the transport
+request. The composition must register the network leaf (`AddAgentNetwork` or
+`AddAgentNetworkInMemory`) and the security services it requires;
+`ProviderEgressOptions` configures the connect, request-size, and response-size
+bounds and the payload classification. See
+[Provider egress: shipped design and deviations](../../docs/architecture/model-and-embedding-providers.md#provider-egress-shipped-design-and-deviations).
+
 ## Shared HTTP helpers
 
 `AgentKit.Providers.Http` holds the provider-neutral HTTP mechanics every
@@ -159,8 +179,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/model-and-embedding-providers.md)
   — intended ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

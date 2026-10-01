@@ -27,17 +27,10 @@ public sealed class SecurityEnforcementRequestTests
     public void Equals_WhenAnyEvidenceDiffers_ReturnsFalse()
     {
         var value = Create();
-        var otherIdentity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("other"), ExecutionSubjectKind.Service);
         var changes = new SecurityEnforcementRequest[]
         {
-            value with
-            {
-                Scope = CreateScope(2)
-            },
-            value with
-            {
-                Identity = otherIdentity
-            },
+            Create(scopeDiscriminator: 2),
+            Create(principal: "other"),
             Create(captured: true),
             value with
             {
@@ -84,14 +77,14 @@ public sealed class SecurityEnforcementRequestTests
         malformed.ShouldNotBe(Create());
     }
 
-    private static SecurityEnforcementRequest Create(bool captured = false)
+    private static SecurityEnforcementRequest Create(bool captured = false, int scopeDiscriminator = 1, string principal = "principal")
     {
-        var scope = CreateScope(1);
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var scope = CreateScope(scopeDiscriminator);
+        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId(principal), ExecutionSubjectKind.Human);
         var resources = ImmutableArray.Create(new ProtectedResource(ProtectedResourceKind.File, "first"), new ProtectedResource(ProtectedResourceKind.File, "second"));
         if (!captured)
         {
-            return new SecurityEnforcementRequest(scope, identity, new ComponentId("filesystem"), SecurityOperationKind.FileRead, SecurityEffect.Observe, resources, new InputFingerprint("sha256:abc"), new SecurityRevocationVersion(1));
+            return new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("filesystem"), SecurityOperationKind.FileRead, SecurityEffect.Observe, resources, new InputFingerprint("sha256:abc"), new SecurityRevocationVersion(1));
         }
 
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("profile"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("90000000-0000-0000-0000-000000000009")), new SecurityPolicyVersion(1), new ContentHash("sha256:snapshot")), new ComponentKey<ISecurityAuthority>("authority"), new AgentDefinitionRevision(1), new ConfigurationVersion(1), scope, identity);

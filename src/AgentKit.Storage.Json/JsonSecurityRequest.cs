@@ -13,16 +13,15 @@ namespace AgentKit.Storage.Json;
 /// <para>
 /// <see cref="ToolCallId"/> is optional because not every protected operation originates from a tool call; a null value is
 /// preserved rather than normalized to an empty GUID, so a request that no tool caused never acquires a fabricated tool
-/// correlation. <see cref="Authorization"/> is likewise optional and meaningful in its absence: <see cref="ToDomain"/> selects
-/// between the two domain constructors on exactly that distinction, so a request persisted through the unpinned path never
-/// gains snapshot-bound authorization evidence it never carried.
+/// correlation. <see cref="Authorization"/> is required: every request names the complete captured context the selected
+/// authority must evaluate, so a document without one is corrupt and is rejected rather than reconstructed.
 /// </para>
 /// </remarks>
 /// <param name="Id">The raw value of the non-empty stable request identity.</param>
 /// <param name="Scope">The non-null exact authorization scope of the requested operation.</param>
 /// <param name="ToolCallId">The raw value of the causing tool call, or <see langword="null"/> when no tool call caused the request.</param>
 /// <param name="Identity">The non-null authenticated execution identity the request was issued for.</param>
-/// <param name="Authorization">The complete captured authorization evidence the selected authority must evaluate, or <see langword="null"/> for the unpinned request path.</param>
+/// <param name="Authorization">The non-null complete captured authorization evidence the selected authority must evaluate.</param>
 /// <param name="Audience">The non-blank canonical component identifier of the component that will enforce and perform the effect.</param>
 /// <param name="Kind">The protected operation kind.</param>
 /// <param name="Effect">The requested material effect.</param>
@@ -35,7 +34,7 @@ public sealed record JsonSecurityRequest(
     JsonSecurityAuthorizationScope Scope,
     Guid? ToolCallId,
     JsonExecutionIdentity Identity,
-    JsonSecurityAuthorizationContext? Authorization,
+    JsonSecurityAuthorizationContext Authorization,
     string Audience,
     SecurityOperationKind Kind,
     SecurityEffect Effect,
@@ -46,7 +45,7 @@ public sealed record JsonSecurityRequest(
 {
     /// <summary>Projects one domain security request into its portable JSON representation.</summary>
     /// <param name="value">The non-null normalized request to project.</param>
-    /// <returns>A document carrying every unwrapped identity and bound, a never-default ordered resource array, and null optional members exactly where the request had none.</returns>
+    /// <returns>A document carrying every unwrapped identity and bound, a never-default ordered resource array, and a null tool correlation exactly when no tool call caused the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static JsonSecurityRequest FromDomain(SecurityRequest value)
     {
@@ -58,9 +57,7 @@ public sealed record JsonSecurityRequest(
             JsonSecurityAuthorizationScope.FromDomain(value.Scope),
             value.ToolCallId?.Value,
             JsonExecutionIdentity.FromDomain(value.Identity),
-            value.Authorization is { } authorization
-                ? JsonSecurityAuthorizationContext.FromDomain(authorization)
-                : null,
+            JsonSecurityAuthorizationContext.FromDomain(value.Authorization),
             value.Audience.Value,
             value.Kind,
             value.Effect,
@@ -71,20 +68,20 @@ public sealed record JsonSecurityRequest(
     }
 
     /// <summary>Reconstructs the exact domain request this document was projected from.</summary>
-    /// <returns>A request equal to the projected original, retaining captured authorization and tool correlation only when the document carried them.</returns>
+    /// <returns>A request equal to the projected original, with its captured authorization and tool correlation only when the document carried one.</returns>
     /// <remarks>
-    /// The authorization-bearing constructor overload is selected only when <see cref="Authorization"/> is present, so an
-    /// unpinned request is never silently upgraded to a snapshot-bound one. <see cref="RequestedUses"/> is always passed
+    /// <see cref="RequestedUses"/> is always passed
     /// explicitly rather than relying on the domain constructor's default, because a persisted request that asked for several
     /// uses must not be replayed as a single-use request.
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><see cref="Scope"/> or <see cref="Identity"/> is null, which a well-formed document never is.</exception>
-    /// <exception cref="ArgumentException"><see cref="Audience"/> or <see cref="InputFingerprint"/> is blank, <see cref="Resources"/> is empty or contains a null element, or a present <see cref="Authorization"/> disagrees with the request's scope or identity.</exception>
+    /// <exception cref="ArgumentNullException"><see cref="Scope"/>, <see cref="Identity"/>, or <see cref="Authorization"/> is null, which a well-formed document never is.</exception>
+    /// <exception cref="ArgumentException"><see cref="Audience"/> or <see cref="InputFingerprint"/> is blank, <see cref="Resources"/> is empty or contains a null element, or <see cref="Authorization"/> disagrees with the request's scope or identity.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A persisted identity is empty, <see cref="Kind"/> or <see cref="Effect"/> is undefined, or <see cref="RequestedUses"/> is not positive.</exception>
     public SecurityRequest ToDomain()
     {
         ArgumentNullException.ThrowIfNull(Scope);
         ArgumentNullException.ThrowIfNull(Identity);
+        ArgumentNullException.ThrowIfNull(Authorization);
         var persisted = Resources.IsDefault ? [] : Resources;
         ArgumentException.ThrowIfContainsNull(persisted, nameof(Resources));
         var id = new SecurityRequestId(Id);
@@ -95,32 +92,19 @@ public sealed record JsonSecurityRequest(
         ImmutableArray<ProtectedResource> resources =
             [.. persisted.Select(static resource => resource.ToDomain())];
         var inputFingerprint = new InputFingerprint(InputFingerprint);
-        return Authorization is { } authorization
-            ? new SecurityRequest(
-                id,
-                scope,
-                toolCallId,
-                identity,
-                authorization.ToDomain(),
-                audience,
-                Kind,
-                Effect,
-                resources,
-                inputFingerprint,
-                Deadline,
-                RequestedUses)
-            : new SecurityRequest(
-                id,
-                scope,
-                toolCallId,
-                identity,
-                audience,
-                Kind,
-                Effect,
-                resources,
-                inputFingerprint,
-                Deadline,
-                RequestedUses);
+        return new SecurityRequest(
+            id,
+            scope,
+            toolCallId,
+            identity,
+            Authorization.ToDomain(),
+            audience,
+            Kind,
+            Effect,
+            resources,
+            inputFingerprint,
+            Deadline,
+            RequestedUses);
     }
 
     /// <summary>Compares requests by ordered resource contents rather than by immutable-array storage identity.</summary>

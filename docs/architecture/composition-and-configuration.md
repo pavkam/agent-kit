@@ -227,6 +227,63 @@ public interface IAgentDefinitionCatalog
 }
 ```
 
+#### Implemented shape and recorded deviations
+
+`AgentDefinition` has exactly the members above and no others; there is no flat
+per-component key, no inline budget limit list, no per-definition request
+settings or model requirements, and no flat message list. Where the normative
+records had no home for a fact the runtime needs, the smallest coherent addition
+is recorded here:
+
+- `ModelSelectionPolicy` carries `Requirements` (the portable behaviors every
+  request needs) and `RequestSettings` (sampling and output settings), both
+  optional constructor arguments that default to `ModelRequirements.None` and
+  `LlmRequestSettings.Default`. The definition has no member for either, and the
+  model-choice policy is the one place that already states which model an
+  agent's requests use; `ModelSelectionRequest.Requirements` still carries the
+  merged per-request requirements the loop derives from this base.
+- `AgentOptionalCapabilitySelection` carries an init-only
+  `CompactionProfileKey? CompactionProfile`. Compaction is optional, so the
+  normative `AgentComponentSelection` has no compaction field (the earlier
+  `Components.Compaction` conflict is settled this way); only compaction-aware
+  compositions set it.
+- A definition's output contract is never null. Free-form output is
+  `OutputDefinition.FreeText`, a `Text`-mode definition with no schema or
+  validators; the selected output processor handles it like any other mode.
+- `Instructions` is `ImmutableArray<InstructionSource>`. Flat messages are
+  authored through `InstructionSourceProjection.FromMessages`, and the loop's
+  message-level request carries `InstructionSourceProjection.ToMessages` of the
+  literal sources.
+- Run budgets come only from `Components.BudgetProfile`. `AgentLoopRunRequest`
+  always pins its `AgentDefinition` and `EffectiveConfigurationSnapshot` and
+  reads its model policy, instructions, settings, output contract, hook profile,
+  and budget profile from them; it carries no inline limits, tool list, or
+  second copy of any definition value.
+- `IRandomizerFactory`, `IContentHasher`, and their value types live in
+  `AgentKit.Abstractions`; `AddAgentKit` installs a cryptographically strong
+  default factory and a SHA-256 hasher. The existing algorithm-agnostic
+  `ContentHash` is kept rather than replaced by the profile-plus-digest record:
+  `IContentHasher` returns a `ContentHash` whose text is the algorithm,
+  algorithm version, canonicalization, and canonicalization version joined by
+  `/`, then `:` and the lowercase hex digest, so algorithm and canonicalization
+  remain part of equality.
+- The composition validator is the facade-internal static
+  `AgentCompositionValidator`, not a registered service: a replaceable validator
+  could skip the proof it exists to make. The run-scope factory is a registered
+  engine-wide singular (`IAgentRunScopeFactory`, facade-internal).
+- A neutral `AgentCapabilityReference` resolves through additive
+  `IAgentCapabilityProfileSource` registrations, one per capability identity, so
+  validation needs no reference to the owning package (AgentKit.Mcp.Client
+  registers the MCP one).
+- A definition's security authority is proved through its exact run-profile
+  publication (profile key and authority key), the engine-wide authority
+  selector and policy catalog, and `ISecurityAuthorityCatalog`, a neutral
+  validation-time contract the first-party permissions package registers over
+  its explicit authority bindings. Build rejects a publication whose authority
+  key is not installed. A composition that removes the catalog (for example by
+  replacing the authority selector with its own) skips only that key check; the
+  selector's runtime outcome stays authoritative.
+
 The first-party catalog in `AgentKit` composes additive definition sources into
 one immutable, versioned snapshot. It is thread-safe, resolves source precedence
 under the rules below, and publishes a new snapshot only after complete
@@ -584,7 +641,7 @@ user. This mirrors `ContextPreparationFailure` and
 `OutputSchemaConfigurationFailure`'s kind-plus-safe-message shape rather than
 introducing a new failure-evidence pattern.
 
-### Current admission surface
+### Admission surface
 
 `AgentEngineRuntime` owns admission for every facade entry point. `Agent` and
 `AgentEngine` are thin handles over that runtime. `RunAsync<TOutput>` and
@@ -619,8 +676,8 @@ failure mapping.
 `AgentKit.Simple` exposes this through `AddAgent(agentId, configure)` for
 additional definitions on the same engine and `engine.Identity` for the composed
 identity; `engine.Conversation` remains the single-session convenience.
-Queue-backed admission through `AgentKit.IO` and engine-level run attachment and
-cancellation by `RunId` remain later steps.
+Queue-backed admission, steering, follow-up, cancellation, and attachment by
+`RunId` are the `Agent` operations described above.
 
 ### Compiled run activation
 
@@ -638,7 +695,6 @@ internal sealed record AgentRunPlan(
     IAgentLoop Loop,
     AgentRunServices Services,
     SessionExecutionCapability Session,
-    HookDispatchContext Hooks,
     SecurityAuthorizationContext Authorization,
     AgentOptionalCapabilitySelection OptionalCapabilities);
 
@@ -685,10 +741,24 @@ internal sealed class AgentRunScopeLease : IAsyncDisposable
 }
 ```
 
-`HookDispatchContext` is omitted from the landed `AgentRunPlan`. The type
-exists, but run-scoped hook activation has not landed, and the runtime does not
-construct a stand-in. `OptionalCapabilities` is
-`AgentOptionalCapabilitySelection.None` until a definition carries a selection.
+The plan carries no `HookDispatchContext`: hook activation is run-scoped state
+the loop owns (`HookActivationScope`, which mints a fresh per-dispatch context
+for every emission), selected by the definition's `HookProfile`. A plan built
+before the run exists therefore never holds a dispatch identity.
+`OptionalCapabilities` is the definition's own selection
+(`AgentOptionalCapabilitySelection.None` when it enables nothing).
+
+The compiler resolves every collaborator `AgentComponentSelection` names under
+its exact key and never falls back to an unkeyed registration: loop,
+continuation policy, input coordinator, output processor, context assembler,
+model selector, and model request executor. The output publisher is also
+selected by key, but it is scoped to the run's `RunScopeIdentity`, which the
+engine binds only after it mints the `RunId`; the engine therefore resolves it
+under `AgentComponentSelection.Output` immediately after that binding rather
+than inside the compiled bundle. Collaborators the selection does not name (the
+session coordinator, security-profile selector, model resolver, and tool
+executor) resolve under the loop key when a registration exists there and
+otherwise under the engine-wide unkeyed registration.
 
 `AgentRunScopeFactory` is the sole owner of `IServiceScopeFactory` and arbitrary
 keyed contract resolution. It creates the scope, resolves the scoped
@@ -766,6 +836,17 @@ least one compatible conversational model. Several keyed implementations and
 profiles may coexist; ambiguity means a definition failed to select one, not
 that the whole process must use one global implementation.
 
+Validation reports each problem with a stable code. Engine-wide singulars use
+`agentkit.<service>.missing` and `agentkit.<service>.ambiguous`; keyed
+per-definition selections use `agentkit.definition.<role>.missing` and
+`agentkit.definition.<role>.ambiguous` for the loop, continuation policy, input
+coordinator, output publisher, output processor, context assembler, model
+selector, and model executor roles. Further per-definition codes cover the
+budget profile, session store (`missing`, `incompatible`), hook profile, model
+(`model.missing`, `model-incompatible`), run coordinator, loop-scoped
+collaborators, toolset and tool-executor coherence, compaction, and each neutral
+capability reference.
+
 The effective security composition also resolves exactly one grant store, and
 every enabled storage capability resolves its selected adapter and immutable
 capability descriptor. Build rejects missing or ambiguous adapters, absent
@@ -808,11 +889,62 @@ factory boundary. The validator combines those descriptors with Microsoft DI
 scope/build validation, rejects every strongly connected component, and reports
 the complete cycle path.
 
-Selectable components registered through opaque factories must supply an
-equivalent descriptor. `Lazy<T>`, `Func<T>`, nested scopes, or a
+Declarations are opt-in evidence. A host that wants the graph proven for a
+component that is registered through an opaque factory supplies an equivalent
+descriptor with its real direct dependencies; the validator never executes a
+factory to discover them. `Lazy<T>`, `Func<T>`, nested scopes, or a
 service-provider lookup do not make a dependency cycle valid; they only postpone
 it. An explicit factory is allowed when it creates a separately acyclic
 operation graph with a documented owner and disposal boundary.
+
+**First-party registrations publish no declarations, and
+`ComponentRegistrationSnapshot.RepresentsCompleteRunnableGraph` is therefore
+`false` for a first-party composition.** This is a designed consequence of the
+declaration contract, not a missing step. The flag is true only when every
+engine-wide singular contract and every registered selectable keyed component
+has an explicit declaration. Publishing them from first-party registration
+methods would be incorrect for three reasons:
+
+- _Replacement._ A declaration is additive evidence that restates one
+  registration, and correspondence validation requires the actual Microsoft DI
+  registration at that address to match it exactly (implementation type,
+  lifetime, and no extra registration). A declaration cannot observe a later
+  `Replace` or `RemoveAll`, and there is no declaration-removal API. Every
+  first-party default is documented as replaceable, and applications do replace
+  them with ordinary DI calls: tests substitute `TimeProvider`, and CodingAgent
+  removes the default `IApprovalHandler` and `IApprovalResponderAuthorizer`.
+  With first-party declarations in place each such replacement would fail
+  composition with an implementation- or lifetime-mismatch diagnostic, so a
+  default would stop being replaceable.
+- _Opaque factories._ In a first-party composition 14 of the 30 required
+  addresses (22 engine-wide singulars plus the 8 keyed selectable components)
+  are registered through implementation factories: `IAgentRunScopeFactory`,
+  `ISecurityPolicyCatalog`, `ISecurityGrantStore`, `IApprovalBroker`,
+  `ISessionDirectory`, `ISessionStoreCatalog`, `ISessionStoreSelector`,
+  `IHookDispatcher`, `IHookProfileSelector`, `IBudgetAuthority`, and the keyed
+  output processor, context assembler, model selector, and model executor. Their
+  real constructor graphs involve package-internal types
+  (`ContextAssemblerServices`, run-scoped identities). A truthful descriptor
+  must name each direct dependency, and the graph validator reports an
+  undeclared required singular dependency as missing; declaring a leaf instead
+  would assert a graph the factory does not have, which is weaker than no
+  declaration because declarations are trusted.
+- _Ownership._ The grant store, approval and decision stores, session directory,
+  store catalog and selector, and the budget ledger behind the authority are
+  registered by whichever storage leaf the application selects. The runtime
+  package that requires them neither registers nor knows their implementation,
+  so it cannot declare them, and the leaves cannot declare a contract only they
+  can satisfy without each family duplicating the facade's list of required
+  addresses.
+
+What the facade guarantees for a first-party composition does not depend on the
+flag: `ValidateRequiredFacadeServices` and the per-definition checks prove
+presence, cardinality, exact keys, and capability compatibility from the actual
+Microsoft DI descriptors, and Microsoft DI scope and build validation covers the
+constructor graph. Closing the gap would need a different declaration contract,
+for example one bound to a registration so that replacing the registration
+retires its declaration, rather than additional first-party calls to
+`DeclareAgentKitComponent`.
 
 `AgentOptionalCapabilitySelection` makes demonstrated optional runtime axes
 explicit instead of smuggling them through `ExtensionData`. A non-null

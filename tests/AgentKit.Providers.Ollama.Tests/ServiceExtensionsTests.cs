@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Ollama.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -135,6 +137,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllamaLlmModel(new ModelAlias("primary"), new ModelId("llama3.3"));
         _ = services.AddOllamaLlmModel(new ModelAlias("secondary"), new ModelId("qwen2.5"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -149,6 +153,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllama();
         _ = services.AddOllamaApiKeyCredential("test-key");
         _ = services.AddOllamaLlmModel(new ModelAlias("chat"), new ModelId("llama3.3"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OllamaLlmModel>();
@@ -165,6 +171,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("nomic-embed-text"));
         _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("mxbai-embed-large"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -179,6 +187,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllama();
         _ = services.AddOllamaApiKeyCredential("test-key");
         _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("nomic-embed-text"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OllamaEmbeddingModel>();
@@ -204,6 +214,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddOllamaLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OllamaLlmModel>();

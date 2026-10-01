@@ -63,4 +63,31 @@ public sealed class AgentRuntimeTests
             Environment.SetEnvironmentVariable("CODING_AGENT_SESSION_DB", previous);
         }
     }
+
+    /// <summary>Verifies the hand-composed runtime passes engine composition validation and resolves its conversation over the engine.</summary>
+    [Fact]
+    public async Task Create_WhenComposed_BuildsAnEngineAndResolvesTheConversation()
+    {
+        var previous = Environment.GetEnvironmentVariable("CODING_AGENT_SESSION_DB");
+        var directory = Directory.CreateTempSubdirectory("coding-agent-runtime");
+        try
+        {
+            Environment.SetEnvironmentVariable("CODING_AGENT_SESSION_DB", Path.Combine(directory.FullName, "sessions.db"));
+
+            await using var conversation = AgentRuntime.Create(
+                directory.FullName,
+                "test-api-key",
+                CodingAgentConfiguration.CreateDefault(),
+                new DelegateApprovalPrompt(static (_, _) => Task.FromResult(false)),
+                new UnavailableHumanQuestionPrompt(),
+                new PermissionModeController());
+
+            conversation.SessionId.ShouldBeNull();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CODING_AGENT_SESSION_DB", previous);
+            directory.Delete(recursive: true);
+        }
+    }
 }

@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Glob.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class GlobToolTests
@@ -17,7 +21,6 @@ public sealed class GlobToolTests
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":1}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":\"../escape\"}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":\"not-an-array\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var globber = new FakeFileGlobber();
@@ -34,7 +37,6 @@ public sealed class GlobToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenExcludePatternsExceedsMaximumCount_ReturnsInvalidArguments()
     {
         var globber = new FakeFileGlobber();
@@ -59,7 +61,6 @@ public sealed class GlobToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveWorkspace()
     {
         var globber = new FakeFileGlobber();
@@ -74,7 +75,6 @@ public sealed class GlobToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsMatchesAndExactSecurityBinding()
     {
         var globber = new FakeFileGlobber
@@ -128,7 +128,6 @@ public sealed class GlobToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenNoMatches_ReturnsSuccessfulTypedEmptyResult()
     {
         var tool = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
@@ -142,7 +141,6 @@ public sealed class GlobToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitExceeded_PreservesPartialMatchesAndTypedFailure()
     {
         var globber = new FakeFileGlobber
@@ -174,7 +172,7 @@ public sealed class GlobToolTests
     private static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority) =>
         TestGlobComposition.CreateTool(globber, authority);
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
@@ -189,4 +187,28 @@ public sealed class GlobToolTests
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch), GlobTool.Descriptor);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<GlobTool>();
+        var tool = TestGlobComposition.CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority(), logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), GlobTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33200);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

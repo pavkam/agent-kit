@@ -14,7 +14,6 @@ public sealed class AgentSessionOptionsTests
         options.MaximumAppendEntries.ShouldBe(128);
         options.MaximumPageSize.ShouldBe(256);
         options.SecurityRequestLifetime.ShouldBe(TimeSpan.FromMinutes(1));
-        options.BusyBehavior.ShouldBe(SessionBusyBehavior.Reject);
         options.BusyWaitTimeout.ShouldBe(TimeSpan.FromSeconds(30));
     }
 
@@ -26,14 +25,12 @@ public sealed class AgentSessionOptionsTests
             MaximumAppendEntries = 4,
             MaximumPageSize = 8,
             SecurityRequestLifetime = TimeSpan.FromSeconds(5),
-            BusyBehavior = SessionBusyBehavior.Wait,
             BusyWaitTimeout = TimeSpan.FromSeconds(1),
         };
 
         options.MaximumAppendEntries.ShouldBe(4);
         options.MaximumPageSize.ShouldBe(8);
         options.SecurityRequestLifetime.ShouldBe(TimeSpan.FromSeconds(5));
-        options.BusyBehavior.ShouldBe(SessionBusyBehavior.Wait);
         options.BusyWaitTimeout.ShouldBe(TimeSpan.FromSeconds(1));
     }
 }

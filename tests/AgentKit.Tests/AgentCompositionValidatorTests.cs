@@ -3,6 +3,7 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.Internal;
 
 
 /// <summary>Verifies AgentCompositionValidator behavior and contracts.</summary>
@@ -121,8 +122,20 @@ public sealed class AgentCompositionValidatorTests
     private sealed class Leaf: ILeaf;
     private sealed class StubSecurityGrantStore: ISecurityGrantStore
     {
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            ArgumentNullException.ThrowIfNull(enforcement);
+            ArgumentNullException.ThrowIfNull(intent);
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Unknown, 0, "This test grant store does not consume grants.", null));
+        }
+
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) => ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Unused test store."));
         public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(reason);
@@ -151,6 +164,19 @@ public sealed class AgentCompositionValidatorTests
     [InlineData(typeof(TimeProvider), "agentkit.time")]
     [InlineData(typeof(IIdentifierGenerator<RunId>), "agentkit.runid")]
     [InlineData(typeof(IIdentifierGenerator<OperationId>), "agentkit.operationid")]
+    [InlineData(typeof(IModelCatalog), "agentkit.model-catalog")]
+    [InlineData(typeof(IProviderProfileRuntimeSelector), "agentkit.provider-profile-selector")]
+    [InlineData(typeof(ISecurityAuthoritySelector), "agentkit.security-authority-selector")]
+    [InlineData(typeof(ISecurityPolicyCatalog), "agentkit.security-policy-catalog")]
+    [InlineData(typeof(IApprovalBroker), "agentkit.approval-broker")]
+    [InlineData(typeof(IAgentRunScopeFactory), "agentkit.run-scope-factory")]
+    [InlineData(typeof(ISessionDirectory), "agentkit.session-directory")]
+    [InlineData(typeof(ISessionStoreCatalog), "agentkit.session-store-catalog")]
+    [InlineData(typeof(ISessionStoreSelector), "agentkit.session-store-selector")]
+    [InlineData(typeof(IBudgetAuthority), "agentkit.budget-authority")]
+    [InlineData(typeof(IBudgetProfileCatalog), "agentkit.budget-profile-catalog")]
+    [InlineData(typeof(IRandomizerFactory), "agentkit.randomizer-factory")]
+    [InlineData(typeof(IContentHasher), "agentkit.content-hasher")]
     public void ValidateComponentRegistrations_WhenOnlyKeyedServiceRemains_ReportsMissingWithoutFactories(Type serviceType, string code)
     {
         // Arrange
@@ -169,13 +195,63 @@ public sealed class AgentCompositionValidatorTests
         factoryCalls.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(typeof(IAgentDefinitionCatalog), "agentkit.catalog")]
+    [InlineData(typeof(IAgentRunProfilePublicationReader), "agentkit.run-profile-reader")]
+    [InlineData(typeof(ISecurityProfileSelector), "agentkit.security-profile-selector")]
+    [InlineData(typeof(ISecurityGrantStore), "agentkit.security-grant-store")]
+    [InlineData(typeof(TimeProvider), "agentkit.time")]
+    [InlineData(typeof(IIdentifierGenerator<RunId>), "agentkit.runid")]
+    [InlineData(typeof(IIdentifierGenerator<OperationId>), "agentkit.operationid")]
+    [InlineData(typeof(IModelCatalog), "agentkit.model-catalog")]
+    [InlineData(typeof(IProviderProfileRuntimeSelector), "agentkit.provider-profile-selector")]
+    [InlineData(typeof(ISecurityAuthoritySelector), "agentkit.security-authority-selector")]
+    [InlineData(typeof(ISecurityPolicyCatalog), "agentkit.security-policy-catalog")]
+    [InlineData(typeof(IApprovalBroker), "agentkit.approval-broker")]
+    [InlineData(typeof(IAgentRunScopeFactory), "agentkit.run-scope-factory")]
+    [InlineData(typeof(ISessionDirectory), "agentkit.session-directory")]
+    [InlineData(typeof(ISessionStoreCatalog), "agentkit.session-store-catalog")]
+    [InlineData(typeof(ISessionStoreSelector), "agentkit.session-store-selector")]
+    [InlineData(typeof(IBudgetAuthority), "agentkit.budget-authority")]
+    [InlineData(typeof(IBudgetProfileCatalog), "agentkit.budget-profile-catalog")]
+    [InlineData(typeof(IRandomizerFactory), "agentkit.randomizer-factory")]
+    [InlineData(typeof(IContentHasher), "agentkit.content-hasher")]
+    [InlineData(typeof(AgentEngine), "agentkit.engine")]
+    public void ValidateComponentRegistrations_WhenSingularServiceIsRegisteredTwice_ReportsAmbiguousWithoutFactories(Type serviceType, string code)
+    {
+        var builder = CompositionTestData.RunnableBuilder();
+        var factoryCalls = 0;
+        builder.Services.Add(ServiceDescriptor.Singleton(serviceType, _ =>
+        {
+            factoryCalls++;
+            throw new InvalidOperationException("Validation must not invoke a duplicate registration's factory.");
+        }));
+
+        var exception = Should.Throw<AgentCompositionException>(() => AgentCompositionValidator.ValidateComponentRegistrations(ComponentRegistrationSnapshot.Capture(builder.Services)));
+
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == $"{code}.ambiguous");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ValidateComponentRegistrations_WhenEngineConstructionRequiresTheFacadeButItsDescriptorWasRemoved_ReportsEngineMissing()
+    {
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.RemoveAll<AgentEngine>();
+
+        var exception = Should.Throw<AgentCompositionException>(() => AgentCompositionValidator.ValidateComponentRegistrations(
+            ComponentRegistrationSnapshot.Capture(builder.Services), requiresFacade: true));
+
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.engine.missing");
+    }
+
     [Fact]
     public void ValidateComponentRegistrations_WhenLoopIsOnlyRegisteredUnderAnUnselectedKey_AcceptsTheNarrowFacadeCheck()
     {
         // ValidateComponentRegistrations alone (unlike the full AgentCompositionValidator.Validate used at engine
         // build time) does not know which key an agent definition selects, so it only proves that some keyed
         // IAgentLoop registration exists. Whether it is the exact key a definition selects is proven separately
-        // by ValidateCatalog, exercised end-to-end by
+        // by DefinitionCompositionValidator, exercised end-to-end by
         // AgentEngineBuilderTests.Build_WhenLoopIsRegisteredUnderADifferentKeyThanTheDefinitionSelects_RejectsWithAMissingLoopDiagnostic.
         var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.RemoveAll<IAgentLoop>();
@@ -292,18 +368,10 @@ public sealed class AgentCompositionValidatorTests
             new ModelLimits(maxContextTokens: null, maxOutputTokens: null),
             pricing: null,
             ExtensionData.Empty);
-        var definition = new AgentDefinition(
-            CompositionTestData.AgentId,
-            new AgentDefinitionRevision(1),
-            "test agent",
-            new ModelSelectionPolicy([new ModelAlias("chat")]),
-            new ModelRequirements { RequiresToolCalls = true },
-            [],
-            LlmRequestSettings.Default,
-            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
-            ExtensionData.Empty,
-            new SecurityProfileKey("security"),
-            new SessionProfileKey("session"));
+        var definition = CompositionTestData.Definition() with
+        {
+            Models = new ModelSelectionPolicy([new ModelAlias("chat")], requirements: new ModelRequirements { RequiresToolCalls = true }),
+        };
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
         _ = builder.Services.RemoveAll<IModelCatalog>();
         _ = builder.Services.AddSingleton<IModelCatalog>(

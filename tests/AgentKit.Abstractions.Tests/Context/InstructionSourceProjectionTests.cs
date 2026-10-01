@@ -7,8 +7,8 @@ namespace AgentKit.Abstractions.Tests.Context;
 public sealed class InstructionSourceProjectionTests
 {
     [Fact]
-    public void FromLegacyMessages_WhenInstructionsAreEmpty_ReturnsEmptySources() =>
-        InstructionSourceProjection.FromLegacyMessages([], new AgentDefinitionRevision(1)).ShouldBeEmpty();
+    public void FromMessages_WhenInstructionsAreEmpty_ReturnsEmptySources() =>
+        InstructionSourceProjection.FromMessages([], new AgentDefinitionRevision(1)).ShouldBeEmpty();
 
     [Fact]
     public void ToMessages_WhenLiteralSourcePresent_ReturnsMessagesInOrder()

@@ -6,11 +6,12 @@ namespace AgentKit;
 /// <summary>Describes one fully normalized protected operation before policy evaluation or effects.</summary>
 public sealed record SecurityRequest
 {
-    /// <summary>Initializes a normalized security request.</summary>
+    /// <summary>Initializes a protected request bound to one complete captured authorization context.</summary>
     /// <param name="id">The stable request identity.</param>
     /// <param name="scope">The exact authorization scope.</param>
     /// <param name="toolCallId">The causing tool call, when applicable.</param>
     /// <param name="identity">The authenticated execution identity.</param>
+    /// <param name="authorization">The complete captured profile, policy-snapshot, authority, configuration, scope, and identity evidence the selected authority must evaluate.</param>
     /// <param name="audience">The component that will enforce and perform the effect.</param>
     /// <param name="kind">The protected operation kind.</param>
     /// <param name="effect">The requested effect.</param>
@@ -18,14 +19,15 @@ public sealed record SecurityRequest
     /// <param name="inputFingerprint">The normalized input fingerprint.</param>
     /// <param name="deadline">The exclusive deadline after which the request must not be granted.</param>
     /// <param name="requestedUses">The positive maximum number of effect consumptions requested.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="scope"/> or <paramref name="identity"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="resources"/> is empty.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="scope"/>, <paramref name="identity"/>, or <paramref name="authorization"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="resources"/> is empty, or the authorization's scope or identity differs from the request.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An enum is undefined or <paramref name="requestedUses"/> is not positive.</exception>
     public SecurityRequest(
         SecurityRequestId id,
         SecurityAuthorizationScope scope,
         ToolCallId? toolCallId,
         ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
         ComponentId audience,
         SecurityOperationKind kind,
         SecurityEffect effect,
@@ -36,6 +38,7 @@ public sealed record SecurityRequest
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
         ArgumentOutOfRangeException.ThrowIfEqual(id, default);
         ArgumentException.ThrowIfNullOrWhiteSpace(audience.Value, nameof(audience));
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
@@ -43,7 +46,10 @@ public sealed record SecurityRequest
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestedUses);
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputFingerprint.Value, nameof(inputFingerprint));
+        ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
 
+        Authorization = authorization;
         Id = id;
         Scope = scope;
         ToolCallId = toolCallId;
@@ -55,21 +61,6 @@ public sealed record SecurityRequest
         InputFingerprint = inputFingerprint;
         Deadline = deadline;
         RequestedUses = requestedUses;
-    }
-
-    /// <summary>Initializes a protected request bound to one complete captured authorization context.</summary>
-    /// <param name="id">The stable request identity.</param><param name="scope">The exact authorization scope.</param><param name="toolCallId">The causing tool call, when applicable.</param><param name="identity">The authenticated execution identity.</param><param name="authorization">The complete captured profile, policy-snapshot, authority, configuration, scope, and identity evidence the selected authority must evaluate.</param><param name="audience">The component that will enforce and perform the effect.</param><param name="kind">The protected operation kind.</param><param name="effect">The requested effect.</param><param name="resources">The ordered canonical resources.</param><param name="inputFingerprint">The normalized input fingerprint.</param><param name="deadline">The exclusive decision deadline.</param><param name="requestedUses">The positive maximum consumption count.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception><exception cref="ArgumentException">Its scope or identity differs from the request.</exception>
-    public SecurityRequest(SecurityRequestId id, SecurityAuthorizationScope scope, ToolCallId? toolCallId,
-        ExecutionIdentity identity, SecurityAuthorizationContext authorization, ComponentId audience,
-        SecurityOperationKind kind, SecurityEffect effect, ImmutableArray<ProtectedResource> resources,
-        InputFingerprint inputFingerprint, DateTimeOffset deadline, int requestedUses = 1)
-        : this(id, scope, toolCallId, identity, audience, kind, effect, resources, inputFingerprint, deadline, requestedUses)
-    {
-        ArgumentNullException.ThrowIfNull(authorization);
-        ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
-        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
-        Authorization = authorization;
     }
 
     /// <summary>Gets the request identity.</summary>
@@ -84,7 +75,7 @@ public sealed record SecurityRequest
         }
     }
     /// <summary>Gets or initializes the exact authorization scope.</summary>
-    /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
+    /// <value>The non-null scope, which must equal the captured authorization scope.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
     /// <exception cref="ArgumentException">A record copy assigns a scope different from the captured authorization scope.</exception>
     public SecurityAuthorizationScope Scope
@@ -93,18 +84,14 @@ public sealed record SecurityRequest
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Scope));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
-            }
-
+            ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
             field = value;
         }
     }
     /// <summary>Gets the causing tool-call identity, when applicable.</summary>
     public ToolCallId? ToolCallId { get; init; }
     /// <summary>Gets or initializes the authenticated execution identity.</summary>
-    /// <value>The non-null identity, which must equal the captured authorization identity when <see cref="Authorization"/> is present.</value>
+    /// <value>The non-null identity, which must equal the captured authorization identity.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
     /// <exception cref="ArgumentException">A record copy assigns an identity different from the captured authorization identity.</exception>
     public ExecutionIdentity Identity
@@ -113,16 +100,12 @@ public sealed record SecurityRequest
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Identity));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
-            }
-
+            ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
             field = value;
         }
     }
-    /// <summary>Gets complete captured authorization evidence when the caller requires snapshot-bound evaluation.</summary><value>The immutable captured selection, or null only for the legacy unpinned request path.</value>
-    public SecurityAuthorizationContext? Authorization { get; }
+    /// <summary>Gets the complete captured authorization evidence the selected authority must evaluate.</summary><value>The immutable captured profile, policy snapshot, authority, configuration, scope, and identity selection; never null.</value>
+    public SecurityAuthorizationContext Authorization { get; }
     /// <summary>Gets the effecting component audience.</summary>
     /// <exception cref="ArgumentException">The initialized value's <see cref="ComponentId.Value"/> is blank.</exception>
     public ComponentId Audience

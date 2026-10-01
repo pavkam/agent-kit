@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.WebSearch.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 
@@ -25,7 +29,6 @@ public sealed class WebSearchToolTests
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":-1}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":999999}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":\"soon\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrSearch(string json)
     {
         var provider = new EnforcingSearchProvider();
@@ -41,7 +44,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_BindsAndReenforcesExactClassifiedEgress()
     {
         var provider = new EnforcingSearchProvider();
@@ -70,7 +72,6 @@ public sealed class WebSearchToolTests
     [InlineData("day", WebSearchFreshness.Day)]
     [InlineData("month", WebSearchFreshness.Month)]
     [InlineData("year", WebSearchFreshness.Year)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFreshnessSpecified_ForwardsExactFreshnessToProvider(string freshness, WebSearchFreshness expected)
     {
         var provider = new EnforcingSearchProvider();
@@ -83,7 +84,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutProviderCall()
     {
         var provider = new EnforcingSearchProvider();
@@ -93,7 +93,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsUntrustedProviderIdentityAndResults()
     {
         var provider = new EnforcingSearchProvider();
@@ -106,7 +105,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsOutsideDomainFilter_FailsClosed()
     {
         var provider = new EnforcingSearchProvider();
@@ -117,7 +115,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsSubdomainOfFilter_AcceptsIt()
     {
         var provider = new EnforcingSearchProvider
@@ -129,7 +126,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderExceedsProjectionBounds_TruncatesExplicitlyAndClearsCompleteness()
     {
         var provider = new EnforcingSearchProvider
@@ -152,7 +148,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
     {
         // Truncate sliced on UTF-16 code units. "AB\U0001F600" is ['A','B',HighSurrogate,LowSurrogate] (4 code
@@ -180,7 +175,6 @@ public sealed class WebSearchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsDifferentRequest_FailsClosed()
     {
         var provider = new EnforcingSearchProvider
@@ -195,7 +189,6 @@ public sealed class WebSearchToolTests
     [InlineData("denied")]
     [InlineData("unavailable")]
     [InlineData("failed")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderDoesNotSucceed_PreservesTypedFailure(string kind)
     {
         var provider = new EnforcingSearchProvider
@@ -221,7 +214,31 @@ public sealed class WebSearchToolTests
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("provider.Destination");
     }
 
-    private static WebSearchTool Tool(IWebSearchProvider provider, ISecurityAuthority authority, FixedSearchRequestIdGenerator? searchIds = null, WebSearchToolOptions? options = null) => new(provider, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), searchIds ?? new FixedSearchRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new WebSearchToolOptions()));
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestData.Context, JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), WebSearchTool.Descriptor);
+    private static WebSearchTool Tool(IWebSearchProvider provider, ISecurityAuthority authority, FixedSearchRequestIdGenerator? searchIds = null, WebSearchToolOptions? options = null, ILogger<WebSearchTool>? logger = null) => new(provider, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), searchIds ?? new FixedSearchRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new WebSearchToolOptions()), logger ?? NullLogger<WebSearchTool>.Instance);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(TestData.Context, JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), WebSearchTool.Descriptor);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<WebSearchTool>();
+        var tool = Tool(new EnforcingSearchProvider(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), WebSearchTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(34400);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

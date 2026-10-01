@@ -5,12 +5,10 @@ namespace AgentKit.Permissions.Sqlite;
 
 using System.Buffers.Binary;
 
-/// <summary>Reads strict bounded version-one security evidence while rejecting unknown or excessive state.</summary>
+/// <summary>Reads strict bounded security evidence while rejecting unknown or excessive state.</summary>
 internal ref struct SqliteSecurityGrantCodecReader
 {
     private const uint _magic = 0x414B5347;
-    private const byte _grantEnvelopeVersionOne = 1;
-    private const byte _grantEnvelopeVersionTwo = 2;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private int _offset;
@@ -23,20 +21,13 @@ internal ref struct SqliteSecurityGrantCodecReader
         _settings = settings;
     }
 
-    /// <summary>Consumes and validates the fixed magic, codec version, and envelope kind.</summary><param name="expectedKind">The sole supported kind for the caller.</param><returns>The envelope version byte.</returns><exception cref="InvalidDataException">The header is unsupported or truncated.</exception>
-    internal byte ReadHeader(byte expectedKind)
+    /// <summary>Consumes and validates the fixed magic, the single supported envelope version, and the envelope kind.</summary><param name="expectedKind">The sole supported kind for the caller.</param><exception cref="InvalidDataException">The header is unsupported or truncated.</exception>
+    internal void ReadHeader(byte expectedKind)
     {
-        if (ReadUInt32() != _magic)
+        if (ReadUInt32() != _magic || ReadByte() != SqliteSecurityGrantCodecWriter.EnvelopeVersion || ReadByte() != expectedKind)
         {
             throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
         }
-
-        var version = ReadByte();
-        return ReadByte() != expectedKind
-            ? throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.")
-            : version is _grantEnvelopeVersionOne or _grantEnvelopeVersionTwo
-                ? version
-                : throw new InvalidDataException("Persisted security evidence uses an unsupported envelope.");
     }
 
     /// <summary>Reads one RFC 4122 network-order GUID.</summary><returns>The decoded value.</returns><exception cref="InvalidDataException">The envelope is truncated.</exception>
@@ -126,21 +117,19 @@ internal ref struct SqliteSecurityGrantCodecReader
             new IdentityVersion(ReadInt64()));
     }
 
-    /// <summary>Reads optional complete captured authorization evidence.</summary><returns>The validated context, or null for a legacy unpinned request.</returns>
-    internal SecurityAuthorizationContext? ReadAuthorization() => ReadBoolean()
-        ? new SecurityAuthorizationContext(
-            new SecurityProfileKey(ReadString()),
-            new SecurityProfileVersion(ReadInt64()),
-            new SecurityPolicySnapshotReference(
-                new SecurityPolicySnapshotId(ReadGuid()),
-                new SecurityPolicyVersion(ReadInt64()),
-                new ContentHash(ReadString())),
-            new ComponentKey<ISecurityAuthority>(ReadString()),
-            new AgentDefinitionRevision(ReadInt64()),
-            new ConfigurationVersion(ReadInt64()),
-            ReadScope(),
-            ReadIdentity())
-        : null;
+    /// <summary>Reads the complete captured authorization evidence every persisted request, grant, and enforcement carries.</summary><returns>The validated context.</returns><exception cref="InvalidDataException">The envelope is truncated.</exception>
+    internal SecurityAuthorizationContext ReadAuthorization() => new(
+        new SecurityProfileKey(ReadString()),
+        new SecurityProfileVersion(ReadInt64()),
+        new SecurityPolicySnapshotReference(
+            new SecurityPolicySnapshotId(ReadGuid()),
+            new SecurityPolicyVersion(ReadInt64()),
+            new ContentHash(ReadString())),
+        new ComponentKey<ISecurityAuthority>(ReadString()),
+        new AgentDefinitionRevision(ReadInt64()),
+        new ConfigurationVersion(ReadInt64()),
+        ReadScope(),
+        ReadIdentity());
 
     /// <summary>Reads nonempty ordered protected-resource evidence.</summary><returns>The immutable resources in persisted order.</returns><exception cref="InvalidDataException">The count is empty, excessive, or truncated.</exception>
     internal ImmutableArray<ProtectedResource> ReadResources()

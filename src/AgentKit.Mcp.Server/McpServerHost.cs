@@ -6,7 +6,6 @@ namespace AgentKit.Mcp.Server;
 using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using ModelContextProtocol.Protocol;
@@ -28,12 +27,13 @@ public sealed class McpServerHost(IServiceProvider services): IMcpServer
 
         var loggerFactory = _services.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
         var handlers = _services.GetServices<IMcpPrimitiveHandler>().ToArray();
+        var observation = new McpServerObservation(loggerFactory.CreateLogger<McpServerObservation>());
         var options = new McpServerOptions
         {
             ServerInfo = new Implementation { Name = endpoint.Key.Value, Version = "1.0" },
             Handlers = new McpServerHandlers
             {
-                CallToolHandler = (context, ct) => DispatchToolCallAsync(endpoint.Key, handlers, context, ct),
+                CallToolHandler = (context, ct) => DispatchToolCallAsync(endpoint.Key, handlers, observation, context, ct),
             },
         };
         var transport = new StreamServerTransport(Console.OpenStandardInput(), Console.OpenStandardOutput());
@@ -41,13 +41,27 @@ public sealed class McpServerHost(IServiceProvider services): IMcpServer
         return server.RunAsync(cancellationToken);
     }
 
-    private static async ValueTask<CallToolResult> DispatchToolCallAsync(
+    private static ValueTask<CallToolResult> DispatchToolCallAsync(
+        McpServerKey serverKey,
+        IMcpPrimitiveHandler[] handlers,
+        McpServerObservation observation,
+        RequestContext<CallToolRequestParams> context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return observation.ObserveToolCallAsync(
+            serverKey.Value,
+            context.Params?.Name ?? string.Empty,
+            () => DispatchCoreAsync(serverKey, handlers, context, cancellationToken),
+            McpServerObservation.ClassifyToolResult);
+    }
+
+    private static async ValueTask<CallToolResult> DispatchCoreAsync(
         McpServerKey serverKey,
         IMcpPrimitiveHandler[] handlers,
         RequestContext<CallToolRequestParams> context,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(context);
         if (handlers.Length == 0)
         {
             return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "No MCP primitive handlers are registered." }] };

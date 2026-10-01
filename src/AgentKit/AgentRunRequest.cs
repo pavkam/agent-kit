@@ -12,7 +12,7 @@ namespace AgentKit;
 /// <para>
 /// This is the facade-level request the documented <c>Agent.RunAsync&lt;TOutput&gt;</c>/<c>StreamAsync&lt;TOutput&gt;</c>
 /// surface accepts (<c>agent-runtime.md</c>/<c>composition-and-configuration.md:274-313</c>); it is distinct from
-/// the reduced <see cref="AgentLoopRunRequest"/> the loop itself consumes, which additionally carries the pinned
+/// the <see cref="AgentLoopRunRequest"/> the loop itself consumes, which additionally carries the pinned
 /// definition, security authorization, and every model/tool/turn setting the loop needs. This type carries only
 /// what a caller supplies before the engine compiles that fuller evidence.
 /// </para>

@@ -14,16 +14,12 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller
-/// <c>CompactionRequest</c> described by the context-compaction
-/// architecture, which additionally carries a full versioned
-/// <c>CompactionPolicySnapshot</c> (profile key/version, compactor key,
-/// ordered strategy list, and several more engine ceilings) and an
-/// effective-instructions fingerprint. This shape folds the two policy
-/// values a first-party extractive strategy actually needs —
-/// <see cref="MinimumReductionRatio"/> and <see cref="MinimumRetainedEntries"/> —
-/// directly onto the request; once a dedicated policy/profile system
-/// exists, requests will carry that richer snapshot instead.
+/// The request folds the two policy values a first-party strategy actually
+/// needs — <see cref="MinimumReductionRatio"/> and
+/// <see cref="MinimumRetainedEntries"/> — directly onto itself, and may also
+/// carry a fuller versioned <see cref="Policy"/> snapshot and an
+/// <see cref="EffectiveInstructionsFingerprint"/> when the caller computes
+/// them.
 /// </para>
 /// </remarks>
 public sealed record CompactionRequest
@@ -214,7 +210,7 @@ public sealed record CompactionRequest
     public ExtensionData Extensions { get; init; }
 
     /// <summary>Gets the compiled policy snapshot when the caller supplies one.</summary>
-    /// <value>Null when the caller uses the reduced request shape.</value>
+    /// <value>Null when the caller supplies only the folded policy values.</value>
     public CompactionPolicySnapshot? Policy { get; init; }
 
     /// <summary>Gets the effective instruction fingerprint observed when the request was built.</summary>

@@ -5,11 +5,11 @@ namespace AgentKit.Budgets.Sqlite;
 
 using System.Buffers.Binary;
 
-/// <summary>Reads strict bounded version-one security evidence while rejecting unknown or excessive state.</summary>
+/// <summary>Reads strict bounded security evidence while rejecting unknown or excessive state.</summary>
 internal ref struct SqliteBudgetSecurityCodecReader
 {
     private const uint _magic = 0x414B5347;
-    private const byte _version = 1;
+    private const byte _version = 2;
     private readonly ReadOnlySpan<byte> _payload;
     private int _offset;
 
@@ -116,21 +116,19 @@ internal ref struct SqliteBudgetSecurityCodecReader
             new IdentityVersion(ReadInt64()));
     }
 
-    /// <summary>Reads optional complete captured authorization evidence.</summary><returns>The validated context, or null for a legacy unpinned request.</returns>
-    internal SecurityAuthorizationContext? ReadAuthorization() => ReadBoolean()
-        ? new SecurityAuthorizationContext(
-            new SecurityProfileKey(ReadString()),
-            new SecurityProfileVersion(ReadInt64()),
-            new SecurityPolicySnapshotReference(
-                new SecurityPolicySnapshotId(ReadGuid()),
-                new SecurityPolicyVersion(ReadInt64()),
-                new ContentHash(ReadString())),
-            new ComponentKey<ISecurityAuthority>(ReadString()),
-            new AgentDefinitionRevision(ReadInt64()),
-            new ConfigurationVersion(ReadInt64()),
-            ReadScope(),
-            ReadIdentity())
-        : null;
+    /// <summary>Reads the complete captured authorization evidence every persisted enforcement carries.</summary><returns>The validated context.</returns><exception cref="InvalidDataException">The envelope is truncated.</exception>
+    internal SecurityAuthorizationContext ReadAuthorization() => new(
+        new SecurityProfileKey(ReadString()),
+        new SecurityProfileVersion(ReadInt64()),
+        new SecurityPolicySnapshotReference(
+            new SecurityPolicySnapshotId(ReadGuid()),
+            new SecurityPolicyVersion(ReadInt64()),
+            new ContentHash(ReadString())),
+        new ComponentKey<ISecurityAuthority>(ReadString()),
+        new AgentDefinitionRevision(ReadInt64()),
+        new ConfigurationVersion(ReadInt64()),
+        ReadScope(),
+        ReadIdentity());
 
     /// <summary>Reads nonempty ordered protected-resource evidence.</summary><returns>The immutable resources in persisted order.</returns><exception cref="InvalidDataException">The count is empty, excessive, or truncated.</exception>
     internal ImmutableArray<ProtectedResource> ReadResources()

@@ -4,19 +4,140 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Goals
 {
-    public sealed class DefaultTaskDelegationBroker : AgentKit.ITaskDelegationBroker
+    public sealed class AgentGoalOptions
     {
-        public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel) { }
-        public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
-        public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.DefaultTaskDelegationBroker> logger) { }
-        public AgentKit.ComponentId SecurityAudience { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentGoalOptions() { }
+        public AgentKit.GoalJoinStrategyKey DefaultJoinStrategy { get; set; }
+        public AgentKit.DelegationFailureMode FailureMode { get; set; }
+        public System.TimeSpan GrantLifetime { get; set; }
+        public System.TimeSpan JoinPollInterval { get; set; }
+        public int MaximumChildrenPerGoal { get; set; }
+        public int MaximumConcurrentAttempts { get; set; }
+        public int MaximumDelegationDepth { get; set; }
+        public int MaximumResultSummaryCharacters { get; set; }
+    }
+    public sealed class DelegationPolicyRegistration : System.IEquatable<AgentKit.Goals.DelegationPolicyRegistration>
+    {
+        public DelegationPolicyRegistration(AgentKit.ComponentId id, System.Collections.Immutable.ImmutableArray<AgentKit.ComponentId> after = default) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ComponentId> After { get; }
+        public AgentKit.ComponentId Id { get; }
+        public bool Equals(AgentKit.Goals.DelegationPolicyRegistration? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class GoalCreatedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public GoalCreatedSessionEntryCodec() { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
+    public enum GoalEventDelivery
+    {
+        Observational = 0,
+        Required = 1,
+    }
+    public sealed class GoalEventSinkRegistration : System.IEquatable<AgentKit.Goals.GoalEventSinkRegistration>
+    {
+        public GoalEventSinkRegistration(AgentKit.ComponentId id, int order, AgentKit.Goals.GoalEventDelivery delivery, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime, System.Collections.Immutable.ImmutableArray<AgentKit.GoalProfileKey> profiles = default) { }
+        public AgentKit.Goals.GoalEventDelivery Delivery { get; }
+        public AgentKit.ComponentId Id { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.GoalProfileKey> Profiles { get; }
+        public bool Equals(AgentKit.Goals.GoalEventSinkRegistration? other) { }
+        public override int GetHashCode() { }
+        public bool Observes(AgentKit.GoalProfileKey profile) { }
+    }
+    public sealed class GoalProfileOptions
+    {
+        public GoalProfileOptions() { }
+        public AgentKit.GoalJoinStrategyKey? DefaultJoinStrategy { get; set; }
+        public AgentKit.DelegationDispatcherKey DispatcherKey { get; set; }
+        public AgentKit.DelegationFailureMode? FailureMode { get; set; }
+        public System.Collections.Generic.List<AgentKit.GoalJoinStrategyKey> JoinStrategies { get; }
+        public int? MaximumChildrenPerGoal { get; set; }
+        public int? MaximumConcurrentAttempts { get; set; }
+        public int? MaximumDelegationDepth { get; set; }
+        public System.Collections.Generic.List<AgentKit.ComponentId> PolicyIds { get; }
+        public AgentKit.GoalBudget? RootBudget { get; set; }
+        public AgentKit.GoalStoreKey StoreKey { get; set; }
+        public AgentKit.GoalProfileVersion Version { get; set; }
+    }
+    public sealed class GoalTransitionSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public GoalTransitionSessionEntryCodec() { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDelegation() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentGoals(System.Action<AgentKit.Goals.AgentGoalOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoalProfile(AgentKit.GoalProfileKey key, System.Action<AgentKit.Goals.GoalProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalProfile(AgentKit.GoalProfileKey key, System.Action<AgentKit.Goals.GoalProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoalStore<TStore>(AgentKit.GoalStoreKey key)
+                where TStore :  class, AgentKit.IGoalStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalStore<TStore>(AgentKit.GoalStoreKey key)
+                where TStore :  class, AgentKit.IGoalStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionBackedGoalStore(AgentKit.GoalStoreKey key, AgentKit.SessionProfileSnapshot profile, System.Action<AgentKit.Goals.SessionBackedGoalStoreOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDelegationTargetProvider<TProvider>()
+                where TProvider :  class, AgentKit.IDelegationTargetProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDelegationDispatcher<TDispatcher>(AgentKit.DelegationDispatcherKey key)
+                where TDispatcher :  class, AgentKit.IDelegationDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationDispatcher<TDispatcher>(AgentKit.DelegationDispatcherKey key)
+                where TDispatcher :  class, AgentKit.IDelegationDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddLocalDelegationDispatcher(AgentKit.DelegationDispatcherKey key) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoalJoinStrategy<TStrategy>(AgentKit.GoalJoinStrategyKey key)
+                where TStrategy :  class, AgentKit.IGoalJoinStrategy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalJoinStrategy<TStrategy>(AgentKit.GoalJoinStrategyKey key)
+                where TStrategy :  class, AgentKit.IGoalJoinStrategy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDelegationPolicy<TPolicy>(AgentKit.Goals.DelegationPolicyRegistration registration)
+                where TPolicy :  class, AgentKit.IDelegationPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationPolicy<TPolicy>(AgentKit.Goals.DelegationPolicyRegistration registration)
+                where TPolicy :  class, AgentKit.IDelegationPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoalEventSink<TSink>(AgentKit.Goals.GoalEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IGoalEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalCoordinator<TCoordinator>()
+                where TCoordinator :  class, AgentKit.IGoalCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalStoreSelector<TSelector>()
+                where TSelector :  class, AgentKit.IGoalStoreSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationTargetCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IDelegationTargetCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationTargetSelector<TSelector>()
+                where TSelector :  class, AgentKit.IDelegationTargetSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationDispatcherSelector<TSelector>()
+                where TSelector :  class, AgentKit.IDelegationDispatcherSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalJoinStrategySelector<TSelector>()
+                where TSelector :  class, AgentKit.IGoalJoinStrategySelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationPolicyPipeline<TPipeline>()
+                where TPipeline :  class, AgentKit.IDelegationPolicyPipeline { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationCoordinator<TCoordinator>()
+                where TCoordinator :  class, AgentKit.IDelegationCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalBudgetManager<TManager>()
+                where TManager :  class, AgentKit.IGoalBudgetManager { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceGoalEventDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IGoalEventDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationIntentSignal<TSignal>()
+                where TSignal :  class, AgentKit.IDelegationIntentSignal { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationWaitParking<TParking>()
+                where TParking :  class, AgentKit.IDelegationWaitParking { }
         }
+    }
+    public sealed class SessionBackedGoalStore : AgentKit.IGoalStore
+    {
+        public SessionBackedGoalStore(AgentKit.ISessionCoordinator sessions, AgentKit.SessionProfileSnapshot profile, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider time, AgentKit.Goals.SessionBackedGoalStoreOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.SessionBackedGoalStore>? logger = null) { }
+        public AgentKit.GoalStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalCreateResult> CreateAsync(AgentKit.GoalCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalLoadResult> LoadAsync(AgentKit.GoalLoadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadChildrenAsync(AgentKit.GoalChildrenRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadIntentsAsync(AgentKit.GoalIntentScanRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalTransitionResult> TransitionAsync(AgentKit.GoalTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SessionBackedGoalStoreOptions
+    {
+        public SessionBackedGoalStoreOptions() { }
+        public int MaximumAppendAttempts { get; set; }
     }
 }

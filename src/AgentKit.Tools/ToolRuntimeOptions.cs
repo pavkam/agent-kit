@@ -21,8 +21,37 @@ public sealed class ToolRuntimeOptions
     /// <value>Four by default, matching the architecture baseline for overlapping parallel-safe calls.</value>
     public int MaximumParallelInvocations { get; set; } = 4;
 
-    /// <summary>Gets or sets the per-invocation attempt budget including the first attempt.</summary>
-    public int MaximumRetryAttempts { get; set; } = 3;
+    /// <summary>Gets or sets the per-call attempt budget the default execution policy plans, including the first attempt.</summary>
+    /// <value>Three by default: one initial attempt and at most two retries. One disables retry.</value>
+    public int MaximumAttempts { get; set; } = 3;
+
+    /// <summary>Gets or sets the delay before the second attempt the default execution policy plans, before jitter.</summary>
+    /// <value>200 milliseconds by default.</value>
+    public TimeSpan RetryInitialDelay { get; set; } = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>Gets or sets the multiplier applied to the retry delay for each later attempt.</summary>
+    /// <value>Two by default; must be at least one.</value>
+    public double RetryBackoffMultiplier { get; set; } = 2.0;
+
+    /// <summary>Gets or sets the upper bound for any retry delay.</summary>
+    /// <value>Five seconds by default; must not be less than <see cref="RetryInitialDelay"/>.</value>
+    public TimeSpan RetryMaximumDelay { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Gets or sets the fraction of each retry delay that injectable jitter may remove.</summary>
+    /// <value>0.2 by default; zero is fully deterministic and never consults the randomizer.</value>
+    public double RetryJitterFraction { get; set; } = 0.2;
+
+    /// <summary>Gets or sets how many times the session recorder re-reads the branch tip and appends after an optimistic-concurrency conflict.</summary>
+    /// <value>Four by default; each conflict means another writer advanced the session between the read and the append.</value>
+    public int MaximumRecordAppendAttempts { get; set; } = 4;
+
+    /// <summary>Gets or sets how many of the most recent branch entries the session recorder searches for a call's accepted record before recording its terminal outcome.</summary>
+    /// <value>64 by default. The accepted record is appended immediately before invocation, so it sits within the entries a batch of calls produced.</value>
+    public int AcceptedRecordLookupEntries { get; set; } = 64;
+
+    /// <summary>Gets or sets the longest a single event sink may take to observe one event before the dispatcher abandons that delivery.</summary>
+    /// <value>Five seconds by default. A timed-out sink is counted as failed and never changes an outcome.</value>
+    public TimeSpan EventSinkTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Gets or sets the default deadline applied to each tool batch unless overridden by capability evidence.</summary>
     public TimeSpan InvocationTimeout { get; set; } = TimeSpan.FromMinutes(2);

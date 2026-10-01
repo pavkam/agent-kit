@@ -24,7 +24,7 @@ namespace AgentKit.Permissions;
 /// </para>
 /// <para>
 /// This policy does not know a configured filesystem root and cannot prove a resource actually resolves inside one;
-/// that remains the effecting <c>IFileSystem</c>'s own responsibility. It also does not distinguish path prefixes,
+/// that remains the effecting file-system host capability's own responsibility. It also does not distinguish path prefixes,
 /// extensions, size, or tenant scoping. Applications with sharper requirements should replace or compose it with
 /// their own <see cref="ISecurityPolicy"/>.
 /// </para>

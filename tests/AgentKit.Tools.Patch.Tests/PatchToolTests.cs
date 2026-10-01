@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Patch.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class PatchToolTests
@@ -12,7 +16,6 @@ public sealed class PatchToolTests
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"no envelope\"}")]
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"*** Begin Patch\\n*** End Patch\"}")]
     [InlineData(/*lang=json,strict*/ "{\"patch\":\"*** Begin Patch\\n*** Add File: ../x\\n+y\\n*** End Patch\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPatchIsInvalid_PerformsNoAuthorizationOrHostAccess(string json)
     {
         var snapshot = new FakeSnapshotReader();
@@ -31,7 +34,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddIsValid_ObservesAbsenceThenAuthorizesExactCreate()
     {
         var snapshot = new FakeSnapshotReader();
@@ -66,7 +68,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateTargetsBomCrlfUnicode_PreservesExactTextPolicyAndBindsBytes()
     {
         byte[] original = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("α old\r\nlast")];
@@ -103,7 +104,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHunkContextIsAmbiguous_DoesNotRequestMutationAuthority()
     {
         var snapshot = new FakeSnapshotReader();
@@ -129,7 +129,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMutationAuthorizationIsDenied_DoesNotInvokeHostApplier()
     {
         var snapshot = new FakeSnapshotReader();
@@ -154,7 +153,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveIsValid_BindsBothPathsAndUnchangedSourceVersion()
     {
         var snapshot = new FakeSnapshotReader();
@@ -185,7 +183,6 @@ public sealed class PatchToolTests
     [Theory]
     [InlineData(WorkspacePatchEntryStatus.Unchanged, SideEffectCertainty.PartiallyPerformed)]
     [InlineData(WorkspacePatchEntryStatus.Uncertain, SideEffectCertainty.Unknown)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHostReportsPartial_ReturnsFailureWithPerEntrySettlementContent(WorkspacePatchEntryStatus secondStatus, SideEffectCertainty certainty)
     {
         var snapshot = new FakeSnapshotReader();
@@ -246,7 +243,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPatchExceedsByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -268,7 +264,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenObservationAuthorizationIsDenied_ReturnsFailureWithoutPlanningFurther()
     {
         var snapshot = new FakeSnapshotReader();
@@ -290,7 +285,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddTargetAlreadyExists_RejectsWithConflict()
     {
         var snapshot = new FakeSnapshotReader();
@@ -313,7 +307,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAddedFileExceedsFileByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -335,7 +328,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateTargetIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -360,7 +352,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdatedFileExceedsFileByteBound_RejectsWithLimitExceeded()
     {
         var snapshot = new FakeSnapshotReader();
@@ -385,7 +376,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUpdateHunkProducesNoByteChange_RejectsWithNoChange()
     {
         var snapshot = new FakeSnapshotReader();
@@ -410,7 +400,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDeleteTargetIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -431,7 +420,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDeleteIsValid_AuthorizesAndAppliesDeleteEntry()
     {
         var snapshot = new FakeSnapshotReader();
@@ -455,7 +443,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveSourceIsMissing_RejectsWithSnapshotStatusReason()
     {
         var snapshot = new FakeSnapshotReader();
@@ -477,7 +464,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveDestinationObservationIsDenied_ReturnsFailureWithoutApplying()
     {
         var snapshot = new FakeSnapshotReader();
@@ -500,7 +486,6 @@ public sealed class PatchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMoveDestinationAlreadyExists_RejectsWithConflict()
     {
         var snapshot = new FakeSnapshotReader();
@@ -535,7 +520,7 @@ public sealed class PatchToolTests
     private static string Status(ToolInvocationResult result) => Encoding.UTF8.GetString(
         result.Outcome.Extensions.Values["agentkit.patch.status"].CanonicalJson.AsSpan());
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("51000000-0000-0000-0000-000000000005")),
@@ -550,4 +535,28 @@ public sealed class PatchToolTests
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch), PatchTool.Descriptor);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<PatchTool>();
+        var tool = TestPatchComposition.CreateTool(new FakeSnapshotReader(), new FakePatchApplier(), new SequencedSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), PatchTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33500);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

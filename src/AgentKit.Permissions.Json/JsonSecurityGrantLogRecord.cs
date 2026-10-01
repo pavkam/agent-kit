@@ -20,7 +20,7 @@ namespace AgentKit.Permissions.Json;
 /// <param name="GrantId">The affected grant identity, present for every kind except <see cref="JsonSecurityGrantLogRecordKind.Registered"/> and <see cref="JsonSecurityGrantLogRecordKind.Receipt"/>.</param>
 /// <param name="RemainingUses">The nonnegative remaining-use count after the transition, present for <see cref="JsonSecurityGrantLogRecordKind.Consumed"/> and <see cref="JsonSecurityGrantLogRecordKind.State"/>.</param>
 /// <param name="Revoked">The live revocation flag, present only for <see cref="JsonSecurityGrantLogRecordKind.State"/>.</param>
-/// <param name="Receipt">The enforcement-intent receipt, present for a receipt-bearing consumption and for <see cref="JsonSecurityGrantLogRecordKind.Receipt"/>.</param>
+/// <param name="Receipt">The enforcement-intent receipt, present for <see cref="JsonSecurityGrantLogRecordKind.Consumed"/> and <see cref="JsonSecurityGrantLogRecordKind.Receipt"/>.</param>
 public sealed record JsonSecurityGrantLogRecord(
     JsonSecurityGrantLogRecordKind Kind,
     JsonSecurityGrant? Grant,
@@ -43,16 +43,17 @@ public sealed record JsonSecurityGrantLogRecord(
     /// <summary>Creates the record describing one consumption and its optional enforcement receipt.</summary>
     /// <param name="grantId">The consumed grant identity.</param>
     /// <param name="remainingUses">The nonnegative remaining-use count after this consumption.</param>
-    /// <param name="receipt">The enforcement-intent receipt, or null for the legacy receiptless path.</param>
+    /// <param name="receipt">The non-null enforcement-intent receipt committed atomically with the decrement.</param>
     /// <returns>A consumption record that commits both effects in one atomic append.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="remainingUses"/> is negative.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="receipt"/> is null.</exception><exception cref="ArgumentOutOfRangeException"><paramref name="remainingUses"/> is negative.</exception>
     public static JsonSecurityGrantLogRecord ForConsumption(
-        GrantId grantId, int remainingUses, SecurityEnforcementIntentReceipt? receipt)
+        GrantId grantId, int remainingUses, SecurityEnforcementIntentReceipt receipt)
     {
+        ArgumentNullException.ThrowIfNull(receipt);
         ArgumentOutOfRangeException.ThrowIfNegative(remainingUses);
         return new JsonSecurityGrantLogRecord(
             JsonSecurityGrantLogRecordKind.Consumed, null, grantId.Value, remainingUses, null,
-            receipt is null ? null : JsonSecurityEnforcementIntentReceipt.FromDomain(receipt));
+            JsonSecurityEnforcementIntentReceipt.FromDomain(receipt));
     }
 
     /// <summary>Creates the record describing one revocation.</summary>

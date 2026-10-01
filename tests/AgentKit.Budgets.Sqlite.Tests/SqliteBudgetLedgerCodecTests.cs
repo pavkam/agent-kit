@@ -67,7 +67,7 @@ public sealed class SqliteBudgetLedgerCodecTests
         var secondDelegation = new DelegationIdentityLink(new(Guid.NewGuid()), new("tenant"), new("delegator"), new("issuer"), evidence.Id, new(1), DateTimeOffset.UnixEpoch, claims, IdentityAssuranceLevel.Basic);
         var identity = new ExecutionIdentity(new("tenant"), new("operator"), ExecutionSubjectKind.Human, evidence, claims, [delegation, secondDelegation], IdentityAssuranceLevel.Basic, new(1));
         var scope = new SecurityAuthorizationScope(new(Guid.NewGuid()), null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null));
-        var request = new SecurityEnforcementRequest(scope, identity, new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one"), new(ProtectedResourceKind.ApplicationState, "two")], new("input"), new(1));
+        var request = new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one"), new(ProtectedResourceKind.ApplicationState, "two")], new("input"), new(1));
         var payload = SqliteBudgetSecurityCodec.EncodeEnforcement(request, settings);
         var decoded = SqliteBudgetSecurityCodec.DecodeEnforcement(payload, settings);
         decoded.ShouldBe(request);
@@ -104,7 +104,7 @@ public sealed class SqliteBudgetLedgerCodecTests
         var evidence = new AuthenticationEvidence(new("evidence"), new("issuer"), "test", DateTimeOffset.UnixEpoch, null, new(new ContentHash("fingerprint")));
         var identity = new ExecutionIdentity(new("tenant"), new("operator"), ExecutionSubjectKind.Human, evidence, [], [], IdentityAssuranceLevel.Basic, new(1));
         var scope = new SecurityAuthorizationScope(new(Guid.NewGuid()), null, new InRunOperationCorrelation(new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid())));
-        var request = new SecurityEnforcementRequest(scope, identity, new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
+        var request = new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
 
         var payload = SqliteBudgetSecurityCodec.EncodeEnforcement(request, settings);
         var decoded = SqliteBudgetSecurityCodec.DecodeEnforcement(payload, settings);
@@ -120,7 +120,7 @@ public sealed class SqliteBudgetLedgerCodecTests
         var evidence = new AuthenticationEvidence(new("evidence"), new("issuer"), "test", DateTimeOffset.UnixEpoch, null, new(new ContentHash("fingerprint")));
         var identity = new ExecutionIdentity(new("tenant"), new("operator"), ExecutionSubjectKind.Human, evidence, [], [], IdentityAssuranceLevel.Basic, new(1));
         var scope = new SecurityAuthorizationScope(new(Guid.NewGuid()), null, new AfterRunOperationCorrelation(new(Guid.NewGuid()), new(Guid.NewGuid())));
-        var request = new SecurityEnforcementRequest(scope, identity, new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
+        var request = new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
 
         var payload = SqliteBudgetSecurityCodec.EncodeEnforcement(request, settings);
         var decoded = SqliteBudgetSecurityCodec.DecodeEnforcement(payload, settings);
@@ -170,7 +170,7 @@ public sealed class SqliteBudgetLedgerCodecTests
         var evidence = new AuthenticationEvidence(new("evidence"), new("issuer"), "test", DateTimeOffset.UnixEpoch, null, new(new ContentHash("fingerprint")));
         var identity = new ExecutionIdentity(new("tenant"), new("operator"), ExecutionSubjectKind.Human, evidence, [], [], IdentityAssuranceLevel.Basic, new(1));
         var scope = new SecurityAuthorizationScope(new(Guid.NewGuid()), null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null));
-        var request = new SecurityEnforcementRequest(scope, identity, new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
+        var request = new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new("budget-ledger"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new(ProtectedResourceKind.ApplicationState, "one")], new("input"), new(1));
         var payload = SqliteBudgetSecurityCodec.EncodeEnforcement(request, settings).ToArray();
 
         // Locate the unique encoded AuthenticatedAt.Ticks field (DateTimeOffset.UnixEpoch appears exactly once
@@ -407,9 +407,12 @@ public sealed class SqliteBudgetLedgerCodecTests
 
     private static SecurityEnforcementIntentReceipt EnforcementReceipt(BudgetOverrunHoldReference hold, FencingToken? requiredFence)
     {
+        var __scope = new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null));
+        var __identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human);
         var enforcement = new SecurityEnforcementRequest(
-            new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null)),
-            TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human),
+            __scope,
+            __identity,
+            TestSupport.TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
             new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
             [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
         return new(new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()), enforcement, requiredFence, new ContentHash("sha256:codec-test"), DateTimeOffset.UnixEpoch);

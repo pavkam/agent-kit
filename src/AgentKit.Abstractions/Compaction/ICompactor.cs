@@ -21,7 +21,7 @@ namespace AgentKit;
 /// </remarks>
 public interface ICompactor
 {
-    /// <summary>Runs one complete compaction attempt using the reduced two-argument surface.</summary>
+    /// <summary>Runs one complete compaction attempt using the two-argument surface, which resolves session coordination, budget, and hook context from the compactor's own composition.</summary>
     /// <param name="request">The compaction request.</param>
     /// <param name="cancellationToken">A token used to cancel the attempt.</param>
     /// <returns>

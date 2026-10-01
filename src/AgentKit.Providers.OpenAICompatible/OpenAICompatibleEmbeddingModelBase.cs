@@ -8,6 +8,7 @@ using System.Net.Http;
 
 using AgentKit.Observability;
 using AgentKit.Providers;
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
@@ -60,7 +61,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     private readonly IOpenAIEmbeddingResponseParser _responseParser;
     private readonly IProviderCredentialSource _credentials;
     private readonly IProviderProfileRuntimeSelector? _profileSelector;
-    private readonly HttpClient _httpClient;
+    private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="OpenAICompatibleEmbeddingModelBase"/> class.</summary>
@@ -76,7 +77,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <param name="profileSelector">
     /// The optional profile runtime selector used when <see cref="EmbeddingModelDescriptor.Binding"/> is configured.
@@ -88,7 +89,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         IOpenAIEmbeddingRequestTranslator translator,
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         IProviderProfileRuntimeSelector? profileSelector = null)
     {
@@ -97,7 +98,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         Alias = descriptor.Alias;
@@ -107,7 +108,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         _responseParser = responseParser;
         _credentials = credentials;
         _profileSelector = profileSelector;
-        _httpClient = httpClient;
+        _egress = egress;
         _timeProvider = timeProvider;
     }
 
@@ -302,40 +303,19 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-            HttpResponseMessage response;
-            try
+            var sent = await _egress
+                .SendAsync(ProviderEgressRequest.ForEmbedding(Descriptor, request, httpRequest), cancellationToken)
+                .ConfigureAwait(false);
+            if (sent is ProviderEgressRefused refused)
             {
-                response = await _httpClient
-                    .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return Cancel(Descriptor.ProviderId);
-            }
-            catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-            {
-                return FailWithKind(
-                    ProviderFailureKind.Timeout,
-                    "The request did not complete before its deadline.",
-                    exception);
-            }
-            catch (OperationCanceledException exception)
-            {
-                return FailWithKind(
-                    ProviderFailureKind.Timeout,
-                    "The transport timed out before the provider responded.",
-                    exception);
-            }
-            catch (HttpRequestException exception)
-            {
-                return FailWithKind(
-                    ProviderFailureKind.Unavailable,
-                    "The provider could not be reached.",
-                    exception);
+                return refused.Failure.Kind is ProviderFailureKind.Cancellation
+                    ? new EmbeddingAttemptCancelled(refused.Failure)
+                    : Fail(refused.Failure);
             }
 
-            using (response)
+            var response = ((ProviderEgressSent) sent).Response;
+
+            await using (response.ConfigureAwait(false))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -396,8 +376,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 catch (IOException exception)
                 {
                     return FailWithKind(
-                        ProviderFailureKind.Unavailable,
-                        "The connection failed while the response body was being received.",
+                        ProviderEgressBodyFault.Classify(exception, out var safeMessage),
+                        safeMessage,
                         exception);
                 }
             }
@@ -434,7 +414,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         return httpRequest;
     }
 
-    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<ProviderFailure> BuildHttpFailureAsync(ProviderEgressResponse response, CancellationToken cancellationToken)
     {
         string? providerMessage = null;
         string? providerCode = null;
@@ -479,7 +459,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
     /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
     /// <returns>A failure retaining the raw HTTP status, Retry-After guidance, and provider request identity.</returns>
-    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
+    private ProviderFailure BuildInterruptedHttpFailure(ProviderEgressResponse response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
     {
         Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
         Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");

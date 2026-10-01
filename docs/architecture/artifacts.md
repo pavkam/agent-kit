@@ -16,21 +16,21 @@ supplies the catalog, selector, coordinator, integrity validation, retention,
 and orphan reconciliation.
 
 Backends are leaves: AgentKit.Artifacts.InMemory is deterministic for tests;
-AgentKit.Artifacts.Sqlite is the durable local adapter;
-AgentKit.Artifacts.FileSystem uses protected AgentKit.FileSystem contracts;
-cloud packages use protected network contracts and their vendor SDKs. Consumers
-never depend on a concrete backend.
+AgentKit.Artifacts.Sqlite and AgentKit.Artifacts.Json are durable local
+adapters; AgentKit.Artifacts.FileSystem uses protected AgentKit.FileSystem
+contracts; cloud packages use protected network contracts and their vendor SDKs.
+Consumers never depend on a concrete backend.
 
-## Implemented baseline
+## Implemented components
 
-`AgentKit.Artifacts` currently provides a bounded two-phase coordinator for
-complete immutable content. Prepare validates the declared byte length and
-SHA-256 fingerprint before requesting authority; finalize publishes the portable
+`AgentKit.Artifacts` provides a bounded two-phase coordinator for complete
+immutable content. Prepare validates the declared byte length and SHA-256
+fingerprint before requesting authority; finalize publishes the portable
 reference atomically; abort removes staging only. Committed reads return an
 owned asynchronously disposable stream, and deletion is idempotent and fails
 before authorization when the captured reference carries a legal hold.
 
-`AgentKit.Artifacts.InMemory` is the first backend leaf. Every prepare,
+`AgentKit.Artifacts.InMemory` is the deterministic backend leaf. Every prepare,
 finalize, abort, read, and delete consumes an exact single-use artifact grant
 before state access. State is tenant-partitioned, unpublished staging is never
 readable, committed bytes are returned by copy, replay keys cannot silently
@@ -43,9 +43,10 @@ stdout/stderr captures into immutable session- or run-owned artifacts. Process
 execution remains independent of the artifact runtime and depends only on the
 optional `IProcessOutputArtifactSink` abstraction.
 
-The SQLite leaf must preserve staging visibility, immutable committed bytes,
-tenant partitioning, replay identity, reference publication, and deletion state
-transactionally across close and reopen. It runs the same artifact-store
+The SQLite leaf preserves staging visibility, immutable committed bytes, tenant
+partitioning, replay identity, reference publication, and deletion state
+transactionally across close and reopen. The JSON and file-system leaves provide
+inspectable and protected-file-boundary storage. All run the same artifact-store
 conformance suite as the in-memory leaf. It advertises durable local content,
 not distributed replication, cloud-object retention, or an atomic transaction
 with session history. Payload and database targets remain explicit host
@@ -438,6 +439,66 @@ Registration without an explicit artifact leaf fails when a profile selects
 artifact storage. Common in-memory and SQLite behavior is verified by one
 reusable suite; adapter-specific tests prove restart durability, transaction
 boundaries, streaming limits, and only the capabilities each descriptor claims.
+
+## Implementation notes and deviations (WS15)
+
+The landed implementation follows this document with the deviations below. Each
+is recorded so the next reader does not mistake it for an oversight.
+
+- **Classification.** `ArtifactDataClassification` was removed; artifacts use
+  the shared `DataClassification`. `ArtifactMetadata.DeclaredContentHash` is a
+  `ContentHash?`. Metadata and references carry `ExternalArtifactOwnership?`,
+  required exactly for external ownership and for externally managed mutability.
+- **Authorization on requests.** Coordinator requests carry a
+  `SecurityAuthorizationContext` whose scope equals the agent, session, and
+  correlation identities; they no longer carry a loose identity. Store requests
+  derive scope and identity from the retained `Grant`.
+  `ArtifactStorePrepareRequest` carries the verified `ContentHash` that the
+  grant binds.
+- **Typed store results.** `IArtifactStore` returns typed results
+  (`ArtifactStorePrepared`/`Rejected`, `...Finalized`, `...Aborted`,
+  `...ReadOpened`, `...Deleted`). `IArtifactCoordinator` gained
+  `ReconcileAsync`.
+- **Coordinator.** `ArtifactCoordinator` is internal and registered per key
+  through `AddAgentArtifacts(key, profileKey)`. Profile revisions are retained
+  so earlier references keep resolving. Finalize, abort, and reconcile requests
+  carry no directory, so the coordinator probes each distinct backend of the
+  profile in deterministic order; the store's conditional transition decides the
+  single winner. `AgentArtifactOptions` keeps `PreparationLifetime` and
+  process-output settings in addition to the four specified limits.
+- **Retention.** Expiry is deletion eligibility, never a minimum lifetime. Legal
+  holds and non-delegated external ownership block deletion.
+- **Reconciliation.** Fence-first: a conditional transition moves an intent
+  Pending to Fenced or Committed and Fenced to Collected; when evidence is
+  unavailable the result stays pending. The intent store is caller-owned. Only
+  an in-memory intent store adapter exists; **SQLite and JSON intent stores are
+  not built**, so durable reconciliation needs an application-supplied intent
+  store.
+- **Shared store machinery.** `AgentKit.Artifacts.Storage.Shared` (planner,
+  state machine, gateway, enforcement, observation, state-backend base) and
+  `AgentKit.Artifacts.Storage.Durable` (stored-entry documents) are compiled
+  into each leaf rather than shipped as packages. All leaves are single-writer:
+  SQLite holds an exclusive lock, JSON an advisory lock, and the file-system
+  adapter none. Reads verify length and SHA-256 before returning bytes.
+- **File-system adapter.** Flat layout; it never creates directories. The file
+  boundary has no delete or enumeration, so a released payload is truncated
+  rather than removed and crash leftovers are not swept. Log recovery needs the
+  first operation's authorization because there is no explicit initialize, and a
+  recovery failure propagates as an I/O failure. Each file effect is authorized
+  through the security authority selector. Conformance runs over
+  `AgentKit.FileSystem.InMemory`.
+- **Composition validation.** The facade validates through
+  `IArtifactCoordinatorCatalog`/`ArtifactCoordinatorSnapshot` in Abstractions:
+  the keyed coordinator and a keyed store per routed backend must be registered,
+  plus `ISecurityAuthoritySelector` and `TimeProvider`. `AgentKit.Simple` adds
+  `WithArtifacts`, an ephemeral in-memory composition.
+- **Consumers.** The memory document reference document gained the new
+  classification and external-ownership fields. No session-export code exists in
+  `src/`, so there is no export consumer to migrate.
+- **Observability.** Activities `artifact.reconcile` and
+  `artifact.store.operation`; bounded metrics for coordinator and store
+  operation counts and durations and sink failures; event IDs 29000-29005
+  (coordinator) and 29100-29106 (shared store log, compiled into each leaf).
 
 ## Related concept specifications
 

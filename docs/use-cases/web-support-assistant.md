@@ -37,9 +37,16 @@ static AgentEngine CreateSupportEngine(string apiKey, ISecurityAuditSink auditSi
         .WithMaxTurns(6)
         .WithAttemptTimeout(TimeSpan.FromSeconds(45));
 
-    // No UseLocalDevelopmentDefaults: a service supplies its own security state.
+    // No UseLocalDevelopmentDefaults: a service supplies its own security state:
+    // grant, decision, and approval stores, a policy, and an audit sink.
     builder.Services.AddSqliteSecurityGrantStore(new SqliteSecurityGrantStoreTarget(
         "/var/lib/support/grants.db", GrantStoreInstanceId,
+        SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
+    builder.Services.AddSqliteSecurityDecisionStore(new SqliteSecurityDecisionStoreTarget(
+        "/var/lib/support/decisions.db", DecisionStoreInstanceId,
+        SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
+    builder.Services.AddSqliteApprovalStore(new SqliteApprovalStoreTarget(
+        "/var/lib/support/approvals.db", ApprovalStoreInstanceId,
         SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
     builder.Services.AddSingleton<ISecurityPolicy, ConversationOnlyPolicy>();
     builder.Services.AddSecurityAuditSink(
@@ -61,7 +68,7 @@ cannot quietly widen the agent:
 ```csharp
 sealed class ConversationOnlyPolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(request.Kind is SecurityOperationKind.StateRead or SecurityOperationKind.StateMutation
             ? new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "support.session", "Conversation state may be read and appended.")
             : new SecurityPolicyResult(SecurityPolicyResultKind.Deny, "support.no-host-access", "The support assistant has no host access."));
@@ -173,14 +180,12 @@ session id that belongs to someone else is rejected before anything is appended.
 ## Status
 
 The engine path above is complete for in-process hosting: one engine, many
-customers, concurrent sessions, per-session exclusion. Two refinements are
-tracked in the
-[run envelope and admission workstream](../workstreams/run-envelope-and-admission.md):
-queue-backed admission through `AgentKit.IO` (so a double-submit can be queued
-as a follow-up instead of rejected) and attaching a second request to a run in
-progress by `RunId`. Audit coverage is also still widening: the approval flow
-and session-store enforcement are audited today, while ordinary allow and deny
-decisions and file, process, and network enforcement are not yet, as
+customers, concurrent sessions, per-session exclusion. A double-submit can be
+admitted as queued follow-up input to the active run through
+`Agent.FollowUpAsync` instead of being rejected, and a second request can attach
+to a run in progress by `RunId` through `Agent.AttachAsync`. Audit covers
+authorization requests and decisions, approvals, grant lifecycle, and the grant
+consumption of each file, process, network, and session-store effect, as
 [Permissions and approvals](../guides/permissions.md#audit) explains.
 
 ## What lives where

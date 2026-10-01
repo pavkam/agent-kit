@@ -22,16 +22,16 @@ replaced.
 
 ## Progress
 
-- [ ] WS21-C1 inventory guard and allowlist
-- [ ] WS21-C2a migrate remaining legacy host consumers
-- [ ] WS21-C2b delete legacy host file-system surface
-- [ ] WS21-C3 delete legacy tool orchestration path
-- [ ] WS21-C4a security contracts: remove the unpinned path
-- [ ] WS21-C4b security stores and codecs: remove the unpinned path
-- [ ] WS21-C5 budget compatibility-created results
-- [ ] WS21-C6 definition, run-request, and publication legacy shapes
-- [ ] WS21-C7 conversations, session, loop, and hook compatibility members
-- [ ] WS21-C8 build settings, pragmas, and guard closure
+- [x] WS21-C1 inventory guard and allowlist
+- [x] WS21-C2a migrate remaining legacy host consumers
+- [x] WS21-C2b delete legacy host file-system surface
+- [x] WS21-C3 delete legacy tool orchestration path
+- [x] WS21-C4a security contracts: remove the unpinned path
+- [x] WS21-C4b security stores and codecs: remove the unpinned path
+- [x] WS21-C5 budget compatibility-created results
+- [x] WS21-C6 definition, run-request, and publication legacy shapes
+- [x] WS21-C7 conversations, session, loop, and hook compatibility members
+- [x] WS21-C8 build settings, pragmas, and guard closure
 
 ## Verified current state
 
@@ -42,6 +42,10 @@ use compiles silently. Two files suppress `CS0612` locally
 (`ProjectInstructionContributor.cs:6`, `ListDirectoryTool.cs`). Public API
 snapshots carry 73 legacy/obsolete lines across eight packages, 39 of them in
 `AgentKit.Abstractions.verified.txt`.
+
+Current state: every chunk has landed. The guard baseline and allow-list are
+empty and `CS0618` is an error. The tables below record the state when the
+workstream was verified.
 
 ### Legacy host file-system surface
 
@@ -182,6 +186,14 @@ These match the search terms but describe external or domain facts and stay:
   removed. Snapshots: Context.Project, Simple, Tools.Read, Tools.Write,
   Tools.Glob, Tools.Search, Tools.Edit, Tools.List.
 
+Landed: `ProjectInstructionContributor` reads through a keyed `IFileReader`
+selected by `IFileSystemSelector` (`ProjectInstructionOptions` gained
+`ProfileKey`, `RootId`, and `HostRootPath`); `ListDirectoryTool` authorizes
+`DirectoryRead` itself over the keyed `IDirectoryReader` (which gained
+`SecurityAudience`); the Simple `UseWorkspace` overload and the CodingAgent
+example register only the keyed OS profile; the obsolete `SecurityAudience`
+option on the read and write tools is gone.
+
 ### WS21-C2b: Delete legacy host file-system surface
 
 - Depends on: C2a. Risk: CONTRACT-BREAK. Size: M.
@@ -194,6 +206,18 @@ These match the search terms but describe external or domain facts and stay:
 - Done when: `rg '\[Obsolete|Legacy'` over `src/AgentKit.Abstractions/Host`,
   `src/AgentKit.FileSystem*`, and `tests/AgentKit.FileSystem*` is empty.
 
+Landed: `IFileSystem`, `ILegacyDirectoryReader`, the `Legacy*` read/write types,
+`AddSandboxedFileSystem`, and the un-keyed `AddInMemoryFileSystem` are deleted.
+Deviation: `SandboxedFileSystem` was not deleted outright; it became the
+internal `OperatingSystemWorkspaceHost` (edit, search, patch, glob, snapshot,
+and atomic replace behind the spec contracts) bounded by the new public
+`FileSystemWorkspaceBounds`
+(`OperatingSystemFileSystemOptions.WorkspaceBounds`). Porting its tests surfaced
+real gaps, now fixed: descriptor-relative no-follow opens, symlink and
+named-pipe rejection, and mode-preserving staged replace in the OS reader and
+writer, plus parent-missing and directory-target rejection in
+`InMemoryFileSystem`. New cases live in `FileSystemConformanceTests`.
+
 ### WS21-C3: Delete legacy tool orchestration path
 
 - Depends on: WS4-C9b/c, WS4-C10a, WS4-C10b. Risk: CONTRACT-BREAK plus
@@ -205,6 +229,16 @@ These match the search terms but describe external or domain facts and stay:
 - Done when: `rg 'Legacy|ToolInvokerBridge|IToolRunCatalogCaptureFactory'` over
   `src` and `tests` (C# only) is empty.
 
+Landed: the legacy orchestrator, invoker, executor, result factory, snapshot
+factory, and bridge types were already deleted by WS4-C10a/b; this chunk removed
+the remaining prose (`RunToolCatalogCaptureRequest`, `ToolCaptureTestData`, the
+Tools test README, and the `AddAgentTools` remark). Deviation: the workstream's
+done-when grep names `IToolRunCatalogCaptureFactory`, but that factory,
+`RunToolCatalogCaptureRequest`, and `ToolRunCatalogCaptureFactory` are the live
+run-bound capture path used by `DefaultAgentLoop` and
+`AgentKitPrimitiveHandler`, so they stay. The guard (C1/C8) enforces the
+no-`Legacy*` half of the grep.
+
 ### WS21-C4a: Security contracts: remove the unpinned path
 
 - Depends on: WS3. Risk: CONTRACT-BREAK. Size: M.
@@ -214,6 +248,18 @@ These match the search terms but describe external or domain facts and stay:
   `GrantConsumptionResult` constructor removed; every caller supplies captured
   evidence. Argument tests for the new `ArgumentNullException` cases. Snapshots:
   Abstractions, Permissions.
+
+Landed: `SecurityRequest`, `SecurityEnforcementRequest`, and `SecurityGrant`
+have one constructor with a required non-null `SecurityAuthorizationContext`
+(`ArgumentNullException` on null, scope and identity cross-checks without null
+branches); `GrantConsumptionResult` has one constructor and requires a receipt
+exactly for Consumed/Reconciled; `ISecurityGrantStore` keeps only
+`RegisterAsync`, intent-taking `ValidateAndConsumeAsync`, and `RevokeAsync`;
+`AgentPermissionOptions.PolicySnapshot` is required (`SecurityAuthority` throws,
+and `AddAgentPermissions` validates snapshot and version at composition).
+`ArgumentException.ThrowIfGrantLacksAuthorization` was removed. Tests for the
+required-authorization and required-snapshot cases are in `SecurityRequestTests`
+and `SecurityAuthorityTests`.
 
 ### WS21-C4b: Security stores and codecs: remove the unpinned path
 
@@ -226,12 +272,26 @@ These match the search terms but describe external or domain facts and stay:
   updated. Snapshots: Permissions.Sqlite, Permissions.Json, Budgets.Sqlite,
   Storage.Json.
 
+Landed: the Sqlite, Json, and InMemory grant stores dropped the receiptless
+operation and null-intent branches (their consume operations are now named
+`consume` and `consume_assess`); the Json DTOs and log records require
+authorization and receipts; the Permissions.Sqlite envelope is a single layout
+at version 3 and the Budgets.Sqlite security envelope is at version 2, with no
+presence byte and no reader for earlier layouts (a test rejects earlier
+versions). Because every consumption now carries a retained receipt, Json log
+compaction rewrites to the live form (registration, state, and one receipt per
+consumption) rather than a shorter log.
+
 ### WS21-C5: Budget compatibility-created results
 
 - Depends on: –. Risk: CONTRACT-BREAK. Size: S.
 - Deliverables: `accountingRevision` required and positive on
   `BudgetCommitResult` and `BudgetCorrectionResult`; fakes updated. Snapshot:
   Abstractions.
+
+Landed: `BudgetCommitResult` and `BudgetCorrectionResult` have one constructor
+requiring a positive `BudgetAccountingRevision`; the Budgets.Sqlite ledger codec
+dropped the presence flag (schema version 2).
 
 ### WS21-C6: Definition, run-request, and publication legacy shapes
 
@@ -243,6 +303,42 @@ These match the search terms but describe external or domain facts and stay:
   outcome copies from `AgentRunOutcome`/`AgentRunFinished`. Snapshots:
   Abstractions, Loop, Session.
 
+Landed: `AgentRunProfilePublication` requires its
+`EffectiveConfigurationSnapshot`; `SessionPage` requires its
+`SessionReadSnapshot` (the compactor and engine runtime lost their null
+branches); `AgentRunOutcome`, `AgentRunFinished`, and
+`InstructionSourceProjection` prose no longer name a legacy shape.
+`AgentDefinition`'s legacy unrunnable shape and
+`InstructionSourceProjection.FromLegacyMessages` were already gone when the
+chunk was verified. `AgentLoopRunRequest` now has one constructor taking the
+exact `AgentDefinition` and `EffectiveConfigurationSnapshot`; `Agent` and
+`Configuration` are non-null, and the model policy, requirements, instructions,
+settings, output, hook profile, and (now non-null) budget profile are read-only
+projections of the definition. The `Tools`, `ToolChoice`, and inline
+`BudgetLimits` members are deleted (tools come only from the definition's
+toolsets through the run-bound capture, the tool choice from
+`AgentLoopOptions.DefaultToolChoice`, and budgets from the selected profile), so
+the loop lost its `request.Agent is null`, inline-budget, and unbudgeted-run
+branches. The loop tests now build every request through
+`TestFactory.RunRequest` over the shared `AgentDefinitionFixtures` (optional
+settings, output, toolsets, and durability profile); the six inline-limit tests
+use a registered budget profile carrying the limits, the three advertised-tool
+tests use one authored toolset over the fake capture catalog, and the
+"unbudgeted run never touches the authority" test is deleted with the behavior.
+
+Running the loop tests on the exact request exposed three real defects, fixed
+here: `DefaultContextAssembler` ignored the loop's capability-adjusted request
+settings whenever evidence was present (so a parallel-tool-call downgrade never
+reached the model); the per-turn model-request budget reservation reused one key
+across a provider-overflow retry with a new expiry, which the ledger rejects as
+conflicting evidence (the key now includes the model request identity); and the
+output-processor log events reused event IDs 1091 and 1092 already owned by the
+checkpoint events in the same package (renumbered 1115 and 1116). Not changed,
+because no WS21 chunk names it: `ContextAssemblyRequest` still offers its
+evidence-less constructor and `DefaultContextAssembler` its matching branch. No
+live path uses them any more (the loop always supplies evidence), so they are
+candidates for the next sweep.
+
 ### WS21-C7: Conversations, session, loop, and hook compatibility members
 
 - Depends on: C6. Risk: DENSE-MODIFY `DefaultAgentLoop.cs:2435-2460`. Size: M.
@@ -252,6 +348,33 @@ These match the search terms but describe external or domain facts and stay:
   interim hook deadline at `:119` (use `AgentHookOptions.DefaultHookTimeout`),
   and the explicit-sequence `DispatchAsync` overload. Snapshots: Conversations,
   Session, Loop, Hooks.
+
+Landed: both conversation tool events require a non-default call identity (their
+call-id-less constructors are gone); `AgentSessionOptions.BusyBehavior` is
+deleted (the selected session profile owns busy behavior); the loop's interim
+30-second hook deadline is now the configurable, validated
+`AgentLoopOptions.HookDispatchTimeout` (part of the run-policy fingerprint),
+which a composed dispatcher still clamps to
+`AgentHookOptions.DefaultHookTimeout`; the explicit-sequence `DispatchAsync`
+overload was already gone. `ConversationSessionOptions` now has `Agent`,
+`Configuration`, `Identity`, `SessionProfile`, and `ToolPresentationBindings`.
+The agent identity, security profile, revision, configuration version, turn
+limits, and structured-output decision are read from the pinned definition and
+configuration, and the model policy, instruction, tool, tool-choice,
+request-setting, output, budget, and turn-limit options are deleted.
+`SimpleAgentPlan.Apply` sets the pair from the plan's own definition, and
+`DefaultConversationSession` rejects a definition that does not select the
+supplied session profile or a configuration whose fingerprint differs from it.
+The CodingAgent example never composed an `AgentEngine` (its conversation could
+not resolve its turn executor), so it now composes one engine with a single
+pinned definition, run-profile publication, budget profile, IO, hooks, and
+toolset selections, and returns an `AsyncOwnedConversationSession` over the
+engine; the chat screen releases a replaced conversation in the background. A
+new `AgentRuntimeTests` case builds that whole composition so engine validation
+failures show up in the test run. Deviation: `AgentLoopRunRequest.Observer` is
+not removed. `IAgentRunObserver` is the live per-send best-effort observer
+(`AgentSendRequest.Observer`, the conversation host), so only its "legacy"
+wording was dropped.
 
 ### WS21-C8: Build settings, pragmas, and guard closure
 
@@ -263,6 +386,13 @@ These match the search terms but describe external or domain facts and stay:
 - Done when:
   `rg '\[Obsolete|Legacy[A-Z]|compatibility-created|unpinned' src tests examples`
   returns only allowlisted lines and `make format lint build test` passes.
+
+Landed: `CS0618` is no longer in `WarningsNotAsErrors`, no `CS0612`/`CS0618`
+pragma remains, public API snapshots were regenerated, and
+`ObsoleteSurfaceBaseline.txt` and `ObsoleteSurfaceAllowList.txt` are empty
+(every retained vocabulary item in "Retained on purpose" is outside the guard's
+patterns, so none needed an allow-list entry). The guard's non-empty sanity
+check now counts scanned files instead of violations.
 
 ## Totals
 

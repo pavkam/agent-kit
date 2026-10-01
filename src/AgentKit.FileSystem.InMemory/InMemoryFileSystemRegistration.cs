@@ -10,7 +10,6 @@ using Microsoft.Extensions.Options;
 /// <summary>Keyed registration for in-memory host file capabilities.</summary>
 internal static class InMemoryFileSystemRegistration
 {
-    [Obsolete("Legacy host surface.")]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,
@@ -25,7 +24,16 @@ internal static class InMemoryFileSystemRegistration
 
         var optionsBuilder = services.AddOptions<InMemoryFileSystemOptions>(key.Value)
             .Validate(o => o.MaximumReadBytes > 0, "MaximumReadBytes must be positive.")
-            .Validate(o => o.MaximumWriteBytes > 0, "MaximumWriteBytes must be positive.");
+            .Validate(o => o.MaximumWriteBytes > 0, "MaximumWriteBytes must be positive.")
+            .Validate(o => o.MaximumDirectorySnapshotEntries > 0, "MaximumDirectorySnapshotEntries must be positive.")
+            .Validate(o => o.MaximumSearchDepth > 0, "MaximumSearchDepth must be positive.")
+            .Validate(o => o.MaximumSearchFiles > 0, "MaximumSearchFiles must be positive.")
+            .Validate(o => o.MaximumSearchBytes > 0, "MaximumSearchBytes must be positive.")
+            .Validate(o => o.MaximumSearchMatches > 0, "MaximumSearchMatches must be positive.")
+            .Validate(o => o.MaximumSearchLineBytes > 0, "MaximumSearchLineBytes must be positive.")
+            .Validate(o => o.MaximumSearchDuration > TimeSpan.Zero, "MaximumSearchDuration must be positive.")
+            .Validate(o => o.MaximumPatchEntries > 0, "MaximumPatchEntries must be positive.")
+            .Validate(o => o.MaximumPatchBytes > 0, "MaximumPatchBytes must be positive.");
         if (configure is not null)
         {
             _ = optionsBuilder.Configure(configure);
@@ -55,8 +63,6 @@ internal static class InMemoryFileSystemRegistration
         _ = services.AddKeyedSingleton<IDirectoryCreator>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IDirectoryReader>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
-        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileGlobber>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));

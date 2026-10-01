@@ -171,11 +171,13 @@ credential as a default.
 one `IWebSearchProvider`. Its registration fails composition until the host
 selects an operation. The tool authorizes classified query egress to the
 provider's exact secret-free destination, and the provider must consume the same
-grant immediately before its single attempt. Queries, canonical domain filters,
-freshness, result and time ceilings are fingerprinted together. Returned
-correlation, HTTP(S) URLs, requested-domain containment, counts, and text bounds
-are checked again; bounded results remain untrusted data and an oversized
-response is explicitly incomplete rather than silently whole.
+grant immediately before its single attempt. The first-party provider then
+resolves and sends only through `INetworkNameResolver` and `INetworkTransport`
+under separate resolution and send grants, with redirects refused. Queries,
+canonical domain filters, freshness, result and time ceilings are fingerprinted
+together. Returned correlation, HTTP(S) URLs, requested-domain containment,
+counts, and text bounds are checked again; bounded results remain untrusted data
+and an oversized response is explicitly incomplete rather than silently whole.
 
 Network tools validate URI syntax and scheme, resolve DNS through the protected
 network boundary, authorize every redirect/effective destination, prevent
@@ -254,13 +256,14 @@ permission merely because its parent could access them.
 `AgentKit.Tools.Task` exposes this boundary as `task`. The model selects one
 target agent, bounded objective and acceptance criteria, an exact tool
 allow-list, turn/tool-call ceilings, and a settlement timeout. The tool requires
-a durable session and active run, authorizes the full envelope as one
-`Delegation/Create` effect, and delegates only through `ITaskDelegationBroker`.
-The default broker in `AgentKit.Goals` consumes that grant immediately before
-dispatch; it supplies no default goal channel. A rejection before child creation
-returns no child identities, while a child result preserves the durable goal,
-attempt, session, run, status, and side-effect certainty and remains untrusted
-data in the parent context.
+a durable session and active run and delegates only through
+`IDelegationCoordinator`. The coordinator authorizes the full envelope as one
+`Delegation/Create` effect, creates the durable child goal, and hands it to a
+dispatcher; a host worker in `AgentKit.Goals.Hosting` then runs the child, so a
+child never runs inside the parent's tool call. A rejection before child
+creation returns no child identities, while a child result preserves the durable
+goal, attempt, session, run, status, and side-effect certainty and remains
+untrusted data in the parent context.
 
 A sandboxed orchestration/code-mode tool is still a tool scheduler. It uses the
 captured child-tool catalog; validates and authorizes every nested call; assigns

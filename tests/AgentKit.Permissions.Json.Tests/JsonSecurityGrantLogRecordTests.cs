@@ -34,20 +34,15 @@ public sealed class JsonSecurityGrantLogRecordTests
         exception.ParamName.ShouldBe("grant");
     }
 
-    /// <summary>Verifies a receiptless consumption record carries only the grant identity and remaining uses.</summary>
+    /// <summary>Verifies a consumption record always requires its receipt.</summary>
     [Fact]
-    public void ForConsumption_WhenReceiptIsNull_CarriesOnlyGrantIdAndRemainingUses()
+    public void ForConsumption_WhenReceiptIsNull_ThrowsArgumentNull()
     {
         var grantId = new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005"));
 
-        var record = JsonSecurityGrantLogRecord.ForConsumption(grantId, 3, null);
+        var exception = Should.Throw<ArgumentNullException>(() => JsonSecurityGrantLogRecord.ForConsumption(grantId, 3, null!));
 
-        record.Kind.ShouldBe(JsonSecurityGrantLogRecordKind.Consumed);
-        record.GrantId.ShouldBe(grantId.Value);
-        record.RemainingUses.ShouldBe(3);
-        record.Grant.ShouldBeNull();
-        record.Revoked.ShouldBeNull();
-        record.Receipt.ShouldBeNull();
+        exception.ParamName.ShouldBe("receipt");
     }
 
     /// <summary>Verifies a receipt-bearing consumption record projects the receipt alongside the remaining uses.</summary>
@@ -71,10 +66,11 @@ public sealed class JsonSecurityGrantLogRecordTests
     [Fact]
     public void ForConsumption_WhenRemainingUsesIsNegative_ThrowsArgumentOutOfRange()
     {
-        var grantId = new GrantId(Guid.NewGuid());
+        var grant = TestGrantFactory.CreateGrant(_now);
+        var receipt = TestGrantFactory.CreateReceipt(grant, TestGrantFactory.CreateEnforcement(grant), TestGrantFactory.CreateIntent(), _now);
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => JsonSecurityGrantLogRecord.ForConsumption(grantId, -1, null));
+            () => JsonSecurityGrantLogRecord.ForConsumption(grant.Id, -1, receipt));
 
         exception.ParamName.ShouldBe("remainingUses");
     }

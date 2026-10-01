@@ -1,8 +1,9 @@
 # AgentKit documentation
 
 Start with a working agent, then follow the parts your application needs.
-AgentKit is in alpha; the guides describe current entry points, while the
-architecture and concept specifications define the complete intended design.
+AgentKit is in alpha; the guides describe working entry points, while the
+architecture and concept specifications define the design and its acceptance
+scenarios.
 
 ## Build with AgentKit
 
@@ -16,8 +17,8 @@ architecture and concept specifications define the complete intended design.
 | See complete compositions for real applications | [Use cases](use-cases/index.md)                     |
 | Find a package and its related projects         | [Project catalog](packages/index.md)                |
 | Select a provider and check its wire behavior   | [Provider reference](providers/index.md)            |
-| Check what still needs implementation or proof  | [Current status](getting-started.md#current-status) |
-| See the ordered plan to complete the runtime    | [Workstreams](workstreams/index.md)                 |
+| Check the repository status and versioning      | [Current status](getting-started.md#current-status) |
+| See how the runtime was built, chunk by chunk   | [Workstreams](workstreams/index.md)                 |
 | Run focused tests or add a regression           | [Testing guide](testing/index.md)                   |
 
 ## Go deeper

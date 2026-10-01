@@ -18,13 +18,16 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Registration is additive according to the official SDK builder. The policy controls only the MCP wire
-        /// revision; it does not select tool contract versions or catalog generations.
+        /// revision; it does not select tool contract versions or catalog generations. Every <c>tools/call</c> the SDK
+        /// dispatches runs under an <c>mcp.server.tool.call</c> activity with a bounded outcome counter.
         /// </remarks>
         public IMcpServerBuilder AddAgentKitMcpServer(McpServerVersionPolicy? versionPolicy = null)
         {
             ArgumentNullException.ThrowIfNull(services);
             var policy = versionPolicy ?? McpServerVersionPolicy.Compatible;
-            return services.AddMcpServer(options => options.ProtocolVersion = policy.RequiredVersion?.ToString());
+            return services
+                .AddMcpServer(options => options.ProtocolVersion = policy.RequiredVersion?.ToString())
+                .WithRequestFilters(static filters => filters.AddCallToolFilter(McpServerToolCallFilter.Create));
         }
 
         /// <summary>Registers one AgentKit-hosted MCP server under a semantic key.</summary>

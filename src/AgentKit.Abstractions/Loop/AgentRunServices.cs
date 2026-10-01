@@ -10,13 +10,13 @@ namespace AgentKit;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller <c>AgentRunServices</c> described by the agent-runtime
-/// architecture, which additionally carries a <c>SessionExecutionCapability</c>, an <c>IModelRequestExecutor</c>,
-/// an <c>IToolExecutor</c>, an <c>IHookDispatcher</c>, and a <c>BudgetExecutionCapability</c>. Until those exist
-/// and are wired into the reduced loop, this bundle carries the collaborators <c>DefaultAgentLoop</c> uses today:
-/// session coordination, fresh per-operation authorization capture, context assembly, tool invocation, model
-/// catalog and selection, model resolution, the run continuation policy, and — now that
-/// <see cref="Input"/> and <see cref="Publisher"/> are wired — input promotion and run-event publication.
+/// This bundle carries the collaborators <c>DefaultAgentLoop</c> drives a run with: session coordination, fresh
+/// per-operation authorization capture, context assembly, tool execution, model catalog, selection, resolution,
+/// and request execution, the run continuation policy, output processing, compaction, budget authority and
+/// profile catalog, input promotion, and run-event publication. It carries the budget authority and session
+/// coordinator rather than pre-bound <c>BudgetExecutionCapability</c> and <c>SessionExecutionCapability</c>
+/// values because the loop opens those scopes itself; hook dispatch reaches the loop through its constructor
+/// because the hook kernel is engine-wide.
 /// </para>
 /// <para>
 /// The run-activation boundary (the facade's <c>AgentEngine</c>) compiles one instance of this bundle per run,
@@ -81,6 +81,11 @@ public sealed class AgentRunServices
     /// Executes captured model selections with same-model retry and fallback signaling, or <see langword="null"/>
     /// when the composition selects none; the loop then invokes <see cref="ILlmModel"/> directly.
     /// </param>
+    /// <param name="compactionPolicy">
+    /// The compiled policy of the compaction profile the definition selects, which the loop attaches to every
+    /// <see cref="CompactionRequest"/> it issues, or <see langword="null"/> when the definition selects no profile; the
+    /// compactor then applies its own default strategy order.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any required parameter is <see langword="null"/>.</exception>
     public AgentRunServices(
         ISessionCoordinator session,
@@ -99,7 +104,8 @@ public sealed class AgentRunServices
         ISessionRunCoordinator? runCoordinator = null,
         IInputCoordinator? input = null,
         IOutputPublisher? publisher = null,
-        IModelRequestExecutor? modelExecutor = null)
+        IModelRequestExecutor? modelExecutor = null,
+        CompactionPolicySnapshot? compactionPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
@@ -127,6 +133,7 @@ public sealed class AgentRunServices
         Input = input;
         Publisher = publisher;
         ModelExecutor = modelExecutor;
+        CompactionPolicy = compactionPolicy;
     }
 
     /// <summary>Gets the collaborator that loads eligible history and commits every message and terminal tool result.</summary>
@@ -191,4 +198,8 @@ public sealed class AgentRunServices
     /// <summary>Gets the collaborator that executes captured model selections when one is composed.</summary>
     /// <value><see langword="null"/> when none is registered; the loop invokes <see cref="ILlmModel"/> directly.</value>
     public IModelRequestExecutor? ModelExecutor { get; }
+
+    /// <summary>Gets the compiled compaction policy the loop attaches to every compaction request.</summary>
+    /// <value><see langword="null"/> when the definition selects no compaction profile.</value>
+    public CompactionPolicySnapshot? CompactionPolicy { get; }
 }

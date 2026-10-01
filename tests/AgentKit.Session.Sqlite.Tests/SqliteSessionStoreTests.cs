@@ -217,12 +217,12 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
 
         var continued = await harness.Store.ReadAsync(
             await harness.AuthorizeAsync(
-                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot!),
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot),
                 SecurityOperationKind.StateRead, SecurityEffect.Observe),
             TestContext.Current.CancellationToken);
         var latest = await harness.Store.ReadAsync(
             await harness.AuthorizeAsync(
-                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, second.Snapshot!),
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, second.Snapshot),
                 SecurityOperationKind.StateRead, SecurityEffect.Observe),
             TestContext.Current.CancellationToken);
 
@@ -246,7 +246,7 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
 
         var continued = await harness.Store.ReadAsync(
             await harness.AuthorizeAsync(
-                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot!),
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot),
                 SecurityOperationKind.StateRead, SecurityEffect.Observe),
             TestContext.Current.CancellationToken);
 

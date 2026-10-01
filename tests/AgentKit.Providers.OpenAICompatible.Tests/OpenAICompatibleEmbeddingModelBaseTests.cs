@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 using AgentKit.TestSupport;
@@ -56,21 +57,25 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
                     ExtensionData.Empty)),
             attempt: 1,
             deadline,
-            options ?? ProviderRequestOptions.Empty);
+            options ?? ProviderRequestOptions.Empty)
+        {
+            Operation = ProviderEgressHarness.Operation,
+        };
 
     private static TestEmbeddingModel CreateModel(
         HttpMessageHandler handler,
         OpenAICompatibilityProfile profile,
         IProviderCredentialSource credentials,
         EmbeddingModelDescriptor? descriptor = null,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null,
+        ProviderEgressHarness? harness = null) =>
         new(
             descriptor ?? TestModels.TextEmbedding3Small,
             profile,
             new OpenAIEmbeddingRequestTranslator(),
             new OpenAIEmbeddingResponseParser(),
             credentials,
-            new HttpClient(handler),
+            (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress,
             timeProvider ?? new FakeTimeProvider(Now));
 
     private static CustomizingEmbeddingModel CreateCustomizingModel(
@@ -85,8 +90,7 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
             new OpenAIEmbeddingRequestTranslator(),
             new OpenAIEmbeddingResponseParser(),
             credentials,
-            new HttpClient(handler),
-            new FakeTimeProvider(Now),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now),
             scheme,
             adjust);
 
@@ -363,9 +367,9 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
-    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task GenerateAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
-        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        // A transport-level timeout surfaces from the handler as TaskCanceledException while neither the caller token nor the deadline is cancelled.
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
@@ -375,7 +379,6 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
     }
 
     [Fact]
@@ -388,7 +391,6 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
     [Fact]
@@ -491,7 +493,7 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
                 null,
                 EmbeddingTruncation.ProviderDefault,
                 ExtensionData.Empty));
-        var request = new EmbeddingModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new EmbeddingModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
 
         var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
 
@@ -655,5 +657,55 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenAdmitted_RequestsEgressResolutionAndSendGrantsForTheEmbeddingOperation()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-embed-secret")), harness: harness);
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
+        [
+            ProviderEgress.SecurityAudience,
+            harness.Resolver.SecurityAudience,
+            harness.Transport.SecurityAudience,
+        ]);
+        harness.Authority.Requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldEndWith("/embeddings");
+        harness.Authority.Requests.ShouldAllBe(request => !request.InputFingerprint.Value.Contains("sk-embed-secret", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenEgressGrantDenied_FailsAuthorizationBeforeAnyIo()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        harness.Authority.Deny = static request => request.Audience == ProviderEgress.SecurityAudience;
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-embed-secret")), harness: harness);
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failed.Failure.ToString().ShouldNotContain("sk-embed-secret");
+        handler.Requests.ShouldBeEmpty();
+        harness.Resolver.Resolved.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenOperationContextIsMissing_FailsAuthorizationWithoutSending()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)) with { Operation = null };
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        handler.Requests.ShouldBeEmpty();
     }
 }

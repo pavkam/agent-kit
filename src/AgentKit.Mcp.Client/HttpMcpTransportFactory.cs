@@ -3,25 +3,39 @@
 
 namespace AgentKit.Mcp.Client;
 
+using System.Net.Http;
+
 using Microsoft.Extensions.DependencyInjection;
 
 using ModelContextProtocol.Client;
 
-/// <summary>Opens HTTP MCP transports after connect authorization and optional OAuth token binding.</summary>
+/// <summary>Opens HTTP MCP transports through the protected network boundary after connect authorization and optional OAuth token binding.</summary>
 /// <remarks>
-/// Per-request JSON-RPC frames continue through the official
-/// <see cref="HttpClientTransport"/>. Connect-time authorization uses the
-/// captured operation context; applications should register
-/// <see cref="INetworkTransport"/> for environments that require per-hop
-/// network grant enforcement on custom HTTP handlers.
+/// <para>
+/// The official <see cref="HttpClientTransport"/> still owns Streamable HTTP and legacy SSE protocol behavior, but it is
+/// handed an <see cref="HttpClient"/> over <see cref="NetworkMcpHttpHandler"/>, so every request, event-stream read,
+/// and session deletion resolves and sends through <see cref="INetworkNameResolver"/> and
+/// <see cref="INetworkTransport"/> under per-exchange resolution and send grants. The SDK never creates a socket,
+/// follows a redirect, or reaches an origin other than the configured endpoint's. Missing authority, enforcement, or
+/// audit refuses the exchange; there is no fallback to an unrestricted client.
+/// </para>
+/// <para>
+/// The connect grant authorizes the connection effect and is consumed before the transport exists; it never
+/// substitutes for the per-exchange network grants, and a successful OAuth token acquisition authorizes neither.
+/// The access token travels only as a request header inside the network request, bound by hash alone.
+/// </para>
 /// </remarks>
-public sealed class HttpMcpTransportFactory(
+internal sealed class HttpMcpTransportFactory(
     ISecurityAuthoritySelector securityAuthorities,
     ISecurityGrantStore grantStore,
     ISecurityAuditDispatcher audit,
     IIdentifierGenerator<SecurityRequestId> securityRequestIds,
     IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
     IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+    IIdentifierGenerator<NetworkOperationId> networkOperationIds,
+    INetworkNameResolver resolver,
+    INetworkTransport networkTransport,
+    McpClientOptionsSnapshot clientOptions,
     IServiceProvider services,
     TimeProvider timeProvider,
     ILoggerFactory loggerFactory): IMcpTransportFactory
@@ -56,7 +70,7 @@ public sealed class HttpMcpTransportFactory(
             return new McpTransportOpenDenied("HTTP MCP connect denied by security authority.");
         }
 
-        var consumption = await McpClientSecurityOperations.ConsumeGrantAsync(
+        var consumed = await McpClientSecurityOperations.TryConsumeGrantAsync(
             grant,
             grantStore,
             audit,
@@ -64,7 +78,7 @@ public sealed class HttpMcpTransportFactory(
             intentIds,
             timeProvider,
             cancellationToken).ConfigureAwait(false);
-        if (consumption.Status is not GrantConsumptionStatus.Consumed)
+        if (!consumed)
         {
             return new McpTransportOpenDenied("HTTP MCP connect grant consumption failed.");
         }
@@ -92,9 +106,22 @@ public sealed class HttpMcpTransportFactory(
         {
             Endpoint = httpProfile.Endpoint,
             Name = request.Endpoint.Key.Value,
+            ConnectionTimeout = request.Endpoint.Bounds.HandshakeTimeout,
             AdditionalHeaders = additionalHeaders,
         };
-        var transport = new HttpClientTransport(options, loggerFactory: loggerFactory);
+        var handler = new NetworkMcpHttpHandler(
+            resolver,
+            networkTransport,
+            securityAuthorities,
+            securityRequestIds,
+            networkOperationIds,
+            operation,
+            request.Endpoint,
+            clientOptions,
+            timeProvider,
+            loggerFactory.CreateLogger<NetworkMcpHttpHandler>());
+        var client = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+        var transport = new HttpClientTransport(options, client, loggerFactory, ownsHttpClient: true);
         return new McpTransportOpened(new SdkMcpClientTransport(transport));
     }
 }

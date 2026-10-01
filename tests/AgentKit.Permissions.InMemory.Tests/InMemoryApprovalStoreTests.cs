@@ -34,7 +34,7 @@ public sealed class InMemoryApprovalStoreTests: ApprovalStoreConformanceTests<In
             new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000002")), null));
         var securityRequest = new SecurityRequest(
             new SecurityRequestId(Guid.Parse("30000000-0000-0000-0000-000000000003")), scope, null,
-            identity, new ComponentId("test"), SecurityOperationKind.FileWrite, SecurityEffect.CreateOrReplace,
+            identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("test"), SecurityOperationKind.FileWrite, SecurityEffect.CreateOrReplace,
             [new ProtectedResource(ProtectedResourceKind.File, "/workspace/file.txt")],
             new InputFingerprint("sha256:input"), now.AddMinutes(5));
         var binding = new ApprovalScopeBinding(securityRequest, new SecurityPolicyVersion(1),

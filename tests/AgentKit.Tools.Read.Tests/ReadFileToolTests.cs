@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Read.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class ReadFileToolTests
@@ -11,7 +15,7 @@ public sealed class ReadFileToolTests
 
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(null!, null!, null!, null!, null!, null!, null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(null!, null!, null!, null!, null!, null!, null!, null!));
 
         exception.ParamName.ShouldBe("fileSystemSelector");
     }
@@ -27,7 +31,8 @@ public sealed class ReadFileToolTests
             TestFactory.RequestIds(),
             TestFactory.FileOperationIds(),
             TimeProvider.System,
-            null!));
+            null!,
+            NullLogger<ReadFileTool>.Instance));
 
         exception.ParamName.ShouldBe("options");
     }
@@ -82,7 +87,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -96,7 +100,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -110,7 +113,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -124,7 +126,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOffsetExplicitlyNull_ReadsFullContent()
     {
         var reader = new FakeFileReader().WithText("l1\nl2");
@@ -138,7 +139,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -152,7 +152,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -167,7 +166,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -181,7 +179,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -195,7 +192,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileFound_ReturnsFullContent()
     {
         var reader = new FakeFileReader().WithText("line1\nline2\nline3");
@@ -211,7 +207,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOffsetAndLimitProvided_ReturnsRequestedLineRange()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -224,7 +219,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitExceedsAvailableLines_ReturnsRemainingLines()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3");
@@ -238,7 +232,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitOmitted_UsesConfiguredDefaultWindow()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -252,7 +245,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitOmittedAndOffsetProvided_UsesConfiguredDefaultWindowFromOffset()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -266,7 +258,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitOmittedAndFileFitsWindow_ReturnsFullContentMarkedComplete()
     {
         var reader = new FakeFileReader().WithText("l1\r\nl2");
@@ -279,7 +270,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndFitsWindow_ReturnsFullContentMarkedComplete()
     {
         // Split('\n') turns a trailing line terminator into one extra, phantom empty final element ("l1\nl2\n"
@@ -296,7 +286,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileHasATrailingNewlineAndAnExplicitRangeReachesTheEnd_MarksComplete()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\n");
@@ -310,7 +299,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3\nl4\nl5");
@@ -325,7 +313,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenLimitExceedsMaximum_ReturnsInvalidArguments()
     {
         var reader = new FakeFileReader().WithText("l1\nl2\nl3");
@@ -346,7 +333,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileNotFound_ReturnsFailed()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenNotFound() };
@@ -361,7 +347,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenDenied("outside sandbox") };
@@ -377,7 +362,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotObserveFileSystem()
     {
         var reader = new FakeFileReader().WithText("secret");
@@ -396,7 +380,6 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var reader = new FakeFileReader { OnOpenRead = static _ => new FileReadOpenFailed("disk error") };
@@ -410,4 +393,28 @@ public sealed class ReadFileToolTests
         result.Outcome.Retryable.ShouldBeFalse();
     }
 
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<ReadFileTool>();
+        var tool = TestFactory.Tool(logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), ReadFileTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(TestFactory.Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33800);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

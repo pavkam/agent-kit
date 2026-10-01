@@ -6,10 +6,14 @@ namespace AgentKit.Permissions.Sqlite;
 using System.Buffers;
 using System.Buffers.Binary;
 
-/// <summary>Writes strict bounded version-one security evidence without growing beyond its configured limit.</summary>
+/// <summary>Writes strict bounded security evidence without growing beyond its configured limit.</summary>
 internal sealed class SqliteSecurityGrantCodecWriter
 {
     private const uint _magic = 0x414B5347;
+
+    /// <summary>The single supported envelope version; persisted layouts of any other version are rejected, never migrated.</summary>
+    internal const byte EnvelopeVersion = 3;
+
     private readonly ArrayBufferWriter<byte> _buffer = new();
     private readonly SqliteSecurityGrantStoreSettings _settings;
     private readonly int _maximumBytes;
@@ -30,11 +34,11 @@ internal sealed class SqliteSecurityGrantCodecWriter
         _paramName = paramName;
     }
 
-    /// <summary>Writes the fixed magic, codec version, and exact envelope kind.</summary><param name="kind">The supported envelope discriminator.</param><param name="version">The supported envelope version.</param>
-    internal void WriteHeader(byte kind, byte version)
+    /// <summary>Writes the fixed magic, the single supported envelope version, and the exact envelope kind.</summary><param name="kind">The supported envelope discriminator.</param>
+    internal void WriteHeader(byte kind)
     {
         WriteUInt32(_magic);
-        WriteByte(version);
+        WriteByte(EnvelopeVersion);
         WriteByte(kind);
     }
 
@@ -162,15 +166,10 @@ internal sealed class SqliteSecurityGrantCodecWriter
         WriteInt64(identity.Version.Value);
     }
 
-    /// <summary>Writes optional complete captured authorization evidence.</summary><param name="authorization">The immutable context, or null for a legacy unpinned request.</param>
-    internal void WriteAuthorization(SecurityAuthorizationContext? authorization)
+    /// <summary>Writes the complete captured authorization evidence every persisted request, grant, and enforcement carries.</summary><param name="authorization">The non-null immutable context.</param><exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception>
+    internal void WriteAuthorization(SecurityAuthorizationContext authorization)
     {
-        WriteByte(authorization is null ? (byte) 0 : (byte) 1);
-        if (authorization is null)
-        {
-            return;
-        }
-
+        ArgumentNullException.ThrowIfNull(authorization);
         WriteString(authorization.ProfileKey.Value);
         WriteInt64(authorization.ProfileVersion.Value);
         WriteGuid(authorization.PolicySnapshot.Id.Value);

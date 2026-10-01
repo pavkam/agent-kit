@@ -70,25 +70,6 @@ internal static class LoopTestData
 
     public static SessionProfileSnapshot SessionProfile() => TestSecurityEvidence.SessionProfile();
 
-    public static AgentLoopRunRequest RunRequest() =>
-        new(
-            AgentId,
-            SessionId,
-            BranchId,
-            RunId,
-            Identity(),
-            RunAuthorization(),
-            SessionProfile(),
-            new ModelSelectionPolicy([new ModelAlias("chat")]),
-            ModelRequirements.None,
-            [],
-            [],
-            LlmToolChoice.Auto,
-            LlmRequestSettings.Default,
-            8,
-            TimeSpan.FromMinutes(1),
-            ExtensionData.Empty);
-
     public static InputPromotionSnapshot PromotionSnapshot() =>
         new(AgentId, SessionId, new ExecutionLaneId(Guid.Parse("b0000000-0000-0000-0000-00000000000b")), InRun(),
             new OperationStateRevision(1), new SessionBranchCursor(BranchId, null), new SessionSequence(1), null, null,
@@ -101,15 +82,12 @@ internal static class LoopTestData
         new(new SessionEntryId(Guid.Parse($"b0000000-0000-0000-0000-0000000000{value:D2}")), new ToolCallId(Guid.Parse($"b1000000-0000-0000-0000-0000000000{value:D2}")), TurnId);
 
     public static AgentDefinition Definition() =>
-        new(AgentId, new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]),
-            ModelRequirements.None, [], LlmRequestSettings.Default,
-            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty,
-            new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        AgentDefinitionFixtures.Create(AgentId, displayName: "agent");
 
     public static EffectiveConfigurationSnapshot Configuration() =>
         new(new ConfigurationVersion(1), new ContentHash("sha256:test-session-profile"), [], []);
 
-    public static AgentLoopRunRequest RunRequestFromDefinition() =>
+    public static AgentLoopRunRequest RunRequest() =>
         new(Definition(), SessionId, BranchId, RunId, Identity(), RunAuthorization(), SessionProfile(), Configuration(),
             8, TimeSpan.FromMinutes(1), ExtensionData.Empty);
 

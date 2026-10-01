@@ -14,23 +14,29 @@ infrastructure is listed at the end.
 
 ## Engine and runtime
 
-| Project                                                                        | Use it for                                                                                      | Tests                                                            |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [AgentKit](../../src/AgentKit/README.md)                                       | Compose a process-level engine that hosts immutable agent definitions and isolated runs.        | [Tests](../../tests/AgentKit.Tests/README.md)                    |
-| [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md)             | Implement AgentKit extensions against provider-neutral contracts and typed domain values.       | [Tests](../../tests/AgentKit.Abstractions.Tests/README.md)       |
-| [AgentKit.Loop](../../src/AgentKit.Loop/README.md)                             | Coordinate turns, context preparation, model attempts, tool calls, and terminal outcomes.       | [Tests](../../tests/AgentKit.Loop.Tests/README.md)               |
-| [AgentKit.Conversations](../../src/AgentKit.Conversations/README.md)           | Drive one ready-to-use conversational turn: session creation, admission, and a run in one call. | [Tests](../../tests/AgentKit.Conversations.Tests/README.md)      |
-| [AgentKit.Simple](../../src/AgentKit.Simple/README.md)                         | Build one working agent in a few lines with a fluent builder over the real packages.            | [Tests](../../tests/AgentKit.Simple.Tests/README.md)             |
-| [AgentKit.Context](../../src/AgentKit.Context/README.md)                       | Assemble provider-ready context while preserving message trust and tool-call correlation.       | [Tests](../../tests/AgentKit.Context.Tests/README.md)            |
-| [AgentKit.Context.Compaction](../../src/AgentKit.Context.Compaction/README.md) | Select safe history cuts and produce, validate, and activate compaction checkpoints.            | [Tests](../../tests/AgentKit.Context.Compaction.Tests/README.md) |
-| [AgentKit.Output](../../src/AgentKit.Output/README.md)                         | Resolve output definitions and validate, repair, or deserialize terminal candidates.            | [Tests](../../tests/AgentKit.Output.Tests/README.md)             |
-| [AgentKit.IO](../../src/AgentKit.IO/README.md)                                 | Provide input-promotion policy and a broker for bounded human questions.                        | [Tests](../../tests/AgentKit.IO.Tests/README.md)                 |
-| [AgentKit.Hooks](../../src/AgentKit.Hooks/README.md)                           | Dispatch typed lifecycle hooks with ordering, mutation validation, and failure policy.          | [Tests](../../tests/AgentKit.Hooks.Tests/README.md)              |
-| [AgentKit.Identity](../../src/AgentKit.Identity/README.md)                     | Normalize trusted ingress identity and derive constrained delegated identities.                 | [Tests](../../tests/AgentKit.Identity.Tests/README.md)           |
-| [AgentKit.Permissions](../../src/AgentKit.Permissions/README.md)               | Evaluate security requests and manage bounded grants, profiles, and audit dispatch.             | [Tests](../../tests/AgentKit.Permissions.Tests/README.md)        |
-| [AgentKit.Budgets](../../src/AgentKit.Budgets/README.md)                       | Reserve and account for capacity across hierarchical budget scopes.                             | [Tests](../../tests/AgentKit.Budgets.Tests/README.md)            |
-| [AgentKit.Goals](../../src/AgentKit.Goals/README.md)                           | Coordinate protected task-delegation requests.                                                  | [Tests](../../tests/AgentKit.Goals.Tests/README.md)              |
-| [AgentKit.Observability](../../src/AgentKit.Observability/README.md)           | Share AgentKit logging, activity, metric, and tag conventions across components.                | [Tests](../../tests/AgentKit.Observability.Tests/README.md)      |
+| Project                                                                                          | Use it for                                                                                             | Tests                                                                     |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| [AgentKit](../../src/AgentKit/README.md)                                                         | Compose a process-level engine that hosts immutable agent definitions and isolated runs.               | [Tests](../../tests/AgentKit.Tests/README.md)                             |
+| [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md)                               | Implement AgentKit extensions against provider-neutral contracts and typed domain values.              | [Tests](../../tests/AgentKit.Abstractions.Tests/README.md)                |
+| [AgentKit.Loop](../../src/AgentKit.Loop/README.md)                                               | Coordinate turns, context preparation, model attempts, tool calls, and terminal outcomes.              | [Tests](../../tests/AgentKit.Loop.Tests/README.md)                        |
+| [AgentKit.Conversations](../../src/AgentKit.Conversations/README.md)                             | Drive one ready-to-use conversational turn: session creation, admission, and a run in one call.        | [Tests](../../tests/AgentKit.Conversations.Tests/README.md)               |
+| [AgentKit.Simple](../../src/AgentKit.Simple/README.md)                                           | Build one working agent in a few lines with a fluent builder over the real packages.                   | [Tests](../../tests/AgentKit.Simple.Tests/README.md)                      |
+| [AgentKit.Context](../../src/AgentKit.Context/README.md)                                         | Assemble provider-ready context while preserving message trust and tool-call correlation.              | [Tests](../../tests/AgentKit.Context.Tests/README.md)                     |
+| [AgentKit.Context.Compaction](../../src/AgentKit.Context.Compaction/README.md)                   | Select safe history cuts and produce, validate, and activate compaction checkpoints.                   | [Tests](../../tests/AgentKit.Context.Compaction.Tests/README.md)          |
+| [AgentKit.Output](../../src/AgentKit.Output/README.md)                                           | Resolve output definitions and validate, repair, or deserialize terminal candidates.                   | [Tests](../../tests/AgentKit.Output.Tests/README.md)                      |
+| [AgentKit.IO](../../src/AgentKit.IO/README.md)                                                   | Admit and promote queued input, fan out run events, publish final results, and broker human questions. | [Tests](../../tests/AgentKit.IO.Tests/README.md)                          |
+| [AgentKit.Hooks](../../src/AgentKit.Hooks/README.md)                                             | Dispatch typed lifecycle hooks with ordering, mutation validation, and failure policy.                 | [Tests](../../tests/AgentKit.Hooks.Tests/README.md)                       |
+| [AgentKit.Identity](../../src/AgentKit.Identity/README.md)                                       | Normalize trusted ingress identity and derive constrained delegated identities.                        | [Tests](../../tests/AgentKit.Identity.Tests/README.md)                    |
+| [AgentKit.Permissions](../../src/AgentKit.Permissions/README.md)                                 | Evaluate security requests and manage bounded grants, profiles, and audit dispatch.                    | [Tests](../../tests/AgentKit.Permissions.Tests/README.md)                 |
+| [AgentKit.Budgets](../../src/AgentKit.Budgets/README.md)                                         | Reserve and account for capacity across hierarchical budget scopes.                                    | [Tests](../../tests/AgentKit.Budgets.Tests/README.md)                     |
+| [AgentKit.Goals](../../src/AgentKit.Goals/README.md)                                             | Coordinate goals, delegation, and joins.                                                               | [Tests](../../tests/AgentKit.Goals.Tests/README.md)                       |
+| [AgentKit.Goals.Hosting](../../src/AgentKit.Goals.Hosting/README.md)                             | Run delegated children from durable intents with a hosted worker.                                      | [Tests](../../tests/AgentKit.Goals.Hosting.Tests/README.md)               |
+| [AgentKit.Evaluation](../../src/AgentKit.Evaluation/README.md)                                   | Run versioned evaluation plans with evaluators, result stores, and report exporters.                   | [Tests](../../tests/AgentKit.Evaluation.Tests/README.md)                  |
+| [AgentKit.Observability](../../src/AgentKit.Observability/README.md)                             | Share AgentKit logging, activity, metric, and tag conventions across components.                       | [Tests](../../tests/AgentKit.Observability.Tests/README.md)               |
+| [AgentKit.Observability.OpenTelemetry](../../src/AgentKit.Observability.OpenTelemetry/README.md) | Bridge run events and security audit records to `System.Diagnostics` and a host audit exporter.        | [Tests](../../tests/AgentKit.Observability.OpenTelemetry.Tests/README.md) |
+| [AgentKit.Memory](../../src/AgentKit.Memory/README.md)                                           | Coordinate durable memory, document publication, and policy-governed retrieval.                        | [Tests](../../tests/AgentKit.Memory.Tests/README.md)                      |
+| [AgentKit.Context.Project](../../src/AgentKit.Context.Project/README.md)                         | Discover bounded workspace instruction files as context candidates.                                    | [Tests](../../tests/AgentKit.Context.Project.Tests/README.md)             |
+| [AgentKit.Context.Retrieval](../../src/AgentKit.Context.Retrieval/README.md)                     | Contribute authorized retrieval results to context assembly.                                           | [Tests](../../tests/AgentKit.Context.Retrieval.Tests/README.md)           |
 
 ## Storage adapters
 
@@ -39,26 +45,44 @@ adapter per family explicitly and supplies its persistence target. The
 in-memory, SQLite, and JSON leaves of a family run the same reusable conformance
 suite; their capability descriptors differ.
 
-| Project                                                                            | Use it for                                                                                           | Tests                                                          |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [AgentKit.Storage.Json](../../src/AgentKit.Storage.Json/README.md)                 | Share JSON and JSONL file mechanics, encoding contracts, and portable evidence shapes across leaves. | [Tests](../../tests/AgentKit.Storage.Json.Tests)               |
-| [AgentKit.Permissions.InMemory](../../src/AgentKit.Permissions.InMemory/README.md) | Hold grants and approvals in memory as explicitly ephemeral security evidence.                       | [Tests](../../tests/AgentKit.Permissions.InMemory.Tests)       |
-| [AgentKit.Permissions.Sqlite](../../src/AgentKit.Permissions.Sqlite/README.md)     | Persist grants in one explicitly selected SQLite database.                                           | [Tests](../../tests/AgentKit.Permissions.Sqlite.Tests)         |
-| [AgentKit.Permissions.Json](../../src/AgentKit.Permissions.Json/README.md)         | Persist grants and approvals as inspectable JSON records under one single-writer root.               | [Tests](../../tests/AgentKit.Permissions.Json.Tests)           |
-| [AgentKit.Budgets.InMemory](../../src/AgentKit.Budgets.InMemory/README.md)         | Keep the reservation ledger in memory for tests and process-local applications.                      | [Tests](../../tests/AgentKit.Budgets.InMemory.Tests/README.md) |
-| [AgentKit.Budgets.Sqlite](../../src/AgentKit.Budgets.Sqlite/README.md)             | Persist the reservation ledger in one explicitly selected SQLite database.                           | [Tests](../../tests/AgentKit.Budgets.Sqlite.Tests/README.md)   |
-| [AgentKit.Budgets.Json](../../src/AgentKit.Budgets.Json/README.md)                 | Persist the reservation ledger as an append-only JSON journal under one single-writer root.          | [Tests](../../tests/AgentKit.Budgets.Json.Tests/README.md)     |
+| Project                                                                            | Use it for                                                                                           | Tests                                                              |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| [AgentKit.Storage.Json](../../src/AgentKit.Storage.Json/README.md)                 | Share JSON and JSONL file mechanics, encoding contracts, and portable evidence shapes across leaves. | [Tests](../../tests/AgentKit.Storage.Json.Tests/README.md)         |
+| [AgentKit.Permissions.InMemory](../../src/AgentKit.Permissions.InMemory/README.md) | Hold grants, decisions, and approvals in memory as explicitly ephemeral security evidence.           | [Tests](../../tests/AgentKit.Permissions.InMemory.Tests/README.md) |
+| [AgentKit.Permissions.Sqlite](../../src/AgentKit.Permissions.Sqlite/README.md)     | Persist grants, decisions, and approvals in explicitly selected SQLite databases.                    | [Tests](../../tests/AgentKit.Permissions.Sqlite.Tests/README.md)   |
+| [AgentKit.Memory.InMemory](../../src/AgentKit.Memory.InMemory/README.md)           | Keep memory, document, and vector storage in process memory as explicitly ephemeral state.           | [Tests](../../tests/AgentKit.Memory.InMemory.Tests/README.md)      |
+| [AgentKit.Memory.Sqlite](../../src/AgentKit.Memory.Sqlite/README.md)               | Persist memory, documents, and vectors in explicitly selected SQLite databases.                      | [Tests](../../tests/AgentKit.Memory.Sqlite.Tests/README.md)        |
+| [AgentKit.Memory.Json](../../src/AgentKit.Memory.Json/README.md)                   | Persist memory, documents, and vectors as inspectable JSONL logs under one single-writer root.       | [Tests](../../tests/AgentKit.Memory.Json.Tests/README.md)          |
+| [AgentKit.Permissions.Json](../../src/AgentKit.Permissions.Json/README.md)         | Persist grants and approvals as inspectable JSON records under one single-writer root.               | [Tests](../../tests/AgentKit.Permissions.Json.Tests/README.md)     |
+| [AgentKit.Budgets.InMemory](../../src/AgentKit.Budgets.InMemory/README.md)         | Keep the reservation ledger in memory for tests and process-local applications.                      | [Tests](../../tests/AgentKit.Budgets.InMemory.Tests/README.md)     |
+| [AgentKit.Budgets.Sqlite](../../src/AgentKit.Budgets.Sqlite/README.md)             | Persist the reservation ledger in one explicitly selected SQLite database.                           | [Tests](../../tests/AgentKit.Budgets.Sqlite.Tests/README.md)       |
+| [AgentKit.Budgets.Json](../../src/AgentKit.Budgets.Json/README.md)                 | Persist the reservation ledger as an append-only JSON journal under one single-writer root.          | [Tests](../../tests/AgentKit.Budgets.Json.Tests/README.md)         |
+| [AgentKit.Goals.InMemory](../../src/AgentKit.Goals.InMemory/README.md)             | Keep goals, attempts, and transitions in memory for ephemeral applications.                          | [Tests](../../tests/AgentKit.Goals.InMemory.Tests/README.md)       |
+| [AgentKit.Goals.Sqlite](../../src/AgentKit.Goals.Sqlite/README.md)                 | Persist goals in one explicitly selected SQLite database.                                            | [Tests](../../tests/AgentKit.Goals.Sqlite.Tests/README.md)         |
+| [AgentKit.Goals.Json](../../src/AgentKit.Goals.Json/README.md)                     | Persist goals as an inspectable JSON command log under one single-writer root.                       | [Tests](../../tests/AgentKit.Goals.Json.Tests/README.md)           |
+| [AgentKit.Evaluation.InMemory](../../src/AgentKit.Evaluation.InMemory/README.md)   | Keep evaluation results in memory as explicitly ephemeral evidence.                                  | [Tests](../../tests/AgentKit.Evaluation.InMemory.Tests/README.md)  |
+| [AgentKit.Evaluation.Sqlite](../../src/AgentKit.Evaluation.Sqlite/README.md)       | Persist evaluation results in one explicitly selected SQLite database.                               | [Tests](../../tests/AgentKit.Evaluation.Sqlite.Tests/README.md)    |
+| [AgentKit.Evaluation.Json](../../src/AgentKit.Evaluation.Json/README.md)           | Persist evaluation results as an inspectable JSONL log under one single-writer root.                 | [Tests](../../tests/AgentKit.Evaluation.Json.Tests/README.md)      |
+
+The `AgentKit.<Family>.Storage.Shared` and `.Storage.Durable` directories under
+`src/` hold source files compiled into several leaves of one family (planner,
+state machine, and stored-document shapes). They are not projects, packages, or
+selectable stores; see
+[project structure](../architecture/project-structure.md#linked-storage-source).
 
 ## Sessions and artifacts
 
-| Project                                                                        | Use it for                                                                                | Tests                                                            |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [AgentKit.Session](../../src/AgentKit.Session/README.md)                       | Coordinate session lifecycle, run ownership, branching, and store routing.                | [Tests](../../tests/AgentKit.Session.Tests/README.md)            |
-| [AgentKit.Session.InMemory](../../src/AgentKit.Session.InMemory/README.md)     | Keep session records and directory state in memory for ephemeral applications.            | [Tests](../../tests/AgentKit.Session.InMemory.Tests/README.md)   |
-| [AgentKit.Session.Sqlite](../../src/AgentKit.Session.Sqlite/README.md)         | Persist session records and directory state in one explicitly selected SQLite database.   | [Tests](../../tests/AgentKit.Session.Sqlite.Tests)               |
-| [AgentKit.Session.Json](../../src/AgentKit.Session.Json/README.md)             | Persist session records and directory state as inspectable JSON command logs.             | [Tests](../../tests/AgentKit.Session.Json.Tests)                 |
-| [AgentKit.Artifacts](../../src/AgentKit.Artifacts/README.md)                   | Coordinate bounded preparation, finalization, and reading of generated or binary content. | [Tests](../../tests/AgentKit.Artifacts.Tests/README.md)          |
-| [AgentKit.Artifacts.InMemory](../../src/AgentKit.Artifacts.InMemory/README.md) | Store artifact content in memory with deterministic lifecycle behavior.                   | [Tests](../../tests/AgentKit.Artifacts.InMemory.Tests/README.md) |
+| Project                                                                            | Use it for                                                                                | Tests                                                              |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| [AgentKit.Session](../../src/AgentKit.Session/README.md)                           | Coordinate session lifecycle, run ownership, branching, and store routing.                | [Tests](../../tests/AgentKit.Session.Tests/README.md)              |
+| [AgentKit.Session.InMemory](../../src/AgentKit.Session.InMemory/README.md)         | Keep session records and directory state in memory for ephemeral applications.            | [Tests](../../tests/AgentKit.Session.InMemory.Tests/README.md)     |
+| [AgentKit.Session.Sqlite](../../src/AgentKit.Session.Sqlite/README.md)             | Persist session records and directory state in one explicitly selected SQLite database.   | [Tests](../../tests/AgentKit.Session.Sqlite.Tests/README.md)       |
+| [AgentKit.Session.Json](../../src/AgentKit.Session.Json/README.md)                 | Persist session records and directory state as inspectable JSON command logs.             | [Tests](../../tests/AgentKit.Session.Json.Tests/README.md)         |
+| [AgentKit.Artifacts](../../src/AgentKit.Artifacts/README.md)                       | Coordinate bounded preparation, finalization, and reading of generated or binary content. | [Tests](../../tests/AgentKit.Artifacts.Tests/README.md)            |
+| [AgentKit.Artifacts.InMemory](../../src/AgentKit.Artifacts.InMemory/README.md)     | Store artifact content in memory with deterministic lifecycle behavior.                   | [Tests](../../tests/AgentKit.Artifacts.InMemory.Tests/README.md)   |
+| [AgentKit.Artifacts.Sqlite](../../src/AgentKit.Artifacts.Sqlite/README.md)         | Persist artifact content in one explicitly selected SQLite database.                      | [Tests](../../tests/AgentKit.Artifacts.Sqlite.Tests/README.md)     |
+| [AgentKit.Artifacts.Json](../../src/AgentKit.Artifacts.Json/README.md)             | Persist artifact content as inspectable local files.                                      | [Tests](../../tests/AgentKit.Artifacts.Json.Tests/README.md)       |
+| [AgentKit.Artifacts.FileSystem](../../src/AgentKit.Artifacts.FileSystem/README.md) | Persist artifact content through the authorized file-system boundary.                     | [Tests](../../tests/AgentKit.Artifacts.FileSystem.Tests/README.md) |
 
 ## Durable execution
 
@@ -75,9 +99,10 @@ because its fencing generations are allocated inside the shared database. The
 JSON adapter holds an advisory exclusive lock and rejects a second writer, so it
 ships no lease manager and claims no multi-process coordination.
 
-Consumer checkpoints are partly landed: the agent loop journals its model
-attempts and tool calls when a profile enables them. Engine admission,
-settlement, approval waits, and compaction activation do not checkpoint yet.
+Consumer checkpoints cover seven boundaries: engine run admission and run
+settlement, input promotion, the loop's model attempts and tool calls, approval
+waits, and compaction activation. A profile enables each by operation name; see
+[durable execution](../architecture/durable-execution.md).
 
 ## Host access and scripted backends
 
@@ -145,22 +170,25 @@ settlement, approval waits, and compaction activation do not checkpoint yet.
 
 ## Examples
 
-| Project                                             | Purpose                                                                                                                                                                                                                                                     |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools. Guarded by [QuickStart.Tests](../../tests/QuickStart.Tests/QuickStartAgentTests.cs). Explained in [Example: QuickStart](../use-cases/quickstart-example.md). |
-| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools. Explained in [Example: CodingAgent](../use-cases/coding-agent-example.md).                                                                          |
+| Project                                             | Purpose                                                                                                                                                                                                                                       |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools. Guarded by [QuickStart.Tests](../../tests/QuickStart.Tests/README.md). Explained in [Example: QuickStart](../use-cases/quickstart-example.md). |
+| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools. Explained in [Example: CodingAgent](../use-cases/coding-agent-example.md).                                                            |
+| [Evaluation](../../examples/Evaluation/README.md)   | An `AgentKit.Evaluation` plan over the quick-start agent with deterministic evaluators, an in-memory result store, and a text report. Guarded by [EvaluationExample.Tests](../../tests/EvaluationExample.Tests/README.md).                    |
 
 The [use cases](../use-cases/index.md) show ten further compositions built from
 these packages.
 
 ## Shared tests and repository checks
 
-| Project                                                                            | Purpose                                                         |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [AgentKit.Test.Shared](../../tests/AgentKit.Test.Shared/README.md)                 | Shared identity/security fixtures and activity observation.     |
-| [AgentKit.Conformance](../../tests/AgentKit.Conformance/README.md)                 | Reusable behavioral suites exercised by concrete adapter tests. |
-| [AgentKit.Architecture.Tests](../../tests/AgentKit.Architecture.Tests/README.md)   | Source project graph and dependency rules.                      |
-| [AgentKit.Compatibility.Tests](../../tests/AgentKit.Compatibility.Tests/README.md) | Compiled public API snapshots and extractor checks.             |
+| Project                                                                                          | Purpose                                                                        |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| [AgentKit.Test.Shared](../../tests/AgentKit.Test.Shared/README.md)                               | Shared identity/security fixtures and activity observation.                    |
+| [AgentKit.Budgets.Sqlite.ProcessHost](../../tests/AgentKit.Budgets.Sqlite.ProcessHost/README.md) | Helper executable the SQLite budget tests kill to prove process-loss recovery. |
+| [CodingAgent.Tests](../../tests/CodingAgent.Tests/README.md)                                     | Offline tests of the CodingAgent example composition and UI logic.             |
+| [AgentKit.Conformance](../../tests/AgentKit.Conformance/README.md)                               | Reusable behavioral suites exercised by concrete adapter tests.                |
+| [AgentKit.Architecture.Tests](../../tests/AgentKit.Architecture.Tests/README.md)                 | Source project graph and dependency rules.                                     |
+| [AgentKit.Compatibility.Tests](../../tests/AgentKit.Compatibility.Tests/README.md)               | Compiled public API snapshots and extractor checks.                            |
 
 The [testing guide](../testing/index.md) explains how to run each layer and what
 its results establish. The

@@ -132,23 +132,63 @@ internal static class TestFactory
         new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
         ExtensionData.Empty);
 
+    /// <summary>Builds one evidence-bound assembly request whose history is rebound to the evidence cursor.</summary>
+    /// <param name="history">The source history; message coordinates are rebound to the generated cursor.</param>
+    /// <param name="instructions">Flat instruction messages published as the agent definition's literal source.</param>
+    /// <param name="model">The selected model, or the default test model.</param>
     public static ContextAssemblyRequest AssemblyRequest(
         ImmutableArray<AgentMessage> history,
         ImmutableArray<AgentMessage>? instructions = null,
-        ModelDescriptor? model = null) => new(
-        new AgentId(Guid.NewGuid()),
-        new SessionId(Guid.NewGuid()),
-        new BranchId(Guid.NewGuid()),
-        new RunId(Guid.NewGuid()),
-        new TurnId(Guid.NewGuid()),
-        new ModelRequestId(Guid.NewGuid()),
-        model ?? Model(),
-        instructions ?? [],
-        history,
-        [],
-        LlmToolChoice.Auto,
-        LlmRequestSettings.Default,
-        ExtensionData.Empty);
+        ModelDescriptor? model = null)
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var branchId = new BranchId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+        var revision = new AgentDefinitionRevision(1);
+        var agent = AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent") with
+        {
+            Instructions = InstructionSourceProjection.FromMessages(instructions ?? [], revision),
+        };
+        var identity = TestExecutionIdentity.Create(
+            new TenantId("tenant"),
+            new PrincipalId("principal"),
+            ExecutionSubjectKind.Human);
+        var correlation = new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId, turnId);
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("security"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.NewGuid()),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:policy")),
+            new ComponentKey<ISecurityAuthority>("authority"),
+            revision,
+            new ConfigurationVersion(1),
+            new SecurityAuthorizationScope(agentId, sessionId, correlation),
+            identity);
+        var cursor = new MessageCursor(agentId, sessionId, null, branchId, new SessionVersion(1), new SessionSequence(0));
+        var historyView = new HistoryView(cursor, HistoryMessageCoordinateAlignment.Align(history, cursor), []);
+        var configuration = new EffectiveConfigurationSnapshot(
+            new ConfigurationVersion(1),
+            new ContentHash("sha256:configuration"),
+            [],
+            []);
+        return new ContextAssemblyRequest(
+            agentId,
+            sessionId,
+            branchId,
+            runId,
+            turnId,
+            new ModelRequestId(Guid.NewGuid()),
+            model ?? Model(),
+            new ContextAssemblyEvidence(agent, identity, historyView, authorization, configuration),
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+    }
 
     private static AssistantResponseMetadata ResponseMetadata() => new(
         new ModelRequestId(Guid.NewGuid()),

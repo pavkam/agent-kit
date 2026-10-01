@@ -30,6 +30,8 @@ public sealed class EditTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(EditToolLog.Completed, EditToolLog.Cancelled, EditToolLog.Faulted);
+    private readonly ILogger<EditTool> _logger;
     private readonly IFileSnapshotReader _snapshotReader;
     private readonly IAtomicFileReplacer _replacer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -45,6 +47,7 @@ public sealed class EditTool: IToolInvoker
     /// <param name="mutationIds">The mutation identity generator.</param>
     /// <param name="timeProvider">The deterministic authority-deadline clock.</param>
     /// <param name="options">The validated complete-file bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured byte bound is invalid.</exception>
     public EditTool(
@@ -53,7 +56,8 @@ public sealed class EditTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
-        IOptions<EditToolOptions> options)
+        IOptions<EditToolOptions> options,
+        ILogger<EditTool> logger)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -61,6 +65,7 @@ public sealed class EditTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(mutationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
             options.Value.DefaultMaximumBytes, nameof(options.Value.DefaultMaximumBytes));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
@@ -77,6 +82,7 @@ public sealed class EditTool: IToolInvoker
         _mutationIds = mutationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -103,16 +109,16 @@ public sealed class EditTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("edit"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

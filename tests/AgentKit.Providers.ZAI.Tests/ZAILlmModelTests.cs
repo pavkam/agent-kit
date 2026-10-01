@@ -6,6 +6,7 @@ namespace AgentKit.Providers.ZAI.Tests;
 using System.Net;
 
 using AgentKit.Providers.ZAI.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies ZAILlmModel behavior and contracts.</summary>
 public sealed class ZAILlmModelTests
@@ -16,7 +17,7 @@ public sealed class ZAILlmModelTests
         var developerMessage = new DeveloperMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), runId: null, turnId: null, Now, MessageState.Complete, [new TextPart("Follow the house style.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), developerMessage.AgentId, developerMessage.SessionId, conversationId: null, developerMessage.BranchId, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [developerMessage, userMessage], tools.IsDefault ? [] : tools, LlmToolChoice.Auto, settings ?? LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
     private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), ZAIProviderDefaults.ProviderId, ZAIProviderDefaults.ApiFamily, new ModelId("glm-4.6"), deploymentId: null, ZAIProviderDefaults.DefaultCapabilities, ZAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
@@ -29,7 +30,7 @@ public sealed class ZAILlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("zai-real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("zai-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -51,7 +52,7 @@ public sealed class ZAILlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
@@ -68,7 +69,7 @@ public sealed class ZAILlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("zai-real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new ZAILlmModel(descriptor, ZAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("zai-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement));
         var settings = LlmRequestSettings.Default with
         {

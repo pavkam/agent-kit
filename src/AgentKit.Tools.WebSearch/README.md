@@ -5,6 +5,13 @@ Search the web through an explicitly configured search provider.
 Use this tool for bounded provider-backed search results. Supply the search
 service and authority; the package does not invent a search account or endpoint.
 
+The first-party `AddNetworkWebSearchProvider` registration sends one bodyless
+`GET` per search through `INetworkNameResolver` and `INetworkTransport` (for
+example from [AgentKit.Network](../AgentKit.Network/README.md)) under
+per-attempt search, resolution, and send grants. It owns no `HttpClient`, never
+follows redirects, and fails closed when authority, enforcement, or audit is
+missing; it does not fall back to an unrestricted client.
+
 ## Use this project
 
 Start with `AddWebSearchTool` in [ServiceExtensions.cs](ServiceExtensions.cs).
@@ -36,8 +43,8 @@ projects above are composition collaborators, not necessarily dependencies.
   ownership and contracts.
 - [Coding-harness tools](../../docs/profiles/coding-harness/coding-harness-built-in-tools.md)
   — the application profile for these features.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

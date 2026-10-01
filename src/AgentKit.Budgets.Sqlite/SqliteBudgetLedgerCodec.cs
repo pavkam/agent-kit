@@ -3,14 +3,14 @@
 
 namespace AgentKit.Budgets.Sqlite;
 
-/// <summary>Encodes closed immutable ledger evidence through a bounded version-one binary schema.</summary>
+/// <summary>Encodes closed immutable ledger evidence through a bounded version-two binary schema.</summary>
 internal static class SqliteBudgetLedgerCodec
 {
     private const uint _magic = 0x4C424B41;
-    private const byte _version = 1;
+    private const byte _version = 2;
     private static readonly Encoding _strictUtf8 = new UTF8Encoding(false, true);
 
-    /// <summary>Encodes one closed supported evidence value through the strict version-one schema.</summary>
+    /// <summary>Encodes one closed supported evidence value through the strict version-two schema.</summary>
     /// <typeparam name="T">The compile-time immutable evidence type; its runtime shape must be a supported closed case.</typeparam>
     /// <param name="value">The non-null validated evidence.</param><param name="settings">The immutable collection bounds.</param>
     /// <param name="maximumBytes">The positive encoded envelope bound enforced before each growth.</param>
@@ -79,7 +79,7 @@ internal static class SqliteBudgetLedgerCodec
                 WriteResolutionResult(writer, resolutionResult, settings);
                 break;
             default:
-                throw new ArgumentException("The budget evidence type is not supported by schema version one.", nameof(value));
+                throw new ArgumentException("The budget evidence type is not supported by schema version two.", nameof(value));
         }
         writer.Flush();
         return stream.ToArray();
@@ -241,11 +241,7 @@ internal static class SqliteBudgetLedgerCodec
         writer.Write(commit.Actual);
         writer.Write(commit.Released);
         writer.Write(commit.Overrun);
-        writer.Write(commit.AccountingRevision.HasValue);
-        if (commit.AccountingRevision is { } revision)
-        {
-            writer.Write(revision.Value);
-        }
+        writer.Write(commit.AccountingRevision.Value);
         WriteCount(writer, commit.CreatedOverrunHolds.Length, settings.MaximumLineageDepth);
         foreach (var hold in commit.CreatedOverrunHolds)
         {
@@ -261,7 +257,7 @@ internal static class SqliteBudgetLedgerCodec
         var actual = reader.ReadDecimal();
         var released = reader.ReadDecimal();
         var overrun = reader.ReadDecimal();
-        BudgetAccountingRevision? revision = reader.ReadBoolean() ? new(reader.ReadInt64()) : null;
+        var revision = new BudgetAccountingRevision(reader.ReadInt64());
         var count = ReadCount(reader, settings.MaximumLineageDepth);
         var holds = ImmutableArray.CreateBuilder<BudgetOverrunHold>(count);
         for (var index = 0; index < count; index++)
@@ -307,11 +303,7 @@ internal static class SqliteBudgetLedgerCodec
         writer.Write(result.PreviousActual);
         writer.Write(result.CorrectedActual);
         writer.Write(result.Revision);
-        writer.Write(result.AccountingRevision.HasValue);
-        if (result.AccountingRevision is { } accountingRevision)
-        {
-            writer.Write(accountingRevision.Value);
-        }
+        writer.Write(result.AccountingRevision.Value);
         WriteCount(writer, result.CreatedOverrunHolds.Length, settings.MaximumLineageDepth);
         foreach (var hold in result.CreatedOverrunHolds)
         {
@@ -331,7 +323,7 @@ internal static class SqliteBudgetLedgerCodec
         var previous = reader.ReadDecimal();
         var corrected = reader.ReadDecimal();
         var revision = reader.ReadInt64();
-        BudgetAccountingRevision? accountingRevision = reader.ReadBoolean() ? new(reader.ReadInt64()) : null;
+        var accountingRevision = new BudgetAccountingRevision(reader.ReadInt64());
         var createdCount = ReadCount(reader, settings.MaximumLineageDepth);
         var created = ImmutableArray.CreateBuilder<BudgetOverrunHold>(createdCount);
         for (var index = 0; index < createdCount; index++)

@@ -7,6 +7,7 @@ using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 public sealed class ServiceExtensionsTests
 {
@@ -567,6 +568,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddLogging();
         _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<IRandomizerFactory>(new FixedRandomizerFactory());
         _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
             new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
 
@@ -593,6 +595,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddLogging();
         _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<IRandomizerFactory>(new FixedRandomizerFactory());
         _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
             new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
 
@@ -620,6 +623,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddLogging();
         _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<IRandomizerFactory>(new FixedRandomizerFactory());
         _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
             new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
         _ = services.AddAgentTools();
@@ -872,6 +876,422 @@ public sealed class ServiceExtensionsTests
     private sealed class BetaInvoker: IToolInvoker
     {
         public ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenCalled_RegistersTheStandardPolicyOnceAndSelectsItByExactReference()
+    {
+        var services = ToolRuntimeServices();
+
+        _ = services.AddAgentTools();
+        _ = services.AddAgentTools();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetServices<ToolExecutionPolicyRegistration>().Select(static marker => marker.Reference)
+            .ShouldBe([DefaultToolExecutionPolicy.StandardReference]);
+        provider.GetRequiredKeyedService<IToolExecutionPolicy>(DefaultToolExecutionPolicy.StandardReference)
+            .ShouldBeOfType<DefaultToolExecutionPolicy>().Reference.ShouldBe(DefaultToolExecutionPolicy.StandardReference);
+        _ = provider.GetRequiredService<IToolExecutionPolicySelector>().ShouldBeOfType<ToolExecutionPolicySelector>();
+        _ = provider.GetRequiredService<IToolCallRecorder>().ShouldBeOfType<SessionToolCallRecorder>();
+        _ = provider.GetRequiredService<ToolEventDispatcher>();
+    }
+
+    [Fact]
+    public async Task AddToolExecutionPolicy_WhenReferenceIsNew_RegistersAKeyedPolicyWithoutActivatingItAndTheSelectorFindsIt()
+    {
+        var services = ToolRuntimeServices();
+        var reference = new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("custom"), new ToolExecutionPolicyVersion(3));
+
+        services.AddToolExecutionPolicy<CustomPolicy>(reference).ShouldBeSameAs(services);
+        _ = services.AddAgentTools();
+        CustomPolicy.Activations = 0;
+        services.Any(descriptor => descriptor.IsKeyedService && Equals(descriptor.ServiceKey, reference)).ShouldBeTrue();
+        CustomPolicy.Activations.ShouldBe(0);
+        using var provider = services.BuildServiceProvider();
+        var selector = provider.GetRequiredService<IToolExecutionPolicySelector>();
+        var capability = Capability(reference);
+
+        var selected = await selector.SelectAsync(reference, capability, TestContext.Current.CancellationToken);
+
+        _ = selected.ShouldBeOfType<ToolExecutionPolicySelected>().Policy.ShouldBeOfType<CustomPolicy>();
+    }
+
+    [Fact]
+    public void AddToolExecutionPolicy_WhenReferenceRepeats_ThrowsAndLeavesTheCollectionUnchanged()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddToolExecutionPolicy<CustomPolicy>(CustomReference);
+        var count = services.Count;
+
+        Should.Throw<ArgumentException>(() => services.AddToolExecutionPolicy<CustomPolicy>(CustomReference)).ParamName.ShouldBe("services");
+
+        services.Count.ShouldBe(count);
+    }
+
+    [Fact]
+    public void AddToolExecutionPolicy_WhenHostRegistersTheStandardReferenceFirst_AddAgentToolsPreservesItWithoutADuplicate()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddToolExecutionPolicy<StandardCustomPolicy>(DefaultToolExecutionPolicy.StandardReference);
+
+        _ = services.AddAgentTools();
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolExecutionPolicy>(DefaultToolExecutionPolicy.StandardReference).ShouldBeOfType<StandardCustomPolicy>();
+        provider.GetServices<ToolExecutionPolicyRegistration>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void ReplaceToolExecutionPolicy_WhenReferenceExists_ReplacesOnlyThatReference()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddAgentTools();
+        _ = services.AddToolExecutionPolicy<CustomPolicy>(CustomReference);
+
+        services.ReplaceToolExecutionPolicy<AnotherCustomPolicy>(CustomReference).ShouldBeSameAs(services);
+        _ = services.ReplaceToolExecutionPolicy<StandardCustomPolicy>(DefaultToolExecutionPolicy.StandardReference);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolExecutionPolicy>(CustomReference).ShouldBeOfType<AnotherCustomPolicy>();
+        _ = provider.GetRequiredKeyedService<IToolExecutionPolicy>(DefaultToolExecutionPolicy.StandardReference).ShouldBeOfType<StandardCustomPolicy>();
+        provider.GetServices<ToolExecutionPolicyRegistration>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public void ReplaceToolExecutionPolicy_WhenReferenceIsAbsent_AddsIt()
+    {
+        var services = ToolRuntimeServices();
+
+        _ = services.ReplaceToolExecutionPolicy<CustomPolicy>(CustomReference);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolExecutionPolicy>(CustomReference).ShouldBeOfType<CustomPolicy>();
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenAPolicyReportsADifferentReferenceThanItsKey_FailsWhenTheSelectorIsComposed()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddToolExecutionPolicy<StandardCustomPolicy>(CustomReference);
+        _ = services.AddAgentTools();
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<ArgumentException>(provider.GetRequiredService<IToolExecutionPolicySelector>);
+    }
+
+    [Fact]
+    public void ReplaceToolExecutionPolicySelector_WhenCalled_ReplacesTheSingularSelectorAndSurvivesLaterDefaults()
+    {
+        var services = ToolRuntimeServices();
+
+        services.ReplaceToolExecutionPolicySelector<NeverSelector>().ShouldBeSameAs(services);
+        _ = services.AddAgentTools();
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetServices<IToolExecutionPolicySelector>().ShouldHaveSingleItem().ShouldBeOfType<NeverSelector>();
+    }
+
+    [Theory]
+    [InlineData(typeof(IToolResolver))]
+    [InlineData(typeof(IToolArgumentValidator))]
+    [InlineData(typeof(IToolResultNormalizer))]
+    [InlineData(typeof(IToolResultProjector))]
+    public void ReplaceSingularAxis_WhenCalled_LeavesExactlyOneUnkeyedRegistrationThatLaterDefaultsPreserve(Type contract)
+    {
+        var services = ToolRuntimeServices();
+
+        _ = contract switch
+        {
+            var type when type == typeof(IToolResolver) => services.ReplaceToolResolver<ReplacementResolver>(),
+            var type when type == typeof(IToolArgumentValidator) => services.ReplaceToolArgumentValidator<ReplacementValidator>(),
+            var type when type == typeof(IToolResultNormalizer) => services.ReplaceToolResultNormalizer<ReplacementNormalizer>(),
+            _ => services.ReplaceToolResultProjector<ReplacementProjector>(),
+        };
+        _ = services.AddAgentTools();
+        using var provider = services.BuildServiceProvider();
+
+        var registered = provider.GetServices(contract).ToArray();
+        registered.Length.ShouldBe(1);
+        registered[0]!.GetType().Name.ShouldStartWith("Replacement");
+    }
+
+    [Fact]
+    public void AddToolEventSink_WhenIdentityIsNew_RegistersTheSinkAndTheDispatcherDeliversToIt()
+    {
+        var services = ToolRuntimeServices();
+        var registration = new ToolEventSinkRegistration(new ComponentId("audit"), 0);
+
+        services.AddToolEventSink<CollectingEventSink>(registration).ShouldBeSameAs(services);
+        using var provider = services.BuildServiceProvider();
+        var bindings = provider.GetServices<ToolEventSinkBinding>().ToArray();
+
+        var binding = bindings.ShouldHaveSingleItem();
+        binding.Registration.ShouldBe(registration);
+        binding.Sink.ShouldBeSameAs(provider.GetRequiredService<CollectingEventSink>());
+    }
+
+    [Fact]
+    public void AddToolEventSink_WhenIdenticalRegistrationRepeats_IsIdempotent()
+    {
+        var services = ToolRuntimeServices();
+        var registration = new ToolEventSinkRegistration(new ComponentId("audit"), 0);
+        _ = services.AddToolEventSink<CollectingEventSink>(registration);
+        var count = services.Count;
+
+        _ = services.AddToolEventSink<CollectingEventSink>(registration);
+
+        services.Count.ShouldBe(count);
+    }
+
+    [Fact]
+    public void AddToolEventSink_WhenSameIdentityIsRegisteredDifferently_Throws()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddToolEventSink<CollectingEventSink>(new ToolEventSinkRegistration(new ComponentId("audit"), 0));
+
+        _ = Should.Throw<InvalidOperationException>(() =>
+            services.AddToolEventSink<OtherEventSink>(new ToolEventSinkRegistration(new ComponentId("audit"), 0)));
+        _ = Should.Throw<InvalidOperationException>(() =>
+            services.AddToolEventSink<CollectingEventSink>(new ToolEventSinkRegistration(new ComponentId("audit"), 5)));
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenExecutorKeyIsGiven_RegistersTheKeyedExecutorWithItsKeyedSessionRecorder()
+    {
+        var services = ToolRuntimeServices();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+
+        _ = services.AddAgentTools(key);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolExecutor>("tools.main").ShouldBeOfType<DefaultToolExecutor>();
+        _ = provider.GetRequiredKeyedService<IToolCallRecorder>("tools.main").ShouldBeOfType<SessionToolCallRecorder>();
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenAKeyedExecutorAlreadyExists_PreservesTheHostChoice()
+    {
+        var services = ToolRuntimeServices();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+        _ = services.ReplaceToolExecutor<HostExecutor>(key);
+
+        _ = services.AddAgentTools(key);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolExecutor>("tools.main").ShouldBeOfType<HostExecutor>();
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenKeyedRecorderIsMissing_NeverFallsBackToTheUnkeyedRecorder()
+    {
+        var services = ToolRuntimeServices();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+        _ = services.AddAgentTools(key);
+        foreach (var descriptor in services.Where(static descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolCallRecorder)).ToArray())
+        {
+            _ = services.Remove(descriptor);
+        }
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetService<IToolCallRecorder>().ShouldBeOfType<SessionToolCallRecorder>();
+        _ = Should.Throw<InvalidOperationException>(() => provider.GetRequiredKeyedService<IToolExecutor>("tools.main"));
+    }
+
+    [Fact]
+    public void AddToolCallRecorder_WhenKeyIsNew_RegistersItAndAddAgentToolsKeepsIt()
+    {
+        var services = ToolRuntimeServices();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+
+        services.AddToolCallRecorder<HostRecorder>(key).ShouldBeSameAs(services);
+        _ = services.AddAgentTools(key);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolCallRecorder>("tools.main").ShouldBeOfType<HostRecorder>();
+    }
+
+    [Fact]
+    public void AddToolCallRecorder_WhenKeyRepeats_ThrowsAndReplaceChangesOnlyThatKey()
+    {
+        var services = ToolRuntimeServices();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+        var other = new ComponentKey<IToolExecutor>("tools.other");
+        _ = services.AddAgentTools(key);
+        _ = services.AddAgentTools(other);
+
+        Should.Throw<ArgumentException>(() => services.AddToolCallRecorder<HostRecorder>(key)).ParamName.ShouldBe("services");
+        _ = services.ReplaceToolCallRecorder<HostRecorder>(key);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IToolCallRecorder>("tools.main").ShouldBeOfType<HostRecorder>();
+        _ = provider.GetRequiredKeyedService<IToolCallRecorder>("tools.other").ShouldBeOfType<SessionToolCallRecorder>();
+    }
+
+    [Fact]
+    public void NewRegistrationHelpers_WhenArgumentsAreInvalid_RejectBeforeMutation()
+    {
+        IServiceCollection absent = null!;
+        var services = new ServiceCollection();
+        var key = new ComponentKey<IToolExecutor>("tools.main");
+        var registration = new ToolEventSinkRegistration(new ComponentId("audit"), 0);
+
+        Should.Throw<ArgumentNullException>(() => absent.AddToolExecutionPolicy<CustomPolicy>(CustomReference)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => services.AddToolExecutionPolicy<CustomPolicy>(null!)).ParamName.ShouldBe("reference");
+        Should.Throw<ArgumentNullException>(() => absent.ReplaceToolExecutionPolicy<CustomPolicy>(CustomReference)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => services.ReplaceToolExecutionPolicy<CustomPolicy>(null!)).ParamName.ShouldBe("reference");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolExecutionPolicySelector<NeverSelector>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => absent.AddToolEventSink<CollectingEventSink>(registration)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => services.AddToolEventSink<CollectingEventSink>(null!)).ParamName.ShouldBe("registration");
+        Should.Throw<ArgumentNullException>(() => absent.AddToolCallRecorder<HostRecorder>(key)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentOutOfRangeException>(() => services.AddToolCallRecorder<HostRecorder>(default)).ParamName.ShouldBe("executor");
+        Should.Throw<ArgumentNullException>(() => absent.ReplaceToolCallRecorder<HostRecorder>(key)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentOutOfRangeException>(() => services.ReplaceToolCallRecorder<HostRecorder>(default)).ParamName.ShouldBe("executor");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolResolver<ReplacementResolver>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolArgumentValidator<ReplacementValidator>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolResultNormalizer<ReplacementNormalizer>).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolResultProjector<ReplacementProjector>).ParamName.ShouldBe("services");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddAgentTools_WhenRuntimeOptionsAreImpossible_FailsWhenOptionsAreFirstRead()
+    {
+        var services = ToolRuntimeServices();
+        _ = services.AddAgentTools(static options => options.MaximumAttempts = 0);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ToolRuntimeOptions>>().Value);
+    }
+
+    private static ToolExecutionPolicyReference CustomReference { get; } =
+        new(new ToolExecutionPolicyKey("custom"), new ToolExecutionPolicyVersion(3));
+
+    private static ServiceCollection ToolRuntimeServices()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddLogging();
+        _ = services.AddSingleton<ISecurityAuthority>(new ReplaceToolExecutorTestAuthority());
+        _ = services.AddSingleton<IRandomizerFactory>(new FixedRandomizerFactory());
+        _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
+            new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));
+        return services;
+    }
+
+    private static ToolExecutionCapability Capability(params ToolExecutionPolicyReference[] bound) => new(
+        new SessionExecutionCapability(TestSecurityEvidence.SessionProfile(), new UnsupportedSessionCoordinator(), new UnsupportedSessionRunCoordinator()),
+        new BudgetExecutionCapability(
+            new BudgetProfileKey("standard"), new BudgetProfileVersion(1),
+            TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+            new InRunOperationCorrelation(
+                ToolRuntimeTestCalls.OperationId, ToolRuntimeTestCalls.RunId, ToolRuntimeTestCalls.TurnId),
+            new UnusedBudgetScope()),
+        new ToolCallSessionTarget(new BranchId(Guid.NewGuid()), null),
+        [.. bound.Select(static reference => new ToolExecutionPolicyBinding(reference))]);
+
+    private class CustomPolicy([ServiceKey] ToolExecutionPolicyReference reference): IToolExecutionPolicy
+    {
+        public static int Activations { get; set; }
+
+        public ToolExecutionPolicyReference Reference { get; } = Count(reference);
+
+        public ValueTask<ToolExecutionPlanResult> PlanAsync(
+            ImmutableArray<ValidatedToolCall> calls, ToolExecutionPolicyContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolExecutionPlanResult>(new ToolExecutionPlanRejected("test policy"));
+
+        private static ToolExecutionPolicyReference Count(ToolExecutionPolicyReference value)
+        {
+            Activations++;
+            return value;
+        }
+    }
+
+    private sealed class AnotherCustomPolicy([ServiceKey] ToolExecutionPolicyReference reference): CustomPolicy(reference);
+
+    private sealed class StandardCustomPolicy: IToolExecutionPolicy
+    {
+        public ToolExecutionPolicyReference Reference => DefaultToolExecutionPolicy.StandardReference;
+
+        public ValueTask<ToolExecutionPlanResult> PlanAsync(
+            ImmutableArray<ValidatedToolCall> calls, ToolExecutionPolicyContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolExecutionPlanResult>(new ToolExecutionPlanRejected("test policy"));
+    }
+
+    private sealed class NeverSelector: IToolExecutionPolicySelector
+    {
+        public ValueTask<ToolExecutionPolicySelectionResult> SelectAsync(
+            ToolExecutionPolicyReference reference, ToolExecutionCapability capability, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolExecutionPolicySelectionResult>(new ToolExecutionPolicyUnavailable(reference));
+    }
+
+    private sealed class ReplacementResolver: IToolResolver
+    {
+        public ValueTask<ToolResolutionResult> ResolveAsync(
+            IToolCatalogCapture capture, ToolCallRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ReplacementValidator: IToolArgumentValidator
+    {
+        public ValueTask<ToolArgumentValidationResult> ValidateAsync(
+            ResolvedToolCall call, ToolSchemaLimits limits, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ReplacementNormalizer: IToolResultNormalizer
+    {
+        public ValueTask<ToolResultNormalizationResult> NormalizeAsync(
+            ValidatedToolCall validatedCall, ToolInvocationResult invocation, ToolResultNormalizationSnapshot snapshot, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ReplacementProjector: IToolResultProjector
+    {
+        public ValueTask<ToolResultPart> ProjectAsync(
+            ToolCallResult result, ToolResultProjectionPolicySnapshot policy, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private class CollectingEventSink: IToolEventSink
+    {
+        public ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
+
+    private sealed class OtherEventSink: CollectingEventSink;
+
+    private sealed class HostExecutor: IToolExecutor
+    {
+        public Task<ToolBatchResult> ExecuteAsync(
+            IToolCatalogCapture capture, ImmutableArray<ToolCallRequest> calls, ToolExecutionCapability capability, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class HostRecorder: IToolCallRecorder
+    {
+        public ValueTask<ToolCallRecordResult> RecordAcceptedAsync(
+            AcceptedToolCall accepted, SessionExecutionCapability session, ToolCallSessionTarget target, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ToolCallRecordResult> RecordTerminalAsync(
+            ToolCallResult result, SessionExecutionCapability session, ToolCallSessionTarget target, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class UnusedBudgetScope: IBudgetScope
+    {
+        public BudgetScopeId Id { get; } = new(Guid.NewGuid());
+        public BudgetScopeAddress Address { get; } = new(
+            new TenantId("tenant"), new PrincipalId("principal"), ToolRuntimeTestCalls.AgentId, ToolRuntimeTestCalls.SessionId,
+            ToolRuntimeTestCalls.RunId, ToolRuntimeTestCalls.OperationId);
+
+        public ValueTask<BudgetReservationResult> ReserveAsync(BudgetReservationRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(ImmutableArray<BudgetReservationRequest> requests, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

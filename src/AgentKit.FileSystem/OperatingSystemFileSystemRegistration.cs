@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Keyed dependency-injection registration for operating-system file capabilities.</summary>
 internal static class OperatingSystemFileSystemRegistration
 {
-    [Obsolete("Legacy host surface.")]
     internal static IServiceCollection Add(
         IServiceCollection services,
         FileSystemProfileKey key,
@@ -37,6 +36,7 @@ internal static class OperatingSystemFileSystemRegistration
             [.. options.Roots],
             options.PathPolicy,
             options.Bounds,
+            options.WorkspaceBounds,
             options.WritePolicy,
             options.WatchPolicy);
 
@@ -46,22 +46,19 @@ internal static class OperatingSystemFileSystemRegistration
         _ = services.AddKeyedSingleton<IFileWriter>(key.Value, static (provider, serviceKey) =>
             CreateWriter(provider, serviceKey!));
         _ = services.AddKeyedSingleton(key.Value, static (provider, serviceKey) =>
-            CreateLegacyHost(provider, serviceKey!));
+            CreateWorkspaceHost(provider, serviceKey!));
         _ = services.AddKeyedSingleton<IDirectoryReader>(key.Value, static (provider, serviceKey) =>
-            new OperatingSystemDirectoryReader(
-                provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!)));
-        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileGlobber>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileContentSearcher>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileSnapshotReader>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddKeyedSingleton<IAtomicFileReplacer>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddKeyedSingleton<IWorkspacePatchApplier>(key.Value, static (provider, serviceKey) =>
-            provider.GetRequiredKeyedService<OperatingSystemFileSystemLegacyHost>(serviceKey!));
+            provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(serviceKey!));
         _ = services.AddSingleton(new FileSystemProfileRegistration(
             key,
             new FileSystemCapabilities(
@@ -90,16 +87,18 @@ internal static class OperatingSystemFileSystemRegistration
             profile);
     }
 
-    [Obsolete("Legacy host surface.")]
-    private static OperatingSystemFileSystemLegacyHost CreateLegacyHost(IServiceProvider provider, object serviceKey)
+    private static OperatingSystemWorkspaceHost CreateWorkspaceHost(IServiceProvider provider, object serviceKey)
     {
         var profileKey = new FileSystemProfileKey((string) serviceKey);
         var profile = provider.GetRequiredKeyedService<OperatingSystemFileSystemOptionsSnapshot>(serviceKey);
         return profile.ProfileKey != profileKey
             ? throw new InvalidOperationException("The keyed file-system snapshot does not match the registration key.")
-#pragma warning disable CS0612 // Legacy host registration still constructs the transitional legacy host.
-            : new OperatingSystemFileSystemLegacyHost(provider, profile);
-#pragma warning restore CS0612
+            : new OperatingSystemWorkspaceHost(
+                profile,
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<OperatingSystemWorkspaceHost>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>());
     }
 
     private static OperatingSystemFileWriter CreateWriter(IServiceProvider provider, object serviceKey)

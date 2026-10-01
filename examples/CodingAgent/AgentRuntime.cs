@@ -7,10 +7,14 @@ using System.Security.Cryptography;
 using System.Text;
 
 using AgentKit;
+using AgentKit.Budgets;
+using AgentKit.Budgets.InMemory;
 using AgentKit.Context;
 using AgentKit.FileSystem;
+using AgentKit.Hooks;
 using AgentKit.IO;
 using AgentKit.Loop;
+using AgentKit.Network;
 using AgentKit.Output;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
@@ -34,13 +38,11 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>Composes a real AgentKit turn loop against OpenAI with file and process tools.</summary>
 /// <remarks>
-/// This composes <c>AddConversationSession</c> from <c>AgentKit.Conversations</c>, which drives session
-/// creation, message admission, and the agent-loop run in one conversation <c>SendAsync</c>
-/// call, together with <c>AddStandaloneSecurityProfile</c> and <c>AgentToolsOptions.AllowAllRegisteredTools</c>,
-/// which together remove almost every piece of composition boilerplate this example needed before those
-/// library helpers existed. See the project README for exactly what each one replaces. Permission modes
+/// This composes one <see cref="AgentEngine"/> publishing a single immutable <see cref="AgentDefinition"/>, and
+/// <c>AddConversationSession</c> from <c>AgentKit.Conversations</c>, which pins that definition and drives session
+/// creation, message admission, and the agent-loop run in one conversation <c>SendAsync</c> call. Permission modes
 /// contribute normalized security policy, while the approval broker retains and validates the exact request
-/// before the terminal UI can approve it.
+/// before the terminal UI can approve it. The returned conversation owns the engine and releases it asynchronously.
 /// </remarks>
 internal static class AgentRuntime
 {
@@ -54,9 +56,7 @@ internal static class AgentRuntime
     /// <param name="approvals">Presents approval interactions in the authenticated terminal.</param>
     /// <param name="questions">Presents human questions in the authenticated terminal.</param>
     /// <param name="permissions">Provides the current UI mode to the normalized security policy.</param>
-    [Obsolete("Legacy host surface.")]
-
-    public static OwnedConversationSession Create(
+    public static AsyncOwnedConversationSession Create(
         string workspaceRoot,
         string apiKey,
         CodingAgentConfiguration configuration,
@@ -65,7 +65,8 @@ internal static class AgentRuntime
         PermissionModeController permissions)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        var services = new ServiceCollection();
+        var builder = AgentEngine.CreateBuilder();
+        var services = builder.Services;
         var toolchainRoots = configuration.ReadOnlyToolchainRoots;
 
         var agentId = AgentIdForWorkspace(workspaceRoot);
@@ -76,14 +77,27 @@ internal static class AgentRuntime
         var identity = LocalIdentity();
 
         _ = services.AddInMemorySecurityGrantStore();
+        _ = services.AddInMemorySecurityDecisionStore();
         _ = services.AddInMemoryApprovalStore();
-        _ = services.AddStandaloneSecurityProfile(
+        var policySnapshot = new SecurityPolicySnapshotReference(
+            new SecurityPolicySnapshotId(Guid.Parse("ca000000-0000-0000-0000-000000000003")),
+            new SecurityPolicyVersion(1),
+            new ContentHash("sha256:coding-agent-security-policy"));
+        _ = services.AddAgentPermissions(o =>
+        {
+            o.AuditDelivery = SecurityAuditDelivery.BestEffort;
+            o.PolicyVersion = policySnapshot.Version.Value;
+            o.PolicySnapshot = policySnapshot;
+        });
+        _ = services.AddSecurityAuthority(authorityKey);
+        var securityPublication = new SecurityProfilePublication(
             agentId,
             definitionRevision,
             configurationVersion,
             securityProfileKey,
-            authorityKey,
-            configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+            new SecurityProfileVersion(1),
+            policySnapshot,
+            authorityKey);
         _ = services.AddSingleton<ISecurityPolicy>(new CodingAgentSecurityPolicy(permissions));
         _ = services.RemoveAll<IApprovalHandler>();
         _ = services.AddSingleton<IApprovalHandler>(new CodingAgentApprovalHandler(
@@ -112,6 +126,12 @@ internal static class AgentRuntime
         _ = services.AddAgentContext();
         _ = services.AddAgentOutput();
         _ = services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+        _ = services.AddAgentIO(AgentIOComponentDefaults.InputCoordinatorKey, AgentIOComponentDefaults.OutputPublisherKey);
+        _ = services.AddSessionBackedInputQueue();
+        _ = services.AddAgentHooks();
+        _ = services.AddAgentBudgets();
+        _ = services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, static _ => { });
+        _ = services.AddInMemoryBudgetLedger();
 
         var workspaceFileProfile = new FileSystemProfileKey("workspace");
         var workspaceFileRoot = new FileRootId("workspace");
@@ -141,9 +161,9 @@ internal static class AgentRuntime
         });
         _ = services.AddPlanTool();
         _ = services.AddQuestionTool();
-        _ = services.AddAgentTools();
+        var toolExecutorKey = new ComponentKey<IToolExecutor>("coding-agent.tools");
+        _ = services.AddAgentTools(toolExecutorKey);
 
-        _ = services.AddSandboxedFileSystem(workspaceRoot);
         _ = services.AddAgentProcesses(new ProcessExecutorKey("default"), o =>
         {
             o.OperatingSystem.RootDirectory = workspaceRoot;
@@ -155,6 +175,7 @@ internal static class AgentRuntime
             }
         });
 
+        _ = services.AddAgentNetwork();
         _ = services.AddAgentProviders();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential(apiKey);
@@ -193,20 +214,64 @@ internal static class AgentRuntime
             deleteOnDispose: false,
             new ContentHash("sha256:coding-agent-session-profile"));
 
+        var definition = new AgentDefinition(
+            agentId,
+            definitionRevision,
+            "coding-agent",
+            new AgentComponentSelection(
+                AgentLoopComponentDefaults.LoopKey,
+                AgentLoopComponentDefaults.ContinuationPolicyKey,
+                AgentIOComponentDefaults.InputCoordinatorKey,
+                AgentIOComponentDefaults.OutputPublisherKey,
+                AgentOutputComponentDefaults.ProcessorKey,
+                AgentContextComponentDefaults.AssemblerKey,
+                AgentProviderComponentDefaults.ModelSelectorKey,
+                AgentProviderComponentDefaults.ModelExecutorKey,
+                AgentBudgetComponentDefaults.ProfileKey),
+            sessionProfile.Reference.Key,
+            HookRegistrationDescriptors.DefaultProfileKey,
+            securityProfileKey,
+            new AgentOptionalCapabilitySelection(toolExecutorKey, null, null, null, null, []),
+            new ModelSelectionPolicy(
+                [alias],
+                requirements: ModelRequirements.None with { RequiresReasoning = true },
+                requestSettings: LlmRequestSettings.Default with { ReasoningEffort = configuration.ReasoningEffort }),
+            InstructionSourceProjection.FromMessages([SystemMessage(agentId, workspaceRoot)], definitionRevision),
+            [
+                .. new[]
+                {
+                    ReadFileTool.DefaultToolset,
+                    WriteFileTool.DefaultToolset,
+                    EditTool.DefaultToolset,
+                    GlobTool.DefaultToolset,
+                    SearchTool.DefaultToolset,
+                    CommandTool.DefaultToolset,
+                    PlanTool.DefaultToolset,
+                    QuestionTool.DefaultToolset,
+                }.Select(static toolset => new ToolsetReference(toolset.Key, new ToolExecutionPolicyKey("standard"))),
+            ],
+            new RunPolicyDefaults(configuration.MaximumTurns, TimeSpan.FromMinutes(3)),
+            OutputDefinition.FreeText,
+            ExtensionData.Empty);
+        var effectiveConfiguration = new EffectiveConfigurationSnapshot(
+            configurationVersion,
+            sessionProfile.ConfigurationFingerprint,
+            [],
+            []);
+        _ = services.AddAgent(definition);
+        _ = services.AddAgentRunProfilePublication(new AgentRunProfilePublication(
+            securityPublication,
+            sessionProfile,
+            HookRegistrationDescriptors.DefaultProfileKey,
+            AgentBudgetComponentDefaults.ProfileKey,
+            effectiveConfiguration));
+
         _ = services.AddConversationSession(o =>
         {
-            o.AgentId = agentId;
+            o.Agent = definition;
+            o.Configuration = effectiveConfiguration;
             o.Identity = identity;
-            o.SecurityProfileKey = securityProfileKey;
-            o.AgentDefinitionRevision = definitionRevision;
-            o.ConfigurationVersion = configurationVersion;
             o.SessionProfile = sessionProfile;
-            o.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
-            o.ModelRequirements = ModelRequirements.None with { RequiresReasoning = true };
-            o.RequestSettings = LlmRequestSettings.Default with { ReasoningEffort = configuration.ReasoningEffort };
-            o.Instructions.Add(SystemMessage(agentId, workspaceRoot));
-            o.MaxTurns = configuration.MaximumTurns;
-            o.AttemptTimeout = TimeSpan.FromMinutes(3);
         });
 
         _ = services.AddOptions<ConversationSessionOptions>()
@@ -216,14 +281,12 @@ internal static class AgentRuntime
                 var definitions = descriptors.ToLlmToolDefinitions();
                 for (var index = 0; index < descriptors.Length; index++)
                 {
-                    options.Tools.Add(definitions[index]);
                     options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptors[index], definitions[index]));
                 }
             });
 
-        var provider = services.BuildServiceProvider(
-            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-        return new OwnedConversationSession(provider.GetRequiredService<IConversationSession>(), provider);
+        var engine = builder.Build();
+        return new AsyncOwnedConversationSession(engine.Services.GetRequiredService<IConversationSession>(), engine);
     }
 
     /// <summary>Resolves the absolute application-owned session database path for one workspace.</summary>

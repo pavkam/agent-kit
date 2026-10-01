@@ -80,11 +80,13 @@ public static class GoogleGeminiProviderDefaults
     /// the <c>thoughtSignature</c> a <c>functionCall</c> or answer
     /// <c>text</c> part carries under
     /// <see cref="GoogleGeminiExtensionKeys.ThoughtSignature"/>, so
-    /// <c>SupportsReasoning</c> is <see langword="true"/>. Image, file, and
-    /// executable-code content parts, citations, and native structured
-    /// output are not yet translated, so vision and structured-output
-    /// support remain <see langword="false"/> here even though some Gemini
-    /// models support them natively. A caller registering a model with
+    /// <c>SupportsReasoning</c> is <see langword="true"/>. Native structured
+    /// output is translated to <c>responseMimeType</c> and
+    /// <c>responseSchema</c>, so <c>SupportsStructuredOutput</c> is
+    /// <see langword="true"/>. Image, file, and executable-code content
+    /// parts and citations are not translated, so vision support remains
+    /// <see langword="false"/> here even though some Gemini models support
+    /// it natively. A caller registering a model with
     /// materially different capabilities supplies its own
     /// <see cref="ModelCapabilities"/> rather than relying on this shared
     /// default.

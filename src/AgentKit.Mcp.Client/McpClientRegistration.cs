@@ -22,21 +22,10 @@ internal static class McpClientRegistration
         services.TryAddSingleton<IIdentifierGenerator<McpSessionId>, GuidMcpSessionIdGenerator>();
         services.TryAddSingleton<IIdentifierGenerator<McpRequestId>, GuidMcpRequestIdGenerator>();
         services.TryAddSingleton<IIdentifierGenerator<ProcessOperationId>, GuidProcessOperationIdGenerator>();
+        services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>, GuidNetworkOperationIdGenerator>();
         services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IMcpClientSessionFactory, McpClientSessionFactory>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, HttpMcpTransportFactory>());
-        services.TryAddSingleton<IMcpTransportFactory>(static provider => new StdioMcpTransportFactory(
-            provider.GetRequiredService<IProcessExecutorSelector>(),
-            provider.GetRequiredService<ISecurityAuthoritySelector>(),
-            provider.GetRequiredService<ISecurityGrantStore>(),
-            provider.GetRequiredService<ISecurityAuditDispatcher>(),
-            provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
-            provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
-            provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
-            provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>(),
-            provider.GetRequiredService<McpClientOptionsSnapshot>(),
-            provider.GetRequiredService<TimeProvider>()));
         return services;
     }
 
@@ -117,6 +106,9 @@ internal static class McpClientRegistration
         var maximumFrameBytes = options.MaximumFrameBytes;
         var maximumMessageBytes = options.MaximumMessageBytes;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maximumFrameBytes, maximumMessageBytes, nameof(maximumFrameBytes));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.HttpStreamTimeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaximumHttpResponseBytes, maximumMessageBytes);
+        ArgumentOutOfRangeException.ThrowIfUndefined(options.HttpDataClassification);
     }
 
     private static IServiceCollection RegisterStdioEndpoint(
@@ -133,6 +125,7 @@ internal static class McpClientRegistration
         configure(options);
         ValidateStdioOptions(options);
         var snapshot = GetOptionsSnapshot(services);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, StdioMcpTransportFactory>());
         var endpoint = new McpEndpoint(
             key,
             NextRevision(services, key, replace),
@@ -156,6 +149,7 @@ internal static class McpClientRegistration
         configure(options);
         ValidateHttpOptions(options);
         var snapshot = GetOptionsSnapshot(services);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IMcpTransportFactory, HttpMcpTransportFactory>());
         var endpoint = new McpEndpoint(
             key,
             NextRevision(services, key, replace),
@@ -228,6 +222,7 @@ internal static class McpClientRegistration
         registrationState.SetProfile(profile);
         RemoveProfileRegistrationMarkers(services, profileId);
         _ = services.AddSingleton(new McpCapabilityProfileRegistration(profileId));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentCapabilityProfileSource, McpCapabilityProfileSource>());
         return services;
     }
 

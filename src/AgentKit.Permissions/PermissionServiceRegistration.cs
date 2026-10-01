@@ -16,19 +16,18 @@ internal static class PermissionServiceRegistration
             provider.GetRequiredService<IOptions<AgentPermissionOptions>>(),
             provider.GetServices<SecurityProfilePublication>()));
         services.TryAddSingleton<ISecurityPolicySelector>(static provider => new DefaultSecurityPolicySelector(
-            provider.GetRequiredService<ISecurityPolicyCatalog>(),
-            provider.GetRequiredService<IOptions<AgentPermissionOptions>>()));
+            provider.GetRequiredService<ISecurityPolicyCatalog>()));
         return services;
     }
 
-    /// <summary>Registers the bridge that lets the durability coordinator drive the authority's journaled boundary.</summary>
+    /// <summary>Registers the bridge that lets the durability coordinator drive the approval-wait recorder's journaled boundary.</summary>
     /// <param name="services">The service collection to register into.</param>
     /// <remarks>
     /// The registry and handler are registered unconditionally because they are inert without a composed durability
     /// runtime: no coordinator means nothing resolves them, and an unset
     /// <see cref="AgentPermissionOptions.DurabilityProfile"/> means nothing publishes a continuation into them. Every
     /// registration is <c>TryAdd</c>, so the registry stays the one engine-wide instance whichever package registers
-    /// it first, which is what lets the coordinator reach the authority's live wait.
+    /// it first, which is what lets the coordinator reach the recorder's live wait.
     /// </remarks>
     internal static void RegisterDurableBoundaries(IServiceCollection services)
     {

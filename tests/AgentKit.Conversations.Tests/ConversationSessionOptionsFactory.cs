@@ -13,47 +13,32 @@ internal static class ConversationSessionOptionsFactory
     public static ExecutionIdentity Identity { get; } =
         TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
-    /// <summary>Builds a valid options instance, optionally customized further.</summary>
+    /// <summary>Builds a valid options instance whose definition, configuration, and session profile agree, optionally customized further.</summary>
+    /// <param name="configure">An optional callback that overrides individual options.</param>
+    /// <returns>Options pinning an exact <see cref="AgentDefinition"/> and <see cref="EffectiveConfigurationSnapshot"/> pair.</returns>
     public static ConversationSessionOptions Valid(Action<ConversationSessionOptions>? configure = null)
     {
+        var sessionProfile = TestSecurityEvidence.SessionProfile();
+        // Matches TestSecurityEvidence.Authorization's hardcoded AgentDefinitionRevision(1) and security profile key,
+        // which FakeSecurityProfileSelector returns by default for every captured authorization.
+        var agent = AgentDefinitionFixtures.Create(
+            AgentId,
+            revision: 1,
+            displayName: "agent",
+            models: new ModelSelectionPolicy([new ModelAlias("test-model")]),
+            securityProfile: new SecurityProfileKey("test-security"),
+            sessionProfile: sessionProfile.Reference.Key);
         var options = new ConversationSessionOptions
         {
-            AgentId = AgentId,
+            Agent = agent,
+            Configuration = new EffectiveConfigurationSnapshot(
+                new ConfigurationVersion(1),
+                sessionProfile.ConfigurationFingerprint,
+                [],
+                []),
             Identity = Identity,
-            SecurityProfileKey = new SecurityProfileKey("test-security"),
-            ConfigurationVersion = new ConfigurationVersion(1),
-            SessionProfile = TestSecurityEvidence.SessionProfile(),
-            ModelSelectionPolicy = new ModelSelectionPolicy([new ModelAlias("test-model")]),
+            SessionProfile = sessionProfile,
         };
-        configure?.Invoke(options);
-        return options;
-    }
-
-    /// <summary>Builds a valid options instance carrying an exact <see cref="AgentDefinition"/> and
-    /// <see cref="EffectiveConfigurationSnapshot"/> pair whose evidence matches every decomposed option field.</summary>
-    public static ConversationSessionOptions ValidWithExactEvidence(Action<ConversationSessionOptions>? configure = null)
-    {
-        var options = Valid();
-        // Matches TestSecurityEvidence.Authorization's hardcoded AgentDefinitionRevision(1), which
-        // FakeSecurityProfileSelector returns by default for every captured authorization.
-        options.AgentDefinitionRevision = new AgentDefinitionRevision(1);
-        options.Agent = new AgentDefinition(
-            options.AgentId,
-            options.AgentDefinitionRevision,
-            "agent",
-            options.ModelSelectionPolicy!,
-            options.ModelRequirements,
-            [],
-            options.RequestSettings,
-            new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
-            ExtensionData.Empty,
-            options.SecurityProfileKey,
-            options.SessionProfile!.Reference.Key);
-        options.Configuration = new EffectiveConfigurationSnapshot(
-            options.ConfigurationVersion,
-            options.SessionProfile.ConfigurationFingerprint,
-            [],
-            []);
         configure?.Invoke(options);
         return options;
     }

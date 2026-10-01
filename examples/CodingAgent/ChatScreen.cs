@@ -56,7 +56,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private readonly List<string> _history = [];
 
     private Application? _application;
-    private OwnedConversationSession? _conversation;
+    private AsyncOwnedConversationSession? _conversation;
     private CancellationTokenSource? _turnCancellation;
     private TaskCompletionSource<bool>? _pendingApproval;
     private TaskCompletionSource<HumanQuestionSelection>? _pendingQuestion;
@@ -81,7 +81,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     /// <param name="workspaceRoot">The absolute workspace root every tool is confined to.</param>
     /// <param name="themeSlug">The bundled theme slug the host applied at startup; null means the default.</param>
     /// <exception cref="ArgumentException"><paramref name="workspaceRoot"/> is blank.</exception>
-    [Obsolete("Legacy host surface.")]
     public ChatScreen(string workspaceRoot, string? themeSlug = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
@@ -273,7 +272,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-    [Obsolete("Legacy host surface.")]
     private Menu BuildMenuBar()
     {
         var menu = MenuBuilder.Horizontal(spacing: 0)
@@ -729,7 +727,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         ];
     }
 
-    [Obsolete("Legacy host surface.")]
     private void OnCommandPaletteItemInvoked(object? sender, ItemInvokedEventArgs e)
     {
         _ = sender;
@@ -849,7 +846,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-    [Obsolete("Legacy host surface.")]
     private void OnPromptPreviewKey(object? sender, KeyEventArgs e)
     {
         _ = sender;
@@ -1053,7 +1049,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
     private void RefreshResponsiveLayout(int width) =>
         _sidebar.Visibility = width >= 96 ? Visibility.Visible : Visibility.Collapsed;
 
-    [Obsolete("Legacy host surface.")]
     private async Task SubmitPromptAsync()
     {
         if (_busy)
@@ -1130,7 +1125,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-    [Obsolete("Legacy host surface.")]
     private async Task ShowSessionsAsync()
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)
@@ -1171,7 +1165,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-    [Obsolete("Legacy host surface.")]
     private async Task ResumeSessionAsync(string commandLine)
     {
         if (_busy || _pendingApproval is not null || _pendingQuestion is not null)
@@ -1189,7 +1182,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
 
         SetBusy(true);
         _status.Content = "Opening durable session...";
-        OwnedConversationSession? candidate = null;
+        AsyncOwnedConversationSession? candidate = null;
         try
         {
             candidate = CreateConversation();
@@ -1206,7 +1199,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
             var previous = _conversation;
             _conversation = candidate;
             candidate = null;
-            previous?.Dispose();
+            RetireConversation(previous);
             _entries.Clear();
             _entries.Add(new ChatEntry(ChatEntryKind.System, "Resumed session", $"`{sessionId}`"));
             _entries.AddRange(hydrated);
@@ -1231,7 +1224,11 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
         finally
         {
-            candidate?.Dispose();
+            if (candidate is not null)
+            {
+                await candidate.DisposeAsync().ConfigureAwait(true);
+            }
+
             SetBusy(false);
         }
     }
@@ -1315,7 +1312,6 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         return entries.ToImmutable();
     }
 
-    [Obsolete("Legacy host surface.")]
     private void ExecuteSlashCommand(string commandLine)
     {
         var name = commandLine.Split(' ', 2)[0];
@@ -1341,7 +1337,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                     break;
                 }
 
-                _conversation?.Dispose();
+                RetireConversation(_conversation);
                 _conversation = null;
                 _entries.Clear();
                 RefreshTranscript();
@@ -1384,8 +1380,29 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
         }
     }
 
-    [Obsolete("Legacy host surface.")]
-    private OwnedConversationSession CreateConversation()
+    /// <summary>Releases a replaced conversation's engine in the background, because the terminal UI handlers that replace it are synchronous.</summary>
+    /// <param name="conversation">The conversation being replaced, or null when none was started.</param>
+    private static void RetireConversation(AsyncOwnedConversationSession? conversation)
+    {
+        if (conversation is not null)
+        {
+            _ = ReleaseAsync(conversation);
+        }
+
+        static async Task ReleaseAsync(AsyncOwnedConversationSession retired)
+        {
+            try
+            {
+                await retired.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Best-effort release of an already-replaced conversation; the live conversation is unaffected.
+            }
+        }
+    }
+
+    private AsyncOwnedConversationSession CreateConversation()
     {
         _status.Content = "Starting AgentKit runtime...";
         return AgentRuntime.Create(_workspaceRoot, OpenAiEnvironment.RequireApiKey(), _configuration, this, this, _permissions);
@@ -1519,7 +1536,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
 
     private void ApplyConfiguration(string message)
     {
-        _conversation?.Dispose();
+        RetireConversation(_conversation);
         _conversation = null;
         RefreshStatusDetails();
         _usage.Reset();

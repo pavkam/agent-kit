@@ -16,7 +16,7 @@ public sealed class StructuralSchemaConformanceFixture: IOutputSchemaEngineConfo
     public StructuralSchemaConformanceFixture()
     {
         _provider = new ServiceCollection().AddAgentOutput().BuildServiceProvider(validateScopes: true);
-        Engine = _provider.GetRequiredKeyedService<IOutputSchemaEngine>(AgentOutputDefaults.ProcessorKey.Value);
+        Engine = _provider.GetRequiredKeyedService<IOutputSchemaEngine>(AgentOutputComponentDefaults.ProcessorKey.Value);
     }
 
     /// <inheritdoc/>

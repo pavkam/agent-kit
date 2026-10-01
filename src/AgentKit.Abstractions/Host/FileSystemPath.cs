@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// A file path expressed relative to whatever root directory a concrete
-/// <see cref="IFileSystem"/> implementation is configured with, structurally
+/// host file-system implementation is configured with, structurally
 /// validated to reject the most obvious forms of directory traversal.
 /// </summary>
 /// <remarks>
@@ -17,7 +17,7 @@ namespace AgentKit;
 /// <para>
 /// This constructor rejects an empty path, an absolute (rooted) path, and
 /// any path segment equal to <c>..</c>. This is a structural invariant, not
-/// the authoritative sandbox boundary: a concrete <see cref="IFileSystem"/>
+/// the authoritative sandbox boundary: a concrete host file-system
 /// implementation still resolves this path against its configured root and
 /// re-validates that the resulting absolute path stays within it before
 /// touching disk, so a higher-level check here can never substitute for the

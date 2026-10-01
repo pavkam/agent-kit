@@ -137,10 +137,10 @@ to runtime internals. External result stores and report exporters remain leaf
 integrations.
 
 The evaluation runtime installs no result store. A plan explicitly selects an
-in-memory, SQLite, or external leaf; in-memory and SQLite implementations run
-the same result-store conformance suite, and SQLite advertises only its proven
-local retention and transaction guarantees. Report publication remains a
-separate effect.
+in-memory, SQLite, JSON, or external leaf; the in-memory, SQLite, and JSON
+implementations run the same result-store conformance suite, and SQLite and JSON
+advertise only their proven local retention and transaction guarantees. Report
+publication remains a separate effect.
 
 One evaluation runner is bound through DI to exactly one built `AgentEngine`.
 `RunAsync` accepts a plan, not an arbitrary engine, and the runner MUST NOT pair

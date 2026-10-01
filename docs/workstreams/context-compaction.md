@@ -19,6 +19,8 @@ Owning documents: [Context compaction](../architecture/context-compaction.md),
 - [x] WS10-C6 events and five-argument `CompactAsync`
 - [x] WS10-C7 activation coordinator
 - [x] WS10-C8 validator
+- [x] WS10-C9 keyed collaborator registration and profile consumption (closes
+      the known gap)
 
 ## Verified current state
 
@@ -48,7 +50,9 @@ fake in `FakeCompactionCollaborators.cs`); cut selector and validator fakes.
    session capability for the five-argument compactor; ship overloads.
 5. `ICompactionStrategy.Descriptor` addition breaks three implementations and
    one fake; use a default interface member in C5.
-6. `Components.Compaction` is absent from the spec record; resolve before C8.
+6. ~~`Components.Compaction` is absent from the spec record; resolve before
+   C8.~~ Resolved in WS18: use
+   `AgentOptionalCapabilitySelection.CompactionProfile`.
 
 ## Spec coverage
 
@@ -143,7 +147,61 @@ fake in `FakeCompactionCollaborators.cs`); cut selector and validator fakes.
 - Depends on: WS18 `Components`. Size: S.
 - Deliverables: compaction selected ⇒ exactly one compatible compactor key.
 
+## Known gap
+
+Resolved by WS10-C9; kept as a record of what the WS20 sweep found. Chunks C5
+and C6 listed the per-collaborator keyed registration helpers
+(`AddCompactionProfile`, `AddCompactionStrategy<T>`,
+`AddCompactionEventSink<T>`, the `Replace*` family, and the summary-generator
+equivalents), but only `AddAgentContextCompaction`, `AddContextCompaction`, and
+`AddModelBackedContextCompaction` shipped, so the strategy set and event sinks
+were fixed per compactor key and a `CompactionProfile` selection validated only
+that an `ICompactor` was registered.
+
+### WS10-C9: Keyed collaborator registration and profile consumption
+
+- Landed. Depends on: C5-C8. Size: M.
+- Deliverables: every `Add*`/`Replace*` helper in
+  [`context-compaction.md`](../architecture/context-compaction.md) ships in
+  `AgentKit.Context.Compaction/ServiceExtensions.cs` with the duplicate,
+  idempotency, lifetime, and argument rules the architecture states.
+  `AddCompactionProfile` captures `CompactionProfileOptions` and a profile
+  catalog compiles one `CompactionPolicySnapshot` per profile after validating
+  it against the compactor, strategy, summary-generator, and ordering
+  registrations. New neutral contracts in `AgentKit.Abstractions`:
+  `CompactionProfilePublication` and `ICompactionProfileCatalog`;
+  `AgentRunServices.CompactionPolicy`.
+- Consumption: the engine composition validator
+  (`CompactionCompositionValidator`) requires a published profile and, for an
+  enabled profile, the keyed compactor it names. Run-plan compilation resolves
+  that exact keyed compactor, the loop and `Agent.CompactAsync` attach the
+  profile's policy to every `CompactionRequest`, and `DefaultCompactor` honors
+  the policy's strategy order (falling back only on a typed `Unsupported`) and
+  rejects a policy compiled for another compactor key. A disabled profile
+  composes no compactor. `AgentKit.Simple.WithCompaction()` registers and
+  selects an extractive profile.
+- Leftover removed: the single-strategy `DefaultCompactor` constructor (and its
+  test-only `FixedCompactionStrategyResolver` and `EmptyServiceProvider`) is
+  deleted; the compactor tests build the compactor through the public
+  registration.
+- Fixed on the way (each was a latent defect on a path this chunk now exercises
+  end to end): the keyed extractive strategy factory resolved an unregistered
+  concrete type, so no DI-built compactor could run; a best-effort sink's
+  exception escaped the dispatcher; the first-party strategy keys disagreed
+  (`agentkit.extractive` versus `agentkit.extractive.v1`); the shared
+  `ContextCompactionOptionsSnapshot` and options were unkeyed, so a second
+  compactor key reused the first one's; `Agent.CompactAsync` needed an
+  `IIdentifierGenerator<CompactionId>` nothing registered and read a 512-entry
+  page that stores cap at 256.
+- Limits: strategy registration `Order` is validated but does not change
+  selection (the profile's explicit order does); the model-backed strategy is
+  registered for the default compactor key only because its constructor takes
+  the compactor key; profile ceilings are the compactor's (no per-profile
+  tightening yet); `Scoped` strategy, generator, and sink lifetimes are
+  rejected; a definition with no profile still gets the engine-wide unkeyed
+  compactor with the compactor's default strategy order.
+
 ## Totals
 
-S 4, M 4. Confidence medium: the overflow kind and maintenance entry point are
+S 4, M 5. Confidence medium: the overflow kind and maintenance entry point are
 NO-SPEC, and C6 depends on three other workstreams.

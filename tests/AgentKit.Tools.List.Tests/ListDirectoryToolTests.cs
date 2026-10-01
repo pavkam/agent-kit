@@ -3,12 +3,15 @@
 
 namespace AgentKit.Tools.List.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class ListDirectoryToolTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve()
     {
         var reader = new FakeDirectoryReader();
@@ -24,14 +27,13 @@ public sealed class ListDirectoryToolTests
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
-        reader.Requests.ShouldBeEmpty();
+        reader.Operations.ShouldBeEmpty();
     }
 
     [Theory]
     [InlineData("[]")]
     [InlineData("null")]
     [InlineData("\"str\"")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsAreNotAnObject_DoesNotAuthorizeOrObserve(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -42,11 +44,10 @@ public sealed class ListDirectoryToolTests
 
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
         authority.Requests.ShouldBeEmpty();
-        reader.Requests.ShouldBeEmpty();
+        reader.Operations.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathIsWrongType_ReturnsInvalidArguments()
     {
         var reader = new FakeDirectoryReader();
@@ -67,7 +68,6 @@ public sealed class ListDirectoryToolTests
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":0}")]
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":-1}")]
     [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":100000}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenMaximumEntriesIsInvalid_ReturnsInvalidArguments(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -87,7 +87,6 @@ public sealed class ListDirectoryToolTests
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":\"1\"}}")]
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":0}}")]
     [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"\",\"next_index\":1}}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCursorIsInvalid_ReturnsInvalidArguments(string json)
     {
         var reader = new FakeDirectoryReader();
@@ -101,25 +100,66 @@ public sealed class ListDirectoryToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenCursorIsValid_ForwardsExactCursorToReader()
+    public async Task InvokeAsync_WhenCursorSnapshotIsStale_ReportsSnapshotChangedWithoutEntries()
     {
-        var reader = new FakeDirectoryReader();
-        var authority = new RecordingSecurityAuthority();
-        var tool = CreateTool(reader, authority);
+        var reader = new FakeDirectoryReader { Entries = [("a.cs", false), ("b.cs", false)] };
+        var tool = CreateTool(reader, new RecordingSecurityAuthority());
 
         var result = await InvokeAsync(
             tool,
-            /*lang=json,strict*/ """{"path":"src","cursor":{"snapshot":"sha256:x","next_index":3}}""",
+            /*lang=json,strict*/ """{"path":"src","cursor":{"snapshot":"sha256:x","next_index":1}}""",
             TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-        var request = reader.Requests.ShouldHaveSingleItem();
-        request.Continuation.ShouldBe(new DirectoryEnumerationCursor(new ContentHash("sha256:x"), 3));
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Content.ShouldBeEmpty();
+        ExtensionStatus(result).ShouldBe("\"SnapshotChanged\"");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
+    public async Task InvokeAsync_WhenCursorIsIssuedByAnEarlierPage_ResumesAtTheNextEntry()
+    {
+        var reader = new FakeDirectoryReader { Entries = [("c.cs", false), ("a.cs", false), ("b.cs", true)] };
+        var tool = CreateTool(reader, new RecordingSecurityAuthority());
+        var first = await InvokeAsync(
+            tool, /*lang=json,strict*/ """{"path":"src","maximum_entries":2}""", TestContext.Current.CancellationToken);
+        using var firstJson = JsonDocument.Parse(first.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        var continuation = firstJson.RootElement.GetProperty("continuation");
+
+        var second = await InvokeAsync(
+            tool,
+            $$$"""{"path":"src","maximum_entries":2,"cursor":{"snapshot":"{{{continuation.GetProperty("snapshot").GetString()}}}","next_index":{{{continuation.GetProperty("next_index").GetInt32()}}}}}""",
+            TestContext.Current.CancellationToken);
+
+        firstJson.RootElement.GetProperty("entries").EnumerateArray().Select(static e => e.GetString())
+            .ShouldBe(["src/a.cs", "src/b.cs"]);
+        second.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        using var secondJson = JsonDocument.Parse(second.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        secondJson.RootElement.GetProperty("entries").EnumerateArray().Select(static e => e.GetString())
+            .ShouldBe(["src/c.cs"]);
+        secondJson.RootElement.GetProperty("continuation").ValueKind.ShouldBe(JsonValueKind.Null);
+        secondJson.RootElement.GetProperty("snapshot").GetString()
+            .ShouldBe(firstJson.RootElement.GetProperty("snapshot").GetString());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenCursorIndexExceedsTheListing_ReportsSnapshotChanged()
+    {
+        var reader = new FakeDirectoryReader { Entries = [("a.cs", false)] };
+        var tool = CreateTool(reader, new RecordingSecurityAuthority());
+        var first = await InvokeAsync(
+            tool, /*lang=json,strict*/ """{"path":"src","maximum_entries":1}""", TestContext.Current.CancellationToken);
+        using var firstJson = JsonDocument.Parse(first.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        var snapshot = firstJson.RootElement.GetProperty("snapshot").GetString();
+
+        var result = await InvokeAsync(
+            tool,
+            $$$"""{"path":"src","cursor":{"snapshot":"{{{snapshot}}}","next_index":5}}""",
+            TestContext.Current.CancellationToken);
+
+        ExtensionStatus(result).ShouldBe("\"SnapshotChanged\"");
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveDirectory()
     {
         var reader = new FakeDirectoryReader();
@@ -132,23 +172,13 @@ public sealed class ListDirectoryToolTests
             TestContext.Current.CancellationToken);
 
         result.Outcome.FailureReason.ShouldBe("Denied.");
-        reader.Requests.ShouldBeEmpty();
+        reader.Operations.ShouldBeEmpty();
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSuccessful_ProjectsEntriesAndStableContinuation()
     {
-        var cursor = new DirectoryEnumerationCursor(new ContentHash("sha256:snapshot"), 2);
-        var reader = new FakeDirectoryReader
-        {
-            Result = new DirectoryEnumerationResult(
-                DirectoryEnumerationStatus.Success,
-                [new DirectoryEntry(new FileSystemPath("src/a.cs")), new DirectoryEntry(new FileSystemPath("src/b.cs"))],
-                cursor.SnapshotFingerprint,
-                cursor,
-                null),
-        };
+        var reader = new FakeDirectoryReader { Entries = [("a.cs", false), ("b.cs", false), ("c.cs", false)] };
         var authority = new RecordingSecurityAuthority();
         var tool = CreateTool(reader, authority);
 
@@ -160,39 +190,84 @@ public sealed class ListDirectoryToolTests
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var text = result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text;
         using var json = JsonDocument.Parse(text);
-        json.RootElement.GetProperty("entries")[0].GetString().ShouldBe("src/a.cs");
+        json.RootElement.GetProperty("entries").EnumerateArray().Select(static e => e.GetString())
+            .ShouldBe(["src/a.cs", "src/b.cs"]);
         json.RootElement.GetProperty("continuation").GetProperty("next_index").GetInt32().ShouldBe(2);
+        json.RootElement.GetProperty("continuation").GetProperty("snapshot").GetString()
+            .ShouldBe(json.RootElement.GetProperty("snapshot").GetString());
         var request = authority.Requests.ShouldHaveSingleItem();
         request.Kind.ShouldBe(SecurityOperationKind.DirectoryRead);
+        request.Audience.ShouldBe(reader.SecurityAudience);
         request.Resources.ShouldBe([DirectorySecurityBinding.Resource(new FileSystemPath("src"))]);
-        reader.Requests.ShouldHaveSingleItem().Grant.RequestId.ShouldBe(request.Id);
+        request.InputFingerprint.ShouldBe(DirectorySecurityBinding.Fingerprint(new FileSystemPath("src")));
+        var operation = reader.Operations.ShouldHaveSingleItem();
+        operation.Grant.RequestId.ShouldBe(request.Id);
+        operation.ResolvedTarget.RelativePath.Value.ShouldBe("src");
+        operation.ResolvedTarget.RootId.ShouldBe(new FileRootId("test"));
+        operation.ResolvedTarget.HostTargetPath.ShouldBe(Path.GetFullPath("/tmp/test-root/src"));
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-    public async Task InvokeAsync_WhenHostReportsSnapshotChanged_PreservesTypedStatusInOutcome()
+    public async Task InvokeAsync_WhenPathIsOmitted_ListsTheRootWithoutAContinuation()
     {
-        var reader = new FakeDirectoryReader
-        {
-            Result = new DirectoryEnumerationResult(
-                DirectoryEnumerationStatus.SnapshotChanged, [], null, null, "Directory changed."),
-        };
+        var reader = new FakeDirectoryReader { Entries = [("README.md", false), ("src", true)] };
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await InvokeAsync(tool, /*lang=json,strict*/ "{}", TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        json.RootElement.GetProperty("entries").EnumerateArray().Select(static e => e.GetString())
+            .ShouldBe(["README.md", "src"]);
+        json.RootElement.GetProperty("continuation").ValueKind.ShouldBe(JsonValueKind.Null);
+        authority.Requests.ShouldHaveSingleItem().Resources.ShouldBe([DirectorySecurityBinding.Resource(null)]);
+        reader.Operations.ShouldHaveSingleItem().ResolvedTarget.RelativePath.Value.ShouldBe(".");
+    }
+
+    [Theory]
+    [MemberData(nameof(ReaderFailures))]
+    public async Task InvokeAsync_WhenReaderFails_PreservesTypedStatusInOutcome(
+        Exception failure, string expectedStatus, ToolCallOutcomeKind expectedKind, SideEffectCertainty expectedCertainty)
+    {
+        var reader = new FakeDirectoryReader { Failure = failure };
         var tool = CreateTool(reader, new RecordingSecurityAuthority());
 
         var result = await InvokeAsync(tool, /*lang=json,strict*/ """{"path":"src"}""", TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
-        var status = result.Outcome.Extensions.Values["agentkit.directory.status"];
-        System.Text.Encoding.UTF8.GetString(status.CanonicalJson.AsSpan()).ShouldBe("\"SnapshotChanged\"");
+        result.Outcome.Kind.ShouldBe(expectedKind);
+        result.Outcome.SideEffectCertainty.ShouldBe(expectedCertainty);
+        result.Outcome.FailureReason.ShouldBe(failure.Message);
+        ExtensionStatus(result).ShouldBe($"\"{expectedStatus}\"");
     }
 
-    [Obsolete("Legacy host surface.")]
+    public static TheoryData<Exception, string, ToolCallOutcomeKind, SideEffectCertainty> ReaderFailures() => new()
+    {
+        { new UnauthorizedAccessException("Boundary."), "Denied", ToolCallOutcomeKind.Rejected, SideEffectCertainty.DefinitelyNotPerformed },
+        { new DirectoryNotFoundException("Missing."), "NotFound", ToolCallOutcomeKind.Failed, SideEffectCertainty.DefinitelyNotPerformed },
+        { new IOException("Too many entries."), "Failed", ToolCallOutcomeKind.Failed, SideEffectCertainty.Unknown },
+    };
+
+    [Fact]
+    public async Task InvokeAsync_WhenCallerCancels_PropagatesCancellationFromTheReader()
+    {
+        var reader = new FakeDirectoryReader { Entries = [("a.cs", false)] };
+        var tool = CreateTool(reader, new RecordingSecurityAuthority());
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => InvokeAsync(tool, /*lang=json,strict*/ """{"path":"src"}""", cancellation.Token));
+    }
+
+    private static string ExtensionStatus(ToolInvocationResult result) =>
+        System.Text.Encoding.UTF8.GetString(result.Outcome.Extensions.Values["agentkit.directory.status"].CanonicalJson.AsSpan());
+
     private static ListDirectoryTool CreateTool(
-            ILegacyDirectoryReader reader,
+            IDirectoryReader reader,
             ISecurityAuthority authority) =>
             TestListComposition.CreateTool(reader, authority);
 
-    [Obsolete("Legacy host surface.")]
     private static Task<ToolInvocationResult> InvokeAsync(
         ListDirectoryTool tool,
         string json,
@@ -245,5 +320,29 @@ public sealed class ListDirectoryToolTests
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch.AddMinutes(1),
             ToolCaptureTestData.InvocationContext(descriptor).Progress);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<ListDirectoryTool>();
+        var tool = TestListComposition.CreateTool(new FakeDirectoryReader(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"path":"../classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), ListDirectoryTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await InvokeAsync(tool, json, TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33400);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
     }
 }

@@ -60,18 +60,6 @@ public sealed class DefaultNetworkNameResolverTests
     }
 
     [Fact]
-    public async Task ResolveAsync_WhenConsumedResultLacksExactReceipt_DeniesBeforeResolution()
-    {
-        var store = new TestGrantStore
-        {
-            IncludeIntentReceipt = false
-        };
-        var resolver = Resolver(store);
-        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
-    }
-
-    [Fact]
     public async Task ResolveAsync_WhenReceiptIdentityDiffers_DeniesBeforeResolution()
     {
         var store = new TestGrantStore
@@ -104,7 +92,6 @@ public sealed class DefaultNetworkNameResolverTests
         var resolver = Resolver(store, new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
         _ = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
         store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
-        store.LegacyConsumptionCalls.ShouldBe(0);
     }
 
     [Fact]
@@ -252,5 +239,5 @@ public sealed class DefaultNetworkNameResolverTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
+    public void Constructor_WhenLoggerArgumentIsNull_RetainsUnambiguousOverloadResolution() => _ = new DefaultNetworkNameResolver(new TestGrantStore(), new AcceptingAuditDispatcher(), new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
 }

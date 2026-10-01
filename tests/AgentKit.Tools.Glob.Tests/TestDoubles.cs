@@ -44,6 +44,7 @@ internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAu
                 request.Id,
                 request.Scope,
                 request.Identity,
+                request.Authorization,
                 request.Audience,
                 request.Kind,
                 request.Effect,

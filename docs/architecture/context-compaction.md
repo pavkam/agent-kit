@@ -51,8 +51,19 @@ the attempt timeout as the deadline. On `CompactionSucceeded` the loop reloads
 history from the newest checkpoint; on any other outcome, or a thrown compactor,
 it logs and continues with the history it had, leaving the provider as the
 authority on fit. `AgentKit.Simple.WithCompaction()` registers the extractive
-compactor. Provider-overflow retry (`ProviderOverflow`) and the
-instruction-epoch trigger remain to be wired.
+compactor under the default key and one extractive-only compaction profile that
+every definition it publishes selects.
+
+The loop wires three further triggers. On a provider failure classified as
+`ProviderFailureKind.ContextLengthExceeded` it compacts once per turn with
+`CompactionTriggerKind.ProviderOverflow`, reloads history from the new
+checkpoint, and retries the request under a `CompactionRetryContinuationCause`.
+When it loads history whose newest active checkpoint carries a different
+`ContextEpoch` than the run's current instruction epoch it compacts with
+`CompactionTriggerKind.InstructionEpochChanged` before the first turn. Callers
+outside a run request `CompactionTriggerKind.ExplicitMaintenance` through
+`Agent.CompactAsync`, which builds the request from the session's pinned branch
+snapshot and the definition's revision as the epoch.
 
 ## Normative identities and correlation
 
@@ -120,9 +131,11 @@ cannot itself authorize an effect.
 
 ## Immutable request and policy snapshot
 
-Options are converted into one immutable policy snapshot when the run plan is
-compiled. Reloads may affect a later run or named next-turn boundary; they never
-reinterpret an in-flight compaction.
+Options are converted into one immutable policy snapshot when the profile
+catalog is built, and a run plan attaches the selected profile's snapshot to
+every request it issues; a definition that selects no profile carries none and
+the compactor applies its own default strategy order. Reloads may affect a later
+run or named next-turn boundary; they never reinterpret an in-flight compaction.
 
 ```csharp
 namespace AgentKit;
@@ -534,44 +547,47 @@ translation, and transport stay behind the generator implementation or a still
 narrower provider-neutral operation; compaction contracts do not expose the
 general `IModelRequestExecutor` to strategies.
 
-### Current first-party model-backed strategy
+### First-party model-backed strategy
 
-The `ICompactionSummaryGenerator` and `ICompactionSummaryGeneratorResolver` seam
-above is not yet implemented. The reduced first-party `ModelCompactionStrategy`
-in `AgentKit.Context.Compaction` performs the bounded summary operation itself,
-directly against the same provider abstractions the agent loop uses, and is the
-only component in the package that touches them:
+`ModelCompactionStrategy` in `AgentKit.Context.Compaction` prepares the bounded
+`CompactionSummaryRequest` and delegates generation to the
+`ICompactionSummaryGenerator` that `ICompactionSummaryGeneratorResolver` returns
+for its compactor key. `ModelBackedSummaryGenerator` is the first-party
+generator and is the only component in the package that touches the provider
+abstractions directly:
 
-- It reads one `IModelCatalog` snapshot, asks the engine's `IModelSelector` to
-  apply `CompactionOptions.SummaryModelPolicy` with a system-instruction
-  requirement inside the compaction operation's captured
+- The strategy renders the covered entries into one role-labelled plain-text
+  transcript, omitting system and developer messages because stored history
+  never carries instruction authority, and bounds it to
+  `CompactionOptions.MaximumSummaryInputCharacters` by keeping head and tail
+  around a marker. A missing generator is a typed
+  `CompactionStrategyUnsupported` before any provider I/O.
+- The generator reads one `IModelCatalog` snapshot, asks the engine's
+  `IModelSelector` to apply `CompactionOptions.SummaryModelPolicy` with a
+  system-instruction requirement inside the compaction operation's captured
   `SecurityAuthorizationContext.Scope`, and resolves the decision through
   `ILlmModelResolver`. It never selects a provider by registration order or
   fabricates a default model; a missing or incompatible policy is a typed
-  `CompactionStrategyUnsupported` before any provider I/O.
-- It renders the covered entries into one role-labelled plain-text transcript,
-  omitting system and developer messages because stored history never carries
-  instruction authority, and bounds it to
-  `CompactionOptions.MaximumSummaryInputCharacters` by keeping head and tail
-  around a marker.
-- It sends exactly one non-streaming `LlmModelRequest`: the configured
-  `CompactionOptions.SummaryPrompt` as a `SystemMessage`, the transcript as a
-  single `UserMessage`, no tools, `LlmToolChoice.None`, the compaction request's
-  `Deadline`, and the caller's cancellation token. The default prompt is the
-  embedded resource `Resources/DefaultCompactionSummaryPrompt.txt`; both
+  unsupported result before any provider I/O.
+- It sends exactly one non-streaming `LlmModelRequest` directly to the resolved
+  `ILlmModel`: the configured `CompactionOptions.SummaryPrompt` as a
+  `SystemMessage`, the transcript as a single `UserMessage`, no tools,
+  `LlmToolChoice.None`, the compaction request's `Deadline`, and the caller's
+  cancellation token. It does not use `IModelRequestExecutor`, so compaction
+  contracts never expose the general executor to strategies. The default prompt
+  is the embedded resource `Resources/DefaultCompactionSummaryPrompt.txt`; both
   `AddContextCompaction` and `AddModelBackedContextCompaction` accept an
   override and reject a blank value at composition.
-- A provider failure maps to `CompactionStrategyFailed` (retryable only for
-  throttling, unavailability, or timeout); a length-limited stop, a tool
-  request, or a response without text is a non-retryable failure rather than a
-  partial summary; caller cancellation propagates so the compactor reports a
+- A provider failure maps to a failed generation (retryable only for throttling,
+  unavailability, or timeout); a length-limited stop, a tool request, or a
+  response without text is a non-retryable failure rather than a partial
+  summary; caller cancellation propagates so the compactor reports a
   `NotAttempted` commit state.
 - The returned text is bounded to `MaximumCheckpointCharacters` with the same
   marker and becomes a plain `TextPart` checkpoint. It is untrusted model output
-  and is never given system or developer precedence. Because the reduced
-  `CompactionProducer` has no model slots, the strategy records the alias,
-  provider, resolved model, request and response identities, reported usage, and
-  both truncation flags in `CompactionProducer.Extensions` under
+  and is never given system or developer precedence. The strategy records the
+  alias, provider, resolved model, request and response identities, reported
+  usage, and both truncation flags in `CompactionProducer.Extensions` under
   `ModelCompactionProvenanceKeys`, and reports `Deterministic = false`.
 - It emits a `chat` client activity from the shared AgentKit source, correlated
   by compaction, session, operation, and model-request identities, and
@@ -579,12 +595,11 @@ only component in the package that touches them:
   normalized outcomes. Prompt, transcript, and summary text never enter any
   signal.
 
-Introducing the generator seam is future work: when it lands,
-`ModelCompactionStrategy` becomes the strategy that prepares the bounded
-`CompactionSummaryRequest`, and its current provider interaction moves behind a
-first-party `ICompactionSummaryGenerator` resolved per compactor key. The budget
-capability threading described in this document is likewise not yet wired; the
-strategy does not reserve budget today.
+The `BudgetExecutionCapability` parameter reaches the generator through the
+five-argument `ICompactor.CompactAsync` and `ICompactionStrategy.ProduceAsync`,
+but the first-party generator does not reserve against it. The
+`CompactionAttempts` and `CompactionSummaryTokens` dimensions are seeded in the
+default dimension catalog for a budget-reserving generator to use.
 
 ## Strategy contract
 
@@ -1071,14 +1086,17 @@ public interface ICompactionEventDispatcher
 }
 ```
 
-The default dispatcher sends events in deterministic registration order.
-Required durable observations are written through an idempotent session/outbox
-path before success is reported. A sink cannot mutate the candidate, veto after
-commit, or receive content merely because it is registered. Diagnostic
-exceptions and sensitive source text are redacted by the configured
-observability profile. The dispatcher resolves only sinks associated with the
-supplied compactor key; there is no unkeyed sink enumeration shared between
-agents.
+The default dispatcher sends events in ascending sink `Order`, then ordinal sink
+identity, resolving each sink under its compactor-and-identity key. A required
+sink that is unavailable or throws stops dispatch with
+`RequiredCompactionEventUnavailable`; a best-effort sink's failure is swallowed
+and dispatch continues, while cancellation always propagates. Required durable
+observations are written through an idempotent session/outbox path before
+success is reported. A sink cannot mutate the candidate, veto after commit, or
+receive content merely because it is registered. Diagnostic exceptions and
+sensitive source text are redacted by the configured observability profile. The
+dispatcher resolves only sinks associated with the supplied compactor key; there
+is no unkeyed sink enumeration shared between agents.
 
 ## First-party sealed implementation
 
@@ -1088,64 +1106,80 @@ the complete dependency direction:
 ```csharp
 namespace AgentKit.Context.Compaction;
 
-internal sealed class DefaultCompactor(
+public sealed class DefaultCompactor(
+    ISessionCoordinator coordinator,
     ICompactionCutSelector cutSelector,
     ICompactionStrategyResolver strategies,
     ICompactionValidator validator,
     ICompactionActivationCoordinator activation,
-    ISecurityAuthoritySelector securityAuthorities,
-    IHookDispatcher hooks,
     ICompactionEventDispatcher events,
+    ICompactionSizeEstimator estimator,
     IIdentifierGenerator<CompactionManifestId> manifestIds,
+    IIdentifierGenerator<SessionEntryId> entryIds,
     TimeProvider timeProvider,
-    ContextCompactionOptionsSnapshot options,
-    ILogger<DefaultCompactor> logger) : ICompactor
-{
-}
-
-internal sealed class ModelBackedCompactionStrategy(
-    ComponentKey<ICompactor> compactorKey,
-    ICompactionSummaryGeneratorResolver generators,
-    ContextCompactionOptionsSnapshot options,
-    TimeProvider timeProvider,
-    ILogger<ModelBackedCompactionStrategy> logger) : ICompactionStrategy
+    IOptions<CompactionOptions> options,
+    ContextCompactionOptionsSnapshot compactionOptions,
+    ILogger<DefaultCompactor>? logger = null) : ICompactor
 {
 }
 ```
 
-Until the generator seam exists, the shipped `ModelCompactionStrategy` takes the
-provider abstractions directly and shows the complete dependency direction of
-the reduced implementation:
+The keyed registration injects the session coordinator, estimator, and
+identifier generators unkeyed and the cut selector, validator, strategy
+resolver, activation coordinator, and event dispatcher under the compactor key.
+The keyed cut selector and validator default to the engine-wide unkeyed
+registrations, so replacing the unkeyed default still reaches every compactor
+that has not been given its own. The five-argument `CompactAsync` receives the
+session capability, budget capability, and optional hook dispatch context per
+call, so the class holds no authorization selector or hook dispatcher of its
+own.
+
+The model-backed strategy is the public `ModelCompactionStrategy`, and
+`ModelBackedSummaryGenerator` owns the provider interaction:
 
 ```csharp
 namespace AgentKit.Context.Compaction;
 
 public sealed class ModelCompactionStrategy(
+    ComponentKey<ICompactor> compactorKey,
+    ICompactionSummaryGeneratorResolver generators,
+    ICompactionSizeEstimator estimator,
+    IIdentifierGenerator<MessageId> messageIds,
+    TimeProvider timeProvider,
+    IOptions<CompactionOptions> options) : ICompactionStrategy
+{
+}
+
+public sealed class ModelBackedSummaryGenerator(
     IModelCatalog modelCatalog,
     IModelSelector modelSelector,
     ILlmModelResolver llmModelResolver,
-    ICompactionSizeEstimator estimator,
     IIdentifierGenerator<ModelRequestId> modelRequestIds,
-    IIdentifierGenerator<MessageId> messageIds,
-    TimeProvider timeProvider,
     IOptions<CompactionOptions> options,
-    ILogger<ModelCompactionStrategy>? logger = null) : ICompactionStrategy
+    ILogger<ModelBackedSummaryGenerator>? logger = null)
+    : ICompactionSummaryGenerator
 {
 }
 ```
 
 `DefaultCompactor` selects a strategy only from the request's ordered typed keys
-through the resolver bound to its immutable options snapshot. It never resolves
-`IServiceProvider`, injects an unkeyed session coordinator, chooses a session
-store, changes security profiles, or consults mutable global state. The
-request's compactor key must match the snapshot key. `CompactAsync` validates
-the supplied `SessionExecutionCapability` against the request before source
-access and passes the same capability explicitly to activation. It likewise
-validates the budget profile, identity, correlation, and scope, then passes that
-capability through the selected strategy to any model-backed summary generator.
-Every attempt reserves and settles its expected and actual work. The security
-selector resolves the authority named by the captured authorization context;
-separate bounded grants cover source read and activation write.
+(the policy snapshot's `StrategyOrder`, or the options snapshot's
+`DefaultStrategyOrder` when the request carries none) through the resolver bound
+to its immutable options snapshot. It tries the keys in order and falls back to
+the next key only when a strategy declines with a typed
+`CompactionStrategyUnsupported`; a failed or cancelled strategy, a key with no
+registration, or a policy compiled for another compactor key ends the attempt
+with the matching typed outcome instead. It never resolves `IServiceProvider`,
+injects an unkeyed session coordinator, chooses a session store, changes
+security profiles, or consults mutable global state. The request's compactor key
+must match the snapshot key. `CompactAsync` validates the supplied
+`SessionExecutionCapability` against the request before source access and passes
+the same capability explicitly to activation. It likewise validates the budget
+profile, identity, correlation, and scope, then passes that capability through
+the selected strategy to any model-backed summary generator. Every attempt
+reserves and settles its expected and actual work. The security selector
+resolves the authority named by the captured authorization context; separate
+bounded grants cover source read and activation write.
 
 The first-party semantic cut selector, structural validator, extractive
 strategy, and session-backed activation coordinator are sealed direct interface
@@ -1166,6 +1200,9 @@ public static class CompactionStrategyKeys
 {
     public static CompactionStrategyKey Extractive { get; } =
         new("agentkit.extractive");
+
+    public static CompactionStrategyKey ModelSummary { get; } =
+        new("agentkit.model-summary");
 }
 
 public sealed class ContextCompactionOptions
@@ -1179,6 +1216,8 @@ public sealed class ContextCompactionOptions
     public double MinimumReductionRatio { get; set; } = 0.20;
     public TimeSpan AttemptTimeout { get; set; } = TimeSpan.FromMinutes(2);
     public bool PersistRejectedCandidates { get; set; }
+    public List<CompactionStrategyKey> DefaultStrategyOrder { get; set; } =
+        [CompactionStrategyKeys.Extractive];
 }
 
 public sealed record ContextCompactionOptionsSnapshot(
@@ -1191,7 +1230,8 @@ public sealed record ContextCompactionOptionsSnapshot(
     int MaximumValidationIssues,
     double MinimumReductionRatio,
     TimeSpan AttemptTimeout,
-    bool PersistRejectedCandidates);
+    bool PersistRejectedCandidates,
+    ImmutableArray<CompactionStrategyKey> DefaultStrategyOrder);
 
 public sealed class CompactionProfileOptions
 {
@@ -1200,6 +1240,18 @@ public sealed class CompactionProfileOptions
     public List<CompactionStrategyKey> StrategyOrder { get; set; } =
         [CompactionStrategyKeys.Extractive];
     public bool AllowOversizedTurnRepair { get; set; }
+}
+
+// AgentKit.Abstractions: the neutral read side of profile registration.
+public sealed record CompactionProfilePublication(
+    CompactionPolicySnapshot Policy,
+    bool Enabled);
+
+public interface ICompactionProfileCatalog
+{
+    bool TryGet(
+        CompactionProfileKey key,
+        [NotNullWhen(true)] out CompactionProfilePublication? profile);
 }
 
 public sealed record CompactionStrategyRegistration(
@@ -1356,18 +1408,81 @@ public static class ServiceExtensions
 }
 ```
 
-The reduced implementation currently exposes two unkeyed entry points instead of
-the keyed surface above. `AddContextCompaction(Action<CompactionOptions>?)`
-registers the extractive pipeline with `TryAdd` semantics.
+**Registration surface.** `AddAgentContextCompaction(key, configure)` is the
+keyed registration above. `AddContextCompaction(Action<CompactionOptions>?)`
+validates the flat `CompactionOptions` and calls `AddAgentContextCompaction`
+under `AgentContextCompactionComponentDefaults.CompactorKey`.
 `AddModelBackedContextCompaction(Action<CompactionOptions>?)` applies the same
-registration, replaces the single `ICompactionStrategy` with
-`ModelCompactionStrategy`, adds the `ModelRequestId` and `MessageId` identifier
-generators the strategy needs, and additionally requires
-`CompactionOptions.SummaryModelPolicy` to be non-null. Both validate
-`SummaryPrompt` as non-blank and `MaximumSummaryInputCharacters` and
-`MaximumCheckpointCharacters` as exceeding the truncation marker. Neither
-registers a session coordinator, model catalog, selector, or adapter resolver;
-the application selects those explicitly.
+registration, additionally requires `CompactionOptions.SummaryModelPolicy` to be
+non-null, registers `ModelBackedSummaryGenerator` as a summary generator and
+`ModelCompactionStrategy` as a strategy under the default compactor key, and
+makes `CompactionStrategyKeys.ModelSummary` that compactor's
+`DefaultStrategyOrder`. They validate `SummaryPrompt` as non-blank and
+`MaximumSummaryInputCharacters` and `MaximumCheckpointCharacters` as exceeding
+the truncation marker. None registers a session coordinator, model catalog,
+selector, or adapter resolver; the application selects those explicitly. The
+model-backed strategy needs the compactor key at construction, so it is
+registered only for the default key; other keys add strategies through
+`AddCompactionStrategy`.
+
+Every helper in the block above ships. Each validates its arguments before
+touching the collection (`ArgumentNullException` for the collection or a null
+registration, `ArgumentOutOfRangeException` for a default key,
+`ArgumentException` for a `Scoped` lifetime), returns the same collection, and
+never builds a provider.
+
+- `AddCompactionProfile(profile, compactor, configure)` runs `configure` once,
+  immediately, on a fresh `CompactionProfileOptions` and captures the result: a
+  default version, an empty or null strategy order, a default key, or a
+  duplicate key throws `InvalidOperationException` before anything is
+  registered. A profile key registers once; a second registration of the same
+  key throws `InvalidOperationException` because a profile is one immutable
+  publication. It registers the profile catalog with `TryAdd` semantics and does
+  not require the compactor to be registered first.
+- The profile catalog (`ICompactionProfileCatalog`) is built on first lookup,
+  which engine composition validation triggers for every selected profile. Its
+  construction checks every profile against the registrations it names: the
+  compactor key is registered, every ordered strategy is registered for that
+  compactor, a strategy whose descriptor names a summary generator has that
+  generator registered for the compactor, oversized-turn repair requires every
+  ordered strategy to advertise `OversizedTurnRepair`, the order respects every
+  `Before`/`After` constraint among its members, and the constraints of the
+  compactor's registered strategies are acyclic. It then compiles one
+  `CompactionPolicySnapshot` per profile: ceilings come from the compactor's
+  `ContextCompactionOptions` (a profile does not loosen them), and a SHA-256
+  fingerprint covers every compiled value. A failure throws
+  `InvalidOperationException`, which composition validation reports as
+  `agentkit.definition.compaction.profile-invalid`.
+- `Add*` strategies, summary generators, and event sinks are additive by their
+  own identity under one compactor key. Registering an equivalent registration
+  again is an idempotent no-op; the same identity with a different
+  implementation type, order, constraints, delivery, or lifetime throws
+  `InvalidOperationException` naming the exact `Replace*` method. The
+  first-party extractive and model-backed registrations occupy their own keys,
+  so reusing one of them with a different implementation fails the same way.
+- Every `Replace*` method removes exactly one key and contract and registers the
+  replacement as a singleton (strategy, generator, and sink replacements keep
+  the lifetime of the supplied registration). Replacing something never
+  registered registers it, and a replacement made before
+  `AddAgentContextCompaction` for the same key is kept by the later `TryAdd`.
+  Replacing the default compactor key keeps the unkeyed registration resolving
+  to the replacement.
+- Strategy, generator, and sink lifetimes are `Singleton` or `Transient`. The
+  compactor, resolvers, and dispatcher are singletons, so a `Scoped`
+  registration would capture a scope and is rejected at registration.
+
+Engine composition ties a definition to this surface: an agent that names
+`AgentOptionalCapabilitySelection.CompactionProfile` must find that key in the
+registered `ICompactionProfileCatalog` and, when the profile is enabled, a keyed
+`ICompactor` registration under the key the profile's policy names
+(`agentkit.definition.compaction.missing`,
+`agentkit.definition.compaction.compactor-missing`). Run-plan compilation then
+resolves that exact keyed compactor, with no unkeyed fallback, and the loop and
+`Agent.CompactAsync` attach the profile's policy to every request. A profile
+with `Enabled = false` composes no compactor for the agent: the loop never
+compacts and maintenance returns `CompactionRejected` with
+`CompactionRejectionKind.Disabled`. An agent that names no profile keeps the
+engine-wide unkeyed compactor, if any, and carries no policy.
 
 `AddAgentContextCompaction` is idempotent for the same component key, options,
 and implementation. It validates the mutable binding options once, copies them
@@ -1389,20 +1504,24 @@ are additive by `CompactionSummaryGeneratorKey`; event sinks are additive by
 duplicate identity with different type, version, order, lifetime, or options
 fails validation unless its exact `Replace*` method is used.
 
-Strategy and sink order is deterministic. Numeric order is applied first, then
-`Before` and `After` constraints; cycles and ambiguous duplicate keys fail at
-build. Registration cannot silently replace another agent's compactor, strategy,
-validator, or observation path.
+Sink order is deterministic: ascending `Order`, then ordinal sink identity.
+Strategy selection order always comes from the profile's explicit
+`StrategyOrder` or the compactor's `DefaultStrategyOrder`; the registration's
+`Before` and `After` keys are validated against that order (a constraint naming
+an absent strategy is soft and ignored), cycles among a compactor's constraints
+fail when the catalog is built, and numeric `Order` only breaks ties in the
+sequence used to report a cycle. Registration cannot silently replace another
+agent's compactor, strategy, validator, or observation path.
 
 ## Lifetimes, ownership, and cancellation
 
-The default compactor and activation coordinator are run-scoped. They own only
-attempt-local state and never retain the invocation's session capability or
-session content after completion. Stateless cut selectors and validators may be
-singleton when immutable and thread-safe. Strategy, summary-generator, and
-event-sink registrations declare their lifetime. A model-backed or mutable
-strategy or summary generator is scoped or transient unless it proves singleton
-safety.
+The default compactor, activation coordinator, resolvers, and dispatcher are
+singletons. They own only attempt-local state and never retain the invocation's
+session capability or session content after completion. Strategy,
+summary-generator, and event-sink registrations declare a `Singleton` or
+`Transient` lifetime; `Scoped` is rejected at registration because a singleton
+compactor cannot capture a scope. A model-backed or mutable strategy or summary
+generator is transient unless it proves singleton safety.
 
 The container owns and disposes strategies, sinks, provider clients, session
 collaborators, and hook infrastructure exactly once. A singleton may not capture

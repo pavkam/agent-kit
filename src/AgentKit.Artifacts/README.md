@@ -21,6 +21,10 @@ described in the [composition guide](../../docs/guides/composition.md).
 
 - [AgentKit.Artifacts.InMemory](../AgentKit.Artifacts.InMemory/README.md) —
   store artifact content in memory with deterministic lifecycle behavior.
+- [AgentKit.Artifacts.Sqlite](../AgentKit.Artifacts.Sqlite/README.md),
+  [AgentKit.Artifacts.Json](../AgentKit.Artifacts.Json/README.md), and
+  [AgentKit.Artifacts.FileSystem](../AgentKit.Artifacts.FileSystem/README.md) —
+  durable local store adapters, each selected explicitly.
 - [AgentKit.Session](../AgentKit.Session/README.md) — coordinate session
   lifecycle, run ownership, branching, and store routing.
 - [AgentKit.Tools](../AgentKit.Tools/README.md) — catalog, validate, authorize,
@@ -36,8 +40,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/artifacts.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

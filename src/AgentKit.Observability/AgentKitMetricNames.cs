@@ -45,7 +45,6 @@ public static class AgentKitMetricNames
     /// <remarks>Unavailable or negative clock measurements are omitted; identities and content are never dimensions.</remarks>
     public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
 
-
     /// <summary>Gets the histogram for session-entry codec operation duration in seconds.</summary>
     public const string SessionEntryCodecDuration = "agentkit.session.entry.codec.duration";
     /// <summary>Gets the counter for terminal session-entry codec outcomes.</summary>
@@ -214,12 +213,6 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for human-question publication duration in seconds.</summary>
     public const string HumanQuestionPublicationDuration = "agentkit.human_question.publication.duration";
 
-    /// <summary>Gets the counter for terminal task-delegation dispatch outcomes.</summary>
-    public const string TaskDelegationPublicationCount = "agentkit.task_delegation.publication.count";
-
-    /// <summary>Gets the histogram for task-delegation dispatch duration in seconds.</summary>
-    public const string TaskDelegationPublicationDuration = "agentkit.task_delegation.publication.duration";
-
     /// <summary>Gets the counter for terminal file-system host operations.</summary>
     public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
 
@@ -243,6 +236,12 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the histogram for provider HTTP request duration in seconds.</summary>
     public const string ProviderRequestDuration = "agentkit.provider.request.duration";
+
+    /// <summary>Gets the counter for terminal provider egress boundary outcomes.</summary>
+    public const string ProviderEgressCount = "agentkit.provider.egress.count";
+
+    /// <summary>Gets the histogram for provider egress boundary duration in seconds.</summary>
+    public const string ProviderEgressDuration = "agentkit.provider.egress.duration";
 
     /// <summary>Gets the counter for terminal language-query outcomes.</summary>
     public const string LanguageQueryCount = "agentkit.language.query.count";
@@ -305,9 +304,131 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal artifact coordinator outcomes.</summary>
     public const string ArtifactOperationCount = "agentkit.artifact.operation.count";
 
+    /// <summary>Gets the histogram for artifact coordinator operation duration in seconds.</summary>
+    public const string ArtifactOperationDuration = "agentkit.artifact.operation.duration";
+
+    /// <summary>Gets the counter for artifact event sink delivery failures.</summary>
+    /// <remarks>Failures are isolated; the counter carries only the bounded failure class.</remarks>
+    public const string ArtifactEventSinkFailureCount = "agentkit.artifact.event.sink.failure.count";
+
+    /// <summary>Gets the counter for terminal artifact store adapter operation outcomes.</summary>
+    public const string ArtifactStoreOperationCount = "agentkit.artifact.store.operation.count";
+
+    /// <summary>Gets the histogram for artifact store adapter operation duration in seconds.</summary>
+    public const string ArtifactStoreOperationDuration = "agentkit.artifact.store.operation.duration";
+
     /// <summary>Gets the counter for terminal MCP server operation outcomes.</summary>
     public const string McpServerOperationCount = "agentkit.mcp.server.operation.count";
 
+    /// <summary>Gets the counter for completed tool-call recorder writes.</summary>
+    /// <remarks>Dimensions are limited to the bounded record stage (accepted or terminal) and the bounded outcome.</remarks>
+    public const string ToolCallRecordCount = "agentkit.tool.call.record.count";
+
+    /// <summary>Gets the histogram of tool-call recorder write durations in seconds.</summary>
+    /// <remarks>Dimensions are limited to the bounded record stage and outcome; unknown or reversed timing records no value.</remarks>
+    public const string ToolCallRecordDuration = "agentkit.tool.call.record.duration";
+
+    /// <summary>Gets the counter for tool-invocation retry decisions.</summary>
+    /// <remarks>The only dimension is the bounded decision outcome.</remarks>
+    public const string ToolRetryCount = "agentkit.tool.retry.count";
+
+    /// <summary>Gets the counter for tool-event deliveries to sinks.</summary>
+    /// <remarks>The only dimension is the bounded delivery outcome: delivered or failed.</remarks>
+    public const string ToolEventPublishCount = "agentkit.tool.event.publish.count";
+
     /// <summary>Gets the counter for terminal built-in tool leaf invocations.</summary>
     public const string ToolLeafOperationCount = "agentkit.tool.leaf.operation.count";
+
+    /// <summary>Gets the counter for terminal goal-store operation outcomes.</summary>
+    /// <remarks>Dimensions are limited to the adapter name, the bounded operation, and the bounded outcome.</remarks>
+    public const string GoalStoreOperationCount = "agentkit.goal.store.operation.count";
+
+    /// <summary>Gets the histogram for goal-store operation duration in seconds.</summary>
+    public const string GoalStoreOperationDuration = "agentkit.goal.store.operation.duration";
+
+    /// <summary>Gets the counter for committed goal status transitions.</summary>
+    /// <remarks>Dimensions are the bounded source and target statuses.</remarks>
+    public const string GoalTransitionCount = "agentkit.goal.transition.count";
+
+    /// <summary>Gets the counter for terminal delegation outcomes.</summary>
+    public const string DelegationCount = "agentkit.delegation.count";
+
+    /// <summary>Gets the histogram for delegation duration in seconds.</summary>
+    public const string DelegationDuration = "agentkit.delegation.duration";
+
+    /// <summary>Gets the counter for join decisions.</summary>
+    /// <remarks>Dimensions are the bounded strategy key and decision kind.</remarks>
+    public const string GoalJoinDecisionCount = "agentkit.goal.join.decision.count";
+
+    /// <summary>Gets the counter for terminal worker drain outcomes.</summary>
+    public const string DelegationWorkerDrainCount = "agentkit.delegation.worker.drain.count";
+
+    /// <summary>Gets the counter for terminal agent-to-agent message admission outcomes.</summary>
+    public const string AgentMessageCount = "agentkit.agent.message.count";
+
+    /// <summary>Gets the counter for terminal memory, document, and vector store operation outcomes.</summary>
+    /// <remarks>Dimensions are limited to the adapter name, the state family, the bounded operation, and the bounded outcome.</remarks>
+    public const string MemoryStoreOperationCount = "agentkit.memory.store.operation.count";
+
+    /// <summary>Gets the histogram for memory, document, and vector store operation duration in seconds.</summary>
+    public const string MemoryStoreOperationDuration = "agentkit.memory.store.operation.duration";
+
+    /// <summary>Gets the counter for terminal memory coordinator outcomes.</summary>
+    /// <remarks>Dimensions are the bounded operation and the bounded outcome.</remarks>
+    public const string MemoryOperationCount = "agentkit.memory.operation.count";
+
+    /// <summary>Gets the histogram for memory coordinator operation duration in seconds.</summary>
+    public const string MemoryOperationDuration = "agentkit.memory.operation.duration";
+
+    /// <summary>Gets the counter for terminal retrieval outcomes.</summary>
+    /// <remarks>The only dimension is the bounded outcome.</remarks>
+    public const string RetrievalCount = "agentkit.retrieval.count";
+
+    /// <summary>Gets the histogram for retrieval pipeline duration in seconds.</summary>
+    public const string RetrievalDuration = "agentkit.retrieval.duration";
+
+    /// <summary>Gets the histogram for the number of candidates one retrieval exposed.</summary>
+    public const string RetrievalCandidates = "agentkit.retrieval.candidates";
+
+    /// <summary>Gets the counter for candidates a retrieval omitted.</summary>
+    /// <remarks>The only dimension is the bounded omission reason.</remarks>
+    public const string RetrievalOmittedCount = "agentkit.retrieval.omitted.count";
+
+    /// <summary>Gets the counter for run events delivered to an observation sink.</summary>
+    /// <remarks>Dimensions are the exporter key, the bounded event kind, and the bounded outcome.</remarks>
+    public const string ObservationRunEventCount = "agentkit.observation.run_event.count";
+
+    /// <summary>Gets the counter for security audit records delivered to an observation sink.</summary>
+    /// <remarks>Dimensions are the exporter key, the bounded audit event kind, and the bounded outcome.</remarks>
+    public const string ObservationAuditRecordCount = "agentkit.observation.audit_record.count";
+
+    /// <summary>Gets the counter for captured content fields an observation sink omitted.</summary>
+    /// <remarks>Dimensions are the exporter key, the bounded content kind, and the bounded omission reason.</remarks>
+    public const string ObservationContentOmittedCount = "agentkit.observation.content.omitted.count";
+
+    /// <summary>Gets the counter for terminal evaluation run outcomes.</summary>
+    /// <remarks>The only dimension is the bounded run outcome.</remarks>
+    public const string EvaluationRunCount = "agentkit.evaluation.run.count";
+
+    /// <summary>Gets the counter for terminal evaluation case repetition dispositions.</summary>
+    /// <remarks>The only dimension is the bounded case disposition.</remarks>
+    public const string EvaluationCaseCount = "agentkit.evaluation.case.count";
+
+    /// <summary>Gets the histogram for evaluation case repetition duration in seconds.</summary>
+    public const string EvaluationCaseDuration = "agentkit.evaluation.case.duration";
+
+    /// <summary>Gets the counter for terminal evaluator invocation outcomes.</summary>
+    /// <remarks>Dimensions are the configured evaluator key and the bounded evaluation outcome.</remarks>
+    public const string EvaluationEvaluatorCount = "agentkit.evaluation.evaluator.count";
+
+    /// <summary>Gets the counter for terminal report export outcomes.</summary>
+    /// <remarks>Dimensions are the configured exporter key and the bounded outcome.</remarks>
+    public const string EvaluationExportCount = "agentkit.evaluation.export.count";
+
+    /// <summary>Gets the counter for terminal evaluation result-store operation outcomes.</summary>
+    /// <remarks>Dimensions are limited to the adapter name, the bounded operation, and the bounded outcome.</remarks>
+    public const string EvaluationStoreOperationCount = "agentkit.evaluation.store.operation.count";
+
+    /// <summary>Gets the histogram for evaluation result-store operation duration in seconds.</summary>
+    public const string EvaluationStoreOperationDuration = "agentkit.evaluation.store.operation.duration";
 }

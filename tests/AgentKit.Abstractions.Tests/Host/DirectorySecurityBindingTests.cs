@@ -9,13 +9,16 @@ using AgentKit;
 public sealed class DirectorySecurityBindingTests
 {
     [Fact]
-    public void DirectorySecurityBinding_WhenContinuationChanges_ChangesFingerprint()
-    {
-        var path = new FileSystemPath("src");
-        var first = DirectorySecurityBinding.Fingerprint(path, 10, null);
-        var resumed = DirectorySecurityBinding.Fingerprint(path, 10, new DirectoryEnumerationCursor(new ContentHash("sha256:snapshot"), 2));
-        resumed.ShouldNotBe(first);
-    }
+    public void Fingerprint_WhenPathChanges_ChangesFingerprint() =>
+        DirectorySecurityBinding.Fingerprint(new FileSystemPath("src")).ShouldNotBe(DirectorySecurityBinding.Fingerprint(new FileSystemPath("docs")));
+
+    [Fact]
+    public void Fingerprint_WhenPathIsNull_BindsTheRootDirectory() =>
+        DirectorySecurityBinding.Fingerprint(null).ShouldBe(DirectorySecurityBinding.Fingerprint(null));
+
+    [Fact]
+    public void Fingerprint_WhenPathIsNull_DiffersFromAChildDirectory() =>
+        DirectorySecurityBinding.Fingerprint(null).ShouldNotBe(DirectorySecurityBinding.Fingerprint(new FileSystemPath("src")));
 
     [Fact]
     public void Resource_WhenPathIsNull_ReturnsRootResource() =>

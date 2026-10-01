@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddGlobTool(Action<GlobToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<GlobToolOptions>()
                 .Validate(static value => value.DefaultMaximumDepth > 0, "DefaultMaximumDepth must be positive.")
                 .Validate(static value => value.MaximumDepth > 0, "MaximumDepth must be positive.")

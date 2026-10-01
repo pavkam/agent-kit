@@ -3,7 +3,6 @@
 
 namespace AgentKit.Tests;
 
-using AgentKit.IO;
 using AgentKit.TestSupport;
 
 public sealed class AgentCancelAttachTests
@@ -132,10 +131,7 @@ public sealed class AgentCancelAttachTests
     {
         var builder = CompositionTestData.SendableBuilder(loop, sessions);
         _ = builder.Services.AddLogging();
-        _ = builder.Services.AddSessionBackedInputQueue();
-        _ = builder.Services.AddAgentIO(
-            AgentIOComponentDefaults.InputCoordinatorKey,
-            AgentIOComponentDefaults.OutputPublisherKey);
+        CompositionTestData.UseFirstPartyIo(builder.Services);
         return builder.Build();
     }
 }

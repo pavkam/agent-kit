@@ -12,14 +12,16 @@ internal static class TestEditComposition
     internal static EditTool CreateTool(
         IFileSnapshotReader snapshotReader,
         IAtomicFileReplacer replacer,
-        ISecurityAuthority authority) =>
-        CreateTool(snapshotReader, replacer, authority, new EditToolOptions());
+        ISecurityAuthority authority,
+        ILogger<EditTool>? logger = null) =>
+        CreateTool(snapshotReader, replacer, authority, new EditToolOptions(), logger);
 
     internal static EditTool CreateTool(
         IFileSnapshotReader snapshotReader,
         IAtomicFileReplacer replacer,
         ISecurityAuthority authority,
-        EditToolOptions options)
+        EditToolOptions options,
+        ILogger<EditTool>? logger = null)
     {
         var profileKey = options.ProfileKey;
         var services = new ServiceCollection();
@@ -32,6 +34,7 @@ internal static class TestEditComposition
             new SequenceSecurityRequestIdGenerator(),
             new StubMutationIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(options));
+            Options.Create(options),
+            logger ?? NullLogger<EditTool>.Instance);
     }
 }

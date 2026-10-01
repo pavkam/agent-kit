@@ -6,7 +6,7 @@ namespace AgentKit;
 /// <summary>The category of a failure encountered while processing one output candidate.</summary>
 public enum OutputValidationFailureKind
 {
-    /// <summary>The definition's <see cref="OutputMode"/> is not yet supported by this processor.</summary>
+    /// <summary>The definition's <see cref="OutputMode"/> is not supported by this processor.</summary>
     UnsupportedMode,
 
     /// <summary>The definition requires a schema for its mode, but none was declared.</summary>

@@ -8,12 +8,6 @@ namespace AgentKit.Mcp.Client
         public DefaultMcpTransportFactoryCatalog(System.IServiceProvider services) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportFactoryResolution> ResolveAsync(AgentKit.Mcp.McpTransportProfile transportProfile, System.Threading.CancellationToken cancellationToken) { }
     }
-    public sealed class HttpMcpTransportFactory : AgentKit.Mcp.IMcpTransportFactory
-    {
-        public HttpMcpTransportFactory(AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher audit, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.IServiceProvider services, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) { }
-        public System.Type TransportProfileType { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpTransportOpenResult> OpenAsync(AgentKit.Mcp.McpTransportOpenRequest request, System.Threading.CancellationToken cancellationToken) { }
-    }
     public sealed class McpCapabilityProfileOptions
     {
         public McpCapabilityProfileOptions() { }
@@ -28,7 +22,10 @@ namespace AgentKit.Mcp.Client
     {
         public McpClientOptions() { }
         public System.TimeSpan HandshakeTimeout { get; set; }
+        public AgentKit.NetworkDataClassification HttpDataClassification { get; set; }
+        public System.TimeSpan HttpStreamTimeout { get; set; }
         public int MaximumFrameBytes { get; set; }
+        public long MaximumHttpResponseBytes { get; set; }
         public int MaximumInFlightRequests { get; set; }
         public int MaximumMessageBytes { get; set; }
         public System.TimeSpan RequestTimeout { get; set; }

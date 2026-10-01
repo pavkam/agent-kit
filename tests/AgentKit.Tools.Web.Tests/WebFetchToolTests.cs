@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Web.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class WebFetchToolTests
@@ -14,7 +18,6 @@ public sealed class WebFetchToolTests
     [InlineData(/*lang=json,strict*/ "{\"url\":\"https://example.test/#fragment\"}")]
     [InlineData(/*lang=json,strict*/ "{\"url\":\"https://example.test/\",\"maximum_characters\":0}")]
     [InlineData(/*lang=json,strict*/ "{\"url\":\"https://[fe80::1%25eth0]/\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrNetwork(string json)
     {
         var fixture = new Fixture();
@@ -30,7 +33,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionAuthorityDenies_PerformsNoNetworkPhase()
     {
         var fixture = new Fixture { Authority = { DenyAtRequest = 1 } };
@@ -46,7 +48,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHtmlResponseAuthorized_UsesExactTwoPhaseEvidenceAndProjectsUntrustedText()
     {
         var fixture = new Fixture();
@@ -75,7 +76,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCrossOriginRedirected_ObtainsFreshResolutionAndSendGrants()
     {
         var fixture = new Fixture();
@@ -99,7 +99,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSendAuthorityDenies_PerformsResolutionButNoSend()
     {
         var fixture = new Fixture { Authority = { DenyAtRequest = 2 } };
@@ -115,7 +114,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProjectionLimitReached_ReportsExplicitTruncation()
     {
         var fixture = new Fixture();
@@ -131,7 +129,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentEncodingCompressed_RejectsBeforeReadingBody()
     {
         var fixture = new Fixture();
@@ -149,7 +146,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHttpError_PreservesBoundedUntrustedResponseEvidence()
     {
         var fixture = new Fixture();
@@ -170,7 +166,6 @@ public sealed class WebFetchToolTests
     [Theory]
     [InlineData(3)]
     [InlineData(4)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDeniesAfterRedirect_PreservesPriorEgress(int denialRequest)
     {
         var fixture = new Fixture { Authority = { DenyAtRequest = denialRequest } };
@@ -189,7 +184,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenOverallDeadlineElapsesBeforeFirstResolution_ReturnsTimedOut()
     {
         var calls = 0;
@@ -207,7 +201,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionFails_ProjectsResolverFailureKind()
     {
         var fixture = new Fixture();
@@ -223,7 +216,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResolutionDenied_ReturnsDenied()
     {
         var fixture = new Fixture();
@@ -238,7 +230,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenRedirectLimitExceeded_ReturnsRedirectLimitFailure()
     {
         var fixture = new Fixture(options: new WebFetchToolOptions { MaximumRedirects = 0 });
@@ -254,7 +245,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenRedirectTargetsAnUnsupportedScheme_RejectsInsteadOfAdoptingItVerbatim()
     {
         // TryDestination rejects non-http(s) schemes, userinfo, and fragments for the initial URL, but
@@ -286,7 +276,6 @@ public sealed class WebFetchToolTests
     [InlineData(NetworkFailureKind.ConnectionFailed, ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(NetworkFailureKind.TlsFailure, ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(NetworkFailureKind.Unknown, ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSendFailsWithEachFailureKind_ProjectsTerminalStatus(NetworkFailureKind kind, ToolTerminalStatus expectedStatus, ToolCallOutcomeKind expectedKind)
     {
         var fixture = new Fixture();
@@ -302,7 +291,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSendDenied_ReturnsDenied()
     {
         var fixture = new Fixture();
@@ -318,7 +306,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResponseLimitExceeded_ReturnsResponseLimitFailure()
     {
         var fixture = new Fixture();
@@ -334,7 +321,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSendReportsRedirectLimitExceeded_ReturnsRedirectLimitFailure()
     {
         var fixture = new Fixture();
@@ -350,7 +336,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSendCancelled_ReturnsCancelledStatus()
     {
         var fixture = new Fixture();
@@ -366,7 +351,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResponseBodyTooLarge_ReturnsResponseLimitFailure()
     {
         var fixture = new Fixture();
@@ -384,7 +368,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenResponseBodyTimesOut_ReturnsTimedOut()
     {
         var fixture = new Fixture();
@@ -401,7 +384,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHeaderCountExceedsBound_ReturnsHeaderLimitFailure()
     {
         var fixture = new Fixture(options: new WebFetchToolOptions { MaximumHeaderCount = 1 });
@@ -417,7 +399,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenHeaderCharactersExceedBound_ReturnsHeaderLimitFailure()
     {
         var fixture = new Fixture(options: new WebFetchToolOptions { MaximumHeaderCharacters = 5 });
@@ -433,7 +414,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentIsUnsupportedMediaType_ReturnsUnsupportedContentFailure()
     {
         var fixture = new Fixture();
@@ -451,7 +431,6 @@ public sealed class WebFetchToolTests
     [Theory]
     [InlineData("bad-url")]
     [InlineData("ftp://example.test/")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenUrlSchemeUnsupportedOrMalformed_RejectsBeforeAuthorization(string url)
     {
         var fixture = new Fixture();
@@ -465,7 +444,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTimeoutMsIsInvalid_RejectsBeforeAuthorization()
     {
         var fixture = new Fixture();
@@ -479,7 +457,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTimeoutMsExceedsMaximum_RejectsBeforeAuthorization()
     {
         var fixture = new Fixture(options: new WebFetchToolOptions { DefaultTimeout = TimeSpan.FromSeconds(1), MaximumTimeout = TimeSpan.FromSeconds(5) });
@@ -493,7 +470,6 @@ public sealed class WebFetchToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTimeoutMsSuppliedAndValid_UsesRequestedTimeout()
     {
         var fixture = new Fixture();
@@ -557,7 +533,7 @@ public sealed class WebFetchToolTests
     private static JsonDocument ResultJson(ToolInvocationResult result) =>
         JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
@@ -574,7 +550,7 @@ public sealed class WebFetchToolTests
         DateTimeOffset.UnixEpoch), WebFetchTool.Descriptor);
     private sealed class Fixture
     {
-        internal Fixture(TimeProvider? clock = null, WebFetchToolOptions? options = null)
+        internal Fixture(TimeProvider? clock = null, WebFetchToolOptions? options = null, ILogger<WebFetchTool>? logger = null)
         {
             Store = new StrictGrantStore();
             Authority = new RecordingSecurityAuthority(Store);
@@ -587,7 +563,8 @@ public sealed class WebFetchToolTests
                 new SequenceSecurityRequestIdGenerator(),
                 new SequenceNetworkOperationIdGenerator(),
                 clock ?? new FixedTimeProvider(),
-                Options.Create(options ?? new WebFetchToolOptions()));
+                Options.Create(options ?? new WebFetchToolOptions()),
+                logger ?? NullLogger<WebFetchTool>.Instance);
         }
 
         internal NetworkDestination Origin { get; } = Destination("example.test", "/");
@@ -602,5 +579,29 @@ public sealed class WebFetchToolTests
             Resolver.Script(destination, new NetworkResolved([Address()]));
             Transport.Script(destination, Response(body, mediaType, 200));
         }
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<WebFetchTool>();
+        var tool = new Fixture(logger: logger).Tool;
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), WebFetchTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(34300);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
     }
 }

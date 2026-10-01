@@ -148,18 +148,25 @@ public static class ArgumentExceptionExtensions
             }
         }
 
-        /// <summary>Throws when an unsuccessful grant-consumption status carries a permission-to-start receipt.</summary>
+        /// <summary>Throws when a grant-consumption status and its permission-to-start receipt disagree.</summary>
         /// <param name="status">The terminal grant-consumption status.</param>
         /// <param name="receipt">The optional enforcement-intent receipt.</param>
         /// <param name="paramName">The receipt parameter name inferred from the call-site expression when omitted.</param>
-        /// <exception cref="ArgumentException"><paramref name="receipt"/> is non-null and <paramref name="status"/> is neither newly consumed nor reconciled.</exception>
+        /// <exception cref="ArgumentException"><paramref name="receipt"/> is null for a newly consumed or reconciled status, or non-null for any other status.</exception>
         public static void ThrowIfInvalidIntentReceipt(
             GrantConsumptionStatus status,
             SecurityEnforcementIntentReceipt? receipt,
             [CallerArgumentExpression(nameof(receipt))] string? paramName = null)
         {
-            if (status is not (GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
-                && receipt is not null)
+            var mayCarryReceipt = status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled;
+            if (mayCarryReceipt && receipt is null)
+            {
+                throw new ArgumentException(
+                    "A newly consumed or reconciled result must carry its enforcement-intent receipt.",
+                    paramName);
+            }
+
+            if (!mayCarryReceipt && receipt is not null)
             {
                 throw new ArgumentException(
                     "Only a newly consumed or reconciled result may carry an enforcement-intent receipt.",
@@ -744,6 +751,49 @@ public static class ArgumentExceptionExtensions
             if (!uri.IsAbsoluteUri)
             {
                 throw new ArgumentException("Value must be an absolute URI.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a locator is not a stable unsigned absolute URI.</summary>
+        /// <param name="uri">The candidate canonical locator.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="uri"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, or carries user information, a query, or a fragment, any of which could hold a credential or signature.</exception>
+        public static void ThrowIfNotStableUnsignedUri(
+            Uri uri,
+            [CallerArgumentExpression(nameof(uri))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(uri, paramName);
+            if (!uri.IsAbsoluteUri
+                || !string.IsNullOrEmpty(uri.UserInfo)
+                || !string.IsNullOrEmpty(uri.Query)
+                || !string.IsNullOrEmpty(uri.Fragment))
+            {
+                throw new ArgumentException(
+                    "Value must be an absolute URI without user information, query, or fragment.",
+                    paramName);
+            }
+        }
+
+        /// <summary>Throws when artifact external-ownership evidence disagrees with the ownership class or mutability.</summary>
+        /// <param name="ownership">The declared ownership class.</param>
+        /// <param name="mutability">The declared versioning behavior.</param>
+        /// <param name="externalOwnership">The external ownership evidence, or <see langword="null"/>.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException">Evidence is present without <see cref="ArtifactOwnershipKind.External"/>, absent with it, or <see cref="ArtifactMutability.ExternallyManaged"/> is declared without evidence.</exception>
+        public static void ThrowIfInvalidArtifactExternalOwnership(
+            ArtifactOwnershipKind ownership,
+            ArtifactMutability mutability,
+            ExternalArtifactOwnership? externalOwnership,
+            [CallerArgumentExpression(nameof(externalOwnership))] string? paramName = null)
+        {
+            var isExternal = ownership == ArtifactOwnershipKind.External;
+            var hasEvidence = externalOwnership is not null;
+            if (isExternal != hasEvidence || (mutability == ArtifactMutability.ExternallyManaged && !hasEvidence))
+            {
+                throw new ArgumentException(
+                    "External ownership evidence is required exactly for externally owned or externally managed artifacts.",
+                    paramName);
             }
         }
 

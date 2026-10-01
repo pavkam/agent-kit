@@ -12,11 +12,6 @@ public sealed partial class InMemoryFileSystem
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        if (_hostAuditDispatcher is null || _hostAuditRecordIds is null)
-        {
-            return new FileReadOpenDenied("Host audit is not configured for this in-memory volume.");
-        }
-
         var path = VirtualPath(operation.ResolvedTarget);
         var enforcement = FileSystemEnforcementReceipt.Create(
             operation.Grant,
@@ -69,11 +64,6 @@ public sealed partial class InMemoryFileSystem
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(content);
-        if (_hostAuditDispatcher is null || _hostAuditRecordIds is null)
-        {
-            return new FileWriteDenied("Host audit is not configured for this in-memory volume.");
-        }
-
         var payload = content.Payload;
         var payloadFingerprint = FileSecurityBinding.ContentFingerprint(payload.Span);
         if (payloadFingerprint != content.PayloadFingerprint
@@ -114,7 +104,19 @@ public sealed partial class InMemoryFileSystem
 
         lock (_gate)
         {
+            if (_directories.Contains(path))
+            {
+                return new FileWriteFailed("The target is a directory.");
+            }
+
             var exists = _files.ContainsKey(path);
+            if (!exists
+                && operation.Disposition is FileWriteDisposition.CreateOnly or FileWriteDisposition.CreateOrReplace
+                && !DirectoryExists(ParentDirectory(path)))
+            {
+                return new FileWriteFailed("A parent directory does not exist.");
+            }
+
             ContentHash? currentFingerprint = exists
                 ? FileSecurityBinding.ContentFingerprint(_files[path].AsSpan())
                 : null;
@@ -152,11 +154,6 @@ public sealed partial class InMemoryFileSystem
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        if (_hostAuditDispatcher is null || _hostAuditRecordIds is null)
-        {
-            return new FileMetadataDenied("Host audit is not configured for this in-memory volume.");
-        }
-
         var path = VirtualPath(operation.ResolvedTarget);
         var fsPath = new FileSystemPath(VirtualPath(operation.ResolvedTarget));
         var enforcement = FileSystemEnforcementReceipt.Create(
@@ -199,11 +196,6 @@ public sealed partial class InMemoryFileSystem
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        if (_hostAuditDispatcher is null || _hostAuditRecordIds is null)
-        {
-            return new DirectoryCreateDenied("Host audit is not configured for this in-memory volume.");
-        }
-
         var path = operation.ResolvedTarget.RelativePath.Value;
         var fsPath = new FileSystemPath(path);
         var enforcement = FileSystemEnforcementReceipt.Create(

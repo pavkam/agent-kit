@@ -26,6 +26,8 @@ internal sealed class FakeToolExecutor: IToolExecutor
     /// <summary>Gets every request this fake received, in call order.</summary>
     public List<ToolCallRequest> ReceivedRequests { get; } = [];
 
+    public List<ToolExecutionCapability> ReceivedCapabilities { get; } = [];
+
     /// <inheritdoc/>
     public async Task<ToolBatchResult> ExecuteAsync(
         IToolCatalogCapture capture,
@@ -35,6 +37,7 @@ internal sealed class FakeToolExecutor: IToolExecutor
     {
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(capability);
+        ReceivedCapabilities.Add(capability);
         var results = ImmutableArray.CreateBuilder<ToolCallResult>(calls.Length);
         foreach (var call in calls)
         {

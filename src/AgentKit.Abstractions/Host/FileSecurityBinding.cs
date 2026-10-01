@@ -30,9 +30,10 @@ public static class FileSecurityBinding
         return new(ProtectedResourceKind.File, $"{target.RootId.Value}/{target.RelativePath.Value}");
     }
 
-    /// <summary>Computes the exact normalized input fingerprint for a file read.</summary>
-    /// <param name="path">The path whose content or metadata may be observed.</param>
+    /// <summary>Computes the exact normalized input fingerprint for a path-addressed file observation.</summary>
+    /// <param name="path">The path whose metadata or existence may be observed.</param>
     /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
+    /// <remarks>Metadata reads and directory creation bind to the path alone; content reads bind through <see cref="ReadFingerprint(FileReadRequest)"/>, which also carries the byte bound.</remarks>
     public static InputFingerprint ReadFingerprint(FileSystemPath path) => Hash(
         JsonSerializer.SerializeToUtf8Bytes(new { operation = "read", path = path.Value }));
 
@@ -206,33 +207,6 @@ public static class FileSecurityBinding
     /// <returns>The algorithm-qualified lowercase fingerprint.</returns>
     public static ContentHash ContentFingerprint(ReadOnlySpan<byte> content) => new(
         $"sha256:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant()}");
-
-    /// <summary>Computes the exact normalized input fingerprint for a text-file write.</summary>
-    /// <param name="path">The write target.</param>
-    /// <param name="content">The exact UTF-16 application text that will be encoded as UTF-8.</param>
-    /// <param name="mode">The required target-state disposition.</param>
-    /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> is undefined.</exception>
-    public static InputFingerprint WriteFingerprint(FileSystemPath path, string content, FileWriteMode mode)
-    {
-        ArgumentNullException.ThrowIfNull(content);
-        ArgumentOutOfRangeException.ThrowIfUndefined(mode);
-        return Hash(JsonSerializer.SerializeToUtf8Bytes(new { operation = "write", path = path.Value, content, mode }));
-    }
-
-    /// <summary>Maps a file disposition to the exact security effect it requires.</summary>
-    /// <param name="mode">The explicit write disposition.</param>
-    /// <returns>The corresponding create, create-or-replace, or append effect.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> is undefined.</exception>
-    public static SecurityEffect WriteEffect(FileWriteMode mode) => mode switch
-    {
-        FileWriteMode.CreateOrOverwrite => SecurityEffect.CreateOrReplace,
-        FileWriteMode.CreateNew => SecurityEffect.Create,
-        FileWriteMode.ReplaceExisting => SecurityEffect.Replace,
-        FileWriteMode.Append => SecurityEffect.Append,
-        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Undefined file write mode."),
-    };
 
     private static InputFingerprint Hash(ReadOnlySpan<byte> bytes) =>
         new($"sha256:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()}");

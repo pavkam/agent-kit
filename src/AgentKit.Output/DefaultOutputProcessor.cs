@@ -12,14 +12,12 @@ using System.Diagnostics;
 /// </summary>
 /// <remarks>
 /// <para>
-/// See <see cref="IOutputProcessor"/> for the reduced-scope rationale
-/// shared by every implementation of this contract. This implementation
-/// additionally consolidates candidate extraction, structural schema
+/// This implementation consolidates candidate extraction, structural schema
 /// validation, deserialization, and repair-instruction construction into
 /// one class rather than the separately injectable
 /// extractor/validator-catalog/repair-policy/deserializer collaborators the
 /// full architecture describes: none of those sub-steps are part of this
-/// reduced package's public, independently replaceable surface (only
+/// package's public, independently replaceable surface (only
 /// <see cref="IOutputProcessor"/> and <see cref="IOutputValidator"/> are),
 /// so one cohesive, thoroughly tested class is more tractable than an
 /// internal multi-interface pipeline with no external replaceability

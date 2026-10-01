@@ -15,29 +15,42 @@ public sealed class ToolBatchEntryTests
     {
         var invocation = InvocationContext();
         var lease = InvokerLease();
-        var hints = ExecutionHints();
-        var entry = new ToolBatchEntry(invocation, lease, hints, 4);
+        var prepared = PreparedCall(sourceOrdinal: 4);
+        var accepted = AcceptedCall(sourceOrdinal: 4);
+        var entry = new ToolBatchEntry(invocation, lease, prepared, accepted);
         entry.Invocation.ShouldBe(invocation);
         entry.InvokerLease.ShouldBeSameAs(lease);
-        entry.ExecutionHints.ShouldBe(hints);
+        entry.Prepared.ShouldBe(prepared);
+        entry.Accepted.ShouldBe(accepted);
+        entry.ExecutionHints.ShouldBe(prepared.ExecutionPlan.Scheduling);
         entry.SourceOrdinal.ShouldBe(4);
     }
 
     [Fact]
     public void Constructor_WhenInvocationIsNull_ThrowsExactParameter() =>
-        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(null!, InvokerLease(), ExecutionHints(), 0)).ParamName.ShouldBe("invocation");
+        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(null!, InvokerLease(), PreparedCall(), AcceptedCall())).ParamName.ShouldBe("invocation");
 
     [Fact]
     public void Constructor_WhenInvokerLeaseIsNull_ThrowsExactParameter() =>
-        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(InvocationContext(), null!, ExecutionHints(), 0)).ParamName.ShouldBe("invokerLease");
+        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(InvocationContext(), null!, PreparedCall(), AcceptedCall())).ParamName.ShouldBe("invokerLease");
 
     [Fact]
-    public void Constructor_WhenExecutionHintsIsNull_ThrowsExactParameter() =>
-        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(InvocationContext(), InvokerLease(), null!, 0)).ParamName.ShouldBe("executionHints");
+    public void Constructor_WhenPreparedIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(InvocationContext(), InvokerLease(), null!, AcceptedCall())).ParamName.ShouldBe("prepared");
 
     [Fact]
-    public void Constructor_WhenSourceOrdinalIsNegative_ThrowsExactParameter() =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new ToolBatchEntry(InvocationContext(), InvokerLease(), ExecutionHints(), -1)).ParamName.ShouldBe("sourceOrdinal");
+    public void Constructor_WhenAcceptedIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new ToolBatchEntry(InvocationContext(), InvokerLease(), PreparedCall(), null!)).ParamName.ShouldBe("accepted");
+
+    [Fact]
+    public void Constructor_WhenAcceptedNamesAnotherTool_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new ToolBatchEntry(
+            InvocationContext(), InvokerLease(), PreparedCall(), AcceptedCall(Descriptor(new ToolId("other"))))).ParamName.ShouldBe("accepted");
+
+    [Fact]
+    public void Constructor_WhenPreparedNamesAnotherToolVersion_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new ToolBatchEntry(
+            InvocationContext(), InvokerLease(), PreparedCall(Descriptor(version: new ToolVersion("2.0"))), AcceptedCall())).ParamName.ShouldBe("prepared");
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()

@@ -3,7 +3,7 @@
 
 namespace AgentKit.Context.Compaction;
 
-/// <summary>Placeholder run coordinator used only to construct legacy session capabilities.</summary>
+/// <summary>Inert run coordinator used to construct the session capability for the two-argument compaction path, which never acquires run leases.</summary>
 internal sealed class InertSessionRunCoordinator: ISessionRunCoordinator
 {
     /// <summary>Gets the shared inert instance.</summary>

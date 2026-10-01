@@ -1,6 +1,6 @@
 # AgentKit.Tools.Task
 
-Request bounded task delegation through the delegation broker.
+Request bounded task delegation through the delegation coordinator.
 
 Use this tool when an agent assigns scoped work to another agent. The host
 supplies delegation policy and execution machinery; tool invocation alone does
@@ -20,8 +20,8 @@ described in the [composition guide](../../docs/guides/composition.md).
 
 - [AgentKit.Tools](../AgentKit.Tools/README.md) — catalog, validate, authorize,
   and invoke application tools.
-- [AgentKit.Goals](../AgentKit.Goals/README.md) — coordinate protected
-  task-delegation requests.
+- [AgentKit.Goals](../AgentKit.Goals/README.md) — coordinate goals, delegation,
+  and joins.
 - [AgentKit.Budgets](../AgentKit.Budgets/README.md) — reserve and account for
   capacity across hierarchical budget scopes.
 
@@ -37,8 +37,8 @@ projects above are composition collaborators, not necessarily dependencies.
   ownership and contracts.
 - [Coding-harness tools](../../docs/profiles/coding-harness/coding-harness-built-in-tools.md)
   — the application profile for these features.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

@@ -21,6 +21,32 @@ there is no allow-list authorizer in this runtime. Build model-facing
 [ToolDescriptorExtensions.cs](ToolDescriptorExtensions.cs) and
 [ToolDescriptorCollectionExtensions.cs](ToolDescriptorCollectionExtensions.cs).
 
+## Recording, execution policy, retries, and events
+
+The executor commits an accepted-call record through the run's
+`IToolCallRecorder` before any invoker starts and a terminal record after it; a
+call whose accepted record cannot be made durable fails closed with no effect.
+`SessionToolCallRecorder` is the default: it appends
+`ToolCallAcceptedSessionEntry` and a content-free `ToolCallTerminalSessionEntry`
+through the run's session capability and installs no store. Keyed executors
+resolve the recorder registered under their exact `ComponentKey<IToolExecutor>`;
+`AddAgentTools(key)` registers the default under that key, and
+`AddToolCallRecorder` / `ReplaceToolCallRecorder` select another.
+
+Each call's captured `ToolExecutionPolicyReference` is selected by exact key and
+revision through `IToolExecutionPolicySelector`; `AddToolExecutionPolicy` and
+`ReplaceToolExecutionPolicy` register policies and `AddAgentTools` registers
+`DefaultToolExecutionPolicy` for the `standard` family at revision one, the
+reference every first-party tool names. A policy plans scheduling, the
+per-attempt deadline, `ToolRetryPolicy` pacing, and normalization. Retries
+follow the plan only for read-only calls, calls known not to have started, and
+possibly-started mutations whose descriptor declares idempotency and whose
+invoker implements `IIdempotencyEnforcingToolInvoker`. `AddToolEventSink`
+registers observational `IToolEventSink` implementations that receive
+content-free `ToolEvent` values through `ToolEventDispatcher`; a sink failure or
+timeout never changes an outcome. `AddAgentTools` needs the engine-wide
+`IRandomizerFactory` that the `AgentKit` facade registers.
+
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).
@@ -73,8 +99,8 @@ unrelated typed, string, keyed, and unkeyed registrations without activation.
 Registration order does not select a source or an execution-policy version.
 
 This view supplies selection evidence for catalog discovery. The source
-discovery owner described below retains acquisitions through the remaining
-schema/capability preflight and legacy `IToolCatalog` migration.
+discovery owner described below retains acquisitions through merge and
+schema/capability preflight.
 
 ## Discovery ownership
 
@@ -101,10 +127,10 @@ captured publications without rereading live snapshot getters. Disposing the old
 discovery owner cannot close the transferred catalog or its leases. Repeated
 disposal shares completion and failure without retrying cleanup.
 
-This completes source acquisition and cleanup ownership. Canonical schema
-integration and model-capability preflight and replacement of the legacy
-`IToolCatalog` path remain open; discovery alone does not make a catalog ready
-for model exposure.
+This completes source acquisition and cleanup ownership. Discovery alone does
+not make a catalog ready for model exposure: `ToolCatalogCoordinator` runs merge
+and canonical schema preflight over the retained discovery before it publishes a
+capture.
 
 ## Canonical schema validation
 
@@ -124,9 +150,10 @@ provider downgrade. Bounds include raw UTF-8 bytes, depth, nodes, and total
 comparison work; each concurrent validation gets a separate budget.
 
 `ReplaceToolSchemaEngine<TEngine>()` explicitly replaces unkeyed registrations
-while preserving keyed engines, old hosts, and compiled handles. Catalog
-integration, provider/model translation preflight, and bounded argument parsing
-remain separate pending stages.
+while preserving keyed engines, old hosts, and compiled handles. The catalog
+coordinator preflights every merged descriptor's schemas through this engine,
+and the executor validates each call's arguments through
+`IToolArgumentValidator`; provider/model translation stays a separate boundary.
 
 ## Catalog collision policy
 
@@ -160,9 +187,9 @@ suppressing another cleanup or retrying a previous one. Callers release their
 leases before awaiting catalog closure. Borrowed invokers keep their original
 disposal owner.
 
-This object supplies retained catalog lifetime. Schema/capability preflight and
-replacement of the legacy `IToolCatalog` coordinator remain separate work;
-`AddAgentTools` still selects the legacy runtime.
+This object supplies retained catalog lifetime. `ToolCatalogCoordinator` builds
+it, and `AddAgentTools` registers the coordinator as `IToolCatalog` so
+`CaptureAsync` returns one owned capture per run.
 
 ## Retained source captures
 
@@ -186,10 +213,9 @@ source resources; a null lifetime leaves them under external host ownership.
 Acquisition, release, closure, and cleanup emit isolated structured logs,
 activities, and bounded operation/outcome metrics without descriptor content.
 
-The existing `AddAgentTools` path still uses the legacy catalog and combined
-invoker. Catalog coordination, canonical resolution/invocation, and loop
-integration remain under construction; source and catalog captures supply their
-retained binding and lifetime boundaries.
+Source and catalog captures supply the retained binding and lifetime boundaries
+that `DefaultToolExecutor` resolves and invokes through; invokers return raw
+attempt evidence and the executor owns normalization and terminal construction.
 
 ## Retained projection policies
 
@@ -214,8 +240,8 @@ instances, and rejects opaque snapshot registrations before changing services.
 It must not rewrite policy content required by retained results.
 
 Lookup emits content-free reference metadata, isolated activities/logs, and
-bounded outcome/count/duration metrics. The complete tool-result projector and
-executor integration remain under construction.
+bounded outcome/count/duration metrics. `DefaultToolExecutor` projects each
+terminal result through the policy its execution-policy reference names.
 
 ## Related projects
 
@@ -239,8 +265,8 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/tools.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

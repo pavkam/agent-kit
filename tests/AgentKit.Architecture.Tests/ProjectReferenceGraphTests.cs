@@ -92,7 +92,11 @@ public sealed class ProjectReferenceGraphTests
             ("AgentKit.Mcp.Client", ["AgentKit.Mcp"]),
             ("AgentKit.Observability.OpenTelemetry", ["AgentKit.IO", "AgentKit.Permissions", "AgentKit.Observability", "AgentKit.Abstractions"]),
             ("AgentKit", []),
-            ("AgentKit.Mcp", []));
+            ("AgentKit.Mcp", []),
+            ("AgentKit.IO", ["AgentKit.Abstractions"]),
+            ("AgentKit.Permissions", ["AgentKit.Abstractions"]),
+            ("AgentKit.Observability", ["AgentKit.Abstractions"]),
+            ("AgentKit.Abstractions", []));
 
         Should.NotThrow(graph.Validate);
     }

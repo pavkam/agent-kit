@@ -9,7 +9,5 @@ using AgentKit.Conformance;
 public sealed class InMemoryFileSystemConformanceTests: FileSystemConformanceTests<InMemoryFileSystemConformanceFixture>
 {
     /// <inheritdoc/>
-#pragma warning disable CS0618 // Fixture constructor exercises legacy host wiring under test.
     protected override InMemoryFileSystemConformanceFixture CreateFixture() => new();
-#pragma warning restore CS0618
 }

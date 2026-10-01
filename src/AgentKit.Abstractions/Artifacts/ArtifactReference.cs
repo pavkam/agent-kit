@@ -3,7 +3,7 @@
 
 namespace AgentKit;
 
-/// <summary>Portably identifies one committed immutable artifact version without exposing backend location.</summary>
+/// <summary>Portably identifies one committed artifact version without exposing backend location.</summary>
 public sealed record ArtifactReference
 {
     /// <summary>Initializes a committed artifact reference.</summary>
@@ -22,8 +22,9 @@ public sealed record ArtifactReference
     /// <param name="ownership">The ownership class.</param>
     /// <param name="mutability">The versioning behavior.</param>
     /// <param name="retention">The resolved retention decision.</param>
+    /// <param name="externalOwnership">The external ownership evidence; required exactly when <paramref name="ownership"/> is <see cref="ArtifactOwnershipKind.External"/>.</param>
     /// <param name="createdAt">The publication time.</param>
-    /// <exception cref="ArgumentException">A value is blank.</exception>
+    /// <exception cref="ArgumentException">A value is blank, or external ownership evidence disagrees with the ownership class or mutability.</exception>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An identity is empty, the length is negative, or an enum is undefined.</exception>
     public ArtifactReference(
@@ -31,8 +32,9 @@ public sealed record ArtifactReference
         ArtifactProfileKey profileKey, ArtifactProfileVersion profileVersion,
         TenantId tenantId, ArtifactOwnerId ownerId, PrincipalId createdBy,
         string mediaType, long length, ArtifactIntegrity integrity,
-        ArtifactDataClassification classification, ArtifactOwnershipKind ownership,
-        ArtifactMutability mutability, ArtifactRetention retention, DateTimeOffset createdAt)
+        DataClassification classification, ArtifactOwnershipKind ownership,
+        ArtifactMutability mutability, ArtifactRetention retention,
+        ExternalArtifactOwnership? externalOwnership, DateTimeOffset createdAt)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(id, default);
         ArgumentException.ThrowIfNullOrWhiteSpace(version.Value, nameof(version));
@@ -49,42 +51,62 @@ public sealed record ArtifactReference
         ArgumentOutOfRangeException.ThrowIfUndefined(ownership);
         ArgumentOutOfRangeException.ThrowIfUndefined(mutability);
         ArgumentNullException.ThrowIfNull(retention);
+        ArgumentException.ThrowIfInvalidArtifactExternalOwnership(ownership, mutability, externalOwnership, nameof(externalOwnership));
         Id = id; Version = version; DirectoryId = directoryId; ProfileKey = profileKey;
         ProfileVersion = profileVersion; TenantId = tenantId; OwnerId = ownerId;
         CreatedBy = createdBy; MediaType = mediaType; Length = length; Integrity = integrity;
         Classification = classification; Ownership = ownership; Mutability = mutability;
-        Retention = retention; CreatedAt = createdAt;
+        Retention = retention; ExternalOwnership = externalOwnership; CreatedAt = createdAt;
     }
+
     /// <summary>Gets the logical artifact.</summary>
     public ArtifactId Id { get; }
+
     /// <summary>Gets the immutable version.</summary>
     public ArtifactVersion Version { get; }
+
     /// <summary>Gets the logical directory.</summary>
     public ArtifactDirectoryId DirectoryId { get; }
+
     /// <summary>Gets the captured profile.</summary>
     public ArtifactProfileKey ProfileKey { get; }
+
     /// <summary>Gets the captured profile revision.</summary>
     public ArtifactProfileVersion ProfileVersion { get; }
+
     /// <summary>Gets the tenant partition.</summary>
     public TenantId TenantId { get; }
+
     /// <summary>Gets the retention owner.</summary>
     public ArtifactOwnerId OwnerId { get; }
+
     /// <summary>Gets the creating principal.</summary>
     public PrincipalId CreatedBy { get; }
+
     /// <summary>Gets the media type.</summary>
     public string MediaType { get; }
+
     /// <summary>Gets the complete byte length.</summary>
     public long Length { get; }
+
     /// <summary>Gets verified integrity evidence.</summary>
     public ArtifactIntegrity Integrity { get; }
+
     /// <summary>Gets the data classification.</summary>
-    public ArtifactDataClassification Classification { get; }
+    public DataClassification Classification { get; }
+
     /// <summary>Gets the ownership class.</summary>
     public ArtifactOwnershipKind Ownership { get; }
+
     /// <summary>Gets the versioning behavior.</summary>
     public ArtifactMutability Mutability { get; }
+
     /// <summary>Gets the resolved retention decision.</summary>
     public ArtifactRetention Retention { get; }
+
+    /// <summary>Gets the external ownership evidence, or <see langword="null"/> for content AgentKit owns.</summary>
+    public ExternalArtifactOwnership? ExternalOwnership { get; }
+
     /// <summary>Gets the publication time.</summary>
     public DateTimeOffset CreatedAt { get; }
 }

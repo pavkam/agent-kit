@@ -16,12 +16,12 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
         /// Registers the spec-shaped <see cref="IToolInvoker"/> through <see cref="Tools.ServiceExtensions.AddToolInvoker{TInvoker}"/>,
-        /// publishes <see cref="ListDirectoryTool.DefaultToolset"/>.
-        /// chunk C10 removes the reduced catalog path.
+        /// and publishes <see cref="ListDirectoryTool.DefaultToolset"/>.
         /// </remarks>
         public IServiceCollection AddListTool(Action<ListDirectoryToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<ListDirectoryToolOptions>()
                 .Validate(static value => value.DefaultPageEntries > 0, "DefaultPageEntries must be positive.")
                 .Validate(static value => value.MaximumPageEntries > 0, "MaximumPageEntries must be positive.")

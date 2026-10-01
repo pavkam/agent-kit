@@ -9,16 +9,14 @@ namespace AgentKit;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller
-/// <c>IContextAssembler</c> described by the context architecture, which
-/// additionally orchestrates history loading through session contracts,
-/// authorized retrieval, compaction, tool-catalog and output-contract
-/// resolution, and budget allocation across many ordered contributors. This
-/// reduced contract still owns the two structural responsibilities every
-/// richer implementation must also perform: repairing history so only
-/// complete, causally intact content ever reaches a provider, and
-/// combining instructions, history, tools, and settings into one immutable
-/// <see cref="LlmRequestContext"/>.
+/// An implementation owns two structural responsibilities: repairing history
+/// so only complete, causally intact content ever reaches a provider, and
+/// combining instructions, history, tools, settings, and the output contract
+/// into one immutable <see cref="LlmRequestContext"/>. The request carries the
+/// already-loaded, pinned history inside its <see cref="ContextAssemblyEvidence"/>;
+/// the first-party assembler additionally runs its keyed, ordered contributors
+/// and allocates their candidates against a budget, and the loop owns history
+/// loading and compaction.
 /// </para>
 /// <para>
 /// Assembling context never mutates durable session history; it only reads

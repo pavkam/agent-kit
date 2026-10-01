@@ -31,5 +31,5 @@ public sealed class BudgetLedgerReconciliationSettledTests
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());
-    private static BudgetCommitResult Commit(BudgetReservationId reservationId) => new(reservationId, 1m, 1m, 0m, 0m);
+    private static BudgetCommitResult Commit(BudgetReservationId reservationId) => new(reservationId, 1m, 1m, 0m, 0m, new BudgetAccountingRevision(1), []);
 }

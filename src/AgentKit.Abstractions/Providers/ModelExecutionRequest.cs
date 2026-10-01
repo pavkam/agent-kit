@@ -6,11 +6,11 @@ namespace AgentKit;
 /// <summary>Captures one model execution before the executor starts an attempt.</summary>
 /// <remarks>
 /// <para>
-/// The architecture names the request body <c>ModelRequestContext</c>. This
-/// record uses the shipped <see cref="LlmRequestContext"/> until context
-/// assembly replaces that stand-in. <see cref="Budget"/> and <see cref="Hooks"/>
-/// are nullable because a caller may execute before a budget scope or hook
-/// dispatch exists; the executor must not invent either.
+/// The request body is the <see cref="LlmRequestContext"/> the context
+/// assembler produced. <see cref="Budget"/> and <see cref="Hooks"/> are
+/// nullable because a caller may execute without a budget scope or hook
+/// dispatch (the first-party loop reserves budget per turn itself and
+/// dispatches hooks around the call); the executor must not invent either.
 /// </para>
 /// <para>
 /// The selection, context, and retry policy are captured here and are not

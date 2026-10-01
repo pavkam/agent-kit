@@ -14,15 +14,18 @@ internal sealed class CohereRerankResultDto
 {
     public int Index { get; set; }
 
+    [JsonPropertyName("relevance_score")]
     public double RelevanceScore { get; set; }
 }
 
 internal sealed class CohereRerankMetaDto
 {
+    [JsonPropertyName("billed_units")]
     public CohereRerankBillingDto? BilledUnits { get; set; }
 }
 
 internal sealed class CohereRerankBillingDto
 {
+    [JsonPropertyName("search_units")]
     public int? SearchUnits { get; set; }
 }

@@ -6,37 +6,33 @@ namespace AgentKit;
 /// <summary>Records one authoritative replacement of committed reservation accounting.</summary>
 public sealed record BudgetCorrectionResult
 {
-    /// <summary>Initializes an applied correction result.</summary>
+    /// <summary>Initializes correction evidence including its accounting generation and hold transitions.</summary>
     /// <param name="reservationId">The original reservation whose accounting was replaced.</param>
     /// <param name="previousActual">The actual amount recorded before this correction.</param>
     /// <param name="correctedActual">The authoritative replacement amount.</param>
-    /// <param name="revision">The positive monotonic correction revision.</param>
+    /// <param name="revision">The positive monotonic caller replay revision.</param>
+    /// <param name="accountingRevision">The positive ledger revision that recorded this correction.</param>
+    /// <param name="createdOverrunHolds">New generations created by crossing into overrun.</param>
+    /// <param name="clearedOverrunHolds">Automatic generations cleared by eligible accounting.</param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="reservationId"/> is default, an amount is negative, or
+    /// <paramref name="reservationId"/> or <paramref name="accountingRevision"/> is default, an amount is negative, or
     /// <paramref name="revision"/> is not positive.
     /// </exception>
+    /// <exception cref="ArgumentException">A hold array is default or contains null.</exception>
     public BudgetCorrectionResult(
         BudgetReservationId reservationId,
         decimal previousActual,
         decimal correctedActual,
-        long revision)
-        : this(reservationId, previousActual, correctedActual, revision, null, [], [])
+        long revision,
+        BudgetAccountingRevision accountingRevision,
+        ImmutableArray<BudgetOverrunHold> createdOverrunHolds,
+        ImmutableArray<BudgetOverrunHoldReference> clearedOverrunHolds)
     {
-    }
-
-    /// <summary>Initializes correction evidence including its accounting generation and hold transitions.</summary>
-    /// <param name="reservationId">The corrected reservation.</param><param name="previousActual">The replaced value.</param><param name="correctedActual">The truthful replacement.</param><param name="revision">The caller replay revision.</param><param name="accountingRevision">The ledger revision, or null only for compatibility-created values.</param><param name="createdOverrunHolds">New generations created by crossing into overrun.</param><param name="clearedOverrunHolds">Automatic generations cleared by eligible accounting.</param>
-    /// <exception cref="ArgumentOutOfRangeException">An identity, amount, or revision is invalid.</exception><exception cref="ArgumentException">A hold array is default or contains null.</exception>
-    public BudgetCorrectionResult(BudgetReservationId reservationId, decimal previousActual, decimal correctedActual, long revision, BudgetAccountingRevision? accountingRevision, ImmutableArray<BudgetOverrunHold> createdOverrunHolds, ImmutableArray<BudgetOverrunHoldReference> clearedOverrunHolds)
-    {
-        ArgumentOutOfRangeException.ThrowIfEqual(reservationId, default, nameof(reservationId));
+        ArgumentOutOfRangeException.ThrowIfEqual(reservationId, default);
         ArgumentOutOfRangeException.ThrowIfNegative(previousActual);
         ArgumentOutOfRangeException.ThrowIfNegative(correctedActual);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(revision);
-        if (accountingRevision is { } presentAccountingRevision)
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(presentAccountingRevision, default, nameof(accountingRevision));
-        }
+        ArgumentOutOfRangeException.ThrowIfEqual(accountingRevision, default);
         ArgumentException.ThrowIfDefault(createdOverrunHolds);
         ArgumentException.ThrowIfContainsNull(createdOverrunHolds);
         ArgumentException.ThrowIfDefault(clearedOverrunHolds);
@@ -61,8 +57,10 @@ public sealed record BudgetCorrectionResult
 
     /// <summary>Gets the monotonic correction revision.</summary>
     public long Revision { get; }
-    /// <summary>Gets the ledger accounting revision.</summary><value>A positive revision for ledger-produced results; null for compatibility-created values.</value>
-    public BudgetAccountingRevision? AccountingRevision { get; }
+
+    /// <summary>Gets the ledger accounting revision.</summary>
+    /// <value>The positive revision at which the ledger recorded this correction.</value>
+    public BudgetAccountingRevision AccountingRevision { get; }
     /// <summary>Gets generations created by this correction.</summary><value>An initialized lineage-ordered array.</value>
     public ImmutableArray<BudgetOverrunHold> CreatedOverrunHolds { get; }
     /// <summary>Gets automatic generations cleared by this correction.</summary><value>An initialized array of exact old generations.</value>

@@ -124,6 +124,30 @@ internal sealed class SimpleAgentPlan
     /// </summary>
     public bool DurableExecution { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether every hosted definition selects this plan's goal profile, so each
+    /// agent owns goals and may delegate to its peers.
+    /// </summary>
+    public bool Delegation { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether every hosted definition selects this plan's memory profile, so each
+    /// agent can retain and retrieve durable memory.
+    /// </summary>
+    public bool Memory { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether every hosted definition selects this plan's compaction profile, so each
+    /// agent compacts under the profile's policy and compactor.
+    /// </summary>
+    public bool Compaction { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether every hosted definition selects this plan's artifact coordinator, so each
+    /// agent can persist and read durable binary content through the keyed coordinator.
+    /// </summary>
+    public bool Artifacts { get; set; }
+
     /// <summary>Gets a value indicating whether the session profile selects the in-memory store.</summary>
     public bool InMemorySessions => LocalDevelopmentDefaults && !DurableSessions;
 
@@ -146,6 +170,28 @@ internal sealed class SimpleAgentPlan
     /// collection and publishes its own definitions.
     /// </value>
     public DurabilityProfileKey DurabilityProfileKey { get; } = new("agentkit.simple.durability");
+
+    /// <summary>Gets the goal profile key every definition selects once <see cref="Delegation"/> is set.</summary>
+    /// <value>The single key the sugar registers its goal store, dispatcher, and limits under.</value>
+    public GoalProfileKey GoalProfileKey { get; } = new("agentkit.simple.delegation");
+
+    /// <summary>Gets the version of the goal profile the sugar publishes.</summary>
+    public GoalProfileVersion GoalProfileVersion { get; } = new(1);
+
+    /// <summary>Gets the memory profile key every definition selects once <see cref="Memory"/> is set.</summary>
+    /// <value>The single key the sugar registers its memory store, retrieval source, and ceilings under.</value>
+    public MemoryProfileKey MemoryProfileKey { get; } = new("agentkit.simple.memory");
+
+    /// <summary>Gets the compaction profile key every definition selects once <see cref="Compaction"/> is set.</summary>
+    /// <value>The single key the sugar registers its extractive profile under, bound to the default compactor key.</value>
+    public CompactionProfileKey CompactionProfileKey { get; } = new("agentkit.simple.compaction");
+
+    /// <summary>Gets the artifact coordinator key every definition selects once <see cref="Artifacts"/> is set.</summary>
+    /// <value>The single key the sugar registers its coordinator under.</value>
+    public ComponentKey<IArtifactCoordinator> ArtifactCoordinatorKey { get; } = new("agentkit.simple.artifacts");
+
+    /// <summary>Gets the artifact profile key the sugar's coordinator is bound to.</summary>
+    public ArtifactProfileKey ArtifactProfileKey { get; } = new("agentkit.simple.artifacts");
 
     /// <summary>Gets the security authority key the standalone profile binds.</summary>
     public ComponentKey<ISecurityAuthority> AuthorityKey { get; } = new("agentkit.simple.authority");
@@ -231,55 +277,34 @@ internal sealed class SimpleAgentPlan
         return new AgentRunProfilePublication(
             SecurityPublication(agentId),
             sessionProfile,
+            HookRegistrationDescriptors.DefaultProfileKey,
+            AgentBudgetComponentDefaults.ProfileKey,
             new EffectiveConfigurationSnapshot(ConfigurationVersion, sessionProfile.ConfigurationFingerprint, [], []));
     }
 
     /// <summary>Builds the agent definition the engine catalog publishes.</summary>
     /// <returns>An immutable definition.</returns>
-    public AgentDefinition Definition() => new(
+    public AgentDefinition Definition() => BuildDefinition(
         EffectiveAgentId,
-        DefinitionRevision,
         "agent",
-        new ModelSelectionPolicy([RequireModelAlias()]),
-        ModelRequirements.None,
         InstructionMessages(),
         RequestSettings,
-        new RunPolicyDefaults(MaxTurns, AttemptTimeout),
-        ExtensionData.Empty,
-        SecurityProfileKey,
-        SessionProfileKey)
-    {
-        Output = Output,
-        BudgetLimits = BudgetLimits,
-        Toolsets = AuthoredToolsets(),
-        OptionalCapabilities = OptionalCapabilities(includeTools: true),
-    };
+        MaxTurns,
+        AttemptTimeout,
+        Output,
+        AuthoredToolsets(),
+        OptionalCapabilities(includeTools: true));
 
     /// <summary>Applies the plan to the conversation options.</summary>
     /// <param name="options">The options to populate.</param>
     public void Apply(ConversationSessionOptions options)
     {
         Debug.Assert(options is not null, "The options framework supplies the instance.");
-        options.AgentId = EffectiveAgentId;
+        var sessionProfile = SessionProfile();
+        options.Agent = Definition();
+        options.Configuration = new EffectiveConfigurationSnapshot(ConfigurationVersion, sessionProfile.ConfigurationFingerprint, [], []);
         options.Identity = RequireIdentity();
-        options.SecurityProfileKey = SecurityProfileKey;
-        options.AgentDefinitionRevision = DefinitionRevision;
-        options.ConfigurationVersion = ConfigurationVersion;
-        options.SessionProfile = SessionProfile();
-        options.ModelSelectionPolicy = new ModelSelectionPolicy([RequireModelAlias()]);
-        options.RequestSettings = RequestSettings;
-        options.Output = Output;
-        foreach (var limit in BudgetLimits)
-        {
-            options.BudgetLimits.Add(limit);
-        }
-
-        options.MaxTurns = MaxTurns;
-        options.AttemptTimeout = AttemptTimeout;
-        foreach (var instruction in InstructionMessages())
-        {
-            options.Instructions.Add(instruction);
-        }
+        options.SessionProfile = sessionProfile;
     }
 
     /// <summary>Selects every application-registered tool descriptor for conversation presentation bindings.</summary>
@@ -302,24 +327,55 @@ internal sealed class SimpleAgentPlan
     {
         ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
         ArgumentNullException.ThrowIfNull(options);
-        return new AgentDefinition(
+        return BuildDefinition(
             agentId,
-            DefinitionRevision,
             options.DisplayName,
-            new ModelSelectionPolicy([RequireModelAlias()]),
-            ModelRequirements.None,
             [.. options.Instructions.Select(text => BuildInstructionMessage(agentId, text)).Cast<AgentMessage>()],
             options.RequestSettings,
-            new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
-            ExtensionData.Empty,
-            SecurityProfileKey,
-            SessionProfileKey)
-        {
-            Output = options.Output,
-            Toolsets = options.IncludeRegisteredTools ? AuthoredToolsets() : [],
-            OptionalCapabilities = OptionalCapabilities(options.IncludeRegisteredTools),
-        };
+            options.MaxTurns,
+            options.AttemptTimeout,
+            options.Output,
+            options.IncludeRegisteredTools ? AuthoredToolsets() : [],
+            OptionalCapabilities(options.IncludeRegisteredTools));
     }
+
+    /// <summary>Builds the keyed component selection every hosted definition shares: the first-party defaults.</summary>
+    /// <returns>One selection naming each first-party default registration and the default budget profile.</returns>
+    internal static AgentComponentSelection DefaultComponents() => new(
+        AgentLoopComponentDefaults.LoopKey,
+        AgentLoopComponentDefaults.ContinuationPolicyKey,
+        AgentIOComponentDefaults.InputCoordinatorKey,
+        AgentIOComponentDefaults.OutputPublisherKey,
+        AgentOutputComponentDefaults.ProcessorKey,
+        AgentContextComponentDefaults.AssemblerKey,
+        AgentProviderComponentDefaults.ModelSelectorKey,
+        AgentProviderComponentDefaults.ModelExecutorKey,
+        AgentBudgetComponentDefaults.ProfileKey);
+
+    private AgentDefinition BuildDefinition(
+        AgentId agentId,
+        string displayName,
+        ImmutableArray<AgentMessage> instructions,
+        LlmRequestSettings requestSettings,
+        int maxTurns,
+        TimeSpan attemptTimeout,
+        OutputDefinition? output,
+        ImmutableArray<ToolsetReference> toolsets,
+        AgentOptionalCapabilitySelection optionalCapabilities) => new(
+            agentId,
+            DefinitionRevision,
+            displayName,
+            DefaultComponents(),
+            SessionProfileKey,
+            HookRegistrationDescriptors.DefaultProfileKey,
+            SecurityProfileKey,
+            optionalCapabilities,
+            new ModelSelectionPolicy([RequireModelAlias()], requestSettings: requestSettings),
+            InstructionSourceProjection.FromMessages(instructions, DefinitionRevision),
+            toolsets,
+            new RunPolicyDefaults(maxTurns, attemptTimeout),
+            output ?? OutputDefinition.FreeText,
+            ExtensionData.Empty);
 
     /// <summary>Builds immutable toolset references from the plan's authored keys.</summary>
     internal ImmutableArray<ToolsetReference> AuthoredToolsets() =>
@@ -342,9 +398,17 @@ internal sealed class SimpleAgentPlan
             ? SimpleToolRuntime.ToolExecutorKey
             : (ComponentKey<IToolExecutor>?) null;
         var durabilityProfile = DurableExecution ? DurabilityProfileKey : (DurabilityProfileKey?) null;
-        return toolExecutor is null && durabilityProfile is null
+        var goalProfile = Delegation ? GoalProfileKey : (GoalProfileKey?) null;
+        var memoryProfile = Memory ? MemoryProfileKey : (MemoryProfileKey?) null;
+        var artifactCoordinator = Artifacts ? ArtifactCoordinatorKey : (ComponentKey<IArtifactCoordinator>?) null;
+        var compactionProfile = Compaction ? CompactionProfileKey : (CompactionProfileKey?) null;
+        return toolExecutor is null && artifactCoordinator is null && durabilityProfile is null && goalProfile is null
+            && memoryProfile is null && compactionProfile is null
             ? AgentOptionalCapabilitySelection.None
-            : new AgentOptionalCapabilitySelection(toolExecutor, null, durabilityProfile, null, null, []);
+            : new AgentOptionalCapabilitySelection(toolExecutor, artifactCoordinator, durabilityProfile, memoryProfile, goalProfile, [])
+            {
+                CompactionProfile = compactionProfile,
+            };
     }
 
     /// <summary>Builds, or returns the already-built, exact instruction messages for this plan.</summary>

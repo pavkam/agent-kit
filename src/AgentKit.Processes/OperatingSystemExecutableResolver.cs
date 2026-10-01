@@ -3,7 +3,7 @@
 
 namespace AgentKit.Processes;
 
-/// <summary>Resolves structured start requests using the legacy operating-system intent resolver.</summary>
+/// <summary>Resolves structured start requests using the operating-system intent resolver.</summary>
 internal sealed class OperatingSystemExecutableResolver: IExecutableResolver
 {
     private readonly AgentProcessOptionsSnapshot _snapshot;
@@ -11,7 +11,7 @@ internal sealed class OperatingSystemExecutableResolver: IExecutableResolver
 
     /// <summary>Initializes a resolver bound to one captured profile snapshot.</summary>
     /// <param name="snapshot">The immutable profile snapshot.</param>
-    /// <param name="intentResolver">The legacy intent resolver for the same profile.</param>
+    /// <param name="intentResolver">The intent resolver for the same profile.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     internal OperatingSystemExecutableResolver(
         AgentProcessOptionsSnapshot snapshot,
@@ -32,7 +32,7 @@ internal sealed class OperatingSystemExecutableResolver: IExecutableResolver
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var resolveRequest = ProcessLegacyIntentMapping.ToResolveRequest(request, _snapshot);
+        var resolveRequest = ProcessIntentMapping.ToResolveRequest(request, _snapshot);
         var resolution = await _intentResolver.ResolveAsync(resolveRequest, cancellationToken).ConfigureAwait(false);
         if (resolution.Status != ProcessResolutionStatus.Resolved || resolution.Intent is null)
         {

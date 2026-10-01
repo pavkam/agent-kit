@@ -4,7 +4,7 @@ Focused tests for
 [AgentKit.Tools.Task](../../src/AgentKit.Tools.Task/README.md).
 
 **Component purpose:** request bounded task delegation through the delegation
-broker.
+coordinator.
 
 Use this suite when changing that component or investigating a regression. It is
 a non-packable .NET 10 test project using xUnit v3 and Shouldly.

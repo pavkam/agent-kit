@@ -23,6 +23,8 @@ public static class ServiceExtensions
             _ = services.AddAgentKitObservability();
             var options = services.AddOptions<AgentPermissionOptions>()
                 .Validate(static value => value.PolicyVersion > 0, "PolicyVersion must be positive.")
+                .Validate(static value => value.PolicySnapshot is not null,
+                    "PolicySnapshot must be configured to bind the authority to its captured policy snapshot.")
                 .Validate(static value => value.PolicySnapshot is null || value.PolicySnapshot.Version.Value == value.PolicyVersion,
                     "PolicySnapshot.Version must equal PolicyVersion.")
                 .Validate(static value => value.RevocationVersion > 0, "RevocationVersion must be positive.")
@@ -71,11 +73,16 @@ public static class ServiceExtensions
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),
                 provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
                 provider.GetService<ILogger<SecurityAuthority>>(),
-                provider.GetService<IIdentityValidationPolicy>(),
+                provider.GetService<IIdentityValidationPolicy>()));
+            services.TryAddSingleton<IApprovalWaitRecorder>(static provider => new DurableApprovalWaitRecorder(
+                provider.GetRequiredService<IOptions<AgentPermissionOptions>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<DurableBoundaryRegistry>(),
                 provider.GetService<IDurableExecutionCoordinator>(),
                 provider.GetService<IDurabilityProfileCatalog>(),
-                provider.GetRequiredService<DurableBoundaryRegistry>()));
+                provider.GetService<ILogger<DurableApprovalWaitRecorder>>()));
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
+            services.TryAddSingleton<ISecurityAuthorityCatalog, SecurityAuthorityCatalog>();
             services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();
             services.TryAddSingleton<ISecurityProfileSelector, DefaultSecurityProfileSelector>();
             services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
@@ -134,6 +141,28 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>Additively registers one <see cref="ISecurityAuditSink"/> built by a factory.</summary>
+        /// <typeparam name="TSink">The sink implementation type.</typeparam>
+        /// <param name="registration">The immutable event support, delivery, and durable-acceptance declaration.</param>
+        /// <param name="factory">Creates the singleton sink from the provider; it may close over registration-time evidence such as an options snapshot.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="registration"/>, or <paramref name="factory"/> is null.</exception>
+        /// <remarks>
+        /// Unlike <c>AddSecurityAuditSink&lt;TSink&gt;(registration)</c> this overload registers no unkeyed
+        /// <typeparamref name="TSink"/> service, so one sink type can be registered several times with different state.
+        /// </remarks>
+        public IServiceCollection AddSecurityAuditSink<TSink>(
+            SecurityAuditSinkRegistration registration,
+            Func<IServiceProvider, TSink> factory)
+            where TSink : class, ISecurityAuditSink
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(registration);
+            ArgumentNullException.ThrowIfNull(factory);
+            _ = services.AddSingleton(provider => new SecurityAuditSinkBinding(registration, factory(provider)));
+            return services;
+        }
+
         /// <summary>
         /// Registers one host-owned singleton authority under the exact key
         /// that an authorization context must capture to select it.
@@ -157,6 +186,7 @@ public static class ServiceExtensions
             ArgumentException.ThrowIfNullOrWhiteSpace(authorityKey.Value, nameof(authorityKey));
             ArgumentNullException.ThrowIfNull(authority);
             _ = services.AddSingleton(new SecurityAuthorityBinding(authorityKey, authority));
+            _ = services.AddSingleton(new SecurityAuthorityKeyRegistration(authorityKey));
             return services;
         }
 
@@ -182,6 +212,7 @@ public static class ServiceExtensions
             ArgumentException.ThrowIfNullOrWhiteSpace(authorityKey.Value, nameof(authorityKey));
             _ = services.AddSingleton(provider =>
                 new SecurityAuthorityBinding(authorityKey, provider.GetRequiredService<ISecurityAuthority>()));
+            _ = services.AddSingleton(new SecurityAuthorityKeyRegistration(authorityKey));
             return services;
         }
 

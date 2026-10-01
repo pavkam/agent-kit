@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.XAI.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -135,6 +137,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddXAILlmModel(new ModelAlias("primary"), new ModelId("grok-4"));
         _ = services.AddXAILlmModel(new ModelAlias("secondary"), new ModelId("grok-4-fast"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -149,6 +153,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddXAI();
         _ = services.AddXAIApiKeyCredential("test-key");
         _ = services.AddXAILlmModel(new ModelAlias("chat"), new ModelId("grok-4"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<XAILlmModel>();
@@ -165,6 +171,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("xai-embed-1"));
         _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("xai-embed-2"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -179,6 +187,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddXAI();
         _ = services.AddXAIApiKeyCredential("test-key");
         _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("xai-embed-1"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<XAIEmbeddingModel>();
@@ -204,6 +214,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddXAILlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<XAILlmModel>();
@@ -248,6 +260,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddXAIApiKeyCredential("test-key");
 
         _ = services.AddXAIKnownLlmModel(new ModelAlias("known"), new ModelId("grok-4.20-0309-non-reasoning"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<XAILlmModel>();

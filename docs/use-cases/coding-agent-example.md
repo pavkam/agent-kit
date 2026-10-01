@@ -5,8 +5,8 @@ model, real sandboxed file and process tools, SQLite sessions, an approval flow
 with three permission modes, a human-question channel, and a
 [SharpVision](https://github.com/pavkam/sharp-vision) terminal UI. It exists to
 prove AgentKit's production components end to end, and its
-[README](../../examples/CodingAgent/README.md) records the gaps it found while
-doing so.
+[README](../../examples/CodingAgent/README.md) records what building it taught
+about the tools and the terminal UI.
 
 Run it with:
 
@@ -23,9 +23,10 @@ the shape the snippets below use.
 Use this example as the reference for an agent that changes things: it writes
 files, runs commands, and therefore needs durable history, an authorization
 policy that can say "ask me first", and a channel back to the human. It is also
-the reference for the written-out composition. There is no
-`AgentEngine.CreateBuilder()` in it; every registration is on a raw
-`ServiceCollection`, which is what a host that owns its own container writes.
+the reference for the written-out composition. It uses
+`AgentEngine.CreateBuilder()` for the engine but none of the `AgentKit.Simple`
+sugar: every registration is an ordinary call on `builder.Services`, which is
+what a host that owns its own container writes.
 
 ## What it composes
 
@@ -33,16 +34,22 @@ the reference for the written-out composition. There is no
 [Composing an application](../guides/composition.md) explains:
 
 ```csharp
-var services = new ServiceCollection();
+var builder = AgentEngine.CreateBuilder();
+var services = builder.Services;
 
-// Security: grant and approval stores, a standalone profile, the policy that
-// switches with the permission mode, and the handler/authorizer pair that
-// puts the terminal user in the loop.
+// Security: grant, decision, and approval stores, the permission options and
+// authority, the policy that switches with the permission mode, and the
+// handler/authorizer pair that puts the terminal user in the loop.
 services.AddInMemorySecurityGrantStore();
+services.AddInMemorySecurityDecisionStore();
 services.AddInMemoryApprovalStore();
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
-    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddAgentPermissions(o =>
+{
+    o.AuditDelivery = SecurityAuditDelivery.BestEffort;
+    o.PolicyVersion = policySnapshot.Version.Value;
+    o.PolicySnapshot = policySnapshot;
+});
+services.AddSecurityAuthority(authorityKey);
 services.AddSingleton<ISecurityPolicy>(new CodingAgentSecurityPolicy(permissions));
 services.RemoveAll<IApprovalHandler>();
 services.AddSingleton<IApprovalHandler>(new CodingAgentApprovalHandler(approvals, identity, TimeProvider.System));
@@ -61,14 +68,22 @@ var sessionTarget = new SqliteSessionStoreTarget(
 services.AddSqliteSessionStore(sessionTarget);
 services.AddSqliteSessionDirectory(new ComponentId("coding-agent.session"), sessionTarget);
 
-// Turn loop.
+// Turn loop, each collaborator under the key the definition selects.
 services.AddAgentContext();
 services.AddAgentOutput();
 services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+services.AddAgentIO(AgentIOComponentDefaults.InputCoordinatorKey, AgentIOComponentDefaults.OutputPublisherKey);
+services.AddSessionBackedInputQueue();
+services.AddAgentHooks();
+services.AddAgentBudgets();
+services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, _ => { });
+services.AddInMemoryBudgetLedger();
 
 // Tools and the host boundaries they act through.
-services.AddReadTool();
-services.AddWriteTool();
+services.AddOperatingSystemFileSystem(workspaceFileProfile, o =>
+    o.Roots.Add(new FileRootRegistration(workspaceFileRoot, workspaceRoot)));
+services.AddReadTool(o => { o.ProfileKey = workspaceFileProfile; o.RootId = workspaceFileRoot; o.HostRootPath = workspaceRoot; });
+services.AddWriteTool(o => { o.ProfileKey = workspaceFileProfile; o.RootId = workspaceFileRoot; o.HostRootPath = workspaceRoot; });
 services.AddEditTool();
 services.AddGlobTool();
 services.AddSearchTool();
@@ -79,48 +94,50 @@ services.AddCommandTool(o =>
 });
 services.AddPlanTool();
 services.AddQuestionTool();
-services.AddAgentTools(o => o.AllowAllRegisteredTools = true);
-services.AddSandboxedFileSystem(workspaceRoot);
-services.AddOperatingSystemProcesses(workspaceRoot, o =>
+services.AddAgentTools(toolExecutorKey);
+services.AddAgentProcesses(new ProcessExecutorKey("default"), o =>
 {
-    o.AllowedExecutablePaths.Add("/bin/sh");
-    o.AllowedEnvironmentVariableNames.Add("PATH");
+    o.OperatingSystem.RootDirectory = workspaceRoot;
+    o.OperatingSystem.AllowedExecutablePaths.Add("/bin/sh");
+    o.OperatingSystem.AllowedEnvironmentVariableNames.Add("PATH");
 });
 
 // Model: adapter, credential, model registration, and its catalog descriptor.
+services.AddAgentNetwork();     // provider requests go through the network boundary
 services.AddAgentProviders();
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
 services.AddOpenAILlmModel(alias, modelId, capabilities);
 services.AddModelDescriptors(new ModelDescriptorSourceId("coding-agent"), [descriptor]);
 
-// The conversation: identities, session profile, model policy, instructions, limits.
+// The agent: one immutable definition (keyed components, model policy,
+// instructions, toolsets, limits, output) and its run profile.
+services.AddAgent(definition);
+services.AddAgentRunProfilePublication(new AgentRunProfilePublication(
+    securityPublication, sessionProfile, HookRegistrationDescriptors.DefaultProfileKey,
+    AgentBudgetComponentDefaults.ProfileKey, effectiveConfiguration));
+
+// The conversation pins that definition and configuration, plus identity and session profile.
 services.AddConversationSession(o =>
 {
-    o.AgentId = agentId;
+    o.Agent = definition;
+    o.Configuration = effectiveConfiguration;
     o.Identity = identity;
-    o.SecurityProfileKey = securityProfileKey;
-    o.AgentDefinitionRevision = definitionRevision;
-    o.ConfigurationVersion = configurationVersion;
     o.SessionProfile = sessionProfile;
-    o.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
-    o.RequestSettings = LlmRequestSettings.Default with { ReasoningEffort = configuration.ReasoningEffort };
-    o.Instructions.Add(SystemMessage(agentId, workspaceRoot));
-    o.MaxTurns = configuration.MaximumTurns;
-    o.AttemptTimeout = TimeSpan.FromMinutes(3);
 });
 
-var provider = services.BuildServiceProvider(
-    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-return new OwnedConversationSession(provider.GetRequiredService<IConversationSession>(), provider);
+var engine = builder.Build();
+return new AsyncOwnedConversationSession(engine.Services.GetRequiredService<IConversationSession>(), engine);
 ```
 
 Two details are easy to miss and worth copying:
 
-- **Tools reach the model through options, not magic.** A
-  `Configure<IEnumerable<ITool>>` on `ConversationSessionOptions` turns every
-  registered `ITool.Descriptor` into an `LlmToolDefinition` and a presentation
-  binding. The builder sugar does the same thing for you.
+- **Tools reach the model through the definition, not magic.** The agent
+  definition selects each tool's published toolset, and a run-bound catalog
+  capture advertises them. A `Configure<IEnumerable<RegisteredToolInvoker>>` on
+  `ConversationSessionOptions` additionally turns each registered descriptor
+  into a presentation binding for live tool events. The builder sugar does the
+  same thing for you.
 - **The agent identity is derived from the workspace.** `AgentIdForWorkspace`
   hashes the normalized workspace path into an `AgentId`, so session discovery
   and reopening stay isolated per workspace even when several share one SQLite

@@ -20,6 +20,24 @@ namespace AgentKit;
 /// </remarks>
 public sealed record OutputDefinition
 {
+    /// <summary>Gets the shared free-form text contract for an agent whose final answer is unstructured.</summary>
+    /// <value>
+    /// A <see cref="OutputMode.Text"/> definition with no schema, no validators, and no repair attempts. An
+    /// <see cref="AgentDefinition"/> always carries an output contract, and this is the one that expresses "plain text".
+    /// </value>
+    public static OutputDefinition FreeText { get; } = new(
+        new OutputDefinitionId("agentkit.free-text"),
+        new OutputDefinitionVersion("1"),
+        "Free text",
+        OutputMode.Text,
+        schema: null,
+        runtimeType: null,
+        alternatives: [],
+        validators: [],
+        OutputValidationPolicy.RejectOnFirstFailure,
+        OutputRetryPolicy.None,
+        OutputEndStrategy.Graceful);
+
     /// <summary>Initializes a new instance of the <see cref="OutputDefinition"/> record.</summary>
     /// <param name="id">The identity of this definition.</param>
     /// <param name="version">The version of this definition.</param>

@@ -99,12 +99,14 @@ public sealed class SecurityAuthorityTests
             new SecurityEnforcementRequest(
                 request.Scope,
                 request.Identity,
+                request.Authorization,
                 request.Audience,
                 request.Kind,
                 request.Effect,
                 request.Resources,
                 request.InputFingerprint,
                 allowed.Grant.RevocationVersion),
+            NewIntent(),
             TestContext.Current.CancellationToken);
         consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
     }
@@ -186,7 +188,7 @@ public sealed class SecurityAuthorityTests
             [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
             store,
             clock,
-            options: new AgentPermissionOptions { MaximumGrantLifetime = TimeSpan.FromMinutes(5) },
+            options: new AgentPermissionOptions { PolicySnapshot = TestSupport.TestSecurityEvidence.PolicySnapshot, MaximumGrantLifetime = TimeSpan.FromMinutes(5) },
             approvalBroker: broker);
         var request = CreateRequest() with { Deadline = _now.AddHours(1) };
 
@@ -332,10 +334,21 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
+    public void Constructor_WhenOptionsCarryNoPolicySnapshot_ThrowsArgumentExceptionForOptions()
+    {
+        var options = new AgentPermissionOptions();
+        var selector = new FixedPolicySelector(
+            new SecurityPolicySnapshotStale(TestSupport.TestSecurityEvidence.PolicySnapshot, "unused"));
+
+        var exception = Should.Throw<ArgumentException>(() => CreateAuthority([], options: options, policySelector: selector));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenPolicySnapshotIsNotRetained_DeniesBeforePolicyEvaluation()
     {
-        var snapshot = PolicySnapshot("10000000-0000-0000-0000-000000000001", "sha256:retained");
-        var options = new AgentPermissionOptions { PolicySnapshot = snapshot };
+        var options = new AgentPermissionOptions { PolicySnapshot = TestSupport.TestSecurityEvidence.PolicySnapshot };
         var policy = new StubPolicy(SecurityPolicyResultKind.Allow);
         var selector = new FixedPolicySelector(
             new SecurityPolicySnapshotStale(
@@ -594,7 +607,7 @@ public sealed class SecurityAuthorityTests
         ISecurityAuditDispatcher? auditDispatcher = null,
         IIdentifierGenerator<SecurityAuditRecordId>? auditRecordIds = null)
     {
-        var resolvedOptions = options ?? new AgentPermissionOptions();
+        var resolvedOptions = options ?? new AgentPermissionOptions { PolicySnapshot = TestSupport.TestSecurityEvidence.PolicySnapshot };
         var clock = timeProvider ?? new FakeTimeProvider(_now);
         var optionsWrapper = Options.Create(resolvedOptions);
         return new(
@@ -621,14 +634,14 @@ public sealed class SecurityAuthorityTests
 
     private static SecurityRequest CreateCapturedRequest(SecurityPolicySnapshotReference snapshot)
     {
-        var legacy = CreateRequest();
+        var baseRequest = CreateRequest();
         var authorization = new SecurityAuthorizationContext(
             new SecurityProfileKey("security"), new SecurityProfileVersion(1), snapshot,
             new ComponentKey<ISecurityAuthority>("authority"), new AgentDefinitionRevision(1),
-            new ConfigurationVersion(1), legacy.Scope, legacy.Identity);
+            new ConfigurationVersion(1), baseRequest.Scope, baseRequest.Identity);
         return new SecurityRequest(
-            legacy.Id, legacy.Scope, legacy.ToolCallId, legacy.Identity, authorization, legacy.Audience,
-            legacy.Kind, legacy.Effect, legacy.Resources, legacy.InputFingerprint, legacy.Deadline);
+            baseRequest.Id, baseRequest.Scope, baseRequest.ToolCallId, baseRequest.Identity, authorization, baseRequest.Audience,
+            baseRequest.Kind, baseRequest.Effect, baseRequest.Resources, baseRequest.InputFingerprint, baseRequest.Deadline);
     }
 
     private static SecurityRequest CreateRequest() => SecurityAuthorityTestData.CreateRequest(_now);
@@ -924,6 +937,19 @@ public sealed class SecurityAuthorityTests
 
     private sealed class RecordingGrantStore(ISecurityGrantStore inner): ISecurityGrantStore
     {
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            ArgumentNullException.ThrowIfNull(enforcement);
+            ArgumentNullException.ThrowIfNull(intent);
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Unknown, 0, "This test grant store does not consume grants.", null));
+        }
+
         public int RegisterCount { get; private set; }
 
         public async ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default)
@@ -932,16 +958,12 @@ public sealed class SecurityAuthorityTests
             await inner.RegisterAsync(grant, cancellationToken);
         }
 
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant,
-            SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default) =>
-            inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
-
         public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(reason);
             return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
         }
     }
+
+    private static SecurityEnforcementIntent NewIntent() => new(new SecurityEnforcementIntentId(Guid.NewGuid()), null);
 }

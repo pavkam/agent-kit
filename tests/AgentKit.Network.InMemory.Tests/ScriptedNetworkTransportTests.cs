@@ -101,7 +101,6 @@ public sealed class ScriptedNetworkTransportTests
         transport.Script(Destination(), new NetworkDenied("scripted"));
         _ = await transport.SendAsync(Request(), TestContext.Current.CancellationToken);
         store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
-        store.LegacyConsumptionCalls.ShouldBe(0);
     }
 
     [Fact]
@@ -171,5 +170,5 @@ public sealed class ScriptedNetworkTransportTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new ScriptedNetworkTransport(new TestGrantStore(), new FixedTimeProvider(), null);
+    public void Constructor_WhenLoggerArgumentIsNull_RetainsUnambiguousOverloadResolution() => _ = new ScriptedNetworkTransport(new TestGrantStore(), new FixedTimeProvider(), null);
 }

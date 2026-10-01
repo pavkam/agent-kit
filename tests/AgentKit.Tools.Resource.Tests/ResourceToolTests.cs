@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Resource.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 
@@ -16,7 +20,6 @@ public sealed class ResourceToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"read\"}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"list\",\"id\":\"docs\"}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"read\",\"id\":\"\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrRead(string json)
     {
         var reader = new RecordingSnapshotReader();
@@ -30,7 +33,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenListing_ReturnsOnlyApprovedMetadataWithoutAuthorizationOrPath()
     {
         var reader = new RecordingSnapshotReader();
@@ -46,7 +48,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenIdentityUnknown_PerformsNoAuthorizationOrRead()
     {
         var reader = new RecordingSnapshotReader();
@@ -58,7 +59,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_PerformsNoSnapshotRead()
     {
         var reader = new RecordingSnapshotReader();
@@ -72,7 +72,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_UsesExactSnapshotEvidenceAndMarksContentNonAuthoritative()
     {
         var reader = new RecordingSnapshotReader
@@ -95,7 +94,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenCharacterBoundaryReached_ReportsExplicitTruncation()
     {
         var options = OptionsForTool();
@@ -111,7 +109,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTruncationBoundaryLandsInsideASurrogatePair_BacksOffInsteadOfEmittingALoneSurrogate()
     {
         // text[..maximumCharacters] sliced on UTF-16 code units. "ab\U0001F600" is ['a','b',HighSurrogate,
@@ -132,7 +129,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenIntegrityPinDiffers_ReturnsFailureWithoutContent()
     {
         var options = OptionsForTool(expectedHash: new ContentHash("sha256:wrong"));
@@ -152,7 +148,6 @@ public sealed class ResourceToolTests
     [InlineData(FileSnapshotStatus.LimitExceeded, "byte boundary", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(FileSnapshotStatus.Changed, "changed while", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
     [InlineData(FileSnapshotStatus.Failed, "could not be read", ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotFailsWithoutSafeMessage_ProjectsGenericStatusMessage(
         FileSnapshotStatus status, string expectedSubstring, ToolTerminalStatus expectedTerminalStatus, ToolCallOutcomeKind expectedKind)
     {
@@ -170,7 +165,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotOmitsContentFingerprint_ReturnsTypedFailure()
     {
         var reader = new RecordingSnapshotReader
@@ -186,7 +180,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotHasUtf8Bom_RemovesBomFromContent()
     {
         byte[] withBom = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("hi")];
@@ -204,7 +197,6 @@ public sealed class ResourceToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSnapshotIsInvalidUtf8_ReturnsTypedFailure()
     {
         var reader = new RecordingSnapshotReader
@@ -240,7 +232,7 @@ public sealed class ResourceToolTests
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("options");
     }
 
-    private static ResourceTool Tool(IFileSnapshotReader reader, ISecurityAuthority authority, ResourceToolOptions? options = null) => new(reader, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
+    private static ResourceTool Tool(IFileSnapshotReader reader, ISecurityAuthority authority, ResourceToolOptions? options = null, ILogger<ResourceTool>? logger = null) => new(reader, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()), logger ?? NullLogger<ResourceTool>.Instance);
     private static ResourceToolOptions OptionsForTool(ContentHash? expectedHash = null)
     {
         var options = new ResourceToolOptions
@@ -255,5 +247,29 @@ public sealed class ResourceToolTests
 
     private static FileResourceDefinition Definition(ContentHash? expectedHash = null) => new(new ResourceId("docs"), ResourceKind.Documentation, ResourceTrust.Workspace, "Project documentation.", new FileSystemPath("private/source.md"), "text/markdown", expectedHash);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new InRunOperationCorrelation(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), ResourceTool.Descriptor);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new InRunOperationCorrelation(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), ResourceTool.Descriptor);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<ResourceTool>();
+        var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), ResourceTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33900);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

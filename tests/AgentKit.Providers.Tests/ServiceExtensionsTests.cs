@@ -19,6 +19,48 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentProviders_PublishesTheSelectorAndExecutorUnderTheirDefaultComponentKeys()
+    {
+        using var provider = Build(static services => services.AddAgentProviders());
+
+        provider.GetRequiredKeyedService<IModelSelector>(AgentProviderComponentDefaults.ModelSelectorKeyValue)
+            .ShouldBeSameAs(provider.GetRequiredService<IModelSelector>());
+        provider.GetRequiredKeyedService<IModelRequestExecutor>(AgentProviderComponentDefaults.ModelExecutorKeyValue)
+            .ShouldBeSameAs(provider.GetRequiredService<IModelRequestExecutor>());
+    }
+
+    [Fact]
+    public void AddAgentProviders_WhenCalledTwice_RegistersEachDefaultKeyOnce()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddAgentProviders();
+
+        services.Count(static descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IModelSelector)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IModelRequestExecutor)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAgentProviders_WhenApplicationRegisteredItsOwnSelectorFirst_TheKeyedAliasResolvesThatSelector()
+    {
+        using var provider = Build(static services =>
+        {
+            services.TryAddSingleton<IModelSelector, CustomSelector>();
+            return services.AddAgentProviders();
+        });
+
+        _ = provider.GetRequiredKeyedService<IModelSelector>(AgentProviderComponentDefaults.ModelSelectorKeyValue).ShouldBeOfType<CustomSelector>();
+    }
+
+    [Fact]
+    public void ReplaceModelRequestExecutor_WhenDefaultExists_TheKeyedAliasResolvesTheReplacement()
+    {
+        using var provider = Build(static services => services.AddAgentProviders().ReplaceModelRequestExecutor<CustomExecutor>());
+
+        _ = provider.GetRequiredKeyedService<IModelRequestExecutor>(AgentProviderComponentDefaults.ModelExecutorKeyValue).ShouldBeOfType<CustomExecutor>();
+    }
+
+    [Fact]
     public void AddAgentProviders_WhenCalledTwice_IsIdempotent()
     {
         using var provider = Build(static services =>
@@ -103,6 +145,12 @@ public sealed class ServiceExtensionsTests
         _ = services.AddLogging();
         _ = configure(services);
         return services.BuildServiceProvider();
+    }
+
+    private sealed class CustomExecutor: IModelRequestExecutor
+    {
+        public Task<ModelExecutionResult> ExecuteAsync(ModelExecutionRequest request, IModelResponseObserver observer, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class CustomSelector: IModelSelector

@@ -12,14 +12,14 @@ internal static class HumanQuestionEnforcementReceipt
 {
     /// <summary>Determines whether captured authorization remains exact for the requested question publication.</summary>
     /// <param name="request">The non-null question publication request.</param>
-    /// <returns><see langword="true"/> when no authorization was captured or its scope and identity exactly match the requested effect.</returns>
+    /// <returns><see langword="true"/> when the grant's captured authorization scope and identity exactly match the requested effect.</returns>
     /// <remarks>A mismatch is a runtime authorization denial, not an argument-validation failure, because independently valid request and grant evidence can become unrelated before publication.</remarks>
     internal static bool HasCompatibleCapturedAuthorization(HumanQuestionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
-        return request.Grant.Authorization is not { } authorization
-            || (authorization.Scope == scope && authorization.Identity == request.Identity);
+        var authorization = request.Grant.Authorization;
+        return authorization.Scope == scope && authorization.Identity == request.Identity;
     }
 
     /// <summary>Creates exact human-question publication evidence while retaining captured authorization from the grant.</summary>
@@ -36,26 +36,16 @@ internal static class HumanQuestionEnforcementReceipt
             request.Options,
             request.AllowsFreeText,
             request.Deadline);
-        return request.Grant.Authorization is { } authorization
-            ? new SecurityEnforcementRequest(
-                new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation),
-                request.Identity,
-                authorization,
-                audience,
-                SecurityOperationKind.StateMutation,
-                SecurityEffect.Create,
-                resources,
-                fingerprint,
-                request.Grant.RevocationVersion)
-            : new SecurityEnforcementRequest(
-                new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation),
-                request.Identity,
-                audience,
-                SecurityOperationKind.StateMutation,
-                SecurityEffect.Create,
-                resources,
-                fingerprint,
-                request.Grant.RevocationVersion);
+        return new SecurityEnforcementRequest(
+            new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation),
+            request.Identity,
+            request.Grant.Authorization,
+            audience,
+            SecurityOperationKind.StateMutation,
+            SecurityEffect.Create,
+            resources,
+            fingerprint,
+            request.Grant.RevocationVersion);
     }
 
     /// <summary>Determines whether a result permits this fresh exact question publication.</summary>

@@ -6,11 +6,12 @@ namespace AgentKit;
 /// <summary>Immutable evidence of narrowly bounded authority whose remaining uses live in a grant store.</summary>
 public sealed record SecurityGrant
 {
-    /// <summary>Initializes a bounded security grant.</summary>
+    /// <summary>Initializes a bounded grant that retains the complete captured authorization context evaluated for its request.</summary>
     /// <param name="id">The grant identity.</param>
     /// <param name="requestId">The request that caused the grant.</param>
     /// <param name="scope">The exact execution scope.</param>
     /// <param name="identity">The authenticated execution identity.</param>
+    /// <param name="authorization">The complete captured authorization evidence evaluated by the authority.</param>
     /// <param name="audience">The only component permitted to consume the grant.</param>
     /// <param name="kind">The protected operation kind.</param>
     /// <param name="effect">The exact material effect.</param>
@@ -21,14 +22,15 @@ public sealed record SecurityGrant
     /// <param name="notBefore">The earliest valid instant.</param>
     /// <param name="expiresAt">The exclusive expiry instant.</param>
     /// <param name="allowedUses">The positive maximum successful consumptions.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="scope"/>, <paramref name="identity"/>, or <paramref name="resources"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="resources"/> is empty or <paramref name="expiresAt"/> is not later than <paramref name="notBefore"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="scope"/>, <paramref name="identity"/>, or <paramref name="authorization"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="resources"/> is empty, <paramref name="expiresAt"/> is not later than <paramref name="notBefore"/>, or the authorization's scope, identity, or policy-snapshot version differs from the grant.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An enum is undefined or <paramref name="allowedUses"/> is not positive.</exception>
     public SecurityGrant(
         GrantId id,
         SecurityRequestId requestId,
         SecurityAuthorizationScope scope,
         ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
         ComponentId audience,
         SecurityOperationKind kind,
         SecurityEffect effect,
@@ -42,6 +44,7 @@ public sealed record SecurityGrant
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
         ArgumentOutOfRangeException.ThrowIfEqual(id, default);
         ArgumentOutOfRangeException.ThrowIfEqual(requestId, default);
         ArgumentException.ThrowIfNullOrWhiteSpace(audience.Value, nameof(audience));
@@ -51,7 +54,13 @@ public sealed record SecurityGrant
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputFingerprint.Value, nameof(inputFingerprint));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(expiresAt, notBefore);
+        ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(
+            authorization.PolicySnapshot.Version, policyVersion, nameof(authorization));
 
+        // Authorization is assigned first because the Scope, Identity, and PolicyVersion accessors cross-check it.
+        Authorization = authorization;
         Id = id;
         RequestId = requestId;
         Scope = scope;
@@ -68,26 +77,6 @@ public sealed record SecurityGrant
         ExpiresAt = expiresAt;
         NotBefore = notBefore;
         AllowedUses = allowedUses;
-    }
-
-    /// <summary>Initializes a grant that retains the complete captured authorization context evaluated for its request.</summary>
-    /// <param name="id">The grant identity.</param><param name="requestId">The issuing request identity.</param><param name="scope">The exact execution scope.</param><param name="identity">The authenticated identity.</param><param name="authorization">The complete captured authorization evidence evaluated by the authority.</param><param name="audience">The sole consuming component.</param><param name="kind">The protected operation kind.</param><param name="effect">The exact material effect.</param><param name="resources">The ordered resources.</param><param name="inputFingerprint">The exact input fingerprint.</param><param name="policyVersion">The evaluated policy version.</param><param name="revocationVersion">The captured revocation epoch.</param><param name="notBefore">The first valid instant.</param><param name="expiresAt">The exclusive expiry.</param><param name="allowedUses">The positive use bound.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception><exception cref="ArgumentException">Its scope, identity, or policy-snapshot version differs from the grant.</exception>
-    public SecurityGrant(GrantId id, SecurityRequestId requestId, SecurityAuthorizationScope scope,
-        ExecutionIdentity identity, SecurityAuthorizationContext authorization, ComponentId audience,
-        SecurityOperationKind kind, SecurityEffect effect, ImmutableArray<ProtectedResource> resources,
-        InputFingerprint inputFingerprint, SecurityPolicyVersion policyVersion,
-        SecurityRevocationVersion revocationVersion, DateTimeOffset notBefore, DateTimeOffset expiresAt,
-        int allowedUses)
-        : this(id, requestId, scope, identity, audience, kind, effect, resources, inputFingerprint,
-            policyVersion, revocationVersion, notBefore, expiresAt, allowedUses)
-    {
-        ArgumentNullException.ThrowIfNull(authorization);
-        ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
-        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
-        ArgumentException.ThrowIfNotEqual(
-            authorization.PolicySnapshot.Version, policyVersion, nameof(authorization));
-        Authorization = authorization;
     }
 
     /// <summary>Gets the grant identity.</summary>
@@ -113,7 +102,7 @@ public sealed record SecurityGrant
         }
     }
     /// <summary>Gets or initializes the exact authorized scope.</summary>
-    /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
+    /// <value>The non-null scope, which must equal the captured authorization scope.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
     /// <exception cref="ArgumentException">A record copy assigns a scope different from the captured authorization scope.</exception>
     public SecurityAuthorizationScope Scope
@@ -122,16 +111,12 @@ public sealed record SecurityGrant
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Scope));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
-            }
-
+            ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
             field = value;
         }
     }
     /// <summary>Gets or initializes the authenticated execution identity.</summary>
-    /// <value>The non-null identity, which must equal the captured authorization identity when <see cref="Authorization"/> is present.</value>
+    /// <value>The non-null identity, which must equal the captured authorization identity.</value>
     /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
     /// <exception cref="ArgumentException">A record copy assigns an identity different from the captured authorization identity.</exception>
     public ExecutionIdentity Identity
@@ -140,16 +125,12 @@ public sealed record SecurityGrant
         init
         {
             ArgumentNullException.ThrowIfNull(value, nameof(Identity));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
-            }
-
+            ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
             field = value;
         }
     }
-    /// <summary>Gets the captured authorization context evaluated for this grant.</summary><value>The immutable captured selection, or null only for grants issued through the legacy unpinned path.</value>
-    public SecurityAuthorizationContext? Authorization { get; }
+    /// <summary>Gets the captured authorization context evaluated for this grant.</summary><value>The immutable captured selection; never null.</value>
+    public SecurityAuthorizationContext Authorization { get; }
 
     /// <summary>Gets the terminal approval response identity when human approval bound this grant.</summary>
     /// <value>Null when the grant was issued without approval or the approver was not recorded on the grant.</value>
@@ -210,19 +191,15 @@ public sealed record SecurityGrant
         }
     }
     /// <summary>Gets or initializes the issuing policy version.</summary>
-    /// <value>The issuing version, which must equal the captured policy-snapshot version when <see cref="Authorization"/> is present.</value>
+    /// <value>The issuing version, which must equal the captured policy-snapshot version.</value>
     /// <exception cref="ArgumentException">A record copy assigns a version different from the captured policy snapshot.</exception>
     public SecurityPolicyVersion PolicyVersion
     {
         get;
         init
         {
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(
-                    Authorization.PolicySnapshot.Version, value, nameof(PolicyVersion));
-            }
-
+            ArgumentException.ThrowIfNotEqual(
+                Authorization.PolicySnapshot.Version, value, nameof(PolicyVersion));
             field = value;
         }
     }

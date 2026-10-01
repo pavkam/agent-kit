@@ -103,11 +103,16 @@ public sealed class WebSearchRequestTests
     private static ExecutionIdentity Identity() => TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
     private static ToolExecutionContext Context() => TestSecurityEvidence.ToolContext(AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());
     private static ImmutableArray<NormalizedHost> Domains() => [new("example.com")];
-    private static SecurityGrant Grant() => new(
+    private static SecurityGrant Grant()
+    {
+        var __scope = new SecurityAuthorizationScope(AgentId(), SessionId(), Correlation());
+        var __identity = Identity();
+        return new(
         new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
         new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
-        new SecurityAuthorizationScope(AgentId(), SessionId(), Correlation()),
-        Identity(),
+        __scope,
+        __identity,
+        TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
         new ComponentId("web-search"),
         SecurityOperationKind.Network,
         SecurityEffect.Egress,
@@ -118,4 +123,5 @@ public sealed class WebSearchRequestTests
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.UnixEpoch.AddMinutes(1),
         1);
+    }
 }

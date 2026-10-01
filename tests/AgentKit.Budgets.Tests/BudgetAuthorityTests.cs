@@ -135,8 +135,8 @@ public sealed class BudgetAuthorityTests
         ledger.CreateResult = new BudgetLedgerScopeCreated(reference);
         ledger.ReserveResult = new BudgetLedgerBatchReserved([receipt]);
         ledger.StartResult = new BudgetStarted(receipt.Reservation.Id, false);
-        ledger.CommitResult = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m);
-        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 0m, 1);
+        ledger.CommitResult = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m, new BudgetAccountingRevision(1), []);
+        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 0m, 1, new BudgetAccountingRevision(1), [], []);
         ledger.SnapshotResult = new BudgetSnapshot(reference.Id, DateTimeOffset.UnixEpoch, []);
         ledger.ReleaseResult = new BudgetLedgerReleased(receipt.Reservation);
         var authority = TestFactory.Authority(ledger);
@@ -491,7 +491,7 @@ public sealed class BudgetAuthorityTests
         ledger.StartResult = new BudgetStarted(receipt.Reservation.Id, false);
         _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
         rawLogger.Events.ShouldContain(entry => entry == 7030);
-        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 1m, 1);
+        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 1m, 1, new BudgetAccountingRevision(1), [], []);
         _ = await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken);
         rawLogger.Events.ShouldContain(entry => entry == 7040);
         using (var cancelled = new CancellationTokenSource())

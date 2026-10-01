@@ -22,13 +22,6 @@ internal sealed class InterceptingSecurityGrantStore(ISecurityGrantStore inner):
         _inner.RegisterAsync(grant, cancellationToken);
 
     /// <inheritdoc/>
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default) =>
-        _inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
-
-    /// <inheritdoc/>
     public async ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,

@@ -231,20 +231,26 @@ public sealed record ContextAssemblyEvidence(
     SecurityAuthorizationContext Authorization,
     EffectiveConfigurationSnapshot Configuration);
 
-public sealed record ContextAssemblyRequest(
-    AgentDefinition Agent,
-    SessionId SessionId,
-    ConversationId? ConversationId,
-    ExecutionIdentity Identity,
-    RunId RunId,
-    TurnId TurnId,
-    ModelRequestId ModelRequestId,
-    ModelDescriptor Model,
-    MessageCursor HistoryCursor,
-    SecurityAuthorizationContext Authorization,
-    HookDispatchContext Hooks,
-    EffectiveConfigurationSnapshot Configuration,
-    ContextBudget Budget);
+public sealed record ContextAssemblyRequest
+{
+    public ContextAssemblyRequest(
+        AgentId agentId,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId runId,
+        TurnId turnId,
+        ModelRequestId modelRequestId,
+        ModelDescriptor model,
+        ContextAssemblyEvidence evidence,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
+        ExtensionData extensions);
+
+    public ContextAssemblyEvidence Evidence { get; }
+    public ImmutableArray<AgentMessage> History { get; }
+    public OutputDefinition? Output { get; init; }
+}
 
 public sealed record ContextManifestEntry(
     ContextSourceReference Source,
@@ -263,26 +269,24 @@ public sealed record ContextManifest(
     ImmutableArray<ContextManifestEntry> Entries,
     ContextCostEstimate TotalEstimate);
 
-public sealed record ModelRequestContext(
-    AgentId AgentId,
-    SessionId SessionId,
-    ConversationId? ConversationId,
-    ExecutionIdentity Identity,
-    RunId RunId,
-    TurnId TurnId,
-    ModelRequestId ModelRequestId,
-    ModelDescriptor Model,
-    ImmutableArray<InstructionSource> Instructions,
-    ImmutableArray<AgentMessage> Messages,
-    ToolCatalogSnapshot? Tools,
-    OutputDefinition Output,
-    SecurityAuthorizationContext Authorization,
-    ModelRequestSettings Settings,
-    ContextManifest Manifest);
+public sealed record LlmRequestContext
+{
+    public ModelRequestId ModelRequestId { get; }
+    public ModelDescriptor Model { get; }
+    public ImmutableArray<AgentMessage> Messages { get; }
+    public ImmutableArray<LlmToolDefinition> Tools { get; }
+    public LlmToolChoice ToolChoice { get; }
+    public LlmRequestSettings Settings { get; }
+    public ExtensionData Extensions { get; }
+    public ContextManifest? Manifest { get; init; }
+    public OutputDefinition? Output { get; init; }
+}
 
 public abstract record ContextAssemblyResult;
 
-public sealed record ContextReady(ModelRequestContext Context)
+public sealed record ContextReady(
+    LlmRequestContext Context,
+    ImmutableArray<HistoryRepair> Repairs)
     : ContextAssemblyResult;
 
 public sealed record ContextPreparationFailed(ContextPreparationFailure Failure)
@@ -368,23 +372,38 @@ freshness expiry pins validity to the captured publication or lifecycle, never
 to the process forever. Diagnostic codes and safe messages are nonblank and
 content-safe; severity does not override registration failure policy.
 
-`ContextAssemblyEvidence` is the compatibility bridge for the current reduced
-implementation. Its agent, history cursor, identity, authorization scope,
-definition revision, and configuration version agree atomically. Conversation
-identity remains exact in the history cursor because the current authorization
-scope exposes no conversation coordinate to cross-check. The reduced
-`ContextAssemblyRequest` keeps its original constructor and adds an evidence
-constructor whose history is exactly `Evidence.History.Messages`; this does not
-replace the full normative request above.
+`ContextAssemblyEvidence` is the atomic evidence capture every request carries.
+Its agent, history cursor, identity, authorization scope, definition revision,
+and configuration version agree at construction. Conversation identity remains
+exact in the history cursor because the authorization scope exposes no
+conversation coordinate to cross-check. `ContextAssemblyRequest` has exactly one
+constructor, which takes the evidence and cross-checks the outer agent, session,
+branch, run, and turn coordinates against it; there is no evidence-less request.
+`History` is exactly `Evidence.History.Messages`, and the assembler resolves
+instructions from the pinned definition's `InstructionSource` collection through
+`IInstructionResolver`, so the request carries no second instruction list.
 
-The reduced loop obtains `ConversationId` from the authoritative session
-descriptor and pages one prefix pinned by `SessionReadSnapshot`. It constructs
-`MessageCursor` from that snapshot's independent version and upper sequence,
-then passes the resulting `HistoryView` together with the exact admitted
-`AgentDefinition`, authenticated identity, fresh turn authorization, and exact
-effective configuration through `ContextAssemblyEvidence`. Legacy reduced run
-requests without exact definition/configuration evidence remain supported by the
-compatibility path and do not fabricate evidence.
+The request deliberately omits the specification-era `Hooks` and `Budget`
+fields. The assembler is composed with its hook dispatcher and budget allocator
+in `ContextAssemblerServices`, and its context budget is derived from the
+selected `ModelDescriptor` limits and the keyed `AgentContextOptions`, so the
+request never carries a second copy of either collaborator.
+
+`LlmRequestContext` is the provider-facing result type. It carries the model
+request identity, the selected model, the ordered messages, the tool snapshot,
+tool choice, effective settings, extension data, the immutable
+`ContextManifest`, and the resolved `OutputDefinition`. Agent, session, run,
+turn, identity, and authorization evidence do not travel inside it: the provider
+boundary receives them in the `ProtectedSemanticOperationContext` of the
+`ModelExecutionRequest`, so a provider adapter cannot widen or replace the
+authority the loop captured.
+
+The loop obtains `ConversationId` from the authoritative session descriptor and
+pages one prefix pinned by `SessionReadSnapshot`. It constructs `MessageCursor`
+from that snapshot's independent version and upper sequence, then passes the
+resulting `HistoryView` together with the exact admitted `AgentDefinition`,
+authenticated identity, fresh turn authorization, and exact effective
+configuration through `ContextAssemblyEvidence`.
 
 The body is intentionally omitted from this constructor/dependency shape; its
 observable members are exactly the `IContextAssembler` contract above. It does
@@ -437,7 +456,8 @@ candidates within their typed boundary and are revalidated after each mutation.
 ## Workspace project instruction discovery
 
 `AgentKit.Context.Project` discovers bounded workspace instruction files through
-the protected `IFileSystem` boundary. Discovery is deterministic and loss-aware:
+the protected keyed `IFileReader` boundary. Discovery is deterministic and
+loss-aware:
 
 - Search roots are relative paths configured on
   `ProjectInstructionOptions.SearchRoots`; the default scans the workspace root

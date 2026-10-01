@@ -10,14 +10,12 @@ using AgentKit.Tools;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
-    public void AddListTool_WhenCalledTwice_RegistersOneInvokerAndOneLegacyTool()
+    public void AddListTool_WhenCalledTwice_RegistersOneInvokerAndOneToolProvider()
     {
         var services = new ServiceCollection();
         var reader = new FakeDirectoryReader();
         var profileKey = new FileSystemProfileKey("test");
-        _ = services.AddKeyedSingleton<ILegacyDirectoryReader>(profileKey.Value, reader);
-        _ = services.AddSingleton(TestListComposition.CreateSelector(profileKey));
+        _ = services.AddSingleton(TestListComposition.CreateSelector(profileKey, reader));
         _ = services.AddSingleton<ISecurityAuthority, RecordingSecurityAuthority>();
         _ = services.AddSingleton<ISecurityAuthoritySelector>(static provider =>
             new FixedSecurityAuthoritySelector(provider.GetRequiredService<ISecurityAuthority>()));

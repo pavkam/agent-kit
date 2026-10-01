@@ -30,6 +30,8 @@ public sealed class WriteFileTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(WriteFileToolLog.Completed, WriteFileToolLog.Cancelled, WriteFileToolLog.Faulted);
+    private readonly ILogger<WriteFileTool> _logger;
     private readonly IFileSystemSelector _fileSystemSelector;
     private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -44,6 +46,7 @@ public sealed class WriteFileTool: IToolInvoker
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
     /// <param name="options">The validated options captured at construction.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentException"><see cref="WriteFileToolOptions.HostRootPath"/> is not configured.</exception>
     public WriteFileTool(
@@ -52,7 +55,8 @@ public sealed class WriteFileTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<WriteFileToolOptions> options)
+        IOptions<WriteFileToolOptions> options,
+        ILogger<WriteFileTool> logger)
     {
         ArgumentNullException.ThrowIfNull(fileSystemSelector);
         ArgumentNullException.ThrowIfNull(pathNormalizer);
@@ -60,6 +64,7 @@ public sealed class WriteFileTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
         _fileSystemSelector = fileSystemSelector;
         _pathNormalizer = pathNormalizer;
@@ -67,6 +72,7 @@ public sealed class WriteFileTool: IToolInvoker
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -93,16 +99,16 @@ public sealed class WriteFileTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("write_file"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

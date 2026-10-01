@@ -14,4 +14,32 @@ public sealed class DurableRecordResultTests
         var kinds = typeof(DurableRecordResult).Assembly.GetTypes().Where(type => type.IsSubclassOf(typeof(DurableRecordResult))).Select(type => type.Name).OrderBy(name => name, StringComparer.Ordinal);
         kinds.ShouldBe([nameof(DurableRecordFailed), nameof(DurableRecordFenced), nameof(DurableRecorded),]);
     }
+
+    [Fact]
+    public void ThrowIfNotRecorded_WhenTheWriteWasRecorded_DoesNotThrow()
+    {
+        DurableRecordResult result = new DurableRecorded(new FencingToken(1), DateTimeOffset.UnixEpoch);
+
+        Should.NotThrow(result.ThrowIfNotRecorded);
+    }
+
+    [Fact]
+    public void ThrowIfNotRecorded_WhenTheAttemptWasFenced_ThrowsAnOwnershipMessage()
+    {
+        DurableRecordResult result = new DurableRecordFenced(new FencingToken(1), new FencingToken(2));
+
+        var exception = Should.Throw<InvalidOperationException>(result.ThrowIfNotRecorded);
+
+        exception.Message.ShouldContain("no longer owns");
+    }
+
+    [Fact]
+    public void ThrowIfNotRecorded_WhenTheWriteFailed_ThrowsWithTheJournalsSafeMessage()
+    {
+        DurableRecordResult result = new DurableRecordFailed("The concrete effect does not match the security grant.");
+
+        var exception = Should.Throw<InvalidOperationException>(result.ThrowIfNotRecorded);
+
+        exception.Message.ShouldContain("The concrete effect does not match the security grant.");
+    }
 }

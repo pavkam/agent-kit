@@ -3,11 +3,11 @@
 
 namespace AgentKit.Storage.Json.Tests;
 
-/// <summary>Verifies that persisted enforcement evidence reproduces the concrete effect and never borrows missing authorization.</summary>
+/// <summary>Verifies that persisted enforcement evidence reproduces the concrete effect and its captured authorization exactly.</summary>
 /// <remarks>
 /// Enforcement evidence proves that the effect about to happen matches the effect that was authorized, so every member is
-/// recomputed by the effecting boundary rather than copied from a grant. The mirror must preserve that independence: a legacy
-/// enforcement path presents no captured context, and a round trip must not invent one.
+/// recomputed by the effecting boundary rather than copied from a grant. The mirror must preserve that independence, and a
+/// document that lost its captured context is rejected rather than reconstructed.
 /// </remarks>
 public sealed class JsonSecurityEnforcementRequestTests
 {
@@ -23,7 +23,7 @@ public sealed class JsonSecurityEnforcementRequestTests
     [Fact]
     public void ToDomain_WhenProjectedFromDomain_ReproducesEqualEnforcementRequest()
     {
-        var original = TestEvidenceFactory.Enforcement(withAuthorization: true);
+        var original = TestEvidenceFactory.Enforcement();
 
         JsonSecurityEnforcementRequest.FromDomain(original).ToDomain().ShouldBe(original);
     }
@@ -32,33 +32,29 @@ public sealed class JsonSecurityEnforcementRequestTests
     [Fact]
     public void ToDomain_WhenDecodedFromCanonicalJson_ReproducesEqualEnforcementRequest()
     {
-        var original = TestEvidenceFactory.Enforcement(withAuthorization: true);
+        var original = TestEvidenceFactory.Enforcement();
 
         var document = TestCanonicalJson.Cycle(JsonSecurityEnforcementRequest.FromDomain(original));
 
         document.ToDomain().ShouldBe(original);
     }
 
-    /// <summary>Verifies legacy enforcement evidence stays unpinned instead of gaining snapshot-bound authorization.</summary>
+    /// <summary>Verifies a persisted evidence without captured authorization is rejected rather than reconstructed with a fabricated one.</summary>
     [Fact]
-    public void ToDomain_WhenEvidenceHasNoCapturedAuthorization_DoesNotGainOne()
+    public void ToDomain_WhenEvidenceDocumentHasNoCapturedAuthorization_ThrowsArgumentNullException()
     {
-        var original = TestEvidenceFactory.Enforcement(withAuthorization: false);
-        original.Authorization.ShouldBeNull();
+        var document = JsonSecurityEnforcementRequest.FromDomain(Sample()) with { Authorization = null! };
 
-        var document = JsonSecurityEnforcementRequest.FromDomain(original);
-        document.Authorization.ShouldBeNull();
+        var exception = Should.Throw<ArgumentNullException>(document.ToDomain);
 
-        var restored = TestCanonicalJson.Cycle(document).ToDomain();
-        restored.Authorization.ShouldBeNull();
-        restored.ShouldBe(original);
+        exception.ParamName.ShouldBe("Authorization");
     }
 
     /// <summary>Verifies evidence presented with captured authorization keeps it through storage rather than losing it.</summary>
     [Fact]
     public void ToDomain_WhenEvidenceHasCapturedAuthorization_RetainsIt()
     {
-        var original = TestEvidenceFactory.Enforcement(withAuthorization: true);
+        var original = TestEvidenceFactory.Enforcement();
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityEnforcementRequest.FromDomain(original)).ToDomain();
 
@@ -71,7 +67,7 @@ public sealed class JsonSecurityEnforcementRequestTests
     [Fact]
     public void ToDomain_WhenEvidenceNamesResources_PreservesResourceOrder()
     {
-        var original = TestEvidenceFactory.Enforcement(withAuthorization: false);
+        var original = TestEvidenceFactory.Enforcement();
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityEnforcementRequest.FromDomain(original)).ToDomain();
 
@@ -170,7 +166,7 @@ public sealed class JsonSecurityEnforcementRequestTests
     public void Equals_WhenTwoDocumentsDecodedIndependently_ReturnsTrue()
     {
         var document = JsonSecurityEnforcementRequest.FromDomain(
-            TestEvidenceFactory.Enforcement(withAuthorization: true));
+            TestEvidenceFactory.Enforcement());
 
         var first = TestCanonicalJson.Cycle(document);
         var second = TestCanonicalJson.Cycle(document);
@@ -190,5 +186,5 @@ public sealed class JsonSecurityEnforcementRequestTests
     }
 
     private static SecurityEnforcementRequest Sample() =>
-        TestEvidenceFactory.Enforcement(withAuthorization: false);
+        TestEvidenceFactory.Enforcement();
 }

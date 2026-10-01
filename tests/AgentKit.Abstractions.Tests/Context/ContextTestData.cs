@@ -40,18 +40,7 @@ internal static class ContextTestData
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = new AgentDefinition(
-            agentId,
-            revision,
-            "agent",
-            new ModelSelectionPolicy([new ModelAlias("chat")]),
-            ModelRequirements.None,
-            [],
-            LlmRequestSettings.Default,
-            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
-            ExtensionData.Empty,
-            new SecurityProfileKey("security"),
-            new SessionProfileKey("session"));
+        var agent = TestSupport.AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var runId = new RunId(Guid.Parse("50000000-0000-0000-0000-000000000001"));
         var turnId = new TurnId(Guid.Parse("60000000-0000-0000-0000-000000000001"));

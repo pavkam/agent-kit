@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddResourceTool(Action<ResourceToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<ResourceToolOptions>()
                 .Validate(static value => value.MaximumBytes > 0, "MaximumBytes must be positive.")
                 .Validate(static value => value.MaximumCharacters > 0, "MaximumCharacters must be positive.")

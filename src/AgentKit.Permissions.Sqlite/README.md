@@ -1,9 +1,11 @@
 # AgentKit.Permissions.Sqlite
 
 Durable local SQLite storage for AgentKit security grants, use counts,
-revocation, and exact enforcement-intent receipts. Hosts explicitly supply one
-fixed trusted bootstrap target; the adapter never creates parent directories or
-selects a fallback store.
+revocation, and exact enforcement-intent receipts, plus the durable security
+decision and approval stores (`AddSqliteSecurityDecisionStore`,
+`AddSqliteApprovalStore`), each with its own trusted target. Hosts explicitly
+supply one fixed trusted bootstrap target per store; the adapter never creates
+parent directories or selects a fallback store.
 
 `AddSqliteSecurityGrantStore` registers one additive `ISecurityGrantStore`
 selection without opening the database. Trusted host bootstrap resolves the
@@ -31,8 +33,8 @@ A process or storage failure can leave the caller uncertain whether SQLite
 committed a consumption acknowledgement. Recovery retries the exact same grant,
 enforcement request, and enforcement-intent identity; a `Reconciled` result is
 historical receipt evidence and never fresh authority to repeat the protected
-effect. The legacy consumption operation without an enforcement intent cannot be
-safely retried automatically after an uncertain persistence acknowledgement. The
+effect. Every consumption names an enforcement intent, so an uncertain
+persistence acknowledgement is always recoverable by retrying that intent. The
 adapter retains grants and receipts indefinitely; host maintenance owns any
 future bounded archival policy. Target-path and store-identity checks detect
 accidental replacement but are not an operating-system isolation boundary.

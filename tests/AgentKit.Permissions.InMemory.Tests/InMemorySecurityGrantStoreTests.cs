@@ -22,7 +22,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var store = new InMemorySecurityGrantStore(clock);
         var grant = CreateGrant(allowedUses: 2);
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         result.RemainingUses.ShouldBe(1);
     }
@@ -37,8 +37,8 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         {
             Resources = [new ProtectedResource(ProtectedResourceKind.File, "/workspace/other.txt")],
         };
-        var mismatch = await store.ValidateAndConsumeAsync(grant, mismatched, TestContext.Current.CancellationToken);
-        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var mismatch = await store.ValidateAndConsumeAsync(grant, mismatched, NewIntent(), TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         mismatch.Status.ShouldBe(GrantConsumptionStatus.Mismatch);
         mismatch.RemainingUses.ShouldBe(1);
         valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
@@ -54,8 +54,8 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         {
             Effect = SecurityEffect.Delete
         };
-        var rejected = await store.ValidateAndConsumeAsync(tampered, CreateEnforcement(grant), TestContext.Current.CancellationToken);
-        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var rejected = await store.ValidateAndConsumeAsync(tampered, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         rejected.Status.ShouldBe(GrantConsumptionStatus.Tampered);
         rejected.RemainingUses.ShouldBe(1);
         valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
@@ -72,7 +72,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
             Effect = SecurityEffect.Delete
         };
         var results = await ConsumeConcurrentlyAsync(store, tampered, CreateEnforcement(grant));
-        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         results.ShouldAllBe(static result => result.Status == GrantConsumptionStatus.Tampered);
         results.ShouldAllBe(static result => result.RemainingUses == 1);
         valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
@@ -86,7 +86,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var grant = CreateGrant();
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         clock.Advance(TimeSpan.FromMinutes(11));
-        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Expired);
         result.RemainingUses.ShouldBe(1);
     }
@@ -101,7 +101,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         {
             RevocationVersion = new SecurityRevocationVersion(2)
         };
-        var result = await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Revoked);
     }
 
@@ -209,16 +209,6 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         mismatch.RemainingUses.ShouldBe(1);
         final.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         final.RemainingUses.ShouldBe(0);
-    }
-
-    [Fact]
-    public async Task ValidateAndConsumeAsync_WhenImplementationDoesNotSupportIntentReceipts_FailsBeforeLegacyConsumption()
-    {
-        ISecurityGrantStore store = new LegacyOnlyGrantStore();
-        var grant = CreateGrant();
-        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), CreateIntent(), TestContext.Current.CancellationToken);
-        result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
-        ((LegacyOnlyGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
     }
 
     [Fact]
@@ -461,7 +451,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
         var grant = CreateGrant();
 
-        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
         result.IntentReceipt.ShouldBeNull();
@@ -550,7 +540,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         var grant = CreateGrant();
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         _ = (await store.RevokeAsync(grant.Id, _revocation, TestContext.Current.CancellationToken)).ShouldBeOfType<GrantRevoked>();
-        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Revoked);
     }
 
@@ -585,7 +575,7 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
             }
 
             await start.Task;
-            return await store.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
+            return await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), cancellationToken);
         }));
         return await Task.WhenAll(workers);
     }
@@ -594,10 +584,10 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
     {
         var scope = new SecurityAuthorizationScope(new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")), new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000002")), new InRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new RunId(Guid.Parse("40000000-0000-0000-0000-000000000004")), null));
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-        return new SecurityGrant(new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")), scope, identity, new ComponentId("filesystem"), SecurityOperationKind.FileRead, SecurityEffect.Observe, [new ProtectedResource(ProtectedResourceKind.File, "/workspace/file.txt")], new InputFingerprint("sha256:abc"), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now.AddMinutes(-1), _now.AddMinutes(10), allowedUses);
+        return new SecurityGrant(new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")), scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("filesystem"), SecurityOperationKind.FileRead, SecurityEffect.Observe, [new ProtectedResource(ProtectedResourceKind.File, "/workspace/file.txt")], new InputFingerprint("sha256:abc"), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now.AddMinutes(-1), _now.AddMinutes(10), allowedUses);
     }
 
-    private static SecurityEnforcementRequest CreateEnforcement(SecurityGrant grant) => new(grant.Scope, grant.Identity, grant.Audience, grant.Kind, grant.Effect, grant.Resources, grant.InputFingerprint, grant.RevocationVersion);
+    private static SecurityEnforcementRequest CreateEnforcement(SecurityGrant grant) => new(grant.Scope, grant.Identity, grant.Authorization, grant.Audience, grant.Kind, grant.Effect, grant.Resources, grant.InputFingerprint, grant.RevocationVersion);
     private static SecurityGrant CreateCapturedGrant()
     {
         var grant = CreateGrant();
@@ -638,25 +628,9 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("logger failure");
     }
 
-    private sealed class LegacyOnlyGrantStore: ISecurityGrantStore
-    {
-        public int LegacyConsumptionCalls { get; private set; }
-
-        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default)
-        {
-            LegacyConsumptionCalls++;
-            return ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Legacy consumption was invoked."));
-        }
-
-        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(reason);
-            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevocationNotFound(grantId));
-        }
-    }
-
     /// <summary>Creates isolated composition for each inherited contract case.</summary>
     /// <returns>The fixture that resolves the first-party store through dependency injection.</returns>
     protected override InMemorySecurityGrantStoreConformanceFixture CreateFixture() => new();
+
+    private static SecurityEnforcementIntent NewIntent() => new(new SecurityEnforcementIntentId(Guid.NewGuid()), null);
 }

@@ -6,37 +6,6 @@ namespace AgentKit.FileSystem.InMemory;
 public sealed partial class InMemoryFileSystem
 {
     /// <inheritdoc/>
-    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
-    public Task<FileReadResult> ReadAsync(LegacyFileReadRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return ObserveTaskAsync(
-            "read", request.Grant.RequestId, token => ReadCoreAsync(request, token),
-            static result => result is FileRead ? "read" : result.GetType().Name, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
-    public Task<LegacyFileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return ObserveTaskAsync(
-            "write", request.Grant.RequestId, token => WriteCoreAsync(request, token),
-            static result => result is LegacyFileWritten ? "written" : result.GetType().Name, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public ValueTask<DirectoryEnumerationResult> EnumerateAsync(
-        DirectoryEnumerationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return ObserveValueTaskAsync(
-            "enumerate", request.Grant.RequestId, token => EnumerateCoreAsync(request, token),
-            static result => result.Status.ToString(), cancellationToken);
-    }
-
-    /// <inheritdoc/>
     public ValueTask<GlobResult> GlobAsync(GlobRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -85,35 +54,6 @@ public sealed partial class InMemoryFileSystem
         return ObserveValueTaskAsync(
             "patch", requestId: null, token => ApplyPatchCoreAsync(request, token),
             static result => result.Status.ToString(), cancellationToken);
-    }
-
-    private async Task<TResult> ObserveTaskAsync<TResult>(
-        string operation,
-        SecurityRequestId? requestId,
-        Func<CancellationToken, Task<TResult>> action,
-        Func<TResult, string> classify,
-        CancellationToken cancellationToken)
-    {
-        using var activity = StartFileSystemActivity(operation, requestId);
-        try
-        {
-            var result = await action(cancellationToken).ConfigureAwait(false);
-            CompleteFileSystemObservation(activity, operation, requestId, classify(result));
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            FailFileSystemObservation(activity, operation, requestId, "cancelled", nameof(OperationCanceledException));
-            throw;
-        }
-        catch (Exception exception)
-        {
-            FailFileSystemObservation(
-                activity, operation, requestId, "failed", exception.GetType().FullName ?? exception.GetType().Name);
-            InMemoryFileSystemLog.Failed(
-                _logger, operation, requestId, exception.GetType().FullName ?? exception.GetType().Name);
-            throw;
-        }
     }
 
     private async ValueTask<TResult> ObserveValueTaskAsync<TResult>(

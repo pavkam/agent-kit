@@ -55,7 +55,7 @@ public static class AwsBedrockProviderDefaults
     /// tool call per turn, should supply their own
     /// <see cref="ModelCapabilities"/> rather than relying on this shared
     /// default. Reasoning content blocks, vision input, and native
-    /// structured output are not yet translated by this package, so those
+    /// structured output are not translated by this package, so those
     /// capabilities remain <see langword="false"/> here regardless of the
     /// underlying model's own support.
     /// </remarks>

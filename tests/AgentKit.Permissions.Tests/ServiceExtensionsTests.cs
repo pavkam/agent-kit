@@ -15,8 +15,8 @@ public sealed class ServiceExtensionsTests
     public void AddAgentPermissions_WhenCalledTwice_RegistersOneRuntimeAndNoGrantStore()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         provider.GetServices<ISecurityGrantStore>().ShouldBeEmpty();
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityAuthority)).ShouldBe(1);
@@ -25,12 +25,46 @@ public sealed class ServiceExtensionsTests
         provider.GetRequiredService<TimeProvider>().ShouldBe(TimeProvider.System);
     }
 
+    /// <summary>
+    /// Verifies the recorder resolves without a coordinator and never forms a construction cycle through the
+    /// authority: the security authority authorizes the durability coordinator's own journal writes, so the
+    /// authority must not depend on anything that depends on the coordinator.
+    /// </summary>
+    [Fact]
+    public void AddAgentPermissions_WhenDurabilityIsNotComposed_ResolvesTheRecorderAndTheAuthorityIndependently()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
+        _ = services.AddInMemorySecurityGrantStore();
+        _ = services.AddInMemoryApprovalStore();
+        _ = services.AddInMemorySecurityDecisionStore();
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+
+        _ = provider.GetRequiredService<IApprovalWaitRecorder>().ShouldBeOfType<DurableApprovalWaitRecorder>();
+        _ = provider.GetRequiredService<ISecurityAuthority>().ShouldBeOfType<SecurityAuthority>();
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IApprovalWaitRecorder)).ShouldBe(1);
+    }
+
+    /// <summary>Verifies a host-supplied recorder replaces the first-party one.</summary>
+    [Fact]
+    public void AddAgentPermissions_WhenTheHostSuppliesARecorder_PreservesTheReplacement()
+    {
+        var replacement = new NullApprovalWaitRecorder();
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IApprovalWaitRecorder>(replacement);
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IApprovalWaitRecorder>().ShouldBeSameAs(replacement);
+    }
+
     /// <summary>Verifies selecting the explicit in-memory adapter completes the core authority composition.</summary>
     [Fact]
     public void AddAgentPermissions_WhenExplicitInMemoryStoreIsSelected_ResolvesIssuingAuthority()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddInMemoryApprovalStore();
         _ = services.AddInMemorySecurityDecisionStore();
@@ -43,7 +77,7 @@ public sealed class ServiceExtensionsTests
     public void AddAgentPermissions_WhenNoGrantStoreIsSelected_FailsBeforeAuthorityCanIssueGrants()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         var exception = Should.Throw<InvalidOperationException>(provider.GetRequiredService<ISecurityAuthority>);
         exception.Message.ShouldContain(nameof(ISecurityGrantStore));
@@ -54,7 +88,7 @@ public sealed class ServiceExtensionsTests
     public void AddAgentPermissions_WhenNoApprovalStoreIsSelected_AllowsValidationUntilApprovalBrokerIsRequested()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
 
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -70,7 +104,7 @@ public sealed class ServiceExtensionsTests
         var second = Publication(profileKey: new SecurityProfileKey("security.other"));
         var services = new ServiceCollection();
         _ = services.AddSecurityProfilePublication(first);
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddSecurityProfilePublication(second);
         using var provider = services.BuildServiceProvider();
         var reader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
@@ -85,7 +119,7 @@ public sealed class ServiceExtensionsTests
     {
         var publication = Publication();
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddSecurityProfilePublication(publication);
         _ = services.AddSecurityProfilePublication(Publication(profileVersion: new SecurityProfileVersion(99)));
         using var provider = services.BuildServiceProvider();
@@ -112,8 +146,8 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<ISecurityProfilePublicationReader>(reader);
         _ = services.AddSingleton<ISecurityProfileSelector>(selector);
-        _ = services.AddAgentPermissions();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         provider.GetServices<ISecurityProfilePublicationReader>().ShouldHaveSingleItem().ShouldBeSameAs(reader);
         provider.GetServices<ISecurityProfileSelector>().ShouldHaveSingleItem().ShouldBeSameAs(selector);
@@ -140,7 +174,7 @@ public sealed class ServiceExtensionsTests
     public async Task AddAgentPermissions_WhenAuditDispatcherIsUnconfigured_RegistersTheDefaultRequiredDispatcher()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         var dispatcher = provider.GetRequiredService<ISecurityAuditDispatcher>();
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
@@ -152,10 +186,45 @@ public sealed class ServiceExtensionsTests
     public void AddAgentPermissions_WhenAuditDeliveryTimeoutIsInvalid_RejectsItBeforeDispatcherActivation()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions(options => options.AuditDeliveryTimeout = TimeSpan.Zero);
+        _ = services.AddAgentPermissions(options =>
+        {
+            options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot;
+            options.AuditDeliveryTimeout = TimeSpan.Zero;
+        });
         using var provider = services.BuildServiceProvider();
         var exception = Should.Throw<OptionsValidationException>(provider.GetRequiredService<ISecurityAuditDispatcher>);
         exception.GetType().ShouldBe(typeof(OptionsValidationException));
+        exception.Failures.ShouldHaveSingleItem().ShouldContain("AuditDeliveryTimeout");
+    }
+
+    /// <summary>Verifies the authority's policy-snapshot binding is required and rejected at composition when absent.</summary>
+    [Fact]
+    public void AddAgentPermissions_WhenPolicySnapshotIsNotConfigured_RejectsTheOptionsBeforeAnyAuthorityActivates()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions();
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentPermissionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("PolicySnapshot must be configured", StringComparison.Ordinal));
+    }
+
+    /// <summary>Verifies the bound snapshot must carry the configured policy version.</summary>
+    [Fact]
+    public void AddAgentPermissions_WhenPolicySnapshotVersionDiffersFromPolicyVersion_RejectsTheOptions()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions(static options =>
+        {
+            options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot;
+            options.PolicyVersion = 2;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentPermissionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("PolicySnapshot.Version must equal PolicyVersion", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -164,7 +233,7 @@ public sealed class ServiceExtensionsTests
         var replacement = new FixedAuditDispatcher();
         var services = new ServiceCollection();
         _ = services.AddSingleton<ISecurityAuditDispatcher>(replacement);
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         provider.GetRequiredService<ISecurityAuditDispatcher>().ShouldBeSameAs(replacement);
     }
@@ -176,7 +245,7 @@ public sealed class ServiceExtensionsTests
         var second = new RecordingSink();
         var registration = new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], SecurityAuditDelivery.Required, providesDurableAcceptance: true);
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddSecurityAuditSink(registration, first);
         _ = services.AddSecurityAuditSink(registration, second);
         using var provider = services.BuildServiceProvider();
@@ -197,6 +266,38 @@ public sealed class ServiceExtensionsTests
         AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink(null!, sink), "registration");
         services.ShouldBeEmpty();
         AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink(registration, null!), "sink");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddSecurityAuditSink_WhenTheSameTypeIsRegisteredWithFactories_DeliversToEachFactoryInstance()
+    {
+        var first = new RecordingSink();
+        var second = new RecordingSink();
+        var registration = new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], SecurityAuditDelivery.Required, providesDurableAcceptance: true);
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
+        _ = services.AddSecurityAuditSink(registration, _ => first);
+        _ = services.AddSecurityAuditSink(registration, _ => second);
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<ISecurityAuditDispatcher>().DispatchAsync(Record(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SecurityAuditAccepted>();
+        _ = first.Records.ShouldHaveSingleItem();
+        _ = second.Records.ShouldHaveSingleItem();
+        services.Any(static descriptor => descriptor.ServiceType == typeof(RecordingSink)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AddSecurityAuditSink_WhenFactoryArgumentsAreInvalid_ThrowsBeforeMutatingTheCollection()
+    {
+        var registration = new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], SecurityAuditDelivery.Required, providesDurableAcceptance: true);
+        var services = new ServiceCollection();
+
+        AssertExact<ArgumentNullException>(() => ServiceExtensions.AddSecurityAuditSink(null!, registration, _ => new RecordingSink()), "services");
+        AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink(null!, _ => new RecordingSink()), "registration");
+        AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink<RecordingSink>(registration, null!), "factory");
         services.ShouldBeEmpty();
     }
 
@@ -236,7 +337,7 @@ public sealed class ServiceExtensionsTests
         var request = Request();
         var services = new ServiceCollection();
         _ = services.AddSecurityProfilePublication(PublicationDefaultSecurityProfileSelector(request));
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         var firstReader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
         var secondReader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
@@ -267,7 +368,7 @@ public sealed class ServiceExtensionsTests
         var key = new ComponentKey<ISecurityAuthority>("security.host-owned");
         var authority = new DenyAllSecurityAuthority();
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddSecurityAuthority(key, authority);
         using var provider = services.BuildServiceProvider();
         var selector = provider.GetRequiredService<ISecurityAuthoritySelector>();
@@ -276,10 +377,10 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public async Task AddAgentPermissions_WhenNoAuthorityBindingIsAdded_DoesNotSelectItsLegacyUnkeyedAuthority()
+    public async Task AddAgentPermissions_WhenNoAuthorityBindingIsAdded_DoesNotSelectItsUnkeyedAuthority()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         using var provider = services.BuildServiceProvider();
         var result = await provider.GetRequiredService<ISecurityAuthoritySelector>().SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.unbound")), TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<SecurityAuthoritySelectionUnavailable>();
@@ -302,7 +403,7 @@ public sealed class ServiceExtensionsTests
     {
         var key = new ComponentKey<ISecurityAuthority>("security.lazy-bound");
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddInMemoryApprovalStore();
         _ = services.AddInMemorySecurityDecisionStore();
@@ -340,7 +441,7 @@ public sealed class ServiceExtensionsTests
     public void AddAllowAllSecurityPolicy_WhenAppliedAlongsideAgentPermissions_IsResolvedAsAnAdditivePolicy()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddAllowAllSecurityPolicy();
         using var provider = services.BuildServiceProvider();
 
@@ -454,7 +555,7 @@ public sealed class ServiceExtensionsTests
     public void AddWorkspaceScopedFileAccessPolicy_WhenAppliedAlongsideAgentPermissions_IsResolvedAsAnAdditivePolicy()
     {
         var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddWorkspaceScopedFileAccessPolicy();
         using var provider = services.BuildServiceProvider();
 
@@ -475,4 +576,14 @@ public sealed class ServiceExtensionsTests
     {
         _ = factory();
     }, parameterName);
+
+    /// <summary>A recorder that records nothing, used to prove host replacement wins.</summary>
+    private sealed class NullApprovalWaitRecorder: IApprovalWaitRecorder
+    {
+        /// <inheritdoc/>
+        public ValueTask RecordAsync(
+            SecurityRequest request,
+            ApprovalRequest approval,
+            CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
 }

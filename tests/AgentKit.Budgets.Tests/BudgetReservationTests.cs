@@ -117,8 +117,8 @@ public sealed class BudgetReservationTests
         var receipt = TestFactory.Receipt(scope, request);
         var reservation = new BudgetReservation(ledger, receipt);
         ledger.StartResult = new BudgetStarted(receipt.Reservation.Id, false);
-        ledger.CommitResult = new BudgetCommitResult(receipt.Reservation.Id, 3m, 2m, 1m, 0m);
-        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 2m, 1m, 1);
+        ledger.CommitResult = new BudgetCommitResult(receipt.Reservation.Id, 3m, 2m, 1m, 0m, new BudgetAccountingRevision(1), []);
+        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 2m, 1m, 1, new BudgetAccountingRevision(1), [], []);
         ledger.ReleaseResult = new BudgetLedgerRetainedStarted(receipt.Reservation);
         _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
         var commit = await reservation.CommitAsync(2m, TestContext.Current.CancellationToken);
@@ -242,7 +242,7 @@ public sealed class BudgetReservationTests
     {
         var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
         var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
-        var commit = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m);
+        var commit = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m, new BudgetAccountingRevision(1), []);
         var ledger = new RecordingBudgetLedger
         {
             ReleaseResult = new BudgetLedgerAlreadySettled(commit)

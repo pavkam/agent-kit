@@ -97,7 +97,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         create.GetTagItem(AgentKitTagNames.SessionId).ShouldBeNull();
         _ = operations.First(activity => Equals(activity.GetTagItem(AgentKitTagNames.BudgetOperation), "reserve_batch")).GetTagItem(AgentKitTagNames.OperationId).ShouldNotBeNull();
         _ = operations.Single(activity => Equals(activity.GetTagItem(AgentKitTagNames.BudgetOperation), "settle")).GetTagItem(AgentKitTagNames.BudgetReservationId).ShouldNotBeNull();
-        logger.Entries.Count(entry => entry.EventId.Id == 7050).ShouldBe(12);
+        logger.Entries.Count(entry => entry.EventId.Id == 7100).ShouldBe(12);
         var createLog = logger.Entries.Single(entry => entry.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "create_scope"));
         createLog.Tags["BudgetScopeId"].ShouldBe(scope.Id.ToString());
         createLog.Tags["TenantId"].ShouldBe("tenant");
@@ -153,7 +153,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         activities.Select(activity => activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString()).ShouldBe(["cancelled", "faulted"]);
         activities.ShouldAllBe(activity => HasTag(activity, AgentKitTagNames.ErrorType));
         activities.ShouldAllBe(activity => HasTag(activity, AgentKitTagNames.BudgetScopeId));
-        logger.Entries.Select(entry => entry.EventId.Id).ShouldBe([7050, 7051]);
+        logger.Entries.Select(entry => entry.EventId.Id).ShouldBe([7100, 7101]);
     }
 
     /// <summary>Verifies reservation expiry is a typed terminal outcome without fabricated limit-failure diagnostics.</summary>
@@ -175,7 +175,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("expired");
         activity.GetTagItem(AgentKitTagNames.ErrorType).ShouldBeNull();
         var entry = logger.Entries.Single(item => item.Tags.TryGetValue("BudgetOperation", out var operation) && Equals(operation, "mark_started"));
-        entry.EventId.Id.ShouldBe(7050);
+        entry.EventId.Id.ShouldBe(7100);
         entry.Tags["Outcome"].ShouldBe("expired");
         entry.Tags.ContainsKey("ErrorType").ShouldBeFalse();
     }
@@ -205,7 +205,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         activity.GetTagItem(AgentKitTagNames.BudgetScopeId).ShouldBe(scope.Id.ToString());
         activity.GetTagItem(AgentKitTagNames.BudgetReservationId).ShouldBe(reservation.Id.ToString());
         var entry = logger.Entries.Single(item => item.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "resolve_overrun_hold"));
-        entry.EventId.Id.ShouldBe(7050);
+        entry.EventId.Id.ShouldBe(7100);
         entry.Tags["Outcome"].ShouldBe("resolved");
         measurements.Count(item => item.Name == AgentKitMetricNames.BudgetLedgerOperationCount && Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold")).ShouldBe(1);
         measurements.Count(item => item.Name == AgentKitMetricNames.BudgetLedgerOperationDuration && Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold")).ShouldBe(1);
@@ -240,7 +240,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         resolutionActivities[0].GetTagItem(AgentKitTagNames.ErrorType).ShouldBeNull();
         resolutionActivities[1].GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(typeof(BudgetLedgerStateException).FullName);
         resolutionActivities[2].GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(nameof(OperationCanceledException));
-        logger.Entries.Where(item => item.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "resolve_overrun_hold")).Select(item => item.EventId.Id).ShouldBe([7050, 7051, 7050]);
+        logger.Entries.Where(item => item.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "resolve_overrun_hold")).Select(item => item.EventId.Id).ShouldBe([7100, 7101, 7100]);
         measurements.Where(item => Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold")).SelectMany(item => item.Tags.Keys).Distinct().Order().ShouldBe(new[] { AgentKitTagNames.BudgetOperation, AgentKitTagNames.Outcome }.Order());
         logger.Entries.ShouldAllBe(item => !item.Message.Contains("budget-overrun:", StringComparison.Ordinal) && !item.Message.Contains("sha256:", StringComparison.Ordinal));
         foreach (var activity in resolutionActivities)
@@ -782,7 +782,9 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
     private static BudgetScopeAddress Address() => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")), null, null, null);
     private static BudgetOverrunHoldResolutionRequest ResolutionRequest(BudgetOverrunHoldReference hold)
     {
-        var enforcement = new SecurityEnforcementRequest(new SecurityAuthorizationScope(Address().AgentId, null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), null)), TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human), new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
+        var __scope = new SecurityAuthorizationScope(Address().AgentId, null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), null));
+        var __identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human);
+        var enforcement = new SecurityEnforcementRequest(__scope, __identity, TestSupport.TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity), new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
         var receipt = new SecurityEnforcementIntentReceipt(new SecurityEnforcementIntentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")), enforcement, null, new ContentHash("sha256:overrun-resolution"), DateTimeOffset.UnixEpoch);
         return new BudgetOverrunHoldResolutionRequest(hold, receipt, new IdempotencyKey("diagnostics-overrun-resolution"));
     }
@@ -802,9 +804,9 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
     /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
     /// that some third-party logging providers use instead of the generic key/value interface.</summary>
     [Fact]
-    public async Task Operations_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    public async Task Operations_WhenLoggerEnumeratesStateViaNonGenericEnumerable_ExercisesGeneratedStateAccessors()
     {
-        var logger = new LegacyEnumeratingLogger();
+        var logger = new EnumeratingStateLogger();
         var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger(logger);
         var scope = await CreateScopeAsync(ledger, "legacy-enumerable-scope");
         _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.GetSnapshotAsync(new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), Address()), TestContext.Current.CancellationToken));
@@ -814,7 +816,7 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         logger.FailedCounts.ShouldAllBe(count => count > 0);
     }
 
-    private sealed class LegacyEnumeratingLogger: ILogger<InMemoryBudgetLedger>
+    private sealed class EnumeratingStateLogger: ILogger<InMemoryBudgetLedger>
     {
         internal List<int> CompletedCounts { get; } = [];
         internal List<int> FailedCounts { get; } = [];
@@ -854,11 +856,11 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
                 }
             }
 
-            if (eventId.Id == 7050)
+            if (eventId.Id == 7100)
             {
                 CompletedCounts.Add(count);
             }
-            else if (eventId.Id == 7051)
+            else if (eventId.Id == 7101)
             {
                 FailedCounts.Add(count);
             }

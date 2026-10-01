@@ -12,24 +12,19 @@ public static class DirectorySecurityBinding
     public static ProtectedResource Resource(FileSystemPath? path) =>
         new(ProtectedResourceKind.Directory, path?.Value ?? ".");
 
-    /// <summary>Computes exact normalized request evidence, including page bounds and continuation.</summary>
+    /// <summary>Computes exact normalized request evidence for one directory observation.</summary>
     /// <param name="path">The child path, or null for the configured root.</param>
-    /// <param name="maximumEntries">The requested page bound.</param>
-    /// <param name="continuation">The supplied stable continuation.</param>
     /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
-    public static InputFingerprint Fingerprint(
-        FileSystemPath? path,
-        int maximumEntries,
-        DirectoryEnumerationCursor? continuation)
+    /// <remarks>
+    /// The fingerprint binds the observed directory only. Page bounds and continuation are a projection the listing
+    /// consumer applies to the complete ordered snapshot after enumeration, so they are not part of the protected effect.
+    /// </remarks>
+    public static InputFingerprint Fingerprint(FileSystemPath? path)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumEntries);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new
         {
             operation = "directory-enumerate",
             path = path?.Value ?? ".",
-            maximumEntries,
-            snapshot = continuation?.SnapshotFingerprint.Value,
-            nextIndex = continuation?.NextIndex,
         });
         return new InputFingerprint(
             $"sha256:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()}");

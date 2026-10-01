@@ -14,12 +14,12 @@ public sealed class ArtifactAbortRequestTests
         var correlation = Correlation();
         var identity = Identity();
         var key = new IdempotencyKey("abort");
-        var request = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), correlation, identity, Authorization(), ArtifactAbortReason.Cancelled, key);
+        var request = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), correlation, Authorization(), ArtifactAbortReason.Cancelled, key);
         request.PreparationId.ShouldBe(PreparationId());
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
         request.Correlation.ShouldBe(correlation);
-        request.Identity.ShouldBe(identity);
+        request.Authorization.Identity.ShouldBe(identity);
         request.Reason.ShouldBe(ArtifactAbortReason.Cancelled);
         request.IdempotencyKey.ShouldBe(key);
     }
@@ -27,35 +27,35 @@ public sealed class ArtifactAbortRequestTests
     [Fact]
     public void ArtifactAbortRequest_WhenReasonIsUndefined_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), (ArtifactAbortReason) 999, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Authorization(), (ArtifactAbortReason) 999, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("reason");
     }
 
     [Fact]
     public void Constructor_WhenPreparationIdIsEmpty_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(default, AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactAbortRequest(default, AgentId(), SessionId(), Correlation(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("preparationId");
     }
 
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), null!, Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), null!, Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
-    public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
+    public void Constructor_WhenAuthorizationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), null!, null!, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
-        exception.ParamName.ShouldBe("identity");
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), null!, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort")));
+        exception.ParamName.ShouldBe("authorization");
     }
 
     [Fact]
     public void Constructor_WhenIdempotencyKeyIsBlank_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, default));
+        var exception = Should.Throw<ArgumentException>(() => new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Authorization(), ArtifactAbortReason.Cancelled, default));
         exception.ParamName.ShouldBe("idempotencyKey");
     }
 
@@ -70,7 +70,7 @@ public sealed class ArtifactAbortRequestTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Identity(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort"));
+        var original = new ArtifactAbortRequest(PreparationId(), AgentId(), SessionId(), Correlation(), Authorization(), ArtifactAbortReason.Cancelled, new IdempotencyKey("abort"));
         var copy = original with { };
         copy.ShouldBe(original);
     }

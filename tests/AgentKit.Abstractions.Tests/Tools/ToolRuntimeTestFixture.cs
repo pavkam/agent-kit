@@ -97,8 +97,46 @@ internal static class ToolRuntimeTestFixture
 
     public static ToolExecutionHints ExecutionHints() => new(ToolSchedulingMode.Unspecified, null, null, null);
 
+    public static ToolExecutionPolicyReference ExecutionPolicy() =>
+        new(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1));
+
+    public static ToolResultNormalizationSnapshot NormalizationSnapshot(ToolExecutionPolicyReference? executionPolicy = null) => new(
+        new ToolResultRejectionPolicyReference(new ToolResultRejectionPolicyKey("rejection"), new ToolResultRejectionPolicyVersion(1)),
+        new ToolResultProjectionPolicyReference(new ToolResultProjectionPolicyKey("projection"), new ToolResultProjectionPolicyVersion(1)),
+        executionPolicy ?? ExecutionPolicy(),
+        new ToolResultNormalizationAlgorithmVersion(1),
+        new ToolResultBounds(1024, 4),
+        ToolResultProjectionTransformations.None,
+        ExtensionData.Empty);
+
+    public static ToolExecutionPlan ExecutionPlan(ToolRetryPolicy? retry = null, ToolExecutionPolicyReference? executionPolicy = null) => new(
+        ExecutionHints(), retry ?? ToolRetryPolicy.NoRetry, TimeSpan.FromMinutes(1), NormalizationSnapshot(executionPolicy));
+
+    public static ValidatedToolCall ValidatedCall(ToolDescriptor? tool = null, int sourceOrdinal = 0) => new(
+        TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(), CatalogVersion(), ProviderAlias(),
+        tool ?? Descriptor(), (tool ?? Descriptor()).Version, ExecutionPolicy(), sourceOrdinal, JsonDocument.Parse("{}").RootElement,
+        new InputFingerprint("sha256:args"), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+    public static PreparedToolCall PreparedCall(ToolDescriptor? tool = null, int sourceOrdinal = 0) =>
+        new(ValidatedCall(tool, sourceOrdinal), ExecutionPlan());
+
+    public static AcceptedToolCall AcceptedCall(ToolDescriptor? tool = null, int sourceOrdinal = 0)
+    {
+        var descriptor = tool ?? Descriptor();
+        var normalization = NormalizationSnapshot();
+        return new AcceptedToolCall(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, Authorization(),
+            new ToolCallAcceptanceEvidence(Grant().Id, new InputFingerprint("sha256:args"), DateTimeOffset.UnixEpoch),
+            ProviderAlias(), descriptor.Id, descriptor.Version, descriptor.Effects, externalIdempotencyKey: null,
+            new ToolCallAdmissionEvidence(CatalogVersion(), sourceOrdinal, new InputFingerprint("sha256:raw")),
+            normalization, normalization.ProjectionPolicy, DateTimeOffset.UnixEpoch);
+    }
+
+    public static ToolCallSessionTarget SessionTarget() =>
+        new(new BranchId(Guid.Parse("b0000000-0000-0000-0000-00000000000b")), new ExecutionLaneId(Guid.Parse("b0000000-0000-0000-0000-00000000000c")));
+
     public static ToolBatchEntry BatchEntry(int sourceOrdinal = 0) => new(
-        InvocationContext(), InvokerLease(), ExecutionHints(), sourceOrdinal);
+        InvocationContext(), InvokerLease(), PreparedCall(sourceOrdinal: sourceOrdinal), AcceptedCall(sourceOrdinal: sourceOrdinal));
 
     public static SessionExecutionCapability SessionCapability() => new(
         TestSecurityEvidence.SessionProfile(), new UnsupportedSessionCoordinator(), new UnsupportedSessionRunCoordinator());
@@ -110,7 +148,8 @@ internal static class ToolRuntimeTestFixture
     public static BudgetScopeAddress BudgetAddress() =>
         new(new TenantId("tenant"), new PrincipalId("principal"), TestAgentId, TestSessionId, TestRunId, TestOperationId);
 
-    public static ToolExecutionCapability ExecutionCapability() => new(SessionCapability(), BudgetCapability());
+    public static ToolExecutionCapability ExecutionCapability() =>
+        new(SessionCapability(), BudgetCapability(), SessionTarget(), [new ToolExecutionPolicyBinding(ExecutionPolicy())]);
 
     /// <summary>Builds a minimal pre-invocation rejection result usable as a <see cref="ToolBatchResult"/> entry.</summary>
     public static ToolCallResult RejectedCallResult() => new(

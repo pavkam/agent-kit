@@ -48,10 +48,7 @@ A stored duplicate is real only when a constructor actually enforces equality
 between the two copies; if nothing enforces it, the fields are either not truly
 redundant or a missing invariant needs to be added and tested before the
 duplicate is removed. Wire, session-entry, and other persisted or serialized
-shapes are unaffected by this rule; they keep every identity they carry today.
-See
-[identity values versus object references](../identity-and-object-references.md)
-for the full inventory and migration record.
+shapes are unaffected by this rule; they keep every identity they carry.
 
 ### Separate acceptance from execution
 

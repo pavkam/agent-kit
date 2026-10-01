@@ -3,40 +3,51 @@
 
 namespace AgentKit.Context.Project;
 
-#pragma warning disable CS0612 // Legacy IFileSystem until host tools migrate onto IFileReader.
-
 /// <summary>Discovers bounded workspace instruction files and contributes them as instruction candidates.</summary>
+/// <remarks>
+/// Each candidate file is read through the <see cref="IFileReader"/> of the keyed file-system profile named by
+/// <see cref="ProjectInstructionOptions.ProfileKey"/>, after the captured security authority allows a
+/// <see cref="SecurityOperationKind.FileRead"/> for exactly that target. A missing, denied, oversized, or non-UTF-8 file
+/// contributes no candidate; discovery never fails the request because one file is unreadable.
+/// </remarks>
 public sealed class ProjectInstructionContributor: IContextContributor
 {
-    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
-    private readonly IFileSystem _fileSystem;
+    private static readonly UTF8Encoding _strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    private readonly IFileSystemSelector _fileSystemSelector;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
+    private readonly IIdentifierGenerator<FileOperationId> _fileOperationIds;
     private readonly TimeProvider _timeProvider;
     private readonly ProjectInstructionOptions _options;
+    private readonly ImmutableArray<NormalizedRelativePath> _instructionPaths;
 
     /// <summary>Initializes the contributor.</summary>
-    /// <param name="fileSystem">The protected file-system boundary used for reads.</param>
+    /// <param name="fileSystemSelector">Selects the keyed file-system profile that provides the protected reader.</param>
     /// <param name="authoritySelector">The selector used to resolve the captured authority for each read.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
+    /// <param name="fileOperationIds">The file-operation identity generator.</param>
     /// <param name="timeProvider">The clock used to bound authorization.</param>
     /// <param name="options">Validated discovery options captured at construction.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    /// <exception cref="ArgumentException">A search root or filename is blank, the host root is blank, or a search root and filename do not form a valid relative path.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
-    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
     public ProjectInstructionContributor(
-        IFileSystem fileSystem,
+        IFileSystemSelector fileSystemSelector,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
+        IIdentifierGenerator<FileOperationId> fileOperationIds,
         TimeProvider timeProvider,
         IOptions<ProjectInstructionOptions> options)
     {
-        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(fileSystemSelector);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
+        ArgumentNullException.ThrowIfNull(fileOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaxBytesPerFile, nameof(options));
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath, nameof(options));
         ArgumentNullException.ThrowIfNull(options.Value.SearchRoots);
         ArgumentNullException.ThrowIfNull(options.Value.InstructionFilenames);
         foreach (var root in options.Value.SearchRoots)
@@ -44,20 +55,30 @@ public sealed class ProjectInstructionContributor: IContextContributor
             ArgumentException.ThrowIfNullOrWhiteSpace(root);
         }
 
+        var paths = ImmutableArray.CreateBuilder<NormalizedRelativePath>();
         foreach (var filename in options.Value.InstructionFilenames)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filename);
         }
-        _fileSystem = fileSystem;
+
+        foreach (var root in options.Value.SearchRoots)
+        {
+            foreach (var filename in options.Value.InstructionFilenames)
+            {
+                paths.Add(CombineRelativePath(root, filename));
+            }
+        }
+
+        _fileSystemSelector = fileSystemSelector;
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
+        _fileOperationIds = fileOperationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _instructionPaths = paths.ToImmutable();
     }
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
-
     public async ValueTask<ContextContribution> ContributeAsync(
         ContextContributionRequest request,
         CancellationToken cancellationToken = default)
@@ -66,41 +87,52 @@ public sealed class ProjectInstructionContributor: IContextContributor
         cancellationToken.ThrowIfCancellationRequested();
 
         var candidates = ImmutableArray.CreateBuilder<ContextCandidate>();
-        foreach (var root in _options.SearchRoots)
+        foreach (var path in _instructionPaths)
         {
-            foreach (var filename in _options.InstructionFilenames)
+            cancellationToken.ThrowIfCancellationRequested();
+            var candidate = await TryReadInstructionCandidateAsync(request, path, cancellationToken).ConfigureAwait(false);
+            if (candidate is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var relativePath = CombineRelativePath(root, filename);
-                var candidate = await TryReadInstructionCandidateAsync(request, relativePath, cancellationToken).ConfigureAwait(false);
-                if (candidate is not null)
-                {
-                    candidates.Add(candidate);
-                }
+                candidates.Add(candidate);
             }
         }
 
         return new ContextContribution(candidates.ToImmutable(), []);
     }
 
-    [Obsolete("Use IFileReader once context discovery selects a keyed file-system profile.")]
     private async Task<ContextCandidate?> TryReadInstructionCandidateAsync(
         ContextContributionRequest request,
-        FileSystemPath path,
+        NormalizedRelativePath path,
         CancellationToken cancellationToken)
     {
+        var selection = await _fileSystemSelector
+            .SelectAsync(_options.ProfileKey, FileSystemCapability.Read, cancellationToken)
+            .ConfigureAwait(false);
+        if (selection is not FileSystemReaderSelected readerSelected)
+        {
+            return null;
+        }
+
         var authorization = request.Authorization;
+        var target = FileHostTargetBinding.Target(_options.RootId, path);
+        var readRequest = new FileReadRequest(
+            _fileOperationIds.Create(),
+            authorization.Scope.Correlation.OperationId,
+            request.Agent.Id,
+            request.RunId,
+            target,
+            new FileReadBounds(_options.MaxBytesPerFile));
         var securityRequest = new SecurityRequest(
             _requestIds.Create(),
             authorization.Scope,
             toolCallId: null,
             authorization.Identity,
             authorization,
-            _fileSystem.SecurityAudience,
+            readerSelected.Reader.SecurityAudience,
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
-            [FileSecurityBinding.Resource(path)],
-            FileSecurityBinding.ReadFingerprint(path),
+            [FileSecurityBinding.Resource(target)],
+            FileSecurityBinding.ReadFingerprint(readRequest),
             _timeProvider.GetUtcNow().AddMinutes(1));
         var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
         if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
@@ -114,13 +146,32 @@ public sealed class ProjectInstructionContributor: IContextContributor
             return null;
         }
 
-        var readResult = await _fileSystem.ReadAsync(new LegacyFileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
-        if (readResult is not FileRead read || read.Bytes > _options.MaxBytesPerFile)
+        var resolved = FileHostTargetBinding.Resolve(_options.RootId, path, _options.HostRootPath);
+        var opened = await readerSelected.Reader
+            .OpenReadAsync(new AuthorizedFileRead(readRequest, resolved, allowed.Grant), cancellationToken)
+            .ConfigureAwait(false);
+        if (opened is not FileReadHandleOpened handleOpened)
         {
             return null;
         }
 
-        var text = read.Content;
+        await using var handle = handleOpened.Handle;
+        if (handle.Metadata.LengthBytes > _options.MaxBytesPerFile)
+        {
+            return null;
+        }
+
+        string text;
+        try
+        {
+            using var reader = new StreamReader(handle.Content, _strictUtf8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+            text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DecoderFallbackException)
+        {
+            return null;
+        }
+
         var bytes = Encoding.UTF8.GetByteCount(text);
         return new ContextCandidate(
             new ContextSourceReference(
@@ -139,15 +190,14 @@ public sealed class ProjectInstructionContributor: IContextContributor
             ExtensionData.Empty);
     }
 
-    private static FileSystemPath CombineRelativePath(string root, string filename)
+    private static NormalizedRelativePath CombineRelativePath(string root, string filename)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(root);
-        ArgumentException.ThrowIfNullOrWhiteSpace(filename);
-        var combined = root.TrimEnd('/').Length == 0 || root is "."
+        Debug.Assert(!string.IsNullOrWhiteSpace(root), "Search roots are validated before combination.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(filename), "Instruction filenames are validated before combination.");
+        var trimmed = root.TrimEnd('/');
+        var combined = trimmed.Length == 0 || root is "."
             ? filename
-            : $"{root.TrimEnd('/')}/{filename}";
-        return new FileSystemPath(combined);
+            : $"{trimmed}/{filename}";
+        return new NormalizedRelativePath(combined);
     }
 }
-
-#pragma warning restore CS0612

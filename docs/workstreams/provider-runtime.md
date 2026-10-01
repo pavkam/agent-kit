@@ -28,6 +28,8 @@ Owning documents:
 - [x] WS7-C9b six native leaves instrumented via `NativeProviderChatSend` or
       rerank send helpers
 - [x] WS7-C10 validator
+- [x] WS7-C11 provider egress through `INetworkTransport` (closes the WS20
+      provider gap; Landed note below)
 
 ## Verified current state
 
@@ -212,6 +214,57 @@ files, untouched.
 - Deliverables: singular `IProviderProfileRuntimeSelector`, keyed-or-un-keyed
   `IModelRequestExecutor`, per-definition compatibility pass producing a typed
   diagnostic when no candidate model satisfies `ModelRequirements`.
+
+### WS7-C11: Provider egress through `INetworkTransport`
+
+- Depends on: C4, C5, and the network leaf (WS5/WS6). Risk: DENSE-MODIFY (every
+  adapter's send site) with a breaking constructor change per adapter. Size: L,
+  done in one pass across every adapter family.
+- Landed: `AgentKit.Providers` owns `ProviderEgress` (registered with
+  `AddAgentProviders`), the one boundary all 17 first-party provider packages
+  send through. Per attempt, before any DNS, connection, or transmission, it
+  selects the authority named by the request's
+  `ProtectedSemanticOperationContext`; obtains and atomically consumes (required
+  audit) a provider-egress grant bound to the descriptor's exact endpoint and
+  credential profile references, model revision, attempt, canonical destination,
+  payload hash, declared classification, deadline, and response bound; then
+  obtains a separate resolution grant for `INetworkNameResolver` and a separate
+  send grant for `INetworkTransport`, each consumed by its own boundary. Every
+  adapter (OpenAI-compatible chat and embeddings bases and their nine branded
+  leaves, Anthropic, Bedrock, Cohere chat/embeddings/rerank, Gemini and Vertex
+  chat and embeddings, Mistral chat and embeddings, OpenRouter rerank) replaced
+  its `HttpClient` with `ProviderEgress`; the leaves' `HttpClient` and
+  `SocketsHttpHandler` registrations are gone and there is no fallback. Refusals
+  return the stable `ProviderFailure` taxonomy: `Authorization` for a missing
+  operation context, denial at any of the three grants, unavailable authority,
+  unavailable grant store, or unavailable required audit; `Timeout` and
+  `Cancellation` from the attempt deadline and caller token; `Unavailable`,
+  `ProtocolViolation`, and `InvalidRequest` for transport outcomes. A streamed
+  overrun or expired body deadline surfaces from the response stream and maps
+  through `ProviderEgressBodyFault`. `AgentKit.Simple` registers the network
+  leaf for every provider sugar method (a permissive local-endpoint policy only
+  for `UseOllama`).
+- Tests: `ProviderEgressTests` (grant request contents per operation, denial and
+  audit/store/authority-unavailable before any I/O, deadline versus caller
+  cancellation, redirects refused, streaming at arbitrary fragmentation, secrets
+  absent from signals and refusals, DI replacement of the transport and no
+  fallback), per-adapter egress tests in the OpenAI-compatible, Anthropic,
+  OpenRouter, and Cohere fixtures, and every adapter fixture migrated onto the
+  deterministic `ProviderEgressHarness`/`HandlerNetworkTransport` in
+  `AgentKit.Test.Shared`.
+- Deviations from the provider architecture, recorded in
+  [model-and-embedding-providers.md](../architecture/model-and-embedding-providers.md#provider-egress-shipped-design-and-deviations):
+  a single `ProviderEgress` class instead of per-adapter authority/store/network
+  constructor parameters; `HttpRequestMessage`/`HttpResponseMessage` kept only
+  as in-memory containers; redirects never followed; a host-configured payload
+  classification instead of per-message classification; and no credential-read
+  grant or credential lease.
+- Remaining limits: the credential-read grant and disposable lease are still not
+  shipped (`IProviderCredentialSource.GetCredentialAsync(ProviderId)` is
+  unchanged); retries remain executor-owned and each retry obtains fresh grants.
+  `NetworkWebSearchProvider` in `AgentKit.Tools.WebSearch` was outside this
+  closure and has since moved to `INetworkTransport` under its own grants
+  ([WS4-C12](tool-runtime.md#ws4-c12-first-party-iwebsearchprovider)).
 
 ## Totals
 

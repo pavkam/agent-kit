@@ -7,6 +7,7 @@ using AgentKit.TestSupport;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Verifies <see cref="BarrierSegmentToolScheduler"/> barrier segments, limits, and cancellation.</summary>
 public sealed class BarrierSegmentToolSchedulerTests
@@ -166,22 +167,384 @@ public sealed class BarrierSegmentToolSchedulerTests
         invoker.Invocations.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenReadOnlyCallFailsRetryably_RetriesWithPlannedBackoffUntilItSucceeds()
+    {
+        var fake = new FakeTimeProvider();
+        var randomizers = new FixedRandomizerFactory();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake, randomizers: randomizers);
+        var invoker = new ScriptedAttemptInvoker(static context => context.Attempt < 3 ? Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(3, TimeSpan.FromMilliseconds(100), 2.0, TimeSpan.FromSeconds(1), 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Contexts.Select(static context => context.Attempt).ShouldBe([1, 2, 3]);
+        (invoker.Contexts[1].InvocationStartedAt - invoker.Contexts[0].InvocationStartedAt).ShouldBeInRange(TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(150));
+        (invoker.Contexts[2].InvocationStartedAt - invoker.Contexts[1].InvocationStartedAt).ShouldBeInRange(TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(250));
+        randomizers.Created.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAttemptBudgetIsExhausted_ReturnsTheLastFailureWithAcceptanceEvidence()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        var invoker = new ScriptedAttemptInvoker(static _ => Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true));
+        var retry = new ToolRetryPolicy(2, TimeSpan.FromMilliseconds(10), 1.0, TimeSpan.FromMilliseconds(10), 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        terminal.Retryable.ShouldBeTrue();
+        _ = terminal.Acceptance.ShouldNotBeNull();
+        _ = terminal.InvocationStartedAt.ShouldNotBeNull();
+        invoker.Contexts.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenFailureIsNotRetryable_DoesNotRetry()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = new ScriptedAttemptInvoker(static _ => Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: false));
+        var retry = new ToolRetryPolicy(5, TimeSpan.Zero, 1.0, TimeSpan.Zero, 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)]);
+
+        var result = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMutatingCallMayHaveStartedAndInvokerDoesNotEnforceIdempotency_DoesNotRetry()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = new ScriptedAttemptInvoker(static _ => Failure(SideEffectCertainty.Unknown, retryable: true));
+        var retry = new ToolRetryPolicy(3, TimeSpan.Zero, 1.0, TimeSpan.Zero, 0.0);
+        var effects = new ToolEffects(ToolEffect.Mutating, IdempotencyClassification.Idempotent, null);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects, retry)]);
+
+        var result = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMutatingCallMayHaveStartedAndDeclaresNoIdempotency_DoesNotRetryEvenIfInvokerEnforces()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = new EnforcingAttemptInvoker(enforces: true, static _ => Failure(SideEffectCertainty.Unknown, retryable: true));
+        var retry = new ToolRetryPolicy(3, TimeSpan.Zero, 1.0, TimeSpan.Zero, 0.0);
+        var effects = new ToolEffects(ToolEffect.Mutating, null, null);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects, retry)]);
+
+        var result = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Retryable.ShouldBeFalse();
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenKeyedIdempotentCallMayHaveStartedAndInvokerEnforcesIt_RetriesWithTheSameExternalKey()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        var invoker = new EnforcingAttemptInvoker(enforces: true, static context => context.Attempt == 1 ? Failure(SideEffectCertainty.Unknown, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(3, TimeSpan.FromMilliseconds(10), 1.0, TimeSpan.FromMilliseconds(10), 0.0);
+        var effects = new ToolEffects(ToolEffect.Mutating, IdempotencyClassification.IdempotentWithKey, null);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Contexts.Select(static context => context.ExternalIdempotencyKey).ShouldBe([new IdempotencyKey("key-1"), new IdempotencyKey("key-1")]);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenInvokerDeclinesToEnforceIdempotency_DoesNotRetryAPossiblyStartedMutation()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = new EnforcingAttemptInvoker(enforces: false, static _ => Failure(SideEffectCertainty.Unknown, retryable: true));
+        var retry = new ToolRetryPolicy(3, TimeSpan.Zero, 1.0, TimeSpan.Zero, 0.0);
+        var effects = new ToolEffects(ToolEffect.Mutating, IdempotencyClassification.Idempotent, null);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects, retry)]);
+
+        _ = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMutatingCallWasDefinitelyNotPerformed_RetriesUnderOrdinaryPolicy()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        var invoker = new ScriptedAttemptInvoker(static context => context.Attempt == 1 ? Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(2, TimeSpan.FromMilliseconds(10), 1.0, TimeSpan.FromMilliseconds(10), 0.0);
+        var effects = new ToolEffects(ToolEffect.Mutating, null, null);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Contexts.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenBackoffWouldPassTheBatchDeadline_DoesNotRetry()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        var invoker = new ScriptedAttemptInvoker(static _ => Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true));
+        var retry = new ToolRetryPolicy(3, TimeSpan.FromMilliseconds(100), 1.0, TimeSpan.FromMilliseconds(100), 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMilliseconds(50));
+
+        var result = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenJitterIsPlanned_AppliesTheInjectedRandomValueToTheBackoff()
+    {
+        var fake = new FakeTimeProvider();
+        var randomizers = new FixedRandomizerFactory(unit: 1.0);
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake, randomizers: randomizers);
+        var invoker = new ScriptedAttemptInvoker(static context => context.Attempt == 1 ? Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(2, TimeSpan.FromMilliseconds(1000), 1.0, TimeSpan.FromMilliseconds(1000), 0.5);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        _ = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        randomizers.Created.ShouldBe(1);
+        var gap = invoker.Contexts[1].InvocationStartedAt - invoker.Contexts[0].InvocationStartedAt;
+        gap.ShouldBeInRange(TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(550));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRetryIsScheduled_PublishesARetryEventAndSinkFailureDoesNotStopTheRetry()
+    {
+        var fake = new FakeTimeProvider();
+        var collecting = new CollectingSink();
+        var sinks = new[]
+        {
+            new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("a-throwing"), 0), new ThrowingSink()),
+            new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("b-collecting"), 1), collecting),
+        };
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake, sinks: sinks);
+        var invoker = new ScriptedAttemptInvoker(static context => context.Attempt == 1 ? Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(2, TimeSpan.FromMilliseconds(10), 1.0, TimeSpan.FromMilliseconds(10), 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        var retryEvent = collecting.Events.ShouldHaveSingleItem().ShouldBeOfType<ToolRetryScheduledEvent>();
+        retryEvent.FailedAttempt.ShouldBe(1);
+        retryEvent.Delay.ShouldBe(TimeSpan.FromMilliseconds(10));
+        retryEvent.CallId.ShouldBe(batch.Entries[0].Invocation.CallId);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledDuringBackoff_ReturnsTheLastFailureWithoutAnotherAttempt()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var invoker = new ScriptedAttemptInvoker(_ =>
+        {
+            cancellation.Cancel();
+            return Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true);
+        });
+        var retry = new ToolRetryPolicy(3, TimeSpan.FromSeconds(10), 1.0, TimeSpan.FromSeconds(10), 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)], deadline: fake.GetUtcNow().AddMinutes(5));
+
+        var result = await scheduler.ExecuteAsync(batch, cancellation.Token);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenInvokerThrows_ReportsUnknownCertaintyAndDoesNotRetry()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = new ScriptedAttemptInvoker(static _ => throw new InvalidOperationException("secret detail"));
+        var retry = new ToolRetryPolicy(3, TimeSpan.Zero, 1.0, TimeSpan.Zero, 0.0);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry)]);
+
+        var result = await scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        terminal.Error!.SafeMessage.ShouldNotContain("secret detail");
+        invoker.Contexts.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAnAttemptIsInterrupted_ReturnsInterruptedWithUnknownCertaintyAndAcceptance()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var invoker = new CancellingInvoker(cancellation);
+        var batch = CreateBatch([CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry: null)]);
+
+        var result = await scheduler.ExecuteAsync(batch, cancellation.Token);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Interrupted);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        _ = terminal.Acceptance.ShouldNotBeNull();
+        _ = terminal.InvocationStartedAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAcceptedEntryNeverStarts_ReturnsDefinitelyNotPerformedWithAcceptanceAndNoStart()
+    {
+        var scheduler = CreateScheduler(maxParallel: 4);
+        var invoker = CreateRecordingInvoker(delayMs: 0, label: "never");
+        var batch = CreateBatch([CreateEntry(0, invoker, SequentialHints())]);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+
+        var result = await scheduler.ExecuteAsync(batch, cancellation.Token);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Interrupted);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        _ = terminal.Acceptance.ShouldNotBeNull();
+        terminal.InvocationStartedAt.ShouldBeNull();
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRetryIsScheduled_RecordsBackoffActivityAndBoundedRetryMetric()
+    {
+        var fake = new FakeTimeProvider();
+        var scheduler = CreateScheduler(maxParallel: 4, timeProvider: fake);
+        var invoker = new ScriptedAttemptInvoker(static context => context.Attempt == 1 ? Failure(SideEffectCertainty.DefinitelyNotPerformed, retryable: true) : Success());
+        var retry = new ToolRetryPolicy(2, TimeSpan.FromMilliseconds(10), 1.0, TimeSpan.FromMilliseconds(10), 0.0);
+        var entry = CreateEntryFor(0, invoker, SequentialHints(), 0, effects: null, retry);
+        var callId = entry.Invocation.CallId.ToString();
+        var batch = CreateBatch([entry], deadline: fake.GetUtcNow().AddMinutes(5));
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            observation => observation.OperationName == AgentKitActivityNames.ToolRetryBackoff
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolCallId), callId));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolRetryCount);
+
+        _ = await RunWithFakeTimeAsync(scheduler.ExecuteAsync(batch, TestContext.Current.CancellationToken), fake);
+
+        activities.Snapshot().ShouldHaveSingleItem().Status.ShouldBe(ActivityStatusCode.Ok);
+        metrics.Snapshot().ShouldContain(static observation => Equals(observation.Tags[AgentKitTagNames.Outcome], "scheduled"));
+    }
+
+    private static async Task<ToolBatchResult> RunWithFakeTimeAsync(Task<ToolBatchResult> task, FakeTimeProvider fake)
+    {
+        while (!task.IsCompleted)
+        {
+            TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
+            fake.Advance(TimeSpan.FromMilliseconds(50));
+            await Task.Yield();
+        }
+
+        return await task;
+    }
+
+    private static ToolInvocationResult Failure(SideEffectCertainty certainty, bool retryable) => new(
+        new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, certainty, retryable, "The attempt failed.", ExtensionData.Empty),
+        []);
+
+    private static ToolInvocationResult Success() => new(
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, retryable: false, null, ExtensionData.Empty),
+        [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)]);
+
+    private sealed class ScriptedAttemptInvoker(Func<ToolInvocationContext, ToolInvocationResult> script): IToolInvoker
+    {
+        public List<ToolInvocationContext> Contexts { get; } = [];
+
+        public ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default)
+        {
+            Contexts.Add(context);
+            return ValueTask.FromResult(script(context));
+        }
+    }
+
+    private sealed class EnforcingAttemptInvoker(bool enforces, Func<ToolInvocationContext, ToolInvocationResult> script): IIdempotencyEnforcingToolInvoker
+    {
+        public List<ToolInvocationContext> Contexts { get; } = [];
+
+        public bool EnforcesIdempotency(ToolInvocationContext context) => enforces;
+
+        public ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default)
+        {
+            Contexts.Add(context);
+            return ValueTask.FromResult(script(context));
+        }
+    }
+
+    private sealed class CancellingInvoker(CancellationTokenSource source): IToolInvoker
+    {
+        public async ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default)
+        {
+            await source.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            return Success();
+        }
+    }
+
+    private sealed class CollectingSink: IToolEventSink
+    {
+        public List<ToolEvent> Events { get; } = [];
+
+        public ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(toolEvent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingSink: IToolEventSink
+    {
+        public ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("sink failure");
+    }
+
     private static BarrierSegmentToolScheduler CreateScheduler(
         int maxParallel,
-        UnknownSchedulingMode unknownSchedulingMode = UnknownSchedulingMode.Sequential) =>
-        new(
+        UnknownSchedulingMode unknownSchedulingMode = UnknownSchedulingMode.Sequential,
+        TimeProvider? timeProvider = null,
+        IEnumerable<ToolEventSinkBinding>? sinks = null,
+        FixedRandomizerFactory? randomizers = null)
+    {
+        var options = Options.Create(new ToolRuntimeOptions
+        {
+            MaximumParallelInvocations = maxParallel,
+            UnknownSchedulingMode = unknownSchedulingMode,
+        });
+        var clock = timeProvider ?? TimeProvider.System;
+        return new BarrierSegmentToolScheduler(
             new ToolResultNormalizer(Options.Create(new ToolRuntimeOptions())),
-            Options.Create(new ToolRuntimeOptions
-            {
-                MaximumParallelInvocations = maxParallel,
-                UnknownSchedulingMode = unknownSchedulingMode,
-            }),
-            TimeProvider.System,
+            options,
+            clock,
+            new ToolEventDispatcher(sinks ?? [], options, clock, NullLogger<ToolEventDispatcher>.Instance),
+            randomizers ?? new FixedRandomizerFactory(),
             NullLogger<BarrierSegmentToolScheduler>.Instance);
+    }
 
     private static ToolBatch CreateBatch(
         ImmutableArray<ToolBatchEntry> entries,
-        UnknownSchedulingMode unknownSchedulingMode = UnknownSchedulingMode.Sequential) =>
+        UnknownSchedulingMode unknownSchedulingMode = UnknownSchedulingMode.Sequential,
+        DateTimeOffset? deadline = null) =>
         new(
             TestAgentId,
             TestSessionId,
@@ -189,20 +552,48 @@ public sealed class BarrierSegmentToolSchedulerTests
             entries,
             ToolBatchFailureMode.SettleIndependently,
             unknownSchedulingMode,
-            DateTimeOffset.UnixEpoch.AddMinutes(5));
+            deadline ?? DateTimeOffset.UnixEpoch.AddMinutes(5));
 
     private static ToolBatchEntry CreateEntry(
         int sourceOrdinal,
         SchedulingRecordingInvoker invoker,
         ToolExecutionHints hints,
-        int callSuffix = 0)
+        int callSuffix = 0) =>
+        CreateEntryFor(sourceOrdinal, invoker, hints, callSuffix, effects: null, retry: null);
+
+    private static ToolBatchEntry CreateEntryFor(
+        int sourceOrdinal,
+        IToolInvoker invoker,
+        ToolExecutionHints hints,
+        int callSuffix,
+        ToolEffects? effects,
+        ToolRetryPolicy? retry)
     {
-        var tool = Descriptor(hints);
+        var tool = Descriptor(hints, effects);
         var callId = new ToolCallId(Guid.Parse($"aaaaaaaa-aaaa-aaaa-aaaa-{sourceOrdinal + callSuffix:D12}"));
-        invoker.Bind(callId);
-        var context = InvocationContext(tool, callId);
-        var lease = new TestInvokerLease(tool, invoker);
-        return new ToolBatchEntry(context, lease, hints, sourceOrdinal);
+        if (invoker is SchedulingRecordingInvoker recording)
+        {
+            recording.Bind(callId);
+        }
+
+        var key = tool.Effects.Idempotency is IdempotencyClassification.IdempotentWithKey ? new IdempotencyKey("key-1") : (IdempotencyKey?) null;
+        var context = InvocationContext(tool, callId, key);
+        var authorization = context.InvocationGrant.Authorization;
+        var policy = new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1));
+        var normalization = ToolRuntimeNormalizationDefaults.ForResolvedTool(policy);
+        var fingerprint = new InputFingerprint("sha256:validated");
+        var validated = new ValidatedToolCall(
+            context.AgentId, context.SessionId, context.RunId, context.TurnId, context.OperationId, callId, authorization,
+            new ToolCatalogVersion("catalog-1"), new ToolAlias("tool"), tool, tool.Version, policy, sourceOrdinal, context.Arguments,
+            fingerprint, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        var plan = new ToolExecutionPlan(hints, retry ?? ToolRetryPolicy.NoRetry, TimeSpan.FromMinutes(1), normalization);
+        var accepted = new AcceptedToolCall(
+            context.AgentId, context.SessionId, context.RunId, context.TurnId, context.OperationId, callId, authorization,
+            new ToolCallAcceptanceEvidence(context.InvocationGrant.Id, fingerprint, DateTimeOffset.UnixEpoch),
+            new ToolAlias("tool"), tool.Id, tool.Version, tool.Effects, key,
+            new ToolCallAdmissionEvidence(new ToolCatalogVersion("catalog-1"), sourceOrdinal, new InputFingerprint("sha256:raw")),
+            normalization, normalization.ProjectionPolicy, DateTimeOffset.UnixEpoch);
+        return new ToolBatchEntry(context, new TestInvokerLease(tool, invoker), new PreparedToolCall(validated, plan), accepted);
     }
 
     private static ToolExecutionHints ParallelHints() =>
@@ -220,7 +611,7 @@ public sealed class BarrierSegmentToolSchedulerTests
     private static ToolExecutionHints UnspecifiedHints() =>
         new(ToolSchedulingMode.Unspecified, null, null, null);
 
-    private static ToolDescriptor Descriptor(ToolExecutionHints hints)
+    private static ToolDescriptor Descriptor(ToolExecutionHints hints, ToolEffects? effects = null)
     {
         using var document = JsonDocument.Parse("{}");
         return new ToolDescriptor(
@@ -230,13 +621,13 @@ public sealed class BarrierSegmentToolSchedulerTests
             "Tool",
             new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), document.RootElement),
             outputSchema: null,
-            new ToolEffects(ToolEffect.ReadOnly, null, null),
+            effects ?? new ToolEffects(ToolEffect.ReadOnly, null, null),
             hints,
             new ToolSourceId("agentkit.tools.tests"),
             ExtensionData.Empty);
     }
 
-    private static ToolInvocationContext InvocationContext(ToolDescriptor tool, ToolCallId callId)
+    private static ToolInvocationContext InvocationContext(ToolDescriptor tool, ToolCallId callId, IdempotencyKey? key = null)
     {
         var agentId = TestAgentId;
         var sessionId = TestSessionId;
@@ -277,7 +668,9 @@ public sealed class BarrierSegmentToolSchedulerTests
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch.AddMinutes(1),
-            new NoopProgressReporter());
+            new NoopProgressReporter(),
+            sessionProfile: null,
+            key);
     }
 
     private static SchedulingRecordingInvoker CreateRecordingInvoker(int delayMs, string label) =>

@@ -159,18 +159,23 @@ public sealed class NetworkRequestTests
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.UnixEpoch.AddMinutes(1));
 
-    private static SecurityGrant Grant() => new(
-        new GrantId(Guid.Parse("20000000-0000-0000-0000-000000000002")),
-        new SecurityRequestId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
-        new SecurityAuthorizationScope(
+    private static SecurityGrant Grant()
+    {
+        var __scope = new SecurityAuthorizationScope(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             null,
             new BeforeRunOperationCorrelation(
-                new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")), null)),
-        TestSupport.TestExecutionIdentity.Create(
+                new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")), null));
+        var __identity = TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human),
+            ExecutionSubjectKind.Human);
+        return new(
+        new GrantId(Guid.Parse("20000000-0000-0000-0000-000000000002")),
+        new SecurityRequestId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
+        __scope,
+        __identity,
+        TestSupport.TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
         new ComponentId("test"),
         SecurityOperationKind.Network,
         SecurityEffect.Egress,
@@ -181,4 +186,5 @@ public sealed class NetworkRequestTests
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.MaxValue,
         1);
+    }
 }

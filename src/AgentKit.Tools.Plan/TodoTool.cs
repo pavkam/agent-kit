@@ -23,6 +23,7 @@ public sealed class TodoTool: IToolInvoker
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The captured model-facing bounds.</param>
+    /// <param name="logger">The content-free logger the delegated plan invocation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public TodoTool(
@@ -30,14 +31,15 @@ public sealed class TodoTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<PlanToolOptions> options)
+        IOptions<PlanToolOptions> options,
+        ILogger<PlanTool> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-        _planTool = new PlanTool(store, authoritySelector, requestIds, timeProvider, options);
+        _planTool = new PlanTool(store, authoritySelector, requestIds, timeProvider, options, logger);
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
@@ -65,5 +67,5 @@ public sealed class TodoTool: IToolInvoker
     public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default) =>
-        _planTool.InvokeAsync(context, cancellationToken);
+        _planTool.InvokeAsync(Id, context, cancellationToken);
 }

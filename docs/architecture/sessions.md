@@ -160,6 +160,19 @@ security, goals, checkpoints, and lifecycle facts. The common base exists to
 preserve ordering and causality; it is not an `object` payload escape hatch.
 Unknown compatible serialized fields are retained in typed extension data.
 
+Tool calls add two entries. `ToolCallAcceptedSessionEntry` holds a complete
+`AcceptedToolCall` and is appended, through the run's session capability, after
+a call is authorized and before its invoker starts.
+`ToolCallTerminalSessionEntry` closes it with the call's terminal evidence:
+status, side-effect certainty, retryability, safe error, acceptance and grant
+correlation, normalization provenance, and timing, but no result content, usage,
+or extension data, because the committed tool message already carries the
+bounded projected content. `AgentKit.Session` owns both v1 codecs
+(`agentkit.session/tool-call-accepted` and
+`agentkit.session/tool-call-terminal`), and the Json and Sqlite leaves register
+them. Neither entry is a message, so history assembly ignores them, and the
+loop's append rebasing absorbs them when they land between its own commits.
+
 `SessionSequence` is a per-branch coordinate: it is an entry's 1-based commit
 position within its own `BranchId` alone. A store accepts an append only when
 its batch's sequences are contiguous starting at that branch's own current tip
@@ -324,14 +337,14 @@ and inclusive `UpperSequence`. Continuation requests echo that value, and stores
 return only entries whose sequence is greater than the page cursor and no
 greater than `UpperSequence`. Later appends therefore never leak into an
 in-progress read. `ThroughSequence` remains only the pagination position; it is
-not a session version and may exceed the branch tip for an empty legacy read.
-Stores reject future, wrong-address, wrong-branch, and beyond-tip snapshots with
-a typed read failure rather than substituting current state. Public construction
-does not establish provenance: a continuation is valid only when the selected
-store previously issued the equal snapshot. An adapter may retain that
-continuation evidence in a bounded transient cache; eviction or adapter restart
-fails the continuation explicitly instead of accepting an unproved
-version/upper-sequence pair.
+not a session version and may exceed the branch tip for an empty read whose
+cursor starts beyond it. Stores reject future, wrong-address, wrong-branch, and
+beyond-tip snapshots with a typed read failure rather than substituting current
+state. Public construction does not establish provenance: a continuation is
+valid only when the selected store previously issued the equal snapshot. An
+adapter may retain that continuation evidence in a bounded transient cache;
+eviction or adapter restart fails the continuation explicitly instead of
+accepting an unproved version/upper-sequence pair.
 
 Stores are additive, keyed state implementations. Selection occurs when a
 session is created. Before creating store state, the coordinator idempotently

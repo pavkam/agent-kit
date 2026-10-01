@@ -56,6 +56,7 @@ public static class RunPolicyVersioning
         AppendInt64(hash, options.AppendConflictRetryLimit);
         AppendInt64(hash, options.DisableToolsOnFinalTurn ? 1 : 0);
         AppendInt64(hash, options.SettlementTimeout.Ticks);
+        AppendInt64(hash, options.HookDispatchTimeout.Ticks);
         AppendInt64(hash, options.ObserverDeliveryTimeout.Ticks);
         AppendDouble(hash, options.ContextPressureThreshold);
         AppendDouble(hash, options.EstimatedCharactersPerToken);

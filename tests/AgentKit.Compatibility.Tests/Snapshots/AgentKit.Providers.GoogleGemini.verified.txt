@@ -5,8 +5,8 @@ namespace AgentKit.Providers.GoogleGemini
 {
     public static class GoogleApiErrorFailureFactory
     {
-        public static System.Threading.Tasks.Task<AgentKit.ProviderFailure> CreateAsync(System.Net.Http.HttpResponseMessage response, AgentKit.ProviderId providerId, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
-        public static AgentKit.ProviderFailure CreateInterrupted(System.Net.Http.HttpResponseMessage response, AgentKit.ProviderId providerId, AgentKit.ProviderFailureKind kind, string safeMessage, System.Exception? diagnosticCause, System.TimeProvider timeProvider) { }
+        public static System.Threading.Tasks.Task<AgentKit.ProviderFailure> CreateAsync(AgentKit.Providers.Egress.ProviderEgressResponse response, AgentKit.ProviderId providerId, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
+        public static AgentKit.ProviderFailure CreateInterrupted(AgentKit.Providers.Egress.ProviderEgressResponse response, AgentKit.ProviderId providerId, AgentKit.ProviderFailureKind kind, string safeMessage, System.Exception? diagnosticCause, System.TimeProvider timeProvider) { }
     }
     public sealed class GoogleGeminiContentTranslator : AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator
     {
@@ -15,7 +15,7 @@ namespace AgentKit.Providers.GoogleGemini
     }
     public sealed class GoogleGeminiEmbeddingModel : AgentKit.IEmbeddingModel
     {
-        public GoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public GoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -45,7 +45,7 @@ namespace AgentKit.Providers.GoogleGemini
     }
     public sealed class GoogleGeminiLlmModel : AgentKit.ILlmModel
     {
-        public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }

@@ -108,7 +108,7 @@ public sealed class ServiceExtensionsTests
         _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(1), new IdempotencyKey("second"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 2, "two")]), TestContext.Current.CancellationToken);
         _ = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10), TestContext.Current.CancellationToken);
 
-        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot!), TestContext.Current.CancellationToken);
+        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot), TestContext.Current.CancellationToken);
 
         _ = continued.ShouldBeOfType<SessionReadFailed>();
     }

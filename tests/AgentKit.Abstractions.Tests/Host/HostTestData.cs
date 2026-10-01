@@ -17,10 +17,11 @@ internal static class HostTestData
         "text/plain",
         7,
         new ArtifactIntegrity(new ContentHash("hash"), DateTimeOffset.UnixEpoch),
-        ArtifactDataClassification.Internal,
+        DataClassification.Internal,
         ArtifactOwnershipKind.Session,
         ArtifactMutability.Immutable,
         new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false),
+        null,
         DateTimeOffset.UnixEpoch);
 
     public static ExecutionIdentity Identity() =>

@@ -6,8 +6,7 @@ namespace AgentKit.Loop;
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Dependency-injection registration for the built-in, reduced-scope agent
-/// loop.
+/// Dependency-injection registration for the built-in agent loop.
 /// </summary>
 /// <remarks>
 /// Composition requires an <see cref="ISessionCoordinator"/>, an
@@ -24,9 +23,9 @@ public static class ServiceExtensions
     {
         /// <summary>Registers the built-in <see cref="DefaultAgentLoop"/> as a keyed, scoped <see cref="IAgentLoop"/>.</summary>
         /// <param name="key">
-        /// The stable key this loop registration is selected by. An agent definition that leaves
-        /// <see cref="AgentDefinition.LoopKey"/> unset resolves to <see cref="AgentLoopComponentDefaults.LoopKey"/>,
-        /// so passing that same value here registers exactly the loop every otherwise-unconfigured definition uses.
+        /// The stable key this loop registration is selected by. An agent definition selects it through
+        /// <see cref="AgentComponentSelection.Loop"/>; passing <see cref="AgentLoopComponentDefaults.LoopKey"/> here
+        /// registers exactly the loop a definition that selects the first-party default uses.
         /// </param>
         /// <param name="configure">Optional configuration for this key's <see cref="AgentLoopOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>

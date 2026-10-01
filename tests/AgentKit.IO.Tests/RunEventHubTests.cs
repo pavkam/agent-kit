@@ -414,9 +414,9 @@ public sealed class RunEventHubTests
     /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
     /// that some third-party logging providers use instead of the generic key/value interface.</summary>
     [Fact]
-    public async Task PublishAsync_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    public async Task PublishAsync_WhenLoggerEnumeratesStateViaNonGenericEnumerable_ExercisesGeneratedStateAccessors()
     {
-        var logger = new LegacyEnumeratingLogger();
+        var logger = new EnumeratingStateLogger();
         await using var hub = CreateHub(logger, new FixedClock());
 
         (await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
@@ -425,7 +425,7 @@ public sealed class RunEventHubTests
         logger.EnumerableCounts.ShouldHaveSingleItem().ShouldBe(6);
     }
 
-    private sealed class LegacyEnumeratingLogger: ILogger<RunEventHub>
+    private sealed class EnumeratingStateLogger: ILogger<RunEventHub>
     {
         internal List<string> Messages { get; } = [];
         internal List<int> EnumerableCounts { get; } = [];

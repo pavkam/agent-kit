@@ -32,10 +32,14 @@ public sealed class SecurityEnforcementFingerprintPayloadTests
         copy.ShouldBe(original);
     }
 
-    private static SecurityEnforcementRequest Enforcement() =>
-        new(SecurityAbstractionsTestData.Scope(), SecurityAbstractionsTestData.Identity(), new ComponentId("session"),
-            SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [SecurityAbstractionsTestData.Resource()],
+    private static SecurityEnforcementRequest Enforcement()
+    {
+        var scope = SecurityAbstractionsTestData.Scope();
+        var identity = SecurityAbstractionsTestData.Identity();
+        return new(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity),
+            new ComponentId("session"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [SecurityAbstractionsTestData.Resource()],
             new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
+    }
 
     private static SecurityEnforcementIntent Intent() =>
         new(new SecurityEnforcementIntentId(Guid.Parse("f0000000-0000-0000-0000-00000000000b")), null);

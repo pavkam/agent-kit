@@ -6,96 +6,91 @@ namespace AgentKit.FileSystem.InMemory;
 public sealed partial class InMemoryFileSystem
 {
     /// <inheritdoc/>
-    private async ValueTask<DirectoryEnumerationResult> EnumerateCoreAsync(
-        DirectoryEnumerationRequest request,
+    public IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return EnumerateObservedAsync(operation, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<FileSystemEntry> EnumerateObservedAsync(
+        AuthorizedDirectoryEnumeration operation,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var outcome = await ObserveValueTaskAsync(
+            "enumerate", operation.Grant.RequestId, token => EnumerateCoreAsync(operation, token),
+            static result => result.Status.ToString(), cancellationToken).ConfigureAwait(false);
+        foreach (var entry in outcome.RequireEntries())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return entry;
+        }
+    }
+
+    /// <summary>Observes one directory after exact grant consumption.</summary>
+    /// <param name="operation">The authorized enumeration evidence.</param>
+    /// <param name="cancellationToken">Cancels before the observation settles.</param>
+    /// <returns>The classified outcome; failures never throw except cancellation.</returns>
+    private async ValueTask<DirectoryReadOutcome> EnumerateCoreAsync(
+        AuthorizedDirectoryEnumeration operation,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaximumEntries);
-        ArgumentNullException.ThrowIfNull(request.Grant);
+        Debug.Assert(operation is not null, "The public boundary validates the operation.");
         cancellationToken.ThrowIfCancellationRequested();
 
+        var directoryPath = VirtualPath(operation.ResolvedTarget) is "." ? null : VirtualPath(operation.ResolvedTarget);
+        FileSystemPath? path = directoryPath is null ? null : new FileSystemPath(directoryPath);
         var enforcement = FileSystemEnforcementReceipt.Create(
-            request.Grant,
+            operation.Grant,
             SecurityAudience,
             SecurityOperationKind.DirectoryRead,
             SecurityEffect.Observe,
-            [DirectorySecurityBinding.Resource(request.Path)],
-            DirectorySecurityBinding.Fingerprint(request.Path, request.MaximumEntries, request.Continuation));
+            [DirectorySecurityBinding.Resource(path)],
+            DirectorySecurityBinding.Fingerprint(path));
         var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(request.Grant, enforcement, intent, cancellationToken)
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(operation.Grant, enforcement, intent, cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, intent))
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, operation.Grant, enforcement, intent))
         {
-            return DirectoryFailure(DirectoryEnumerationStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
+            return DirectoryReadOutcome.Failure(DirectoryReadStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         lock (_gate)
         {
-            var directoryPath = request.Path?.Value;
             if (!DirectoryExists(directoryPath))
             {
-                return DirectoryFailure(DirectoryEnumerationStatus.NotFound, "The directory does not exist.");
+                return DirectoryReadOutcome.Failure(DirectoryReadStatus.NotFound, "The directory does not exist.");
             }
 
-            var childNames = new List<string>();
+            var children = new List<(string Name, bool IsDirectory)>();
             foreach (var candidate in _directories.Concat(_files.Keys))
             {
                 if (ParentDirectory(candidate) == directoryPath)
                 {
-                    childNames.Add(ChildName(candidate));
-                    if (childNames.Count > _maximumDirectorySnapshotEntries)
+                    children.Add((ChildName(candidate), _directories.Contains(candidate)));
+                    if (children.Count > _maximumDirectorySnapshotEntries)
                     {
-                        return DirectoryFailure(
-                            DirectoryEnumerationStatus.LimitExceeded,
+                        return DirectoryReadOutcome.Failure(
+                            DirectoryReadStatus.LimitExceeded,
                             $"The directory exceeds the configured snapshot limit of {_maximumDirectorySnapshotEntries} entries.");
                     }
                 }
             }
 
-            childNames.Sort(StringComparer.Ordinal);
-            var childPaths = childNames
-                .Select(name => directoryPath is null ? name : $"{directoryPath}/{name}")
-                .ToList();
-            var snapshot = SnapshotFingerprint(childPaths);
-            var start = request.Continuation?.NextIndex ?? 0;
-            if (request.Continuation is not null
-                && (request.Continuation.SnapshotFingerprint != snapshot || start > childPaths.Count))
-            {
-                return DirectoryFailure(DirectoryEnumerationStatus.SnapshotChanged, "The directory changed after the supplied continuation was issued.");
-            }
-
-            var retained = childPaths.Skip(start).Take(request.MaximumEntries)
-                .Select(static path => new DirectoryEntry(new FileSystemPath(path)))
-                .ToImmutableArray();
-            var next = start + retained.Length;
-            var continuation = next < childPaths.Count ? new DirectoryEnumerationCursor(snapshot, next) : null;
-            return new DirectoryEnumerationResult(DirectoryEnumerationStatus.Success, retained, snapshot, continuation, null);
+            return DirectoryReadOutcome.Success([
+                .. children
+                    .OrderBy(static child => child.Name, StringComparer.Ordinal)
+                    .Select(static child => new FileSystemEntry(new NormalizedRelativePath(child.Name), child.IsDirectory)),
+            ]);
         }
     }
-
-    private static DirectoryEnumerationResult DirectoryFailure(DirectoryEnumerationStatus status, string message) =>
-        new(status, [], null, null, message);
 
     /// <summary>Returns the last path segment.</summary>
     private static string ChildName(string path)
     {
         var separator = path.LastIndexOf('/');
         return separator < 0 ? path : path[(separator + 1)..];
-    }
-
-    private static ContentHash SnapshotFingerprint(IEnumerable<string> paths)
-    {
-        using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(
-            System.Security.Cryptography.HashAlgorithmName.SHA256);
-        foreach (var path in paths)
-        {
-            var bytes = Encoding.UTF8.GetBytes(path);
-            hash.AppendData(BitConverter.GetBytes(bytes.Length));
-            hash.AppendData(bytes);
-        }
-
-        return new ContentHash($"sha256:{Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()}");
     }
 }

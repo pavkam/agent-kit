@@ -6,8 +6,8 @@ namespace AgentKit.Storage.Json.Tests;
 /// <summary>Verifies that a persisted security request reproduces the operation as it stood before any decision or effect.</summary>
 /// <remarks>
 /// Persisting the request is what lets an audit trail explain why a grant exists and lets a deferred approval resolve against
-/// exactly what was asked for. Two absences are meaningful and must survive unchanged: a request that no tool caused, and a
-/// request issued through the unpinned path that carries no captured authorization.
+/// exactly what was asked for. An absent tool correlation is meaningful and must survive unchanged, while a
+/// document that lost its captured authorization is rejected rather than reconstructed.
 /// </remarks>
 public sealed class JsonSecurityRequestTests
 {
@@ -23,7 +23,7 @@ public sealed class JsonSecurityRequestTests
     [Fact]
     public void ToDomain_WhenProjectedFromDomain_ReproducesEqualRequest()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: true, withToolCall: true);
+        var original = TestEvidenceFactory.Request(withToolCall: true);
 
         JsonSecurityRequest.FromDomain(original).ToDomain().ShouldBe(original);
     }
@@ -32,33 +32,29 @@ public sealed class JsonSecurityRequestTests
     [Fact]
     public void ToDomain_WhenDecodedFromCanonicalJson_ReproducesEqualRequest()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: true, withToolCall: true);
+        var original = TestEvidenceFactory.Request(withToolCall: true);
 
         var document = TestCanonicalJson.Cycle(JsonSecurityRequest.FromDomain(original));
 
         document.ToDomain().ShouldBe(original);
     }
 
-    /// <summary>Verifies an unpinned request stays unpinned instead of gaining snapshot-bound authorization evidence.</summary>
+    /// <summary>Verifies a persisted request without captured authorization is rejected rather than reconstructed with a fabricated one.</summary>
     [Fact]
-    public void ToDomain_WhenRequestHasNoCapturedAuthorization_DoesNotGainOne()
+    public void ToDomain_WhenRequestDocumentHasNoCapturedAuthorization_ThrowsArgumentNullException()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: false, withToolCall: true);
-        original.Authorization.ShouldBeNull();
+        var document = JsonSecurityRequest.FromDomain(Sample()) with { Authorization = null! };
 
-        var document = JsonSecurityRequest.FromDomain(original);
-        document.Authorization.ShouldBeNull();
+        var exception = Should.Throw<ArgumentNullException>(document.ToDomain);
 
-        var restored = TestCanonicalJson.Cycle(document).ToDomain();
-        restored.Authorization.ShouldBeNull();
-        restored.ShouldBe(original);
+        exception.ParamName.ShouldBe("Authorization");
     }
 
     /// <summary>Verifies a request issued with captured authorization keeps it through storage rather than losing it.</summary>
     [Fact]
     public void ToDomain_WhenRequestHasCapturedAuthorization_RetainsIt()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: true, withToolCall: false);
+        var original = TestEvidenceFactory.Request(withToolCall: false);
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityRequest.FromDomain(original)).ToDomain();
 
@@ -71,7 +67,7 @@ public sealed class JsonSecurityRequestTests
     [Fact]
     public void ToDomain_WhenNoToolCallCausedTheRequest_LeavesToolCallIdNull()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: true, withToolCall: false);
+        var original = TestEvidenceFactory.Request(withToolCall: false);
 
         var document = JsonSecurityRequest.FromDomain(original);
         document.ToolCallId.ShouldBeNull();
@@ -85,7 +81,7 @@ public sealed class JsonSecurityRequestTests
     [Fact]
     public void ToDomain_WhenToolCallCausedTheRequest_RetainsToolCallId()
     {
-        var original = TestEvidenceFactory.Request(withAuthorization: false, withToolCall: true);
+        var original = TestEvidenceFactory.Request(withToolCall: true);
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityRequest.FromDomain(original)).ToDomain();
 
@@ -228,7 +224,7 @@ public sealed class JsonSecurityRequestTests
     public void Equals_WhenTwoDocumentsDecodedIndependently_ReturnsTrue()
     {
         var document = JsonSecurityRequest.FromDomain(
-            TestEvidenceFactory.Request(withAuthorization: true, withToolCall: true));
+            TestEvidenceFactory.Request(withToolCall: true));
 
         var first = TestCanonicalJson.Cycle(document);
         var second = TestCanonicalJson.Cycle(document);
@@ -252,12 +248,12 @@ public sealed class JsonSecurityRequestTests
     public void Equals_WhenOneDocumentHasToolCorrelation_ReturnsFalse()
     {
         var correlated = JsonSecurityRequest.FromDomain(
-            TestEvidenceFactory.Request(withAuthorization: false, withToolCall: true));
+            TestEvidenceFactory.Request(withToolCall: true));
         var uncorrelated = JsonSecurityRequest.FromDomain(Sample());
 
         correlated.Equals(uncorrelated).ShouldBeFalse();
     }
 
     private static SecurityRequest Sample() =>
-        TestEvidenceFactory.Request(withAuthorization: false, withToolCall: false);
+        TestEvidenceFactory.Request(withToolCall: false);
 }

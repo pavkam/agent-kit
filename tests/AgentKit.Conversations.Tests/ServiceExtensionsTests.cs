@@ -3,8 +3,6 @@
 
 namespace AgentKit.Conversations.Tests;
 
-using AgentKit.TestSupport;
-
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -49,7 +47,7 @@ public sealed class ServiceExtensionsTests
         using var provider = BuildProvider(options =>
         {
             Configure(options);
-            options.AgentId = default;
+            options.Agent = null;
         });
 
         var exception = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IConversationSession>);
@@ -116,11 +114,10 @@ public sealed class ServiceExtensionsTests
 
     private static void Configure(ConversationSessionOptions options)
     {
-        options.AgentId = ConversationSessionOptionsFactory.AgentId;
-        options.Identity = ConversationSessionOptionsFactory.Identity;
-        options.SecurityProfileKey = new SecurityProfileKey("test-security");
-        options.ConfigurationVersion = new ConfigurationVersion(1);
-        options.SessionProfile = TestSecurityEvidence.SessionProfile();
-        options.ModelSelectionPolicy = new ModelSelectionPolicy([new ModelAlias("test-model")]);
+        var valid = ConversationSessionOptionsFactory.Valid();
+        options.Agent = valid.Agent;
+        options.Configuration = valid.Configuration;
+        options.Identity = valid.Identity;
+        options.SessionProfile = valid.SessionProfile;
     }
 }

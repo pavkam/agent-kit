@@ -5,7 +5,12 @@ namespace AgentKit.Tools.Task;
 
 using AgentKit.Tools;
 
-/// <summary>Delegates one bounded objective to an explicitly selected child agent and waits for terminal settlement.</summary>
+/// <summary>Delegates one bounded objective to an explicitly selected child agent through the delegation coordinator and waits for terminal settlement.</summary>
+/// <remarks>
+/// The tool builds one canonical <see cref="DelegationRequest"/> and never authorizes, persists, or dispatches anything itself:
+/// the coordinator owns the ordered gauntlet, the delegation grant, the durable child goal, and the wait. The request's
+/// idempotency key derives from the tool call, so a retried call resolves to the same child instead of creating a second one.
+/// </remarks>
 public sealed class TaskTool: IToolInvoker
 {
     private static readonly JsonElement _inputSchema = JsonDocument.Parse(
@@ -26,9 +31,9 @@ public sealed class TaskTool: IToolInvoker
         }
         """).RootElement;
 
-    private readonly ITaskDelegationBroker _broker;
-    private readonly ISecurityAuthoritySelector _authoritySelector;
-    private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
+    private static readonly ToolLeafLogEvents _logEvents = new(TaskToolLog.Completed, TaskToolLog.Cancelled, TaskToolLog.Faulted);
+    private readonly ILogger<TaskTool> _logger;
+    private readonly IDelegationCoordinator _coordinator;
     private readonly IIdentifierGenerator<DelegationId> _delegationIds;
     private readonly TimeProvider _timeProvider;
     private readonly TaskToolOptions _options;
@@ -36,36 +41,32 @@ public sealed class TaskTool: IToolInvoker
     /// <summary>The stable tool identity.</summary>
     public static readonly ToolId Id = new("task");
 
-    /// <summary>Initializes the task tool over one protected delegation broker.</summary>
-    /// <param name="broker">The protected durable-goal dispatch boundary.</param>
-    /// <param name="authoritySelector">The security authority selector.</param>
-    /// <param name="securityRequestIds">The replaceable security-request identity source.</param>
+    /// <summary>Initializes the task tool over one delegation coordinator.</summary>
+    /// <param name="coordinator">The coordinator that authorizes, records, dispatches, and awaits the child goal.</param>
     /// <param name="delegationIds">The replaceable delegation identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
     /// <param name="options">The captured model-facing ceilings.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public TaskTool(
-        ITaskDelegationBroker broker,
-        ISecurityAuthoritySelector authoritySelector,
-        IIdentifierGenerator<SecurityRequestId> securityRequestIds,
+        IDelegationCoordinator coordinator,
         IIdentifierGenerator<DelegationId> delegationIds,
         TimeProvider timeProvider,
-        IOptions<TaskToolOptions> options)
+        IOptions<TaskToolOptions> options,
+        ILogger<TaskTool> logger)
     {
-        ArgumentNullException.ThrowIfNull(broker);
-        ArgumentNullException.ThrowIfNull(authoritySelector);
-        ArgumentNullException.ThrowIfNull(securityRequestIds);
+        ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(delegationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
-        _broker = broker;
-        _authoritySelector = authoritySelector;
-        _securityRequestIds = securityRequestIds;
+        _coordinator = coordinator;
         _delegationIds = delegationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
@@ -90,16 +91,16 @@ public sealed class TaskTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("task"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -135,71 +136,62 @@ public sealed class TaskTool: IToolInvoker
             return Failure("A valid target, bounded objective, criteria, tool allow-list, budget, and timeout are required.", "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
+        if (_options.GoalProfile is not { } profile)
+        {
+            return Failure("Task delegation requires a configured goal profile.", "GoalProfileRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+
         var id = _delegationIds.Create();
-        var now = _timeProvider.GetUtcNow();
-        var deadline = now.Add(parsed.Timeout);
-        var prompt = new TaskDelegationPrompt(
+        var deadline = _timeProvider.GetUtcNow().Add(parsed.Timeout);
+        var authorization = executionContext.Authorization;
+        var request = new DelegationRequest(
             id,
+            RunRootGoal.GoalIdFor(correlation.RunId),
+            RunRootGoal.AttemptIdFor(correlation.RunId),
             executionContext.AgentId,
             sessionId,
             correlation.RunId,
-            correlation,
-            executionContext.ToolCallId,
-            executionContext.Identity,
+            profile.Key,
+            profile.Version,
+            authorization.AgentDefinitionRevision,
+            authorization,
+            correlation.OperationId,
             parsed.TargetAgentId,
-            parsed.Objective,
-            parsed.AcceptanceCriteria,
-            parsed.AllowedTools,
-            new TaskDelegationBudget(parsed.MaximumTurns, parsed.MaximumToolCalls),
-            deadline);
-        var authorization = executionContext.Authorization;
-        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
-        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
-        {
-            return Rejected("The captured security authority is unavailable.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        var decision = await selected.Authority.AuthorizeAsync(
-            new SecurityRequest(
-                _securityRequestIds.Create(),
-                authorization.Scope,
-                executionContext.ToolCallId,
-                authorization.Identity,
-                authorization,
-                _broker.SecurityAudience,
-                SecurityOperationKind.Delegation,
-                SecurityEffect.Create,
-                [TaskDelegationSecurityBinding.Resource(id)],
-                TaskDelegationSecurityBinding.Fingerprint(prompt),
-                Min(deadline, now.AddMinutes(1))),
-            hooks: null,
-            cancellationToken).ConfigureAwait(false);
-        if (decision is SecurityDenied denied)
-        {
-            return Rejected(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        if (decision is not SecurityAllowed allowed)
-        {
-            return Rejected("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
-        }
-
-        var result = await _broker.DelegateAsync(new TaskDelegationRequest(prompt, allowed.Grant), cancellationToken).ConfigureAwait(false);
+            new GoalDefinition(parsed.Objective, [], ExtensionData.Empty),
+            new AcceptanceCriteria(parsed.AcceptanceCriteria, requiresEvidence: false),
+            new DelegationScope(parsed.AllowedTools, []),
+            new GoalBudgetReservation(new GoalBudget(parsed.MaximumTurns, parsed.MaximumToolCalls, 0)),
+            deadline,
+            DelegationCancellationMode.CancelWithParent,
+            _options.JoinStrategy,
+            new IdempotencyKey($"task:{executionContext.ToolCallId}"));
+        var result = await _coordinator.DelegateAsync(request, hooks: null, cancellationToken).ConfigureAwait(false);
         return result.Id != id
-            ? Failure("The delegation broker returned a result for a different request.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
+            ? Failure("The delegation coordinator returned a result for a different request.", "InvalidCoordinatorResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
             : result switch
             {
-                TaskDelegationRejected rejected => Rejected(rejected.SafeMessage, "Rejected", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
-                TaskDelegationChildResult child => Project(child, parsed),
-                _ => Failure("The delegation broker returned an unsupported result.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
+                DelegationRejected rejected => Rejected(rejected.Rejection.SafeMessage, "Rejected", RejectionStatus(rejected.Rejection.Kind), SideEffectCertainty.DefinitelyNotPerformed),
+                DelegationChildResult child => Project(child, parsed),
+                _ => Failure("The delegation coordinator returned an unsupported result.", "InvalidCoordinatorResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
             };
     }
 
-    private ToolInvocationResult Project(TaskDelegationChildResult child, ParsedArguments parsed)
+    private static ToolTerminalStatus RejectionStatus(DelegationRejectionKind kind) => kind switch
     {
-        if (child.ChildAgentId != parsed.TargetAgentId || child.Summary.Length > _options.MaximumSummaryCharacters)
+        DelegationRejectionKind.InvalidRequest => ToolTerminalStatus.InvalidArguments,
+        DelegationRejectionKind.UnknownTarget or DelegationRejectionKind.AmbiguousTarget => ToolTerminalStatus.InvalidArguments,
+        DelegationRejectionKind.Unauthorized or DelegationRejectionKind.PolicyDenied => ToolTerminalStatus.Denied,
+        DelegationRejectionKind.LimitExceeded or DelegationRejectionKind.BudgetUnavailable or DelegationRejectionKind.DeadlineElapsed => ToolTerminalStatus.Denied,
+        DelegationRejectionKind.HandoffUnavailable or DelegationRejectionKind.AuditUnavailable => ToolTerminalStatus.Unsupported,
+        _ => ToolTerminalStatus.Denied,
+    };
+
+    private ToolInvocationResult Project(DelegationChildResult child, ParsedArguments parsed)
+    {
+        var summary = child.Result?.Summary ?? string.Empty;
+        if (child.ChildAgentId != parsed.TargetAgentId || summary.Length > _options.MaximumSummaryCharacters)
         {
-            return Failure("The delegation broker returned a result outside the authorized shape.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
+            return Failure("The delegation coordinator returned a result outside the authorized shape.", "InvalidCoordinatorResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
         }
 
         var projection = JsonSerializer.Serialize(new
@@ -207,20 +199,25 @@ public sealed class TaskTool: IToolInvoker
             delegation_id = child.Id.ToString(),
             child_goal_id = child.ChildGoalId.ToString(),
             child_agent_id = child.ChildAgentId.ToString(),
-            child_session_id = child.ChildSessionId.ToString(),
+            child_session_id = child.ChildSessionId?.ToString(),
             child_attempt_id = child.ChildAttemptId?.ToString(),
             child_run_id = child.ChildRunId?.ToString(),
             status = child.Status.ToString().ToLowerInvariant(),
-            summary = child.Summary,
+            summary,
             side_effect_certainty = child.SideEffectCertainty.ToString(),
             instruction_authority = false,
         });
         // A child without its own effect boundary still has a durably created delegation goal.
         var certainty = child.SideEffectCertainty is SideEffectCertainty.NotApplicable
             ? SideEffectCertainty.DefinitelyPerformed : child.SideEffectCertainty;
-        return child.Status == TaskDelegationStatus.Succeeded
+        return child.Status == DelegationStatus.Succeeded
             ? Success(projection, "Succeeded", certainty)
-            : FailureWithContent(projection, child.Summary, child.Status.ToString(), child.Status is TaskDelegationStatus.Cancelled ? ToolTerminalStatus.Cancelled : ToolTerminalStatus.InvocationFailed, certainty);
+            : FailureWithContent(
+                projection,
+                child.Status == DelegationStatus.Dispatched ? "The child had not settled when the delegation deadline elapsed." : summary,
+                child.Status.ToString(),
+                child.Status is DelegationStatus.Cancelled ? ToolTerminalStatus.Cancelled : ToolTerminalStatus.InvocationFailed,
+                certainty);
     }
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed)
@@ -348,12 +345,12 @@ public sealed class TaskTool: IToolInvoker
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value.MaximumSummaryCharacters);
     }
 
-    private static DateTimeOffset Min(DateTimeOffset first, DateTimeOffset second) => first <= second ? first : second;
-
     private static ToolInvocationResult Success(string json, string status, SideEffectCertainty certainty) => new(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, certainty, false, null, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
-    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) =>
+        new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
     private static ToolInvocationResult FailureWithContent(string json, string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
-    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
+    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) =>
+        new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
     private static ExtensionData Status(string status) => new(ImmutableDictionary<string, ExtensionValue>.Empty.Add("agentkit.task.status", new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])));
 
     private readonly record struct ParsedArguments(AgentId TargetAgentId, string Objective, ImmutableArray<string> AcceptanceCriteria, ImmutableArray<ToolId> AllowedTools, int MaximumTurns, int MaximumToolCalls, TimeSpan Timeout);

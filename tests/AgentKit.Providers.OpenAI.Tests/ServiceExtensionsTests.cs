@@ -9,9 +9,9 @@ using AgentKit.Providers;
 using AgentKit.Providers.OpenAI.Tests.Fakes;
 using AgentKit.Providers.OpenRouter;
 using AgentKit.Providers.ZAI;
+using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -29,31 +29,12 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddOpenAI_WhenRegistered_DisablesTheHttpClientTimeoutInFavorOfThePerRequestDeadline()
+    public void AddOpenAI_WhenRegistered_RegistersNoHttpClientOrSocketsHttpHandler()
     {
-        // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered attempt
-        // regardless of the caller's LlmModelRequest.Deadline, since this adapter's own deadlineSource
-        // is layered on top of, not instead of, the transport-level timeout.
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
-        using var provider = services.BuildServiceProvider();
-        var client = provider.GetRequiredService<HttpClient>();
 
-        client.Timeout.ShouldBe(Timeout.InfiniteTimeSpan);
-    }
-
-    [Fact]
-    public void AddOpenAI_WhenRegistered_BoundsThePooledConnectionLifetimeInsteadOfTheInfiniteDefault()
-    {
-        // SocketsHttpHandler's default PooledConnectionLifetime is infinite. A process-lifetime HttpClient
-        // singleton built over that default never observes a DNS change (e.g. a failed-over endpoint) until the
-        // process restarts - the well-documented singleton-HttpClient pitfall.
-        var services = new ServiceCollection();
-        _ = services.AddOpenAI();
-        using var provider = services.BuildServiceProvider();
-        var handler = provider.GetRequiredService<SocketsHttpHandler>();
-
-        handler.PooledConnectionLifetime.ShouldBe(TimeSpan.FromMinutes(2));
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(HttpClient) || descriptor.ServiceType == typeof(SocketsHttpHandler));
     }
 
     [Fact]
@@ -122,6 +103,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
         _ = services.AddOpenAILlmModel(new ModelAlias("smart"), new ModelId("gpt-4o"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
         models.Length.ShouldBe(2);
@@ -157,7 +139,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI(options => options.PreferStreaming = false);
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIKnownLlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
-        _ = services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = services.AddProviderEgressTestServices(handler);
         using var provider = services.BuildServiceProvider();
 
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>();
@@ -174,7 +156,7 @@ public sealed class ServiceExtensionsTests
         var user = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()), null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("Hi", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var request = new LlmModelRequest(
             new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), published, [user], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty),
-            attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+            attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -271,6 +253,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIKnownLlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
         _ = services.AddOpenAIKnownLlmModel(new ModelAlias("smart"), new ModelId("gpt-5"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
 
         var adapters = provider.GetServices<ILlmModel>().Select(static m => m.Alias.Value).ToArray();
@@ -313,6 +296,7 @@ public sealed class ServiceExtensionsTests
             OpenAIProviderDefaults.DefaultCapabilities, new ModelLimits(1, 1), new ModelPricing(1m, 2m, "USD"), ExtensionData.Empty);
 
         _ = services.AddOpenAILlmModel(descriptor);
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>().Alias.ShouldBe(new ModelAlias("exact"));
@@ -336,6 +320,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>();
         model.Alias.ShouldBe(new ModelAlias("chat"));
@@ -358,6 +343,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-3-small"));
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("text-embedding-3-large"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
         models.Length.ShouldBe(2);
@@ -371,6 +357,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-3-small"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OpenAIEmbeddingModel>();
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
@@ -384,6 +371,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("chat"), new ModelId("text-embedding-3-small"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         provider.GetRequiredService<ILlmModel>().Alias.ShouldBe(new ModelAlias("chat"));
         provider.GetRequiredService<IEmbeddingModel>().Alias.ShouldBe(new EmbeddingModelAlias("chat"));
@@ -407,6 +395,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAI();
         _ = services.AddZAIApiKeyCredential("zai-key");
         _ = services.AddZAILlmModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
+        _ = services.AddProviderEgressTestServices();
         await using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
         models.Select(model => model.Alias.Value).ShouldBe(["openai-chat", "openrouter-chat", "zai-chat"], ignoreOrder: true);

@@ -42,6 +42,18 @@ internal static class JsonSecurityGrantStoreProbe
             [],
             IdentityAssuranceLevel.Strong,
             new IdentityVersion(1));
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("probe-profile"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(new Guid("99999999-9999-9999-9999-999999999999")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:probe-policy")),
+            new ComponentKey<ISecurityAuthority>("probe-authority"),
+            new AgentDefinitionRevision(1),
+            new ConfigurationVersion(1),
+            scope,
+            identity);
         var resources = ImmutableArray.Create(
             new ProtectedResource(ProtectedResourceKind.File, "/probe/resource"));
         var fingerprint = new InputFingerprint("sha256:probe-input");
@@ -50,6 +62,7 @@ internal static class JsonSecurityGrantStoreProbe
             new SecurityRequestId(new Guid("77777777-7777-7777-7777-777777777777")),
             scope,
             identity,
+            authorization,
             new ComponentId("probe-audience"),
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
@@ -61,7 +74,7 @@ internal static class JsonSecurityGrantStoreProbe
             expiresAt,
             2);
         var enforcement = new SecurityEnforcementRequest(
-            scope, identity, grant.Audience, grant.Kind, grant.Effect, resources, fingerprint,
+            scope, identity, authorization, grant.Audience, grant.Kind, grant.Effect, resources, fingerprint,
             grant.RevocationVersion);
         var intent = new SecurityEnforcementIntent(
             new SecurityEnforcementIntentId(new Guid("88888888-8888-8888-8888-888888888888")),

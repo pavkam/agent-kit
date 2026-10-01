@@ -82,4 +82,25 @@ internal static partial class McpClientLog
         McpToolName toolName,
         McpCatalogVersion catalogVersion,
         string errorType);
+
+    /// <summary>Records one HTTP exchange refused before any request bytes were transmitted.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="endpointKey">The configured endpoint identity.</param>
+    /// <param name="stage">The bounded stage label at which the exchange was refused.</param>
+    [LoggerMessage(13030, LogLevel.Information, "HTTP MCP endpoint {EndpointKey} exchange was refused at stage {Stage}.")]
+    internal static partial void HttpRefused(ILogger logger, McpEndpointKey endpointKey, string stage);
+
+    /// <summary>Records one HTTP exchange that failed after authorization without a usable response.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="endpointKey">The configured endpoint identity.</param>
+    /// <param name="stage">The bounded stage label at which the exchange failed.</param>
+    [LoggerMessage(13031, LogLevel.Warning, "HTTP MCP endpoint {EndpointKey} exchange failed at stage {Stage}.")]
+    internal static partial void HttpFailed(ILogger logger, McpEndpointKey endpointKey, string stage);
+
+    /// <summary>Records one HTTP exchange the server answered.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="endpointKey">The configured endpoint identity.</param>
+    /// <param name="statusCode">The HTTP status code the server answered with.</param>
+    [LoggerMessage(13032, LogLevel.Debug, "HTTP MCP endpoint {EndpointKey} exchange was answered with status {StatusCode}.")]
+    internal static partial void HttpAnswered(ILogger logger, McpEndpointKey endpointKey, int statusCode);
 }

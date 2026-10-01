@@ -12,7 +12,8 @@ Start with `AddOpenAI`, `AddOpenAIApiKeyCredential`, and
 `AddOpenAIKnownLlmModel` in [ServiceExtensions.cs](ServiceExtensions.cs):
 
 ```csharp
-services.AddAgentProviders();
+services.AddAgentNetwork();      // AgentKit.Network: the transport every provider send goes through
+services.AddAgentProviders();    // registers ProviderEgress over the network and security services
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
 services.AddOpenAIKnownLlmModel(new ModelAlias("assistant"), new ModelId("gpt-4o-mini"));
@@ -25,8 +26,12 @@ a model the catalog does not know, or to override its facts, use
 `AddOpenAILlmModel(alias, modelId, capabilities, limits)` and publish a matching
 descriptor with `AddModelDescriptors`; the adapter rejects a request whose
 selected descriptor differs from its own. `AddOpenAIEmbeddingModel` registers
-embedding models independently. Read the overloads and XML documentation for
-required collaborators, lifetimes, and duplicate-registration behavior.
+embedding models independently. The adapters hold no HTTP client: every attempt
+obtains provider-egress, resolution, and send grants and sends through
+`INetworkTransport`, so the composition also needs the security authority, grant
+store, and audit dispatcher the network leaf requires. Read the overloads and
+XML documentation for required collaborators, lifetimes, and
+duplicate-registration behavior.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
@@ -60,8 +65,8 @@ dependencies.
   — intended ownership and contracts.
 - [OpenAI API reference](../../docs/providers/openai.md) — wire behavior and
   capability requirements.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

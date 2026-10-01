@@ -328,7 +328,7 @@ public sealed class SessionPlanStateStoreTests
             // The whole-session version has advanced well beyond this branch's own tip of 1.
             LoadResult = new SessionLoaded(TestData.Descriptor(new SessionVersion(5))),
         };
-        sessions.Pages.Enqueue(new SessionPage([entry], new SessionSequence(1), false));
+        sessions.Pages.Enqueue(new SessionPage([entry], new SessionSequence(1), false, TestData.ReadSnapshot(1)));
         var store = Store(sessions, new RecordingGrantStore());
         var expected = new PlanRevision(1);
         var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
@@ -454,7 +454,7 @@ public sealed class SessionPlanStateStoreTests
     {
         var sessions = SessionsWith();
         sessions.AppendResult = new SessionAppendConflict(new SessionVersion(0), new SessionVersion(3));
-        sessions.Pages.Enqueue(new SessionPage([TestData.Entry(revision: 4)], new SessionSequence(1), false));
+        sessions.Pages.Enqueue(new SessionPage([TestData.Entry(revision: 4)], new SessionSequence(1), false, TestData.ReadSnapshot(1)));
         var store = Store(sessions, new RecordingGrantStore());
         var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
             TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
@@ -674,7 +674,7 @@ public sealed class SessionPlanStateStoreTests
         SecurityAuthorizationContext? authorization = null) => new(
         expected.Scope,
         expected.Identity,
-        authorization ?? expected.Authorization!,
+        authorization ?? expected.Authorization,
         expected.Audience,
         expected.Kind,
         expected.Effect,
@@ -684,7 +684,7 @@ public sealed class SessionPlanStateStoreTests
 
     private static SecurityAuthorizationContext AlteredAuthorization(SecurityEnforcementRequest expected)
     {
-        var authorization = expected.Authorization!;
+        var authorization = expected.Authorization;
         return new SecurityAuthorizationContext(
             new SecurityProfileKey("altered-security"),
             authorization.ProfileVersion,
@@ -702,7 +702,7 @@ public sealed class SessionPlanStateStoreTests
         {
             LoadResult = new SessionLoaded(TestData.Descriptor(new SessionVersion(entries.Length))),
         };
-        sessions.Pages.Enqueue(new SessionPage([.. entries], new SessionSequence(entries.Length), false));
+        sessions.Pages.Enqueue(new SessionPage([.. entries], new SessionSequence(entries.Length), false, TestData.ReadSnapshot(entries.Length)));
         return sessions;
     }
 }

@@ -50,6 +50,13 @@ read the [modern C# rules](../references/modern-csharp.md).
    process-local; distributed ownership requires durability leases and fencing.
 6. Select stores explicitly through the singular directory and selector. A
    missing or incompatible durable store never falls back to process memory.
+7. A new entry kind ships a record in `AgentKit.Abstractions`, a bounded
+   explicit codec registered by the owning runtime (core session facts in
+   `AgentKit.Session`, registered by each durable leaf), and tests under the
+   shared codec conformance suite. Tool-call acceptance and terminal evidence
+   (`ToolCallAcceptedSessionEntry`, content-free `ToolCallTerminalSessionEntry`)
+   are non-message entries: history assembly ignores them and an appender must
+   rebase over them rather than treat them as stale history.
 
 Run the common store conformance suite for ordering, idempotency, optimistic
 conflicts, branching, pagination, snapshot fallback, authorization,

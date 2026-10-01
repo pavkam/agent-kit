@@ -12,7 +12,7 @@ public sealed class SqliteReservationRowTests
     {
         var receipt = CreateReceipt();
         var revision = new BudgetAccountingRevision(1);
-        var commit = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m);
+        var commit = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m, new BudgetAccountingRevision(1), []);
         var row = new SqliteReservationRow(receipt, BudgetAggregationKind.Sum, DateTimeOffset.UnixEpoch, 2, false, null, commit, commit, revision, 3);
         row.Receipt.ShouldBeSameAs(receipt);
         row.Aggregation.ShouldBe(BudgetAggregationKind.Sum);

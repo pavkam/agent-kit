@@ -8,14 +8,15 @@ using System.Security.Cryptography;
 
 /// <summary>Produces exact, versioned security evidence for artifact lifecycle operations.</summary>
 /// <remarks>
-/// Fingerprint schema version 2 binds every portable artifact-reference field. Version 2 intentionally
-/// invalidates grants produced by the earlier incomplete format so an upgraded effecting boundary fails
-/// closed instead of accepting authority that was bound to fewer inputs.
+/// Fingerprint schema version 3 binds every portable artifact-reference field, including external ownership, and the
+/// prepare schema version 2 binds the observed content hash and external ownership. Each version intentionally invalidates
+/// grants produced by the earlier incomplete format so an upgraded effecting boundary fails closed instead of accepting
+/// authority that was bound to fewer inputs.
 /// </remarks>
 public static class ArtifactSecurityBinding
 {
-    private const string _fingerprintSchema = "agentkit.artifact-security-binding/v2";
-    private const string _prepareFingerprintSchema = "agentkit.artifact-prepare-security-binding/v1";
+    private const string _fingerprintSchema = "agentkit.artifact-security-binding/v3";
+    private const string _prepareFingerprintSchema = "agentkit.artifact-prepare-security-binding/v2";
 
     /// <summary>Names one logical artifact.</summary>
     /// <param name="id">The artifact identity.</param>
@@ -46,12 +47,13 @@ public static class ArtifactSecurityBinding
     /// <param name="tenantId">The authenticated tenant partition.</param>
     /// <param name="createdBy">The authenticated creating principal.</param>
     /// <param name="directoryId">The logical directory.</param>
-    /// <param name="metadata">The exact declared metadata.</param>
+    /// <param name="metadata">The exact declared metadata, carrying the resolved retention decision.</param>
+    /// <param name="contentHash">The observed complete-content hash verified by the integrity validator.</param>
     /// <param name="createdAt">The concrete staging creation instant.</param>
     /// <param name="expiresAt">The concrete staging expiry after <paramref name="createdAt"/>.</param>
     /// <returns>A deterministic SHA-256 fingerprint.</returns>
     /// <exception cref="ArgumentOutOfRangeException">An identity is empty, the profile version is not positive, or the expiry is not after creation.</exception>
-    /// <exception cref="ArgumentException">A string-backed identity, version, profile, or directory is blank.</exception>
+    /// <exception cref="ArgumentException">A string-backed identity, version, profile, directory, or content hash is blank.</exception>
     /// <exception cref="ArgumentNullException">
     /// A string-backed identity or version value is default, or <paramref name="metadata"/> is null.
     /// </exception>
@@ -66,6 +68,7 @@ public static class ArtifactSecurityBinding
         PrincipalId createdBy,
         ArtifactDirectoryId directoryId,
         ArtifactMetadata metadata,
+        ContentHash contentHash,
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt)
     {
@@ -78,6 +81,7 @@ public static class ArtifactSecurityBinding
         ArgumentException.ThrowIfNullOrWhiteSpace(createdBy.Value, nameof(createdBy));
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryId.Value, nameof(directoryId));
         ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contentHash.Value, nameof(contentHash));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(expiresAt, createdAt);
         return Hash(new
         {
@@ -94,13 +98,17 @@ public static class ArtifactSecurityBinding
             ownerId = metadata.OwnerId.Value,
             metadata.MediaType,
             metadata.DeclaredLength,
-            contentHash = metadata.DeclaredContentHash.Value,
+            declaredContentHash = metadata.DeclaredContentHash?.Value,
+            contentHash = contentHash.Value,
             classification = metadata.Classification.ToString(),
             ownership = metadata.Ownership.ToString(),
             mutability = metadata.Mutability.ToString(),
             retentionPolicy = metadata.Retention.Policy.Value,
             expiresAt = metadata.Retention.ExpiresAt?.ToUniversalTime().ToString("O"),
             metadata.Retention.LegalHold,
+            externalResourceId = metadata.ExternalOwnership?.ResourceId.Value,
+            externalUri = metadata.ExternalOwnership?.CanonicalUri.AbsoluteUri,
+            externalMayDelete = metadata.ExternalOwnership?.AgentKitMayDelete,
             createdAt = createdAt.ToUniversalTime().ToString("O"),
             stagingExpiresAt = expiresAt.ToUniversalTime().ToString("O"),
         });
@@ -174,6 +182,9 @@ public static class ArtifactSecurityBinding
             retentionPolicy = reference.Retention.Policy.Value,
             retentionExpiresAt = reference.Retention.ExpiresAt?.ToUniversalTime().ToString("O"),
             reference.Retention.LegalHold,
+            externalResourceId = reference.ExternalOwnership?.ResourceId.Value,
+            externalUri = reference.ExternalOwnership?.CanonicalUri.AbsoluteUri,
+            externalMayDelete = reference.ExternalOwnership?.AgentKitMayDelete,
             createdAt = reference.CreatedAt.ToUniversalTime().ToString("O"),
         });
     }

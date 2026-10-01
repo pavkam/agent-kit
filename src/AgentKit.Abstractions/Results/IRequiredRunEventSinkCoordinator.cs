@@ -3,14 +3,17 @@
 
 namespace AgentKit;
 
-/// <summary>Drains required run-event sinks during engine shutdown within a bounded deadline.</summary>
+/// <summary>Drains required run-event sinks during engine shutdown, each within its own registered flush deadline.</summary>
+/// <remarks>
+/// Every required sink is flushed concurrently; a sink that implements <see cref="IFlushableRunEventSink"/> is awaited for
+/// at most <see cref="RunEventSinkRegistration.FlushDeadline"/>, while a sink without buffering already completed each
+/// delivery inline and counts as drained. A timed-out or faulted sink is reported, never thrown, so shutdown cannot deadlock.
+/// </remarks>
 public interface IRequiredRunEventSinkCoordinator
 {
-    /// <summary>Waits for required sinks to finish bounded shutdown work.</summary>
-    /// <param name="deadline">The maximum time shutdown may spend draining required sinks.</param>
-    /// <param name="cancellationToken">Cancels the shutdown wait.</param>
-    /// <returns>A task that completes once every required sink drained or the deadline elapsed.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="deadline"/> is negative.</exception>
+    /// <summary>Waits for every required sink to finish bounded shutdown work.</summary>
+    /// <param name="cancellationToken">Cancels the shutdown wait; accepted events are not rewritten as persisted.</param>
+    /// <returns>Evidence naming which required sinks drained, timed out, or failed.</returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
-    public ValueTask DrainAsync(TimeSpan deadline, CancellationToken cancellationToken = default);
+    public ValueTask<RequiredRunEventSinkDrainResult> DrainAsync(CancellationToken cancellationToken = default);
 }

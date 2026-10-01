@@ -7,20 +7,43 @@ using System.Text;
 using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>Maps inbound MCP tool requests onto the shared tool executor.</summary>
-public sealed class AgentKitPrimitiveHandler(IServiceProvider services): IMcpPrimitiveHandler
+/// <remarks>Each handled request runs under an <c>mcp.server.request</c> activity with bounded outcome metrics and content-free logs.</remarks>
+public sealed class AgentKitPrimitiveHandler: IMcpPrimitiveHandler
 {
-    private readonly IServiceProvider _services = services;
+    private readonly IServiceProvider _services;
+    private readonly McpServerObservation _observation;
+
+    /// <summary>Initializes the handler over the composition it resolves tool-execution collaborators from.</summary>
+    /// <param name="services">The non-null provider used to resolve the tool executor, catalog capture factory, and session coordinators per request.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+    public AgentKitPrimitiveHandler(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _services = services;
+        var loggerFactory = services.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        _observation = new McpServerObservation(loggerFactory.CreateLogger<McpServerObservation>());
+    }
 
     /// <inheritdoc/>
-    public async ValueTask<McpResponse> HandleAsync(
+    public ValueTask<McpResponse> HandleAsync(
         McpPeerContext peer,
         McpRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(peer);
         ArgumentNullException.ThrowIfNull(request);
+        return _observation.ObserveRequestAsync(
+            peer.ServerKey.Value,
+            McpServerObservation.OperationOf(request),
+            () => HandleCoreAsync(request, cancellationToken),
+            McpServerObservation.Classify);
+    }
+
+    private async ValueTask<McpResponse> HandleCoreAsync(McpRequest request, CancellationToken cancellationToken)
+    {
         if (request is not McpToolsCallRequest toolCall)
         {
             return new McpResponseUnsupportedCapability(request.Id, request.GetType().Name);
@@ -50,31 +73,48 @@ public sealed class AgentKitPrimitiveHandler(IServiceProvider services): IMcpPri
             sessionId,
             correlation.RunId,
             operation.Authorization));
+        var profile = new SessionProfileSnapshot(
+            new SessionProfileReference(new SessionProfileKey("mcp-server"), new SessionProfileVersion(1)),
+            new ComponentKey<ISessionCoordinator>("coordinator"),
+            new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
+            new SessionStoreKey("agentkit.in-memory"),
+            SessionStoreCapabilities.None,
+            requiresDurableStore: false,
+            requiresDistributedFencing: false,
+            new SessionRetentionProfileKey("default"),
+            SessionBusyBehavior.Reject,
+            maximumAppendEntries: 64,
+            maximumPageSize: 64,
+            verifySnapshotHashes: false,
+            deleteOnDispose: false,
+            new ContentHash("sha256:mcp-server-session"));
+
+        // The executor commits an accepted-call record before invoking any tool, so dispatch needs the session branch
+        // that receives it. The lane follows the loop's default for runs without an explicit lane admission. A session
+        // that cannot be loaded fails closed rather than invoking an unrecorded effect.
+        var laneId = new ExecutionLaneId(sessionId.Value);
+        var sessionContext = new SessionOperationContext(
+            operation.AgentId, sessionId, laneId, correlation, operation.Identity, operation.Authorization);
+        var session = await sessionCoordinator.LoadAsync(sessionContext, profile, cancellationToken).ConfigureAwait(false);
+        if (session is not SessionLoaded loaded)
+        {
+            return new McpResponseDenied(
+                toolCall.Id,
+                "MCP tool dispatch requires a loadable session to record the call before invoking it.");
+        }
+
         var capability = new ToolExecutionCapability(
-            new SessionExecutionCapability(
-                new SessionProfileSnapshot(
-                    new SessionProfileReference(new SessionProfileKey("mcp-server"), new SessionProfileVersion(1)),
-                    new ComponentKey<ISessionCoordinator>("coordinator"),
-                    new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
-                    new SessionStoreKey("agentkit.in-memory"),
-                    SessionStoreCapabilities.None,
-                    requiresDurableStore: false,
-                    requiresDistributedFencing: false,
-                    new SessionRetentionProfileKey("default"),
-                    SessionBusyBehavior.Reject,
-                    maximumAppendEntries: 64,
-                    maximumPageSize: 64,
-                    verifySnapshotHashes: false,
-                    deleteOnDispose: false,
-                    new ContentHash("sha256:mcp-server-session")),
-                sessionCoordinator,
-                runCoordinator),
+            new SessionExecutionCapability(profile, sessionCoordinator, runCoordinator),
             new BudgetExecutionCapability(
                 new BudgetProfileKey("mcp-server"),
                 new BudgetProfileVersion(1),
                 operation.Identity,
                 correlation,
-                new McpServerBudgetScope()));
+                new McpServerBudgetScope()),
+            new ToolCallSessionTarget(loaded.Descriptor.ActiveBranchId, laneId),
+            [.. capture.Snapshot.ExecutionPolicies.Values
+                .Distinct()
+                .Select(static reference => new ToolExecutionPolicyBinding(reference))]);
         var rawArguments = toolCall.Arguments is null
             ? []
             : ImmutableArray.Create(Encoding.UTF8.GetBytes(toolCall.Arguments.RootElement.GetRawText()));

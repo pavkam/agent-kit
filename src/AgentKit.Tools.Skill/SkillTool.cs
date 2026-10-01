@@ -21,6 +21,8 @@ public sealed class SkillTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(SkillToolLog.Completed, SkillToolLog.Cancelled, SkillToolLog.Faulted);
+    private readonly ILogger<SkillTool> _logger;
     private readonly IFileSnapshotReader _reader;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -39,6 +41,7 @@ public sealed class SkillTool: IToolInvoker
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="catalog">The shared immutable skill catalog.</param>
     /// <param name="options">The host activation bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A bound is not positive.</exception>
     public SkillTool(
@@ -47,7 +50,8 @@ public sealed class SkillTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
         ISkillCatalog catalog,
-        IOptions<SkillToolOptions> options)
+        IOptions<SkillToolOptions> options,
+        ILogger<SkillTool> logger)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -55,6 +59,7 @@ public sealed class SkillTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumBytes, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumCharacters, nameof(options));
         _reader = reader;
@@ -64,6 +69,7 @@ public sealed class SkillTool: IToolInvoker
         _catalog = catalog;
         _maximumBytes = options.Value.MaximumBytes;
         _maximumCharacters = options.Value.MaximumCharacters;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -90,16 +96,16 @@ public sealed class SkillTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("skill"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

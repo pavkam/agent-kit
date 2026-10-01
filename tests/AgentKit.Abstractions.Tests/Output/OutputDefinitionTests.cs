@@ -181,4 +181,17 @@ public sealed class OutputDefinitionTests
         exception.GetType().ShouldBe(exceptionType);
         return exception;
     }
+
+    [Fact]
+    public void FreeText_WhenRead_IsASharedSchemaFreeTextContract()
+    {
+        var definition = OutputDefinition.FreeText;
+
+        definition.ShouldBeSameAs(OutputDefinition.FreeText);
+        definition.Mode.ShouldBe(OutputMode.Text);
+        definition.Schema.ShouldBeNull();
+        definition.Validators.ShouldBeEmpty();
+        definition.Alternatives.ShouldBeEmpty();
+        definition.RetryPolicy.ShouldBe(OutputRetryPolicy.None);
+    }
 }

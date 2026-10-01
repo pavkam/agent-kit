@@ -6,8 +6,7 @@ namespace AgentKit.Hooks;
 /// <summary>
 /// Host-level ceilings for the first-party <see cref="DefaultHookDispatcher"/>. Every value here is a hard bound
 /// that composes monotonically with the per-call arguments of
-/// the legacy <c>DispatchAsync</c> overload that accepts an explicit hook sequence: a caller may tighten a dispatch beyond these values but
-/// can never relax past them.
+/// <c>DispatchAsync</c>: a caller may tighten a dispatch beyond these values but can never relax past them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -60,7 +59,7 @@ public sealed class AgentHookOptions
     /// earlier deadline.
     /// </summary>
     /// <value>A positive duration. The default is ten seconds.</value>
-    /// <remarks>WS2-C12 enforces this ceiling during dispatch; options validation rejects non-positive values today.</remarks>
+    /// <remarks><see cref="DefaultHookDispatcher"/> enforces this ceiling during dispatch, honoring an earlier caller deadline; options validation rejects non-positive values.</remarks>
     public TimeSpan DefaultHookTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>Gets or sets the mutation dispatch mode the host permits.</summary>

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Abstractions.Tests.AgentLoop;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies AgentRunServices behavior and contracts.</summary>
 public sealed class AgentRunServicesTests
 {
@@ -113,6 +115,25 @@ public sealed class AgentRunServicesTests
         var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy());
 
         services.Publisher.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenCompactionPolicyIsSupplied_RoundTripsProperty()
+    {
+        var compactionPolicy = CompactionPolicyFixtures.Create();
+        var services = new AgentRunServices(
+            Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy(),
+            compactionPolicy: compactionPolicy);
+
+        services.CompactionPolicy.ShouldBeSameAs(compactionPolicy);
+    }
+
+    [Fact]
+    public void Constructor_WhenCompactionPolicyIsOmitted_DefaultsToNull()
+    {
+        var services = new AgentRunServices(Session(), Selector(), Context(), Tools(), null, Catalog(), Selector2(), Resolver(), Policy());
+
+        services.CompactionPolicy.ShouldBeNull();
     }
 
     private static FakeSessionCoordinator Session() => new();

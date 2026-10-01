@@ -3,49 +3,31 @@
 
 namespace AgentKit.Tools.Task.Tests;
 
-internal sealed class RecordingDelegationBroker: ITaskDelegationBroker
+internal sealed class RecordingDelegationCoordinator: IDelegationCoordinator
 {
-    internal List<TaskDelegationRequest> Requests { get; } = [];
-    internal bool GrantMatched { get; private set; }
-    internal Func<TaskDelegationRequest, TaskDelegationResult> Result { get; set; } = static request => new TaskDelegationChildResult(
-        request.Prompt.Id,
+    internal List<DelegationRequest> Requests { get; } = [];
+    internal Func<DelegationRequest, DelegationResult> Result { get; set; } = static request => new DelegationChildResult(
+        request.Id,
         TestData.GoalId,
-        request.Prompt.TargetAgentId,
+        request.TargetAgentId,
         TestData.ChildSessionId,
         TestData.AttemptId,
         TestData.ChildRunId,
-        TaskDelegationStatus.Succeeded,
-        "Implemented and verified.",
-        SideEffectCertainty.DefinitelyPerformed);
+        DelegationStatus.Succeeded,
+        new StructuredGoalResult("Implemented and verified.", ExtensionData.Empty),
+        [],
+        GoalBudgetUsage.None,
+        SideEffectCertainty.DefinitelyPerformed,
+        ExtensionData.Empty);
 
-    public ComponentId SecurityAudience { get; } = new("test.delegation.broker");
-
-    public ValueTask<TaskDelegationResult> DelegateAsync(TaskDelegationRequest request, CancellationToken cancellationToken = default)
+    public Task<DelegationResult> DelegateAsync(DelegationRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         Requests.Add(request);
-        GrantMatched = request.Grant.Audience == SecurityAudience
-            && request.Grant.Kind == SecurityOperationKind.Delegation
-            && request.Grant.Effect == SecurityEffect.Create
-            && request.Grant.Resources.SequenceEqual([TaskDelegationSecurityBinding.Resource(request.Prompt.Id)])
-            && request.Grant.InputFingerprint == TaskDelegationSecurityBinding.Fingerprint(request.Prompt);
-        return ValueTask.FromResult(GrantMatched ? Result(request) : new TaskDelegationRejected(request.Prompt.Id, "Grant mismatch."));
+        return System.Threading.Tasks.Task.FromResult(Result(request));
     }
-}
 
-internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAuthority
-{
-    internal List<SecurityRequest> Requests { get; } = [];
-
-    public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default)
-    {
-        Requests.Add(request);
-        return ValueTask.FromResult<SecurityDecision>(allow
-            ? new SecurityAllowed(request.Id, new SecurityPolicyVersion(1), new SecurityGrant(
-                TestData.GrantId, request.Id, request.Scope, request.Identity, request.Audience, request.Kind,
-                request.Effect, request.Resources, request.InputFingerprint, new SecurityPolicyVersion(1),
-                new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, request.Deadline, 1))
-            : new SecurityDenied(request.Id, new SecurityPolicyVersion(1), new SecurityDenial("test.denied", "Denied.")));
-    }
+    public ValueTask<GoalJoinDecision> JoinAsync(GoalJoinRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
 }
 
 internal sealed class FixedDelegationIdGenerator: IIdentifierGenerator<DelegationId>
@@ -56,11 +38,6 @@ internal sealed class FixedDelegationIdGenerator: IIdentifierGenerator<Delegatio
         Calls++;
         return TestData.DelegationId;
     }
-}
-
-internal sealed class FixedSecurityRequestIdGenerator: IIdentifierGenerator<SecurityRequestId>
-{
-    public SecurityRequestId Create() => TestData.SecurityRequestId;
 }
 
 internal sealed class FixedTimeProvider: TimeProvider
@@ -81,6 +58,7 @@ internal static class TestData
     internal static RunId ChildRunId { get; } = new(Guid.Parse("90000000-0000-0000-0000-000000000009"));
     internal static GoalId GoalId { get; } = new(Guid.Parse("a0000000-0000-0000-0000-00000000000a"));
     internal static GoalAttemptId AttemptId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-00000000000b"));
+    internal static GoalProfileReference Profile { get; } = new(new GoalProfileKey("goals"), new GoalProfileVersion(1));
     internal static ToolCallId ToolCallId { get; } = new(Guid.Parse("c0000000-0000-0000-0000-00000000000c"));
     internal static OperationId OperationId { get; } = new(Guid.Parse("d0000000-0000-0000-0000-00000000000d"));
     internal static ExecutionIdentity Identity { get; } = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);

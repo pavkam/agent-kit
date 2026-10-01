@@ -19,10 +19,13 @@
     <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj"/>
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <ProjectReference Include="../AgentKit/AgentKit.csproj"/>
+    <ProjectReference Include="../AgentKit.Artifacts/AgentKit.Artifacts.csproj"/>
+    <ProjectReference Include="../AgentKit.Artifacts.InMemory/AgentKit.Artifacts.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Budgets/AgentKit.Budgets.csproj"/>
     <ProjectReference Include="../AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
     <ProjectReference Include="../AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
+    <ProjectReference Include="../AgentKit.Context.Retrieval/AgentKit.Context.Retrieval.csproj"/>
     <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <ProjectReference Include="../AgentKit.Durability/AgentKit.Durability.csproj"/>
     <ProjectReference Include="../AgentKit.Durability.InMemory/AgentKit.Durability.InMemory.csproj"/>
@@ -43,8 +46,13 @@
     <ProjectReference Include="../AgentKit.Network/AgentKit.Network.csproj"/>
     <ProjectReference Include="../AgentKit.Processes/AgentKit.Processes.csproj"/>
     <ProjectReference Include="../AgentKit.Goals/AgentKit.Goals.csproj"/>
+    <ProjectReference Include="../AgentKit.Goals.Hosting/AgentKit.Goals.Hosting.csproj"/>
+    <ProjectReference Include="../AgentKit.Goals.InMemory/AgentKit.Goals.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Hooks/AgentKit.Hooks.csproj"/>
+    <ProjectReference Include="../AgentKit.Memory/AgentKit.Memory.csproj"/>
+    <ProjectReference Include="../AgentKit.Memory.InMemory/AgentKit.Memory.InMemory.csproj"/>
     <ProjectReference Include="../AgentKit.Identity/AgentKit.Identity.csproj"/>
+    <ProjectReference Include="../AgentKit.IO/AgentKit.IO.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
     <ProjectReference Include="../AgentKit.Tools.Edit/AgentKit.Tools.Edit.csproj"/>

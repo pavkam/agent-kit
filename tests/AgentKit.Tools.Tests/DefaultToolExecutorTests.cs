@@ -56,6 +56,60 @@ public sealed class DefaultToolExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationDefersToApproval_RecordsTheWaitAndDeniesWithoutInvoking()
+    {
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        var recorder = new RecordingApprovalWaitRecorder();
+        var executor = CreateExecutor(new ApprovalRequiredInvocationAuthority(), recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results[0].Status.ShouldBe(ToolTerminalStatus.Denied);
+        invoker.Invocations.ShouldBe(0);
+        var (request, approval) = recorder.Waits.ShouldHaveSingleItem();
+        request.Id.ShouldBe(new SecurityRequestId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
+        approval.Binding.Request.ShouldBeSameAs(request);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationDefersAndNoRecorderIsComposed_DeniesWithoutInvoking()
+    {
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        var executor = CreateExecutor(new ApprovalRequiredInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results[0].Status.ShouldBe(ToolTerminalStatus.Denied);
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationIsDeniedOutright_RecordsNoApprovalWait()
+    {
+        var recorder = new RecordingApprovalWaitRecorder();
+        var executor = CreateExecutor(new DenyInvocationAuthority(), recorder);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        _ = await executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        recorder.Waits.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationIsAllowed_RecordsNoApprovalWait()
+    {
+        var recorder = new RecordingApprovalWaitRecorder();
+        var executor = CreateExecutor(new AllowInvocationAuthority(), recorder);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        _ = await executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        recorder.Waits.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenInvokerThrows_ReturnsInvocationFailedTerminalResult()
     {
         var executor = CreateExecutor(new AllowInvocationAuthority());
@@ -100,33 +154,605 @@ public sealed class DefaultToolExecutorTests
         text.Text.ShouldBe("ok");
     }
 
-    private static DefaultToolExecutor CreateExecutor(ISecurityAuthority authority)
+    [Fact]
+    public async Task ExecuteAsync_WhenCallIsAuthorized_RecordsAcceptedBeforeInvocationAndTerminalAfterIt()
+    {
+        var order = new List<string>();
+        var invoker = new RecordingInvoker((_, _) =>
+        {
+            order.Add("invoke");
+            return ValueTask.FromResult(SuccessResult("ok"));
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), order: order);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        order.ShouldBe(["accepted", "invoke", "terminal"]);
+        var accepted = harness.Recorder.Accepted.ShouldHaveSingleItem();
+        accepted.ToolId.ShouldBe(new ToolId("tool.read"));
+        accepted.Normalization.ExecutionPolicy.ShouldBe(Standard);
+        accepted.Acceptance.InvocationGrantId.ShouldBe(new GrantId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")));
+        accepted.ExternalIdempotencyKey.ShouldBeNull();
+        var terminal = harness.Recorder.Terminals.ShouldHaveSingleItem();
+        terminal.ShouldBe(result.Results[0]);
+        terminal.Acceptance.ShouldBe(accepted.Acceptance);
+        harness.Recorder.Targets.ShouldAllBe(static target => target == Target);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAcceptedRecordIsRejected_FailsClosedWithoutInvoking()
+    {
+        var recorder = new ScriptedRecorder
+        {
+            AcceptedOutcome = static () => new ToolCallRecordRejected(ToolCallRecordRejectionKind.Unavailable, "store down"),
+        };
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        terminal.Acceptance.ShouldBeNull();
+        terminal.GrantId.ShouldBe(new GrantId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")));
+        terminal.Error!.SafeMessage.ShouldNotContain("store down");
+        invoker.Invocations.ShouldBe(0);
+        recorder.Terminals.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Unsupported);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAcceptedRecorderThrows_FailsClosedWithoutInvoking()
+    {
+        var recorder = new ScriptedRecorder { AcceptedOutcome = static () => throw new InvalidOperationException("secret store detail") };
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        terminal.Error!.SafeMessage.ShouldNotContain("secret");
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAcceptedRecordingIsCancelled_PropagatesCancellationAndNeverInvokes()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var recorder = new ScriptedRecorder
+        {
+            AcceptedOutcome = () =>
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            },
+        };
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() =>
+            harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), cancellation.Token));
+
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCallIsRejectedBeforeAcceptance_RecordsOnlyATerminalResult()
+    {
+        var harness = CreateHarness(new DenyInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        var result = await harness.Executor.ExecuteAsync(
+            capture,
+            [CallRequest(new ToolAlias("missing"), callSuffix: 1), CallRequest(callSuffix: 2)],
+            ExecutionCapability(),
+            TestContext.Current.CancellationToken);
+
+        result.Results.Select(static item => item.Status).ShouldBe([ToolTerminalStatus.UnknownTool, ToolTerminalStatus.Denied]);
+        harness.Recorder.Accepted.ShouldBeEmpty();
+        harness.Recorder.Terminals.Select(static item => item.Status).ShouldBe([ToolTerminalStatus.UnknownTool, ToolTerminalStatus.Denied]);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTerminalRecordIsRejected_ReturnsTheUnchangedResultAndReportsItNotRecorded()
+    {
+        var sink = new CollectingSink();
+        var recorder = new ScriptedRecorder
+        {
+            TerminalOutcome = static () => new ToolCallRecordRejected(ToolCallRecordRejectionKind.Conflict, "advanced"),
+        };
+        var harness = CreateHarness(
+            new AllowInvocationAuthority(),
+            recorder: recorder,
+            sinks: [new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("collect"), 0), sink)]);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok"))));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        var terminalEvent = sink.Events.OfType<ToolCallTerminalEvent>().ShouldHaveSingleItem();
+        terminalEvent.Recorded.ShouldBeFalse();
+        terminalEvent.Accepted.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTerminalRecorderThrows_ReturnsTheUnchangedResult()
+    {
+        var recorder = new ScriptedRecorder { TerminalOutcome = static () => throw new InvalidOperationException("store failure") };
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok"))));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsDuringInvocation_StillRecordsTheTerminalResultWithoutTheCallerToken()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var recorder = new ScriptedRecorder();
+        var invoker = new RecordingInvoker((_, _) =>
+        {
+            cancellation.Cancel();
+            return ValueTask.FromResult(SuccessResult("ok"));
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), cancellation.Token);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        _ = recorder.Terminals.ShouldHaveSingleItem();
+        recorder.TerminalTokensCanBeCancelled.ShouldBe([false]);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledAfterAnEarlierCallWasAccepted_SettlesThatCallWithAnInterruptedTerminalRecord()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var recorder = new ScriptedRecorder();
+        recorder.AcceptedOutcomeFor = accepted =>
+        {
+            if (recorder.Accepted.Count < 2)
+            {
+                return null;
+            }
+
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        };
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok")));
+        var harness = CreateHarness(new AllowInvocationAuthority(), recorder: recorder);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => harness.Executor.ExecuteAsync(
+            capture,
+            [CallRequest(callSuffix: 1), CallRequest(callSuffix: 2)],
+            ExecutionCapability(),
+            cancellation.Token));
+
+        invoker.Invocations.ShouldBe(0);
+        var settled = recorder.Terminals.ShouldHaveSingleItem();
+        settled.CallId.ShouldBe(recorder.Accepted[0].CallId);
+        settled.Status.ShouldBe(ToolTerminalStatus.Interrupted);
+        settled.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        _ = settled.Acceptance.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledWhilePublishingTheAcceptedEvent_SettlesTheAcceptedCallWithoutInvoking()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var recorder = new ScriptedRecorder();
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok")));
+        var harness = CreateHarness(
+            new AllowInvocationAuthority(),
+            recorder: recorder,
+            sinks: [new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("cancelling"), 0), new CancellingSink(cancellation))]);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() =>
+            harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), cancellation.Token));
+
+        invoker.Invocations.ShouldBe(0);
+        _ = recorder.Accepted.ShouldHaveSingleItem();
+        var settled = recorder.Terminals.ShouldHaveSingleItem();
+        settled.Status.ShouldBe(ToolTerminalStatus.Interrupted);
+        settled.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationFaults_RejectsBeforeAcceptanceWithoutLeakingDetail()
+    {
+        var harness = CreateHarness(new ThrowingAuthority());
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        terminal.Error!.SafeMessage.ShouldNotContain("authority detail");
+        harness.Recorder.Accepted.ShouldBeEmpty();
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyReferenceIsNotBoundToTheRun_RejectsBeforeAcceptance()
+    {
+        var other = new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("other"), new ToolExecutionPolicyVersion(1));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(other), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        harness.Recorder.Accepted.ShouldBeEmpty();
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenOnlyAnotherRevisionOfThePolicyIsRegistered_RejectsWithoutFallingBack()
+    {
+        var newer = new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(2));
+        var options = Options.Create(new ToolRuntimeOptions());
+        var selector = new ToolExecutionPolicySelector(
+            new Dictionary<ToolExecutionPolicyReference, IToolExecutionPolicy> { [newer] = new DefaultToolExecutionPolicy(newer, options) },
+            NullLogger<ToolExecutionPolicySelector>.Instance);
+        var harness = CreateHarness(new AllowInvocationAuthority(), selector: selector);
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(Standard, newer), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        invoker.Invocations.ShouldBe(0);
+        harness.Recorder.Accepted.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyRefusesToPlan_RejectsTheCallWithoutLeakingTheReason()
+    {
+        var selector = new FixedSelector(new ScriptedPolicy(Standard, static (_, _) => new ToolExecutionPlanRejected("internal reason")));
+        var harness = CreateHarness(new AllowInvocationAuthority(), selector: selector);
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        terminal.Error!.SafeMessage.ShouldNotContain("internal reason");
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyThrows_RejectsTheCall()
+    {
+        var selector = new FixedSelector(new ScriptedPolicy(Standard, static (_, _) => throw new InvalidOperationException("policy bug")));
+        var harness = CreateHarness(new AllowInvocationAuthority(), selector: selector);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Unsupported);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyCancels_PropagatesCancellation()
+    {
+        var selector = new FixedSelector(new ScriptedPolicy(Standard, static (_, token) => throw new OperationCanceledException(token)));
+        var harness = CreateHarness(new AllowInvocationAuthority(), selector: selector);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() =>
+            harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), cancellation.Token));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyReturnsAPlanForDifferentCalls_RejectsTheCall()
+    {
+        var selector = new FixedSelector(new ScriptedPolicy(Standard, static (_, _) => new ToolExecutionPlanned([])));
+        var harness = CreateHarness(new AllowInvocationAuthority(), selector: selector);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Unsupported);
+        harness.Recorder.Accepted.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPolicyPlansRetries_RetriesAReadOnlyCallThatFailsRetryably()
+    {
+        var invoker = new RecordingInvoker((context, _) => ValueTask.FromResult(
+            context.Attempt < 2
+                ? new ToolInvocationResult(
+                    new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed, retryable: true, "transient", ExtensionData.Empty),
+                    [])
+                : SuccessResult("ok")));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Invocations.ShouldBe(2);
+        _ = harness.Recorder.Accepted.ShouldHaveSingleItem();
+        _ = harness.Recorder.Terminals.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenUnknownSchedulingModeIsRejected_RejectsAnUnspecifiedCallBeforeAcceptance()
+    {
+        var options = new ToolRuntimeOptions { UnknownSchedulingMode = UnknownSchedulingMode.Reject };
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options);
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult()));
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Denied);
+        harness.Recorder.Accepted.ShouldBeEmpty();
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenToolDeclaresKeyedIdempotency_RecordsAndPassesAStableExternalKey()
+    {
+        var descriptor = KeyedDescriptor();
+        ToolInvocationContext? seen = null;
+        var invoker = new RecordingInvoker((context, _) =>
+        {
+            seen = context;
+            return ValueTask.FromResult(SuccessResult("ok"));
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker, descriptor);
+
+        _ = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var accepted = harness.Recorder.Accepted.ShouldHaveSingleItem();
+        accepted.ExternalIdempotencyKey.ShouldBe(new IdempotencyKey("agentkit.tool-call:33333333-3333-3333-3333-333333333333:66666666-6666-6666-6666-666666666666"));
+        seen.ShouldNotBeNull().ExternalIdempotencyKey.ShouldBe(accepted.ExternalIdempotencyKey);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCallSucceeds_PublishesAcceptedThenTerminalEventsAndSinkFailureChangesNothing()
+    {
+        var collecting = new CollectingSink();
+        var harness = CreateHarness(
+            new AllowInvocationAuthority(),
+            sinks:
+            [
+                new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("a-throwing"), 0), new ThrowingSink()),
+                new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("b-collecting"), 1), collecting),
+            ]);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok"))));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        collecting.Events.Select(static item => item.GetType()).ShouldBe([typeof(ToolCallAcceptedEvent), typeof(ToolCallTerminalEvent)]);
+        var accepted = collecting.Events[0].ShouldBeOfType<ToolCallAcceptedEvent>();
+        accepted.ExecutionPolicy.ShouldBe(Standard);
+        var terminal = collecting.Events[1].ShouldBeOfType<ToolCallTerminalEvent>();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        terminal.Recorded.ShouldBeTrue();
+        terminal.Accepted.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAcceptedRecordFails_PublishesNoAcceptedEvent()
+    {
+        var collecting = new CollectingSink();
+        var recorder = new ScriptedRecorder { AcceptedOutcome = static () => new ToolCallRecordRejected(ToolCallRecordRejectionKind.Unavailable, "down") };
+        var harness = CreateHarness(
+            new AllowInvocationAuthority(),
+            recorder: recorder,
+            sinks: [new ToolEventSinkBinding(new ToolEventSinkRegistration(new ComponentId("collect"), 0), collecting)]);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult())));
+
+        _ = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        collecting.Events.ShouldHaveSingleItem().ShouldBeOfType<ToolCallTerminalEvent>().Accepted.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenBatchMixesOutcomes_ReturnsOneTerminalResultPerCallInSourceOrder()
+    {
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok"))));
+
+        var result = await harness.Executor.ExecuteAsync(
+            capture,
+            [CallRequest(new ToolAlias("missing"), callSuffix: 1), CallRequest(callSuffix: 2), CallRequest(callSuffix: 3)],
+            ExecutionCapability(),
+            TestContext.Current.CancellationToken);
+
+        result.Results.Select(static item => item.Status).ShouldBe([ToolTerminalStatus.UnknownTool, ToolTerminalStatus.Succeeded, ToolTerminalStatus.Succeeded]);
+        harness.Recorder.Accepted.Count.ShouldBe(2);
+        harness.Recorder.Terminals.Count.ShouldBe(3);
+        harness.Recorder.Terminals.Select(static item => item.CallId).Distinct().Count().ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCallRunsWithSecretArguments_NoSignalContainsTheArguments()
+    {
+        const string secret = "sensitive-token-value";
+        var logger = new RecordingLogger<DefaultToolExecutor>();
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok"))));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolEventPublishCount);
+        var arguments = System.Text.Encoding.UTF8.GetBytes($"{{\"token\":\"{secret}\"}}");
+
+        _ = await harness.Executor.ExecuteAsync(capture, [CallRequest(rawArguments: arguments)], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        SignalAssertions.ShouldNotContainContent([], logger.Snapshot(), metrics.Snapshot(), secret);
+    }
+
+    private static ToolDescriptor KeyedDescriptor()
+    {
+        var baseline = ToolCaptureTestData.Descriptor();
+        return new ToolDescriptor(
+            baseline.Id, baseline.Version, baseline.Name, baseline.Description, baseline.InputSchema, baseline.OutputSchema,
+            new ToolEffects(ToolEffect.Mutating, IdempotencyClassification.IdempotentWithKey, null),
+            baseline.ExecutionHints, baseline.SourceId, baseline.Extensions);
+    }
+
+    private sealed record Harness(DefaultToolExecutor Executor, ScriptedRecorder Recorder);
+
+    private sealed class ScriptedRecorder(List<string>? order = null): IToolCallRecorder
+    {
+        public List<AcceptedToolCall> Accepted { get; } = [];
+        public List<ToolCallResult> Terminals { get; } = [];
+        public List<ToolCallSessionTarget> Targets { get; } = [];
+        public List<bool> TerminalTokensCanBeCancelled { get; } = [];
+        public Func<ToolCallRecordResult>? AcceptedOutcome { get; set; }
+        public Func<AcceptedToolCall, ToolCallRecordResult?>? AcceptedOutcomeFor { get; set; }
+        public Func<ToolCallRecordResult>? TerminalOutcome { get; set; }
+
+        public ValueTask<ToolCallRecordResult> RecordAcceptedAsync(
+            AcceptedToolCall accepted, SessionExecutionCapability session, ToolCallSessionTarget target, CancellationToken cancellationToken = default)
+        {
+            order?.Add("accepted");
+            Targets.Add(target);
+            Accepted.Add(accepted);
+            var scripted = AcceptedOutcomeFor?.Invoke(accepted);
+            return ValueTask.FromResult(scripted ?? AcceptedOutcome?.Invoke() ?? new ToolCallRecorded());
+        }
+
+        public ValueTask<ToolCallRecordResult> RecordTerminalAsync(
+            ToolCallResult result, SessionExecutionCapability session, ToolCallSessionTarget target, CancellationToken cancellationToken = default)
+        {
+            order?.Add("terminal");
+            Targets.Add(target);
+            Terminals.Add(result);
+            TerminalTokensCanBeCancelled.Add(cancellationToken.CanBeCanceled);
+            return ValueTask.FromResult(TerminalOutcome?.Invoke() ?? new ToolCallRecorded());
+        }
+    }
+
+    private sealed class CollectingSink: IToolEventSink
+    {
+        public List<ToolEvent> Events { get; } = [];
+
+        public ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(toolEvent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class CancellingSink(CancellationTokenSource source): IToolEventSink
+    {
+        public async ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default)
+        {
+            await source.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    private sealed class ThrowingSink: IToolEventSink
+    {
+        public ValueTask PublishAsync(ToolEvent toolEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("sink failure");
+    }
+
+    private sealed class ScriptedPolicy(
+        ToolExecutionPolicyReference reference,
+        Func<ImmutableArray<ValidatedToolCall>, CancellationToken, ToolExecutionPlanResult> script): IToolExecutionPolicy
+    {
+        public ToolExecutionPolicyReference Reference { get; } = reference;
+
+        public ValueTask<ToolExecutionPlanResult> PlanAsync(
+            ImmutableArray<ValidatedToolCall> calls, ToolExecutionPolicyContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(script(calls, cancellationToken));
+    }
+
+    private sealed class FixedSelector(IToolExecutionPolicy policy): IToolExecutionPolicySelector
+    {
+        public ValueTask<ToolExecutionPolicySelectionResult> SelectAsync(
+            ToolExecutionPolicyReference reference, ToolExecutionCapability capability, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolExecutionPolicySelectionResult>(new ToolExecutionPolicySelected(policy));
+    }
+
+    private sealed class ThrowingAuthority: ISecurityAuthority
+    {
+        public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("authority detail");
+    }
+
+    private static DefaultToolExecutor CreateExecutor(ISecurityAuthority authority, IApprovalWaitRecorder? approvalWaits = null) =>
+        CreateHarness(authority, approvalWaits: approvalWaits).Executor;
+
+    private static Harness CreateHarness(
+        ISecurityAuthority authority,
+        IApprovalWaitRecorder? approvalWaits = null,
+        ScriptedRecorder? recorder = null,
+        IToolExecutionPolicySelector? selector = null,
+        ToolRuntimeOptions? options = null,
+        IEnumerable<ToolEventSinkBinding>? sinks = null,
+        List<string>? order = null)
     {
         var limits = new ToolSchemaLimits(262_144, 64, 10_000, 100_000);
         var schemaEngine = new BoundedToolSchemaEngine(
             TimeProvider.System,
             NullLogger<BoundedToolSchemaEngine>.Instance,
             NullLogger<CompiledToolSchema>.Instance);
-        var runtimeOptions = Options.Create(new ToolRuntimeOptions());
+        var runtimeOptions = Options.Create(options ?? new ToolRuntimeOptions { RetryInitialDelay = TimeSpan.Zero, RetryMaximumDelay = TimeSpan.Zero, RetryJitterFraction = 0.0 });
+        var events = new ToolEventDispatcher(sinks ?? [], runtimeOptions, TimeProvider.System, NullLogger<ToolEventDispatcher>.Instance);
         var normalizer = new ToolResultNormalizer(runtimeOptions);
         var scheduler = new BarrierSegmentToolScheduler(
             normalizer,
             runtimeOptions,
             TimeProvider.System,
+            events,
+            new FixedRandomizerFactory(),
             NullLogger<BarrierSegmentToolScheduler>.Instance);
-        return new DefaultToolExecutor(
+        var effectiveRecorder = recorder ?? new ScriptedRecorder(order);
+        var effectiveSelector = selector ?? StandardSelector(runtimeOptions);
+        var executor = new DefaultToolExecutor(
             new ToolCallResolver(TimeProvider.System, NullLogger<ToolCallResolver>.Instance),
             new ToolArgumentValidator(schemaEngine, TimeProvider.System),
+            effectiveSelector,
             new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
+            effectiveRecorder,
             scheduler,
+            events,
             limits,
             runtimeOptions,
             TimeProvider.System,
-            NullLogger<DefaultToolExecutor>.Instance);
+            NullLogger<DefaultToolExecutor>.Instance,
+            approvalWaits: approvalWaits);
+        return new Harness(executor, effectiveRecorder);
     }
 
-    private static async Task<ToolCatalogCapture> CreateCaptureAsync(RecordingInvoker invoker, ToolDescriptor? descriptor = null)
+    private static ToolExecutionPolicySelector StandardSelector(IOptions<ToolRuntimeOptions> options) =>
+        new(
+            new Dictionary<ToolExecutionPolicyReference, IToolExecutionPolicy>
+            {
+                [Standard] = new DefaultToolExecutionPolicy(Standard, options),
+            },
+            NullLogger<ToolExecutionPolicySelector>.Instance);
+
+    private static ToolExecutionPolicyReference Standard { get; } =
+        new(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1));
+
+    private static async Task<ToolCatalogCapture> CreateCaptureAsync(
+        RecordingInvoker invoker,
+        ToolDescriptor? descriptor = null,
+        ToolExecutionPolicyReference? policy = null)
     {
         var tool = descriptor ?? ToolCaptureTestData.Descriptor();
         var publication = ToolCaptureTestData.Snapshot([tool]);
@@ -151,9 +777,7 @@ public sealed class DefaultToolExecutorTests
             new ToolCatalogVersion("catalog-1"),
             ImmutableDictionary.Create<ToolSourceId, ToolSourceVersion>().Add(publication.SourceId, publication.SourceVersion),
             [tool],
-            ImmutableDictionary.Create<ToolIdentity, ToolExecutionPolicyReference>().Add(
-                identity,
-                new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1))),
+            ImmutableDictionary.Create<ToolIdentity, ToolExecutionPolicyReference>().Add(identity, policy ?? Standard),
             ImmutableDictionary.Create<ToolAlias, ToolIdentity>().Add(alias, identity));
         return new ToolCatalogCapture(
             snapshot,
@@ -162,7 +786,7 @@ public sealed class DefaultToolExecutorTests
             NullLogger<ToolCatalogCapture>.Instance);
     }
 
-    private static ToolCallRequest CallRequest(ToolAlias? alias = null, byte[]? rawArguments = null)
+    private static ToolCallRequest CallRequest(ToolAlias? alias = null, byte[]? rawArguments = null, int callSuffix = 6)
     {
         var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var sessionId = new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
@@ -178,7 +802,7 @@ public sealed class DefaultToolExecutorTests
             runId,
             turnId,
             operationId,
-            new ToolCallId(Guid.Parse("66666666-6666-6666-6666-666666666666")),
+            new ToolCallId(Guid.Parse($"66666666-6666-6666-6666-66666666666{callSuffix}")),
             authorization,
             new ToolCatalogVersion("catalog-1"),
             sourceOrdinal: 0,
@@ -204,7 +828,7 @@ public sealed class DefaultToolExecutorTests
             baseDescriptor.Extensions);
     }
 
-    private static ToolExecutionCapability ExecutionCapability() => new(
+    private static ToolExecutionCapability ExecutionCapability(params ToolExecutionPolicyReference[] policies) => new(
         new SessionExecutionCapability(
             TestSecurityEvidence.SessionProfile(),
             new UnsupportedSessionCoordinator(),
@@ -217,7 +841,13 @@ public sealed class DefaultToolExecutorTests
                 new OperationId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
                 new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
                 new TurnId(Guid.Parse("55555555-5555-5555-5555-555555555555"))),
-            new FakeBudgetScope()));
+            new FakeBudgetScope()),
+        Target,
+        [.. (policies.Length == 0 ? [Standard] : policies).Select(static reference => new ToolExecutionPolicyBinding(reference))]);
+
+    private static ToolCallSessionTarget Target { get; } = new(
+        new BranchId(Guid.Parse("77777777-7777-7777-7777-777777777771")),
+        new ExecutionLaneId(Guid.Parse("77777777-7777-7777-7777-777777777772")));
 
     private static ToolInvocationResult SuccessResult(string text = "") => new(
         new ToolCallOutcome(
@@ -279,12 +909,46 @@ public sealed class DefaultToolExecutorTests
         public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-            var authorization = request.Authorization!;
+            var authorization = request.Authorization;
             return ValueTask.FromResult<SecurityDecision>(
                 new SecurityDenied(
                     request.Id,
                     authorization.PolicySnapshot.Version,
                     new SecurityDenial("test.denied", "Denied by test authority.")));
+        }
+    }
+
+    private sealed class ApprovalRequiredInvocationAuthority: ISecurityAuthority
+    {
+        public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var version = request.Authorization.PolicySnapshot.Version;
+            var approval = new ApprovalRequest(
+                new ApprovalRequestId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
+                new ApprovalScopeBinding(
+                    request,
+                    version,
+                    new SecurityRevocationVersion(1),
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch.AddMinutes(5),
+                    1),
+                "Approve a bounded test operation.",
+                DateTimeOffset.UnixEpoch);
+            return ValueTask.FromResult<SecurityDecision>(new SecurityApprovalRequired(request.Id, version, approval));
+        }
+    }
+
+    private sealed class RecordingApprovalWaitRecorder: IApprovalWaitRecorder
+    {
+        private readonly List<(SecurityRequest Request, ApprovalRequest Approval)> _waits = [];
+
+        public IReadOnlyList<(SecurityRequest Request, ApprovalRequest Approval)> Waits => _waits;
+
+        public ValueTask RecordAsync(SecurityRequest request, ApprovalRequest approval, CancellationToken cancellationToken = default)
+        {
+            _waits.Add((request, approval));
+            return ValueTask.CompletedTask;
         }
     }
 

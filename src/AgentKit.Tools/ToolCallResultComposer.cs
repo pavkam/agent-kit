@@ -5,127 +5,126 @@ namespace AgentKit.Tools;
 
 using System.Collections.Immutable;
 
-/// <summary>Constructs authoritative <see cref="ToolCallResult"/> records for the spec-shaped executor pipeline.</summary>
+/// <summary>Builds the authoritative terminal <see cref="ToolCallResult"/> for each path a call can take through the executor and scheduler.</summary>
+/// <remarks>
+/// Every result is built from retained evidence: the admission evidence of the request, the accepted record (when the call
+/// was accepted), and the captured normalization snapshot. No result is reconstructed from the invoker context.
+/// </remarks>
 internal static class ToolCallResultComposer
 {
-    private static readonly ToolExecutionPolicyReference _scheduledExecutionPolicy = new(
-        new ToolExecutionPolicyKey("agentkit.tools.scheduled"),
-        new ToolExecutionPolicyVersion(1));
-
-    private static readonly ToolCatalogVersion _scheduledCatalogVersion = new("agentkit.tools.scheduled");
-
-    /// <summary>Builds a terminal record for one prepared batch entry after scheduling and invocation.</summary>
-    /// <param name="entry">The prepared batch entry that was invoked.</param>
-    /// <param name="invocation">The raw invoker evidence.</param>
+    /// <summary>Builds the terminal record for an accepted call whose invoker ran at least once.</summary>
+    /// <param name="entry">The prepared and accepted batch entry that was invoked.</param>
+    /// <param name="invocation">The raw evidence of the final attempt.</param>
     /// <param name="normalization">The normalized terminal content decision.</param>
+    /// <param name="invocationStartedAt">When the final attempt started.</param>
     /// <param name="completedAt">The terminal timestamp.</param>
-    /// <returns>The authoritative terminal record.</returns>
-    internal static ToolCallResult FromScheduledInvocation(
+    /// <returns>The authoritative terminal record carrying the accepted call's acceptance evidence.</returns>
+    /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
+    internal static ToolCallResult FromAcceptedInvocation(
         ToolBatchEntry entry,
         ToolInvocationResult invocation,
         ToolResultNormalizationResult normalization,
+        DateTimeOffset invocationStartedAt,
         DateTimeOffset completedAt)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentNullException.ThrowIfNull(normalization);
-        var context = entry.Invocation;
-        var authorization = context.InvocationGrant.Authorization
-            ?? throw new InvalidOperationException("Scheduled invocations require authorization evidence on the grant.");
-        var call = new ValidatedToolCall(
-            context.AgentId,
-            context.SessionId,
-            context.RunId,
-            context.TurnId,
-            context.OperationId,
-            context.CallId,
-            authorization,
-            _scheduledCatalogVersion,
-            new ToolAlias(context.Tool.Name),
-            context.Tool,
-            context.ToolVersion,
-            _scheduledExecutionPolicy,
-            entry.SourceOrdinal,
-            context.Arguments,
-            ToolInvocationSecurityBinding.ValidatedArgumentsFingerprint(context.Arguments),
-            context.RequestedAt,
-            context.InvocationStartedAt);
-        var request = ToScheduledRequest(context, entry.SourceOrdinal, authorization);
-        return FromInvocation(
-            request,
-            call,
-            invocation,
-            normalization,
-            context.InvocationGrant,
-            context.InvocationStartedAt,
+        var accepted = entry.Accepted;
+        var outcome = invocation.Outcome;
+        if (normalization is ToolResultNormalizationFailed failed)
+        {
+            return Accepted(
+                accepted,
+                failed.Status,
+                [],
+                new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
+                new ToolError(ToolErrorKind.Serialization, failed.SafeReason, null, null, ExtensionData.Empty),
+                outcome.SideEffectCertainty,
+                outcome.Retryable,
+                invocationStartedAt,
+                completedAt);
+        }
+
+        var normalized = (ToolResultNormalized) normalization;
+        var succeeded = outcome.Kind == ToolCallOutcomeKind.Success;
+        ToolError? error = null;
+        if (!succeeded && outcome.FailureReason is { Length: > 0 } reason)
+        {
+            error = new ToolError(ToolErrorKind.Tool, reason, null, null, ExtensionData.Empty);
+        }
+
+        return Accepted(
+            accepted,
+            succeeded ? ToolTerminalStatus.Succeeded : outcome.SourceStatus,
+            normalized.Content,
+            normalized.Info,
+            error,
+            outcome.SideEffectCertainty,
+            outcome.Retryable,
+            invocationStartedAt,
             completedAt);
     }
 
-    /// <summary>Builds a pre-invocation rejection for one prepared entry rejected during scheduling.</summary>
-    internal static ToolCallResult ScheduledPreInvocation(
+    /// <summary>Builds the terminal record for an accepted call whose invoker never started.</summary>
+    /// <param name="entry">The accepted batch entry that was released without invocation.</param>
+    /// <param name="status">The rejected or interrupted terminal status.</param>
+    /// <param name="safeReason">A bounded safe explanation.</param>
+    /// <param name="completedAt">The terminal timestamp.</param>
+    /// <returns>A terminal record with acceptance evidence, no invocation start, and certainty <see cref="SideEffectCertainty.DefinitelyNotPerformed"/>.</returns>
+    /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
+    internal static ToolCallResult AcceptedNotStarted(
         ToolBatchEntry entry,
         ToolTerminalStatus status,
         string safeReason,
         DateTimeOffset completedAt)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        var context = entry.Invocation;
-        var authorization = context.InvocationGrant.Authorization
-            ?? throw new InvalidOperationException("Scheduled invocations require authorization evidence on the grant.");
-        var request = ToScheduledRequest(context, entry.SourceOrdinal, authorization);
-        return PreInvocation(
-            request,
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeReason);
+        return Accepted(
+            entry.Accepted,
             status,
-            safeReason,
-            context.Tool.Id,
-            context.ToolVersion,
-            context.Tool.Effects,
-            ToolRuntimeNormalizationDefaults.ForResolvedTool(_scheduledExecutionPolicy),
+            [],
+            new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
+            new ToolError(ToolErrorKind.Host, safeReason, null, null, ExtensionData.Empty),
+            SideEffectCertainty.DefinitelyNotPerformed,
+            retryable: false,
+            invocationStartedAt: null,
             completedAt);
     }
 
-    /// <summary>Builds an interrupted terminal record for one prepared entry that never settled after cancellation.</summary>
-    internal static ToolCallResult ScheduledInterrupted(ToolBatchEntry entry, DateTimeOffset completedAt)
+    /// <summary>Builds the terminal record for an accepted call that was cancelled while its invoker ran.</summary>
+    /// <param name="entry">The accepted batch entry.</param>
+    /// <param name="invocationStartedAt">When the interrupted attempt started.</param>
+    /// <param name="completedAt">The terminal timestamp.</param>
+    /// <returns>An interrupted terminal record whose side-effect certainty is <see cref="SideEffectCertainty.Unknown"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="entry"/> is null.</exception>
+    internal static ToolCallResult AcceptedInterrupted(ToolBatchEntry entry, DateTimeOffset invocationStartedAt, DateTimeOffset completedAt)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        var invocation = new ToolInvocationResult(
-            new ToolCallOutcome(
-                ToolCallOutcomeKind.Cancelled,
-                ToolTerminalStatus.Interrupted,
-                SideEffectCertainty.Unknown,
-                retryable: false,
-                "The tool invocation was interrupted.",
-                ExtensionData.Empty),
-            []);
-        return FromScheduledInvocation(
-            entry,
-            invocation,
-            new ToolResultNormalized([], new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty)),
+        return Accepted(
+            entry.Accepted,
+            ToolTerminalStatus.Interrupted,
+            [],
+            new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
+            new ToolError(ToolErrorKind.Host, "The tool invocation was interrupted.", null, null, ExtensionData.Empty),
+            SideEffectCertainty.Unknown,
+            retryable: false,
+            invocationStartedAt,
             completedAt);
     }
 
-    private static ToolCallRequest ToScheduledRequest(
-        ToolInvocationContext context,
-        int sourceOrdinal,
-        SecurityAuthorizationContext authorization)
-    {
-        var rawText = context.Arguments.GetRawText();
-        var rawBytes = System.Text.Encoding.UTF8.GetBytes(rawText);
-        return new ToolCallRequest(
-            context.AgentId,
-            context.SessionId,
-            context.RunId,
-            context.TurnId,
-            context.OperationId,
-            context.CallId,
-            authorization,
-            _scheduledCatalogVersion,
-            sourceOrdinal,
-            new ToolAlias(context.Tool.Name),
-            [.. rawBytes],
-            context.RequestedAt);
-    }
-
+    /// <summary>Builds a pre-invocation rejection that never became an accepted call.</summary>
+    /// <param name="request">The admitted request whose identity and raw-argument evidence the result retains.</param>
+    /// <param name="status">The rejection status.</param>
+    /// <param name="safeReason">A bounded safe explanation.</param>
+    /// <param name="toolId">The resolved tool, or null when the alias never resolved.</param>
+    /// <param name="toolVersion">The resolved version; present exactly when <paramref name="toolId"/> is.</param>
+    /// <param name="effects">The declared effects of the resolved descriptor, or null.</param>
+    /// <param name="normalization">The captured normalization rules governing the rejection.</param>
+    /// <param name="completedAt">The terminal timestamp.</param>
+    /// <param name="grantId">A grant that was issued before the rejection, or null when none was.</param>
+    /// <returns>A terminal record with <see cref="SideEffectCertainty.DefinitelyNotPerformed"/> and no acceptance evidence.</returns>
     internal static ToolCallResult PreInvocation(
         ToolCallRequest request,
         ToolTerminalStatus status,
@@ -134,7 +133,8 @@ internal static class ToolCallResultComposer
         ToolVersion? toolVersion,
         ToolEffects? effects,
         ToolResultNormalizationSnapshot normalization,
-        DateTimeOffset completedAt) =>
+        DateTimeOffset completedAt,
+        GrantId? grantId = null) =>
         new(
             request.AgentId,
             request.SessionId,
@@ -143,7 +143,7 @@ internal static class ToolCallResultComposer
             request.OperationId,
             request.CallId,
             request.Authorization,
-            grantId: null,
+            grantId,
             acceptance: null,
             request.ProviderAlias,
             toolId,
@@ -165,9 +165,11 @@ internal static class ToolCallResultComposer
             completedAt,
             ExtensionData.Empty);
 
-    internal static ToolCallResult FromValidationFailure(
-        ToolCallValidationFailed failure,
-        DateTimeOffset completedAt) =>
+    /// <summary>Builds a rejection for a call whose arguments failed validation.</summary>
+    /// <param name="failure">The validation failure carrying the resolved call.</param>
+    /// <param name="completedAt">The terminal timestamp.</param>
+    /// <returns>A resolved, pre-invocation terminal record.</returns>
+    internal static ToolCallResult FromValidationFailure(ToolCallValidationFailed failure, DateTimeOffset completedAt) =>
         PreInvocation(
             ToRequest(failure.Call),
             failure.Status,
@@ -178,118 +180,89 @@ internal static class ToolCallResultComposer
             ToolRuntimeNormalizationDefaults.ForResolvedTool(failure.Call.ExecutionPolicy),
             completedAt);
 
-    internal static ToolCallResult FromInvocation(
-        ToolCallRequest request,
-        ValidatedToolCall call,
-        ToolInvocationResult invocation,
-        ToolResultNormalizationResult normalization,
-        SecurityGrant? invocationGrant,
-        DateTimeOffset invocationStartedAt,
-        DateTimeOffset completedAt)
+    /// <summary>Copies a terminal record with its content removed, as the session terminal entry persists it.</summary>
+    /// <param name="result">The authoritative terminal record.</param>
+    /// <returns>An equal record whose <see cref="ToolCallResult.Content"/> is empty.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> is null.</exception>
+    internal static ToolCallResult WithoutContent(ToolCallResult result)
     {
-        var snapshot = ToolRuntimeNormalizationDefaults.ForResolvedTool(call.ExecutionPolicy);
-        if (normalization is ToolResultNormalizationFailed failed)
-        {
-            return Terminal(
-                request,
-                call,
-                failed.Status,
-                failed.SafeReason,
-                invocationGrant?.Id,
-                null,
-                invocationStartedAt,
-                completedAt,
-                snapshot,
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Content.IsEmpty
+            ? result
+            : new ToolCallResult(
+                result.AgentId,
+                result.SessionId,
+                result.RunId,
+                result.TurnId,
+                result.OperationId,
+                result.CallId,
+                result.Authorization,
+                result.GrantId,
+                result.Acceptance,
+                result.ProviderAlias,
+                result.ToolId,
+                result.ToolVersion,
+                result.Effects,
+                result.ExternalIdempotencyKey,
+                result.Admission,
+                result.Status,
                 [],
-                new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty),
-                invocation.Outcome.Retryable,
-                invocation.Outcome.SideEffectCertainty);
-        }
-
-        var normalized = (ToolResultNormalized) normalization;
-        var succeeded = invocation.Outcome.Kind == ToolCallOutcomeKind.Success;
-        var status = succeeded ? ToolTerminalStatus.Succeeded : invocation.Outcome.SourceStatus;
-        ToolCallAcceptanceEvidence? acceptance = null;
-        var grantId = invocationGrant?.Id;
-        if (succeeded && invocationGrant is not null)
-        {
-            acceptance = new ToolCallAcceptanceEvidence(
-                invocationGrant.Id,
-                call.InputFingerprint,
-                invocationStartedAt);
-        }
-
-        ToolError? error = null;
-        if (!succeeded && invocation.Outcome.FailureReason is { Length: > 0 } failureReason)
-        {
-            error = new ToolError(ToolErrorKind.Tool, failureReason, null, null, ExtensionData.Empty);
-        }
-
-        return Terminal(
-            request,
-            call,
-            status,
-            null,
-            grantId,
-            acceptance,
-            invocationStartedAt,
-            completedAt,
-            snapshot,
-            normalized.Content,
-            normalized.Info,
-            invocation.Outcome.Retryable,
-            invocation.Outcome.SideEffectCertainty,
-            error);
+                result.Error,
+                result.SideEffectCertainty,
+                result.Usage,
+                result.Retryable,
+                result.Normalization,
+                result.NormalizationInfo,
+                result.ProjectionPolicy,
+                result.RequestedAt,
+                result.InvocationStartedAt,
+                result.CompletedAt,
+                result.Extensions);
     }
 
-    private static ToolCallResult Terminal(
-        ToolCallRequest request,
-        ValidatedToolCall call,
+    private static ToolCallResult Accepted(
+        AcceptedToolCall accepted,
         ToolTerminalStatus status,
-        string? safeReason,
-        GrantId? grantId,
-        ToolCallAcceptanceEvidence? acceptance,
-        DateTimeOffset invocationStartedAt,
-        DateTimeOffset completedAt,
-        ToolResultNormalizationSnapshot snapshot,
         ImmutableArray<ToolResultContent> content,
-        ToolResultNormalizationInfo normalizationInfo,
+        ToolResultNormalizationInfo info,
+        ToolError? error,
+        SideEffectCertainty certainty,
         bool retryable,
-        SideEffectCertainty sideEffectCertainty,
-        ToolError? error = null)
+        DateTimeOffset? invocationStartedAt,
+        DateTimeOffset completedAt)
     {
-        if (error is null && safeReason is { Length: > 0 })
-        {
-            error = new ToolError(ToolErrorKind.Tool, safeReason, null, null, ExtensionData.Empty);
-        }
-
+        var possiblyStarted = invocationStartedAt.HasValue || certainty is not SideEffectCertainty.DefinitelyNotPerformed;
+        var safeToRetry = accepted.Effects.Effect is not ToolEffect.Mutating
+            || !possiblyStarted
+            || accepted.Effects.Idempotency is IdempotencyClassification.Idempotent
+            || (accepted.Effects.Idempotency is IdempotencyClassification.IdempotentWithKey && accepted.ExternalIdempotencyKey.HasValue);
         return new ToolCallResult(
-            call.AgentId,
-            call.SessionId,
-            call.RunId,
-            call.TurnId,
-            call.OperationId,
-            call.CallId,
-            call.Authorization,
-            grantId,
-            acceptance,
-            call.ProviderAlias,
-            call.Tool.Id,
-            call.ToolVersion,
-            call.Tool.Effects,
-            externalIdempotencyKey: null,
-            Admission(request),
+            accepted.AgentId,
+            accepted.SessionId,
+            accepted.RunId,
+            accepted.TurnId,
+            accepted.OperationId,
+            accepted.CallId,
+            accepted.Authorization,
+            accepted.Acceptance.InvocationGrantId,
+            accepted.Acceptance,
+            accepted.ProviderAlias,
+            accepted.ToolId,
+            accepted.ToolVersion,
+            accepted.Effects,
+            accepted.ExternalIdempotencyKey,
+            accepted.Admission,
             status,
             content,
-            error,
-            sideEffectCertainty,
+            status is ToolTerminalStatus.Succeeded ? null : error,
+            certainty,
             usage: null,
-            retryable,
-            snapshot,
-            normalizationInfo,
-            snapshot.ProjectionPolicy,
-            call.RequestedAt,
-            acceptance is null ? null : invocationStartedAt,
+            retryable && safeToRetry,
+            accepted.Normalization,
+            info,
+            accepted.ProjectionPolicy,
+            accepted.RequestedAt,
+            invocationStartedAt,
             completedAt,
             ExtensionData.Empty);
     }

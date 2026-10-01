@@ -12,7 +12,8 @@ internal sealed class DefaultCompactionEventDispatcher(
     private readonly ComponentKey<ICompactor> _compactorKey = compactorKey;
     private readonly ImmutableArray<CompactionEventSinkDeclaration> _declarations =
         [.. declarations.Where(d => d.CompactorKey.Equals(compactorKey.Value, StringComparison.Ordinal))
-            .OrderBy(static d => d.Registration.Order)];
+            .OrderBy(static d => d.Registration.Order)
+            .ThenBy(static d => d.Registration.Id.Value, StringComparer.Ordinal)];
 
     /// <inheritdoc/>
     public async ValueTask<CompactionEventDispatchResult> PublishAsync(
@@ -29,7 +30,8 @@ internal sealed class DefaultCompactionEventDispatcher(
 
         foreach (var declaration in _declarations)
         {
-            var sink = (ICompactionEventSink?) services.GetService(declaration.SinkType);
+            var sink = services.GetKeyedService<ICompactionEventSink>(
+                CompactionServiceKeys.EventSink(_compactorKey, declaration.Registration.Id));
             if (sink is null)
             {
                 if (declaration.Registration.Delivery == CompactionEventDelivery.Required)
@@ -50,6 +52,10 @@ internal sealed class DefaultCompactionEventDispatcher(
             {
                 await sink.PublishAsync(compactionEvent, cancellationToken).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception exception) when (declaration.Registration.Delivery == CompactionEventDelivery.Required)
             {
                 return new RequiredCompactionEventUnavailable(
@@ -59,6 +65,10 @@ internal sealed class DefaultCompactionEventDispatcher(
                         $"Required compaction event sink '{declaration.Registration.Id}' failed: {exception.GetType().Name}.",
                         retryable: false,
                         ExtensionData.Empty));
+            }
+            catch (Exception)
+            {
+                // A best-effort sink may fail without affecting the attempt: observation never changes the outcome.
             }
         }
 

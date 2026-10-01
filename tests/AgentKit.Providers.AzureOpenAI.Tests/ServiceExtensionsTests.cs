@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -133,6 +135,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAILlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"), new DeploymentId("fast-deployment"));
         _ = services.AddAzureOpenAILlmModel(new ModelAlias("smart"), new ModelId("gpt-4o"), new DeploymentId("smart-deployment"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -147,6 +151,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
         _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
         _ = services.AddAzureOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"), new DeploymentId("prod-gpt4o"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AzureOpenAILlmModel>();
@@ -165,6 +171,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAIEmbeddingModel(
             new EmbeddingModelAlias("large"), new ModelId("text-embedding-3-large"), new DeploymentId("large-deployment"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -180,6 +188,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
         _ = services.AddAzureOpenAIEmbeddingModel(
             new EmbeddingModelAlias("embed"), new ModelId("text-embedding-3-small"), new DeploymentId("prod-embed"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<AzureOpenAIEmbeddingModel>();
@@ -205,6 +215,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddAzureOpenAILlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AzureOpenAILlmModel>();

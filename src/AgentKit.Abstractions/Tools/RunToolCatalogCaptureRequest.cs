@@ -3,7 +3,7 @@
 
 namespace AgentKit;
 
-/// <summary>Names the run identities and authorization used to build a legacy catalog capture.</summary>
+/// <summary>Names the run identities and authorization used to build one run-bound tool catalog capture.</summary>
 public sealed record RunToolCatalogCaptureRequest
 {
     /// <summary>Initializes run catalog capture evidence.</summary>
@@ -11,7 +11,7 @@ public sealed record RunToolCatalogCaptureRequest
     /// <param name="sessionId">The owning session.</param>
     /// <param name="runId">The active run.</param>
     /// <param name="authorization">The captured authorization for tool execution.</param>
-    /// <param name="toolsets">Authored toolset selections for discovery capture; empty uses the legacy singleton catalog path.</param>
+    /// <param name="toolsets">Authored toolset selections for discovery capture; an empty selection exposes no toolset publications.</param>
     /// <param name="configuration">Effective configuration for discovery; required when <paramref name="toolsets"/> is non-empty.</param>
     /// <param name="modelCapabilities">Model capability snapshot for schema preflight; required when <paramref name="toolsets"/> is non-empty.</param>
     /// <exception cref="ArgumentOutOfRangeException">An identity is default.</exception>

@@ -45,8 +45,8 @@ dependencies.
   — intended ownership and contracts.
 - [Google Vertex AI API reference](../../docs/providers/google-vertex-ai.md) —
   wire behavior and capability requirements.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 internal static class TestSearchComposition
 {
-    internal static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority)
+    internal static SearchTool CreateTool(IFileContentSearcher searcher, ISecurityAuthority authority, ILogger<SearchTool>? logger = null)
     {
         var profileKey = new FileSystemProfileKey("test");
         var services = new ServiceCollection();
@@ -20,6 +20,7 @@ internal static class TestSearchComposition
             new FixedSecurityAuthoritySelector(authority),
             new StubSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(new SearchToolOptions { ProfileKey = profileKey }));
+            Options.Create(new SearchToolOptions { ProfileKey = profileKey }),
+            logger ?? NullLogger<SearchTool>.Instance);
     }
 }

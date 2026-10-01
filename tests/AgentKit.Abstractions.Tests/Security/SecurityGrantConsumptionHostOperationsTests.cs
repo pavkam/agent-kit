@@ -15,11 +15,7 @@ public sealed class SecurityGrantConsumptionHostOperationsTests
             new AgentId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
             sessionId: null,
             correlation);
-        var grant = new SecurityGrant(
-            new GrantId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
-            new SecurityRequestId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
-            scope,
-            new ExecutionIdentity(
+        var identity = new ExecutionIdentity(
                 new TenantId("tenant"),
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Service,
@@ -33,7 +29,13 @@ public sealed class SecurityGrantConsumptionHostOperationsTests
                 [],
                 [],
                 IdentityAssuranceLevel.Basic,
-                new IdentityVersion(1)),
+                new IdentityVersion(1));
+        var grant = new SecurityGrant(
+            new GrantId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
+            new SecurityRequestId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
+            scope,
+            identity,
+            TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity),
             new ComponentId("test"),
             SecurityOperationKind.Network,
             SecurityEffect.Egress,
@@ -47,6 +49,7 @@ public sealed class SecurityGrantConsumptionHostOperationsTests
         var enforcement = new SecurityEnforcementRequest(
             grant.Scope,
             grant.Identity,
+            grant.Authorization,
             grant.Audience,
             SecurityOperationKind.Network,
             SecurityEffect.Egress,

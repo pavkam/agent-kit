@@ -19,22 +19,6 @@ internal sealed class StrictGrantStore: ISecurityGrantStore
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        Enforcements.Add(enforcement);
-        var matches = Matches(grant, enforcement);
-        var status = !matches
-            ? GrantConsumptionStatus.Mismatch
-            : _consumed.Add(grant.Id) ? GrantConsumptionStatus.Consumed : GrantConsumptionStatus.Exhausted;
-        return ValueTask.FromResult(new GrantConsumptionResult(
-            status,
-            0,
-            status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied."));
-    }
-
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
         SecurityEnforcementIntent intent,
         CancellationToken cancellationToken = default)
     {
@@ -105,6 +89,7 @@ internal sealed class RecordingSecurityAuthority(StrictGrantStore store): ISecur
             request.Id,
             request.Scope,
             request.Identity,
+            request.Authorization,
             request.Audience,
             request.Kind,
             request.Effect,

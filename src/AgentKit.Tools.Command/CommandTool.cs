@@ -26,6 +26,8 @@ public sealed class CommandTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(CommandToolLog.Completed, CommandToolLog.Cancelled, CommandToolLog.Faulted);
+    private readonly ILogger<CommandTool> _logger;
     private readonly IProcessExecutorSelector _executorSelector;
     private readonly ProcessExecutorKey _executorKey;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -53,6 +55,7 @@ public sealed class CommandTool: IToolInvoker
     /// <param name="processOperationIds">The replaceable process-operation identity source.</param>
     /// <param name="timeProvider">The deterministic security-deadline clock.</param>
     /// <param name="options">The captured shell identity and model-facing bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The shell configuration is malformed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
@@ -62,7 +65,8 @@ public sealed class CommandTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<ProcessOperationId> processOperationIds,
         TimeProvider timeProvider,
-        IOptions<CommandToolOptions> options)
+        IOptions<CommandToolOptions> options,
+        ILogger<CommandTool> logger)
     {
         ArgumentNullException.ThrowIfNull(executorSelector);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -70,6 +74,7 @@ public sealed class CommandTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(processOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _executorSelector = executorSelector;
         _executorKey = options.Value.ProcessExecutorKey;
@@ -89,6 +94,7 @@ public sealed class CommandTool: IToolInvoker
         _maximumOutputBytes = options.Value.MaximumOutputBytes;
         _terminationGracePeriod = options.Value.TerminationGracePeriod;
         _maximumCommandBytes = options.Value.MaximumCommandBytes;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -115,16 +121,16 @@ public sealed class CommandTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("command"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

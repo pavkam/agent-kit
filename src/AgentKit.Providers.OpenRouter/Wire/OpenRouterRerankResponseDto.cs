@@ -12,5 +12,6 @@ internal sealed class OpenRouterRerankResultDto
 {
     public int Index { get; set; }
 
+    [JsonPropertyName("relevance_score")]
     public double RelevanceScore { get; set; }
 }

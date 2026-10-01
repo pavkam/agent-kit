@@ -10,11 +10,10 @@ namespace AgentKit;
 /// fields, safe to share across threads without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller producer
-/// provenance described by the context-compaction architecture, which
-/// additionally records the model, provider, and usage for a model-backed
-/// strategy. Until a model-backed strategy exists in this package, that
-/// detail belongs in <see cref="Extensions"/>.
+/// The producer carries a strategy key and a determinism flag. The model,
+/// provider, request, response, and usage provenance a model-backed strategy
+/// must record belongs in <see cref="Extensions"/>; the first-party strategy
+/// writes it under the stable keys of <c>ModelCompactionProvenanceKeys</c>.
 /// </para>
 /// </remarks>
 public sealed record CompactionProducer

@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.OpenRouter;
 
 using AgentKit.Providers;
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -31,8 +32,8 @@ public static class ServiceExtensions
         /// <summary>
         /// Registers the OpenRouter endpoint and wire-behavior options,
         /// along with the shared OpenAI-compatible request translator,
-        /// response parser, default <see cref="TimeProvider"/>, and a
-        /// dedicated <see cref="HttpClient"/>.
+        /// response parser, default <see cref="TimeProvider"/>. Adapters built from
+        /// these registrations send through <see cref="ProviderEgress"/> and own no HTTP client.
         /// </summary>
         /// <param name="configureOptions">An optional callback that overrides the default options.</param>
         /// <returns>
@@ -98,24 +99,6 @@ public static class ServiceExtensions
                 OpenRouterProviderDefaults.DefaultEndpointId);
 
             services.TryAddSingleton(TimeProvider.System);
-            // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
-            // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
-            // instead of pinning to one address for the process lifetime - the well-documented
-            // singleton-HttpClient pitfall. Registered as its own replaceable singleton so a caller can
-            // override the transport policy (e.g. a custom DelegatingHandler chain) without also having
-            // to replace the HttpClient registration below.
-            services.TryAddSingleton(_ => new SocketsHttpHandler
-            {
-                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-            });
-            // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered
-            // (non-streaming) attempt regardless of the caller's LlmModelRequest.Deadline, since
-            // this adapter's own deadlineSource is layered on top of, not instead of, the
-            // transport-level timeout. The per-request deadlineSource already bounds every attempt.
-            services.TryAddSingleton(provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>())
-            {
-                Timeout = Timeout.InfiniteTimeSpan,
-            });
 
             return services;
         }
@@ -281,7 +264,7 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
-                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
                     provider.GetService<IProviderProfileRuntimeSelector>());
             });
@@ -351,7 +334,7 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
-                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
                     provider.GetService<IProviderProfileRuntimeSelector>());
             });
@@ -397,7 +380,7 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IOpenRouterRerankRequestTranslator>(),
                     provider.GetRequiredService<IOpenRouterRerankResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
-                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
                     provider.GetService<IProviderProfileRuntimeSelector>());
             });

@@ -15,7 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
-    <ProjectReference Include="../../src/AgentKit.Goals/AgentKit.Goals.csproj" />
     <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj" />
     <ProjectReference Include="../../src/AgentKit.Tools.Task/AgentKit.Tools.Task.csproj" />
   </ItemGroup>

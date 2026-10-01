@@ -5,10 +5,11 @@ namespace AgentKit;
 
 /// <summary>Stable default keys for first-party <see cref="ICompactor"/> registration.</summary>
 /// <remarks>
-/// Until agent definitions expose an explicit compaction component key, run compilation resolves
-/// <see cref="ICompactor"/> through the unkeyed registration registered by
-/// <c>AddContextCompaction</c> or the keyed registration registered under this key via
-/// <c>AddAgentContextCompaction</c>.
+/// Compaction is an optional capability, so the normative component selection has no compaction key: a definition
+/// enables it through <see cref="AgentOptionalCapabilitySelection.CompactionProfile"/>. Run compilation resolves the
+/// <see cref="ICompactor"/> registered under the compactor key the selected profile's
+/// <see cref="ICompactionProfileCatalog"/> publication names; a definition that selects no profile uses the unkeyed
+/// registration that <c>AddContextCompaction</c> exposes for this default key.
 /// </remarks>
 public static class AgentContextCompactionComponentDefaults
 {

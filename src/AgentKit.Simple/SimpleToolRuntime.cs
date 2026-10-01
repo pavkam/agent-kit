@@ -18,6 +18,6 @@ internal static class SimpleToolRuntime
     {
         ArgumentNullException.ThrowIfNull(services);
         _ = services.AddToolDiscoveryRuntime();
-        _ = services.ReplaceToolExecutor<DefaultToolExecutor>(ToolExecutorKey);
+        _ = services.AddAgentTools(ToolExecutorKey);
     }
 }

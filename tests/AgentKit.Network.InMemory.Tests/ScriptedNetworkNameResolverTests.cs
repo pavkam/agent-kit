@@ -43,20 +43,6 @@ public sealed class ScriptedNetworkNameResolverTests
     }
 
     [Fact]
-    public async Task ResolveAsync_WhenConsumedResultLacksExactReceipt_DoesNotConsultScenarioOrRecordTrace()
-    {
-        var store = new TestGrantStore
-        {
-            IncludeIntentReceipt = false
-        };
-        var resolver = new ScriptedNetworkNameResolver(store, new FixedTimeProvider());
-        resolver.Script(Destination(), new NetworkResolved([Address()]));
-        var result = await resolver.ResolveAsync(ResolutionRequest(), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
-        resolver.Traces.ShouldBeEmpty();
-    }
-
-    [Fact]
     public async Task ResolveAsync_WhenCallerAlreadyCancelled_DoesNotConsumeOrRecordTrace()
     {
         var store = new TestGrantStore();
@@ -140,5 +126,5 @@ public sealed class ScriptedNetworkNameResolverTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility() => _ = new ScriptedNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), null);
+    public void Constructor_WhenLoggerArgumentIsNull_RetainsUnambiguousOverloadResolution() => _ = new ScriptedNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), null);
 }

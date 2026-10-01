@@ -5,12 +5,10 @@ namespace AgentKit;
 
 /// <summary>Validates an already schema-valid output candidate against additional, application-defined rules.</summary>
 /// <remarks>
-/// This is a deliberately reduced stand-in for the fuller keyed validator
-/// selection described by the structured-output architecture, which
-/// resolves validators through a component-key-scoped
-/// <c>IOutputValidatorCatalog</c>. Until that keyed-selection
-/// (<c>ComponentKey&lt;T&gt;</c>) machinery exists, every
-/// <see cref="IOutputValidator"/> is registered additively and exposes a
+/// The structured-output architecture describes resolving validators through a
+/// component-key-scoped <c>IOutputValidatorCatalog</c>; that catalog is not
+/// implemented. Every <see cref="IOutputValidator"/> is instead registered
+/// additively and exposes a
 /// stable <see cref="Name"/> that an <see cref="OutputDefinition"/>
 /// references by <see cref="OutputValidatorReference"/> to select it. A
 /// validator must never perform a hidden side effect; it inspects the

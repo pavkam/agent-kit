@@ -10,5 +10,6 @@ internal sealed record OperatingSystemFileSystemOptionsSnapshot(
     ImmutableArray<FileRootRegistration> Roots,
     FilePathPolicy PathPolicy,
     FileSystemBounds Bounds,
+    FileSystemWorkspaceBounds WorkspaceBounds,
     FileWritePolicy WritePolicy,
     FileWatchPolicy WatchPolicy);

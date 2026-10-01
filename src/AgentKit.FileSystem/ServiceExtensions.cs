@@ -4,98 +4,37 @@
 namespace AgentKit.FileSystem;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 
-/// <summary>Dependency-injection registration for the sandboxed file system.</summary>
+/// <summary>Dependency-injection registration for operating-system file-system profiles.</summary>
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        /// <summary>
-        /// Registers <see cref="SandboxedFileSystem"/> as the singular
-        /// <see cref="IFileSystem"/>, rooted at <paramref name="rootDirectory"/>.
-        /// </summary>
-        /// <param name="rootDirectory">The absolute root directory every file operation is confined to.</param>
-        /// <param name="configure">Optional additional configuration for <see cref="SandboxedFileSystemOptions"/>.</param>
-        /// <returns>The same service collection, for chaining.</returns>
-        /// <remarks>
-        /// The default concrete implementation is registered once and shared by every untouched filesystem capability.
-        /// The <see cref="IFileSystem"/> facade and each narrow capability use independent <c>TryAdd</c> registrations,
-        /// so a host may replace any one contract without changing the remaining defaults. Its options configuration follows ordinary
-        /// <see cref="Microsoft.Extensions.Options"/> composition instead:
-        /// each call adds another <c>Configure</c> delegate, so calling
-        /// this more than once applies <paramref name="rootDirectory"/>
-        /// from the last call.
-        /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="rootDirectory"/> is null, empty, or consists
-        /// only of whitespace.
-        /// </exception>
-        [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
-        public IServiceCollection AddSandboxedFileSystem(
-            string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-
-            _ = services.AddAgentKitObservability();
-
-            var optionsBuilder = services.AddOptions<SandboxedFileSystemOptions>()
-                .Configure(o => o.RootDirectory = rootDirectory)
-                .Validate(o => o.MaximumReadBytes > 0, "MaximumReadBytes must be positive.")
-                .Validate(o => o.MaximumWriteBytes > 0, "MaximumWriteBytes must be positive.")
-                .Validate(o => o.MaximumDirectorySnapshotEntries > 0, "MaximumDirectorySnapshotEntries must be positive.")
-                .Validate(o => o.MaximumSearchDepth > 0, "MaximumSearchDepth must be positive.")
-                .Validate(o => o.MaximumSearchFiles > 0, "MaximumSearchFiles must be positive.")
-                .Validate(o => o.MaximumSearchBytes > 0, "MaximumSearchBytes must be positive.")
-                .Validate(o => o.MaximumSearchMatches > 0, "MaximumSearchMatches must be positive.")
-                .Validate(o => o.MaximumSearchLineBytes > 0, "MaximumSearchLineBytes must be positive.")
-                .Validate(o => o.MaximumSearchDuration > TimeSpan.Zero, "MaximumSearchDuration must be positive.")
-                .Validate(o => o.MaximumPatchEntries > 0, "MaximumPatchEntries must be positive.")
-                .Validate(o => o.MaximumPatchBytes > 0, "MaximumPatchBytes must be positive.");
-
-            if (configure is not null)
-            {
-                _ = optionsBuilder.Configure(configure);
-            }
-
-            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
-            services.TryAddSingleton<SandboxedFileSystem>(static provider => new(
-                provider.GetRequiredService<IOptions<SandboxedFileSystemOptions>>(),
-                provider.GetRequiredService<ISecurityGrantStore>(),
-                provider.GetRequiredService<TimeProvider>(),
-                provider.GetService<ILogger<SandboxedFileSystem>>(),
-                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
-            services.TryAddSingleton<IFileSystem>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<ILegacyDirectoryReader>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton<IFileGlobber>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton<IFileContentSearcher>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton<IFileSnapshotReader>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton<IAtomicFileReplacer>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            services.TryAddSingleton<IWorkspacePatchApplier>(static provider =>
-                provider.GetRequiredService<SandboxedFileSystem>());
-            return services;
-        }
-
         /// <summary>
         /// Registers operating-system file capabilities under <paramref name="key"/>.
         /// </summary>
         /// <param name="key">The profile key selecting this virtual file system.</param>
         /// <param name="configure">Configures roots, bounds, and policies for the profile.</param>
         /// <returns>The same service collection, for chaining.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="configure"/> is null.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
         /// <exception cref="InvalidOperationException">Configuration does not register any roots.</exception>
-        [Obsolete("Legacy host surface.")]
+        /// <remarks>
+        /// <para>
+        /// Registers, under <paramref name="key"/>, the <see cref="IFileReader"/>, <see cref="IFileWriter"/>,
+        /// <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>, <see cref="IFileContentSearcher"/>,
+        /// <see cref="IFileSnapshotReader"/>, <see cref="IAtomicFileReplacer"/>, and <see cref="IWorkspacePatchApplier"/>
+        /// capabilities plus the profile registration that <see cref="IFileSystemSelector"/> discovers. Workspace
+        /// operations observe the first registered root. The delegate runs once, during this call.
+        /// </para>
+        /// <para>
+        /// Registering the same key twice adds a second keyed registration; the later registration wins keyed resolution
+        /// and both appear to the selector, so give each profile a distinct key. Shared defaults for the path normalizer,
+        /// enforcement-intent and audit-record identities, and the clock use <c>TryAdd</c> and never replace a host choice.
+        /// </para>
+        /// </remarks>
         public IServiceCollection AddOperatingSystemFileSystem(
-                    FileSystemProfileKey key,
-                    Action<OperatingSystemFileSystemOptions> configure) =>
-                    OperatingSystemFileSystemRegistration.Add(services, key, configure);
+            FileSystemProfileKey key,
+            Action<OperatingSystemFileSystemOptions> configure) =>
+            OperatingSystemFileSystemRegistration.Add(services, key, configure);
     }
 }

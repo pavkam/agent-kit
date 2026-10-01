@@ -3,6 +3,7 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.Internal;
 
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -24,6 +25,30 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentKit();
         services.Count(static descriptor => descriptor.ServiceType == typeof(AgentEngine)).ShouldBe(1);
         services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenRegistered_RegistersACompactionIdentifierGeneratorForMaintenanceRequests()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        using var provider = services.BuildServiceProvider();
+
+        var generator = provider.GetRequiredService<IIdentifierGenerator<CompactionId>>();
+
+        generator.Create().ShouldNotBe(generator.Create());
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenACompactionIdentifierGeneratorAlreadyExists_PreservesIt()
+    {
+        var existing = new DelegateIdentifierGenerator<CompactionId>(static () => new CompactionId(Guid.Empty));
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IIdentifierGenerator<CompactionId>>(existing);
+        _ = services.AddAgentKit();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IIdentifierGenerator<CompactionId>>().ShouldBeSameAs(existing);
     }
 
     [Fact]
@@ -71,6 +96,77 @@ public sealed class ServiceExtensionsTests
         await using var provider = CompositionTestData.BuildHostedProvider(services);
         services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
         provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenRegistered_InstallsTheMechanicalFoundationDefaultsOnce()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddAgentKit();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IRandomizerFactory)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IContentHasher)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IAgentRunScopeFactory)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRandomizerFactory>().ShouldBeOfType<SecureRandomizerFactory>();
+        _ = provider.GetRequiredService<IContentHasher>().ShouldBeOfType<Sha256ContentHasher>();
+        _ = provider.GetRequiredService<IAgentRunScopeFactory>().ShouldBeOfType<AgentRunScopeFactory>();
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenRandomizerFactoryOrHasherAlreadyRegistered_PreservesThem()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IRandomizerFactory, CustomRandomizerFactory>();
+        _ = services.AddSingleton<IContentHasher, CustomContentHasher>();
+        _ = services.AddAgentKit();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRandomizerFactory>().ShouldBeOfType<CustomRandomizerFactory>();
+        _ = provider.GetRequiredService<IContentHasher>().ShouldBeOfType<CustomContentHasher>();
+    }
+
+    [Fact]
+    public void ReplaceRandomizerFactory_WhenDefaultExists_ReplacesItExactlyOnce()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+
+        _ = services.ReplaceRandomizerFactory<CustomRandomizerFactory>();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IRandomizerFactory)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRandomizerFactory>().ShouldBeOfType<CustomRandomizerFactory>();
+    }
+
+    [Fact]
+    public void ReplaceRandomizerFactory_WhenServicesIsNull_ThrowsBeforeRegistration()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(services.ReplaceRandomizerFactory<CustomRandomizerFactory>).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void ReplaceContentHasher_WhenDefaultExists_ReplacesItExactlyOnce()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+
+        _ = services.ReplaceContentHasher<CustomContentHasher>();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IContentHasher)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IContentHasher>().ShouldBeOfType<CustomContentHasher>();
+    }
+
+    [Fact]
+    public void ReplaceContentHasher_WhenServicesIsNull_ThrowsBeforeRegistration()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(services.ReplaceContentHasher<CustomContentHasher>).ParamName.ShouldBe("services");
     }
 
     [Fact]
@@ -162,5 +258,28 @@ public sealed class ServiceExtensionsTests
         var count = services.Count;
         _ = Should.Throw<InvalidOperationException>(() => services.AddAgentDefinitionSnapshot(second));
         services.Count.ShouldBe(count);
+    }
+
+    private sealed class CustomRandomizerFactory: IRandomizerFactory
+    {
+        public IRandomizer Create(RandomizerCreationRequest request) => throw new NotSupportedException();
+    }
+
+    private sealed class CustomContentHasher: IContentHasher
+    {
+        public ContentHashAlgorithmId Algorithm { get; } = new("custom");
+
+        public ContentHashAlgorithmVersion AlgorithmVersion { get; } = new("1");
+
+        public ContentHash Compute(
+            ReadOnlySpan<byte> canonicalContent,
+            CanonicalizationProfileId canonicalization,
+            CanonicalizationProfileVersion canonicalizationVersion) => throw new NotSupportedException();
+
+        public ValueTask<ContentHash> ComputeAsync(
+            Stream canonicalContent,
+            CanonicalizationProfileId canonicalization,
+            CanonicalizationProfileVersion canonicalizationVersion,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -8,7 +8,7 @@ using AgentKit.Observability;
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Dependency-injection registration for the built-in, reduced-scope
+/// Dependency-injection registration for the built-in
 /// context assembler.
 /// </summary>
 public static class ServiceExtensions

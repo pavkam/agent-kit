@@ -10,7 +10,7 @@ namespace AgentKit.Context.Compaction;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The reduced <see cref="CompactionProducer"/> shape carries only a
+/// The <see cref="CompactionProducer"/> shape carries only a
 /// strategy key and a determinism flag, so the model, provider, request,
 /// response, usage, and truncation evidence a model-backed strategy must
 /// record live in its <see cref="CompactionProducer.Extensions"/> under these

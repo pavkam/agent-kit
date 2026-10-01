@@ -59,7 +59,6 @@ public static class AgentKitActivityNames
     /// <remarks>Borrowed invokers are never disposed directly by this operation.</remarks>
     public const string ToolProviderCaptureDisposeResources = "tool.provider.capture.dispose_resources";
 
-
     /// <summary>Gets the name for one bounded session-entry codec operation.</summary>
     public const string SessionEntryCodec = "session.entry.codec";
     /// <summary>Gets the name for validating and building one AgentKit service provider.</summary>
@@ -106,6 +105,18 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the OpenTelemetry GenAI-compatible tool execution name.</summary>
     public const string ExecuteTool = "execute_tool";
+
+    /// <summary>Commits the durable accepted-call record of one authorized tool call before its invocation.</summary>
+    /// <remarks>The activity covers one recorder write and its terminal outcome. It never carries arguments, results, or exception text.</remarks>
+    public const string ToolCallRecordAccepted = "tool.call.record_accepted";
+
+    /// <summary>Commits the durable terminal record of one tool call.</summary>
+    /// <remarks>The activity covers one recorder write and its terminal outcome. It never carries arguments, results, or exception text.</remarks>
+    public const string ToolCallRecordTerminal = "tool.call.record_terminal";
+
+    /// <summary>Waits out the bounded backoff before one retried tool-invocation attempt.</summary>
+    /// <remarks>The activity covers only the delay between attempts, never an invocation.</remarks>
+    public const string ToolRetryBackoff = "tool.retry.backoff";
 
     /// <summary>Resolves the exact retained policy revision for one tool-result projection.</summary>
     /// <remarks>The activity covers one lookup and its terminal outcome, without performing projection or tool invocation.</remarks>
@@ -243,9 +254,6 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for one protected human-question publication attempt.</summary>
     public const string HumanQuestionPublish = "human.question.publish";
 
-    /// <summary>Gets the name for one protected task-delegation dispatch attempt.</summary>
-    public const string TaskDelegationDispatch = "task.delegation.dispatch";
-
     /// <summary>Gets the name for a protected file-system host operation.</summary>
     public const string FileSystemOperation = "filesystem.operation";
 
@@ -284,6 +292,9 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one rerank provider HTTP send attempt.</summary>
     public const string ProviderRerankSend = "provider.rerank.send";
+
+    /// <summary>Gets the name for one provider egress boundary crossing: authorization, resolution, and transport send.</summary>
+    public const string ProviderEgress = "provider.egress";
 
     /// <summary>Gets the name for one bounded language-intelligence query.</summary>
     public const string LanguageQuery = "language.query";
@@ -346,6 +357,14 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for deleting one committed artifact.</summary>
     public const string ArtifactDelete = "artifact.delete";
 
+    /// <summary>Gets the name for reconciling one reference-commit intent.</summary>
+    /// <remarks>The activity covers fencing a late reference commit and collecting the terminally orphaned object.</remarks>
+    public const string ArtifactReconcile = "artifact.reconcile";
+
+    /// <summary>Gets the name for one operation executed by an artifact store adapter.</summary>
+    /// <remarks>The bounded adapter and operation are tags, so every backend shares one activity name.</remarks>
+    public const string ArtifactStoreOperation = "artifact.store.operation";
+
     /// <summary>Gets the name for one inbound MCP server request dispatch.</summary>
     public const string McpServerRequest = "mcp.server.request";
 
@@ -354,4 +373,90 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one Simple facade ask operation.</summary>
     public const string SimpleAsk = "simple.ask";
+
+    /// <summary>Gets the name for one protected goal-store operation.</summary>
+    public const string GoalStoreOperation = "goal.store.operation";
+
+    /// <summary>Gets the name for coordinating one goal creation.</summary>
+    public const string GoalCreate = "goal.create";
+
+    /// <summary>Gets the name for coordinating one goal attempt start.</summary>
+    public const string GoalAttemptStart = "goal.attempt.start";
+
+    /// <summary>Gets the name for coordinating one goal status transition.</summary>
+    public const string GoalTransition = "goal.transition";
+
+    /// <summary>Gets the name for coordinating one goal or children read.</summary>
+    public const string GoalRead = "goal.read";
+
+    /// <summary>Gets the name for one delegation from authorization through settlement wait.</summary>
+    public const string DelegationDelegate = "delegation.delegate";
+
+    /// <summary>Gets the name for one dispatcher handoff of an authorized child.</summary>
+    public const string DelegationDispatch = "delegation.dispatch";
+
+    /// <summary>Gets the name for one join decision over a parent's children.</summary>
+    public const string DelegationJoin = "delegation.join";
+
+    /// <summary>Gets the name for one worker drain of a delegated child intent.</summary>
+    public const string DelegationWorkerDrain = "delegation.worker.drain";
+
+    /// <summary>Gets the name for one agent-to-agent message admission.</summary>
+    public const string AgentMessageSend = "agent.message.send";
+
+    /// <summary>Gets the name for one protected memory, document, or vector-store operation.</summary>
+    public const string MemoryStoreOperation = "memory.store.operation";
+
+    /// <summary>Gets the name for coordinating one durable-memory proposal from policy through write.</summary>
+    public const string MemoryPropose = "memory.propose";
+
+    /// <summary>Gets the name for coordinating one durable-memory correction.</summary>
+    public const string MemoryCorrect = "memory.correct";
+
+    /// <summary>Gets the name for coordinating one durable-memory deletion with its tombstone and purge.</summary>
+    public const string MemoryDelete = "memory.delete";
+
+    /// <summary>Gets the name for activating one memory profile runtime lease.</summary>
+    public const string MemoryProfileActivate = "memory.profile.activate";
+
+    /// <summary>Gets the name for publishing one chunked document version and propagating its deletion.</summary>
+    public const string MemoryDocumentPublish = "memory.document.publish";
+
+    /// <summary>Gets the name for propagating one document deletion through indexes.</summary>
+    public const string MemoryDocumentDelete = "memory.document.delete";
+
+    /// <summary>Gets the name for one full retrieval pipeline run.</summary>
+    public const string RetrievalRetrieve = "retrieval.retrieve";
+
+    /// <summary>Gets the name for one retrieval source search.</summary>
+    public const string RetrievalSourceSearch = "retrieval.source.search";
+
+    /// <summary>Gets the name for embedding one retrieval query.</summary>
+    public const string RetrievalEmbed = "retrieval.embed";
+
+    /// <summary>Gets the name for reranking retrieval candidates.</summary>
+    public const string RetrievalRerank = "retrieval.rerank";
+
+    /// <summary>Gets the name for exporting one neutral run event through an observation sink.</summary>
+    public const string ObservationRunEventExport = "observation.run_event.export";
+
+    /// <summary>Gets the name for exporting one neutral security audit record through an observation sink.</summary>
+    public const string ObservationAuditExport = "observation.audit.export";
+
+    /// <summary>Gets the name for one evaluation plan execution, from plan validation through report publication.</summary>
+    /// <remarks>Success means a report was produced, not that every case passed; the bounded outcome tag distinguishes completed, cancelled, and stopped runs.</remarks>
+    public const string EvaluationRun = "evaluation.run";
+
+    /// <summary>Gets the name for one evaluation case repetition, from session creation through result recording.</summary>
+    public const string EvaluationCase = "evaluation.case";
+
+    /// <summary>Gets the name for one evaluator invocation over one case repetition.</summary>
+    public const string EvaluationEvaluate = "evaluation.evaluate";
+
+    /// <summary>Gets the name for delivering one evaluation report to one report exporter.</summary>
+    public const string EvaluationExport = "evaluation.export";
+
+    /// <summary>Gets the name for one operation executed by an evaluation result-store adapter.</summary>
+    /// <remarks>The bounded adapter and operation are tags, so every backend shares one activity name.</remarks>
+    public const string EvaluationStoreOperation = "evaluation.store.operation";
 }

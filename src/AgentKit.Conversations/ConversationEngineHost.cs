@@ -19,7 +19,7 @@ internal sealed class ConversationEngineHost(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Identity);
         ArgumentOutOfRangeException.ThrowIfEqual(request.AgentId, default);
-        if (request.AgentId != _options.AgentId)
+        if (request.AgentId != _options.Agent!.Id)
         {
             return new AgentConversationOpenRejected(
                 request.AgentId,

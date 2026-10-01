@@ -114,5 +114,46 @@ public sealed class ModelSelectionPolicyTests
         copy.Extensions.ShouldBe(replacementExtensions);
     }
 
+    [Fact]
+    public void Constructor_WhenRequirementsAndSettingsOmitted_UsesNoneAndDefault()
+    {
+        var policy = Policy();
+
+        policy.Requirements.ShouldBe(ModelRequirements.None);
+        policy.RequestSettings.ShouldBe(LlmRequestSettings.Default);
+    }
+
+    [Fact]
+    public void Constructor_WhenRequirementsAndSettingsSupplied_PreservesThem()
+    {
+        var requirements = ModelRequirements.None with { RequiresToolCalls = true };
+        var settings = LlmRequestSettings.Default with { Temperature = 0.3 };
+
+        var policy = new ModelSelectionPolicy([new ModelAlias("chat")], requirements: requirements, requestSettings: settings);
+
+        policy.Requirements.ShouldBe(requirements);
+        policy.RequestSettings.ShouldBe(settings);
+    }
+
+    [Fact]
+    public void Initializer_WhenRequirementsIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => _ = Policy() with { Requirements = null! }).ParamName.ShouldBe("Requirements");
+
+    [Fact]
+    public void Initializer_WhenRequestSettingsIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => _ = Policy() with { RequestSettings = null! }).ParamName.ShouldBe("RequestSettings");
+
+    [Fact]
+    public void Equals_WhenRequirementsOrSettingsDiffer_IsNotEqualAndHashesDiffer()
+    {
+        var requiring = Policy() with { Requirements = ModelRequirements.None with { RequiresReasoning = true } };
+        var sampling = Policy() with { RequestSettings = LlmRequestSettings.Default with { Temperature = 0.9 } };
+
+        requiring.ShouldNotBe(Policy());
+        sampling.ShouldNotBe(Policy());
+        requiring.GetHashCode().ShouldNotBe(Policy().GetHashCode());
+        sampling.GetHashCode().ShouldNotBe(Policy().GetHashCode());
+    }
+
     private static ModelSelectionPolicy Policy() => new([new ModelAlias("chat")]);
 }

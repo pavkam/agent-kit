@@ -9,12 +9,19 @@ namespace AgentKit.Tools
     }
     public sealed class BarrierSegmentToolScheduler : AgentKit.IToolScheduler
     {
-        public BarrierSegmentToolScheduler(AgentKit.IToolResultNormalizer resultNormalizer, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.BarrierSegmentToolScheduler> logger) { }
+        public BarrierSegmentToolScheduler(AgentKit.IToolResultNormalizer resultNormalizer, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options, System.TimeProvider timeProvider, AgentKit.Tools.ToolEventDispatcher events, AgentKit.IRandomizerFactory randomizers, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.BarrierSegmentToolScheduler> logger) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.ToolBatch batch, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultToolExecutionPolicy : AgentKit.IToolExecutionPolicy
+    {
+        public DefaultToolExecutionPolicy([Microsoft.Extensions.DependencyInjection.ServiceKey] AgentKit.ToolExecutionPolicyReference reference, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options) { }
+        public AgentKit.ToolExecutionPolicyReference Reference { get; }
+        public static AgentKit.ToolExecutionPolicyReference StandardReference { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolExecutionPlanResult> PlanAsync(System.Collections.Immutable.ImmutableArray<AgentKit.ValidatedToolCall> calls, AgentKit.ToolExecutionPolicyContext context, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultToolExecutor : AgentKit.IToolExecutor
     {
-        public DefaultToolExecutor(AgentKit.IToolResolver resolver, AgentKit.IToolArgumentValidator argumentValidator, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IToolScheduler scheduler, AgentKit.ToolSchemaLimits argumentValidationLimits, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> runtimeOptions, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null) { }
+        public DefaultToolExecutor(AgentKit.IToolResolver resolver, AgentKit.IToolArgumentValidator argumentValidator, AgentKit.IToolExecutionPolicySelector policySelector, AgentKit.ISecurityAuthoritySelector securityAuthorities, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IToolCallRecorder recorder, AgentKit.IToolScheduler scheduler, AgentKit.Tools.ToolEventDispatcher events, AgentKit.ToolSchemaLimits argumentValidationLimits, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> runtimeOptions, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolExecutor> logger, AgentKit.IHookDispatcher? hookDispatcher = null, AgentKit.IApprovalWaitRecorder? approvalWaits = null) { }
         public System.Threading.Tasks.Task<AgentKit.ToolBatchResult> ExecuteAsync(AgentKit.IToolCatalogCapture capture, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCallRequest> calls, AgentKit.ToolExecutionCapability capability, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class RegisteredToolInvoker : System.IEquatable<AgentKit.Tools.RegisteredToolInvoker>
@@ -75,7 +82,33 @@ namespace AgentKit.Tools
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicyCatalog<TCatalog>()
                 where TCatalog :  class, AgentKit.IToolResultProjectionPolicyCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolExecutionPolicy<TPolicy>(AgentKit.ToolExecutionPolicyReference reference)
+                where TPolicy :  class, AgentKit.IToolExecutionPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolExecutionPolicy<TPolicy>(AgentKit.ToolExecutionPolicyReference reference)
+                where TPolicy :  class, AgentKit.IToolExecutionPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolExecutionPolicySelector<TSelector>()
+                where TSelector :  class, AgentKit.IToolExecutionPolicySelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolEventSink<TSink>(AgentKit.Tools.ToolEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IToolEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolCallRecorder<TRecorder>(AgentKit.ComponentKey<AgentKit.IToolExecutor> executor)
+                where TRecorder :  class, AgentKit.IToolCallRecorder { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolCallRecorder<TRecorder>(AgentKit.ComponentKey<AgentKit.IToolExecutor> executor)
+                where TRecorder :  class, AgentKit.IToolCallRecorder { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResolver<TResolver>()
+                where TResolver :  class, AgentKit.IToolResolver { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolArgumentValidator<TValidator>()
+                where TValidator :  class, AgentKit.IToolArgumentValidator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultNormalizer<TNormalizer>()
+                where TNormalizer :  class, AgentKit.IToolResultNormalizer { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjector<TProjector>()
+                where TProjector :  class, AgentKit.IToolResultProjector { }
         }
+    }
+    public sealed class SessionToolCallRecorder : AgentKit.IToolCallRecorder
+    {
+        public SessionToolCallRecorder(AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.SessionToolCallRecorder> logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolCallRecordResult> RecordAcceptedAsync(AgentKit.AcceptedToolCall accepted, AgentKit.SessionExecutionCapability session, AgentKit.ToolCallSessionTarget target, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolCallRecordResult> RecordTerminalAsync(AgentKit.ToolCallResult result, AgentKit.SessionExecutionCapability session, AgentKit.ToolCallSessionTarget target, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class StaticToolProvider : AgentKit.IToolProvider
     {
@@ -118,6 +151,34 @@ namespace AgentKit.Tools
             public AgentKit.LlmToolDefinition ToLlmToolDefinition() { }
         }
     }
+    public sealed class ToolEventDispatcher
+    {
+        public ToolEventDispatcher(System.Collections.Generic.IEnumerable<AgentKit.Tools.ToolEventSinkBinding> bindings, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.ToolRuntimeOptions> options, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolEventDispatcher> logger) { }
+        public System.Threading.Tasks.ValueTask PublishAsync(AgentKit.ToolEvent toolEvent, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ToolEventSinkBinding
+    {
+        public ToolEventSinkBinding(AgentKit.Tools.ToolEventSinkRegistration registration, AgentKit.IToolEventSink sink) { }
+        public AgentKit.Tools.ToolEventSinkRegistration Registration { get; }
+        public AgentKit.IToolEventSink Sink { get; }
+    }
+    public sealed class ToolEventSinkRegistration : System.IEquatable<AgentKit.Tools.ToolEventSinkRegistration>
+    {
+        public ToolEventSinkRegistration(AgentKit.ComponentId id, int order) { }
+        public AgentKit.ComponentId Id { get; }
+        public int Order { get; }
+    }
+    public sealed class ToolLeafLogEvents : System.IEquatable<AgentKit.Tools.ToolLeafLogEvents>
+    {
+        public ToolLeafLogEvents(System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId, string> completed, System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId> cancelled, System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId, string> faulted) { }
+        public System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId> Cancelled { get; }
+        public System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId, string> Completed { get; }
+        public System.Action<Microsoft.Extensions.Logging.ILogger, AgentKit.ToolId, AgentKit.ToolCallId, string> Faulted { get; }
+    }
+    public static class ToolLeafObservation
+    {
+        public static System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> RunAsync(AgentKit.ToolId toolId, AgentKit.ToolCallId callId, Microsoft.Extensions.Logging.ILogger logger, AgentKit.Tools.ToolLeafLogEvents events, System.Func<System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult>> invocation) { }
+    }
     public sealed class ToolPresenter : AgentKit.IToolPresenter
     {
         public ToolPresenter(System.Collections.Generic.IEnumerable<AgentKit.IToolPresentationFormatter> formatters) { }
@@ -159,13 +220,20 @@ namespace AgentKit.Tools
     public sealed class ToolRuntimeOptions
     {
         public ToolRuntimeOptions() { }
+        public int AcceptedRecordLookupEntries { get; set; }
         public AgentKit.ToolSchemaLimits ArgumentValidationLimits { get; set; }
         public AgentKit.ToolBatchFailureMode BatchFailureMode { get; set; }
+        public System.TimeSpan EventSinkTimeout { get; set; }
         public System.TimeSpan InvocationTimeout { get; set; }
         public int MaximumArgumentBytes { get; set; }
+        public int MaximumAttempts { get; set; }
         public int MaximumParallelInvocations { get; set; }
+        public int MaximumRecordAppendAttempts { get; set; }
         public int MaximumResultBytes { get; set; }
-        public int MaximumRetryAttempts { get; set; }
+        public double RetryBackoffMultiplier { get; set; }
+        public System.TimeSpan RetryInitialDelay { get; set; }
+        public double RetryJitterFraction { get; set; }
+        public System.TimeSpan RetryMaximumDelay { get; set; }
         public AgentKit.UnknownSchedulingMode UnknownSchedulingMode { get; set; }
     }
     public sealed class ToolsetOptions

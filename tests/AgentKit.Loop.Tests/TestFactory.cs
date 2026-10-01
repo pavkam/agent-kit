@@ -40,6 +40,19 @@ internal static class TestFactory
     public static ModelCatalogSnapshot Catalog(params ModelDescriptor[] models) =>
         new(new ModelCatalogVersion(1), [.. models]);
 
+    /// <summary>Builds a fully evidenced run request pinned to one exact agent definition.</summary>
+    /// <param name="agentId">The agent identity.</param>
+    /// <param name="sessionId">The session identity.</param>
+    /// <param name="branchId">The branch identity.</param>
+    /// <param name="runId">The run identity, or <see langword="null"/> for a fresh one.</param>
+    /// <param name="policy">The model policy the definition selects, or <see langword="null"/> for one <c>chat</c> candidate.</param>
+    /// <param name="requirements">The model requirements the definition states, or <see langword="null"/> for none.</param>
+    /// <param name="maxTurns">The positive turn limit of the request.</param>
+    /// <param name="settings">The request settings the definition states, or <see langword="null"/> for the defaults.</param>
+    /// <param name="output">The output contract the definition selects, or <see langword="null"/> for free text.</param>
+    /// <param name="toolsets">The authored toolsets the definition selects, or <see langword="null"/> for none.</param>
+    /// <param name="durabilityProfile">The durability profile the definition selects, or <see langword="null"/> for none.</param>
+    /// <returns>A request whose definition, configuration, and authorization agree.</returns>
     public static AgentLoopRunRequest RunRequest(
         AgentId agentId,
         SessionId sessionId,
@@ -47,55 +60,36 @@ internal static class TestFactory
         RunId? runId = null,
         ModelSelectionPolicy? policy = null,
         ModelRequirements? requirements = null,
-        int maxTurns = 8)
-    {
-        var selectedRunId = runId ?? new RunId(Guid.NewGuid());
-        var identity = Identity();
-        var correlation = new InRunOperationCorrelation(
-            new OperationId(Guid.NewGuid()), selectedRunId, turnId: null);
-        return new AgentLoopRunRequest(
-            agentId,
-            sessionId,
-            branchId,
-            selectedRunId,
-            identity,
-            TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity),
-            TestSecurityEvidence.SessionProfile(),
-            policy ?? Policy(),
-            requirements ?? ModelRequirements.None,
-            instructions: [],
-            tools: [],
-            LlmToolChoice.Auto,
-            LlmRequestSettings.Default,
-            maxTurns,
-            TimeSpan.FromMinutes(1),
-            ExtensionData.Empty);
-    }
-
-    /// <summary>Builds a fully evidenced run request from one exact agent definition.</summary>
-    public static AgentLoopRunRequest ExactRunRequest(
-        AgentId agentId,
-        SessionId sessionId,
-        BranchId branchId,
-        RunId? runId = null)
+        int maxTurns = 8,
+        LlmRequestSettings? settings = null,
+        OutputDefinition? output = null,
+        ImmutableArray<ToolsetReference>? toolsets = null,
+        DurabilityProfileKey? durabilityProfile = null)
     {
         var selectedRunId = runId ?? new RunId(Guid.NewGuid());
         var identity = Identity();
         var correlation = new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), selectedRunId, null);
         var authorization = TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
         var profile = TestSecurityEvidence.SessionProfile();
-        var agent = new AgentDefinition(
+        var agent = AgentDefinitionFixtures.Create(
             agentId,
-            authorization.AgentDefinitionRevision,
+            authorization.AgentDefinitionRevision.Value,
             "agent",
-            Policy(),
-            ModelRequirements.None,
-            [],
-            LlmRequestSettings.Default,
-            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
-            ExtensionData.Empty,
-            new SecurityProfileKey("test-security"),
-            new SessionProfileKey("test-session"));
+            maxTurns,
+            models: (policy ?? Policy()) with
+            {
+                Requirements = requirements ?? ModelRequirements.None,
+                RequestSettings = settings ?? LlmRequestSettings.Default,
+            },
+            output: output,
+            toolsets: toolsets,
+            securityProfile: new SecurityProfileKey("test-security"),
+            sessionProfile: new SessionProfileKey("test-session")) with
+        {
+            OptionalCapabilities = durabilityProfile is { } selected
+                ? new AgentOptionalCapabilitySelection(null, null, selected, null, null, [])
+                : AgentOptionalCapabilitySelection.None,
+        };
         var configuration = new EffectiveConfigurationSnapshot(
             authorization.ConfigurationVersion,
             profile.ConfigurationFingerprint,
@@ -110,10 +104,15 @@ internal static class TestFactory
             authorization,
             profile,
             configuration,
-            8,
+            maxTurns,
             TimeSpan.FromMinutes(1),
             ExtensionData.Empty);
     }
+
+    /// <summary>Builds the one authored toolset selection whose run-bound capture advertises the fake catalog's tool.</summary>
+    /// <returns>A single toolset reference for the loop test catalog.</returns>
+    public static ImmutableArray<ToolsetReference> Toolsets() =>
+        [new ToolsetReference(new ToolsetKey("test"), new ToolExecutionPolicyKey("test"))];
 
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);

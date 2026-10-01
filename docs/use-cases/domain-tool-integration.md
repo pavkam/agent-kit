@@ -9,21 +9,22 @@ that tool and nothing else.
 
 ## What the agent needs
 
-| Need                      | AgentKit part                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| A tool the model can call | Your class implementing `ITool` with a `ToolDescriptor` and JSON Schema for its arguments |
-| Registration              | `builder.Services.AddTool<OrderLookupTool>()` or `AddSingleton<ITool>(instance)`          |
-| Only this tool            | `AgentToolsOptions.AllowedToolIds` instead of `AllowAllRegisteredTools`                   |
-| Customer scoping          | `ToolExecutionContext.Identity` inside the tool, never a customer id from the model       |
+| Need                      | AgentKit part                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| A tool the model can call | Your class implementing `IToolInvoker`, a `ToolDescriptor`, and a JSON Schema for its arguments |
+| Registration              | `builder.Services.AddTool<OrderLookupTool>(OrderLookupTool.Descriptor)`                         |
+| Only this tool            | A `ToolsetPublication` naming it, selected with `WithTools(toolsetKey)`                         |
+| Customer scoping          | `context.InvocationGrant.Identity` inside the tool, never a customer id from the model          |
 
 ## Write the tool
 
 A tool is a descriptor plus an `InvokeAsync`. The descriptor is what the model
 sees and what the runtime validates arguments against; the invocation receives
-already-validated JSON and the execution context:
+already-validated JSON and a `ToolInvocationContext` whose grant carries the
+authorization the runtime already obtained:
 
 ```csharp
-sealed class OrderLookupTool(IOrderService orders) : ITool
+sealed class OrderLookupTool(IOrderService orders) : IToolInvoker
 {
     public static readonly ToolId Id = new("lookup_order");
 
@@ -38,7 +39,7 @@ sealed class OrderLookupTool(IOrderService orders) : ITool
         }
         """).RootElement;
 
-    public ToolDescriptor Descriptor { get; } = new(
+    public static ToolDescriptor Descriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "lookup_order",
@@ -47,13 +48,20 @@ sealed class OrderLookupTool(IOrderService orders) : ITool
         outputSchema: null,
         new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, requiredResourceKinds: null),
         new ToolExecutionHints(ToolSchedulingMode.ParallelSafe, concurrencyKey: null, expectedDuration: TimeSpan.FromSeconds(1), approvalMayBeCached: null),
-        new ToolSourceId("acme.orders"),
+        ApplicationToolSources.Default,
         ExtensionData.Empty);
 
-    public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
+    public static ToolsetPublication Toolset { get; } = new(
+        new ToolsetKey("acme.orders"),
+        new ToolsetVersion(1),
+        new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1)),
+        [new ToolsetSourceSelection(ApplicationToolSources.Default)],
+        [new ToolAliasAssignment(new ToolAlias("lookup_order"), new ToolIdentity(Id, Descriptor.Version))]);
+
+    public async ValueTask<ToolInvocationResult> InvokeAsync(ToolInvocationContext context, CancellationToken cancellationToken = default)
     {
-        var orderNumber = request.Arguments.GetProperty("order_number").GetString()!;
-        var customer = request.Context.Identity.PrincipalId;   // who is asking, from the trusted ingress
+        var orderNumber = context.Arguments.GetProperty("order_number").GetString()!;
+        var customer = context.InvocationGrant.Identity.PrincipalId;   // who is asking, from the trusted ingress
 
         var order = await orders.FindAsync(customer, orderNumber, cancellationToken);
         if (order is null)
@@ -107,25 +115,22 @@ static AgentEngine CreateOrderAssistant(ExecutionIdentity customer, IOrderServic
         .WithMaxTurns(6);
 
     builder.Services.AddSingleton(orders);
-    builder.Services.AddTool<OrderLookupTool>();
+    builder.Services.AddTool<OrderLookupTool>(OrderLookupTool.Descriptor);
 
-    // Name the tools rather than inheriting the local allow-all.
-    builder.Services.Configure<AgentToolsOptions>(o =>
-    {
-        o.AllowAllRegisteredTools = false;
-        o.AllowedToolIds.Add(OrderLookupTool.Id);
-    });
+    // Publish and select exactly one toolset rather than every registered tool.
+    builder.Services.AddToolset(OrderLookupTool.Toolset);
+    builder.WithTools(OrderLookupTool.Toolset.Key);
 
     return builder.Build();
 }
 ```
 
-Every `ITool` registered on `builder.Services` enters the tool catalog, but only
-the allowed ones are added to the published agent definition and presented to
-the model, so the model never spends a turn on a tool whose call would be
-rejected. The allow-list is also enforced at call time: a call to an unlisted
-tool, however it got into the request, is rejected with a typed denied result
-before `InvokeAsync` runs.
+Registering an `IToolInvoker` makes it available to a toolset; it does not
+expose it. The agent definition selects toolsets, and each run captures the
+tools those toolsets name, so the model is shown only `lookup_order` and never
+spends a turn on a tool it cannot call. The selection is also enforced at call
+time: a call to a tool outside the captured catalog, however it got into the
+request, is rejected with a typed result before `InvokeAsync` runs.
 
 ## Use it
 
@@ -149,22 +154,22 @@ Console.WriteLine(string.Concat(result.Events.OfType<ConversationAssistantTextEv
   not conform (`additionalProperties`, the pattern, the required field) with
   `ToolTerminalStatus.InvalidArguments`; `InvokeAsync` sees only valid JSON.
 - **The model requests; it never executes.** Every call passes catalog
-  resolution, schema validation, and the tool authorizer before invocation.
+  resolution, schema validation, and the security authority before invocation.
   Unknown tools fail closed.
 - **Correlation survives.** The `ToolCallId` the model chose is preserved
   through authorization, execution, the `ToolCallResult` record, and the message
   the model sees next; the two events above carry the same `CallId`.
 - **Descriptions grant nothing.** Tool metadata is untrusted input to the model.
-  Authority comes only from the allow-list and security policies.
+  Authority comes only from toolset selection and security policies.
 
 ## What lives where
 
-| Concern                                | Package                                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `ITool`, `ToolDescriptor`, outcomes    | [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md)                                                 |
-| Catalog, schema validation, authorizer | [AgentKit.Tools](../../src/AgentKit.Tools/README.md)                                                               |
-| A first-party tool to copy from        | [AgentKit.Tools.Read](../../src/AgentKit.Tools.Read/README.md)                                                     |
-| Normative tool rules                   | [Tools and toolsets](../concepts/tools-and-toolsets.md), [Tool call lifecycle](../concepts/tool-call-lifecycle.md) |
+| Concern                                    | Package                                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `IToolInvoker`, `ToolDescriptor`, outcomes | [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md)                                                 |
+| Catalog, schema validation, executor       | [AgentKit.Tools](../../src/AgentKit.Tools/README.md)                                                               |
+| A first-party tool to copy from            | [AgentKit.Tools.Read](../../src/AgentKit.Tools.Read/README.md)                                                     |
+| Normative tool rules                       | [Tools and toolsets](../concepts/tools-and-toolsets.md), [Tool call lifecycle](../concepts/tool-call-lifecycle.md) |
 
 Next: [Delegating to specialist agents](delegating-to-specialists.md) ·
 [Background ticket-triage worker](ticket-triage-worker.md)

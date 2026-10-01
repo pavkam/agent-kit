@@ -1,0 +1,2 @@
+# Occurrences that describe an external or domain fact and stay on purpose.
+# Fields (tab-separated): repository-relative path, category, reason. A blank reason is rejected.

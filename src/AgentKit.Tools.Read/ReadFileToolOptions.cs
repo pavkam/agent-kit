@@ -20,11 +20,6 @@ public sealed class ReadFileToolOptions
     /// <summary>Gets or sets the absolute host directory backing <see cref="RootId"/>.</summary>
     public string HostRootPath { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets a legacy security audience override that is no longer used for authorization.</summary>
-    /// <remarks>File-read grants use <see cref="IFileReader.SecurityAudience"/> from the selected profile.</remarks>
-    [Obsolete("Authorization uses IFileReader.SecurityAudience from the selected profile.")]
-    public ComponentId SecurityAudience { get; set; } = new("agentkit.filesystem.workspace");
-
     /// <summary>Gets or sets the maximum bytes authorized for one read request.</summary>
     public long MaximumReadBytes { get; set; } = 10_485_760;
 

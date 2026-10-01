@@ -39,6 +39,7 @@ internal static class AgentLoopRegistration
             .Validate(static o => o.HistoryReadPageSize > 0, "HistoryReadPageSize must be positive.")
             .Validate(static o => o.AppendConflictRetryLimit >= 0, "AppendConflictRetryLimit must not be negative.")
             .Validate(static o => o.SettlementTimeout > TimeSpan.Zero, "SettlementTimeout must be positive.")
+            .Validate(static o => o.HookDispatchTimeout > TimeSpan.Zero, "HookDispatchTimeout must be positive.")
             .Validate(static o => o.ObserverDeliveryTimeout > TimeSpan.Zero, "ObserverDeliveryTimeout must be positive.")
             .Validate(static o => o.ContextPressureThreshold is > 0 and <= 1, "ContextPressureThreshold must be in (0, 1].")
             .Validate(static o => o.EstimatedCharactersPerToken > 0, "EstimatedCharactersPerToken must be positive.")

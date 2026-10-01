@@ -191,11 +191,11 @@ internal static partial class LoopLog
     internal static partial void ModelResponseNotAccepted(ILogger logger, RunId runId, TurnId turnId, string reason);
 
     /// <summary>Logs that the run selects an output definition but no output processor was composed, so it fails closed.</summary>
-    [LoggerMessage(1091, LogLevel.Error, "Run {RunId} turn {TurnId} selects output definition {OutputDefinitionId} but no output processor is composed; the run fails closed.")]
+    [LoggerMessage(1115, LogLevel.Error, "Run {RunId} turn {TurnId} selects output definition {OutputDefinitionId} but no output processor is composed; the run fails closed.")]
     internal static partial void OutputProcessorMissing(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId);
 
     /// <summary>Logs the output processor's typed decision for one terminal response.</summary>
-    [LoggerMessage(1092, LogLevel.Information, "Run {RunId} turn {TurnId} output definition {OutputDefinitionId} attempt {Attempt} decided {Decision}.")]
+    [LoggerMessage(1116, LogLevel.Information, "Run {RunId} turn {TurnId} output definition {OutputDefinitionId} attempt {Attempt} decided {Decision}.")]
     internal static partial void OutputDecided(ILogger logger, RunId runId, TurnId turnId, OutputDefinitionId outputDefinitionId, int attempt, string decision);
 
     /// <summary>Logs that output validation was cancelled after the response was committed.</summary>

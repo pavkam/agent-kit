@@ -44,6 +44,30 @@ When changing C#, also read the
    correction and deletion, vector incompatibility, deterministic ranking,
    provenance, redaction, and migrations.
 
+## Landed shape
+
+- Packages: contracts in `AgentKit.Abstractions`; runtime in `AgentKit.Memory`;
+  store leaves `AgentKit.Memory.{InMemory,Sqlite,Json}` over shared source-only
+  planner folders `AgentKit.Memory.Storage.{Shared,Durable}`; context
+  contribution in the leaf `AgentKit.Context.Retrieval`. The facade validates
+  profiles (`MemoryCompositionValidator`) and never references
+  `AgentKit.Memory`.
+- Coordinators (`IMemoryCoordinator`, `IDocumentLifecycleCoordinator`) take
+  context-carrying commands and ask the captured authority for one single-use
+  grant per store call; stores take the exact grant.
+- Retention is fail-closed (`RequireExplicitPolicyAllow`,
+  `agentkit.fail-closed`). No store, index, source, embedding model, or reranker
+  is installed by default.
+- Retrieval drops stale, unauthorized, duplicate, and over-budget candidates and
+  fails closed when exposure authorization or required observation is
+  unavailable; candidates stay `UntrustedData` with their provenance.
+- Publication is stage, embed, index, activate; deletion is tombstone, vector
+  cleanup, purge, with uncleaned stores named in the receipt.
+- Adapter capabilities are honest: SQLite vectors are an exact scan
+  (`ApproximateSearch=false`); Json holds an exclusive lock and claims no
+  multi-process coordination. Run all three conformance suites for any new
+  adapter.
+
 Publish complete indexed versions through an atomic active-version pointer.
 Tombstones exclude data from new retrieval/exposure before physical cleanup;
 revalidate stale deletion/revocation generations before egress and distinguish

@@ -6,40 +6,30 @@ namespace AgentKit.FileSystem.InMemory;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// A deterministic, disk-free <see cref="IFileSystem"/>: resolves every
-/// <see cref="FileSystemPath"/> against a process-local virtual tree that
+/// A deterministic, disk-free host file-system volume: resolves every path against a process-local virtual tree that
 /// exists only for the lifetime of this instance.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This class exists to give tests and ephemeral hosts a fast, hermetic
-/// double for <c>SandboxedFileSystem</c> that proves the same <see cref="IFileSystem"/>,
-/// <see cref="ILegacyDirectoryReader"/>, <see cref="IFileGlobber"/>,
-/// <see cref="IFileContentSearcher"/>, <see cref="IFileSnapshotReader"/>,
-/// <see cref="IAtomicFileReplacer"/>, and <see cref="IWorkspacePatchApplier"/>
-/// contracts without touching real disk. Every effect still validates and
-/// consumes a <see cref="SecurityGrant"/> exactly as the disk-backed
-/// implementation does; only the storage backend and its concurrency
-/// mechanism differ. There are no symbolic links in the virtual tree, so the
-/// boundary-crossing failure modes that exist purely to defend a real
-/// filesystem against symlink traversal do not apply here.
+/// This class gives tests and ephemeral hosts a fast, hermetic double for the operating-system profile that proves the
+/// same <see cref="IFileReader"/>, <see cref="IFileWriter"/>, <see cref="IFileMetadataReader"/>,
+/// <see cref="IDirectoryCreator"/>, <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>,
+/// <see cref="IFileContentSearcher"/>, <see cref="IFileSnapshotReader"/>, <see cref="IAtomicFileReplacer"/>, and
+/// <see cref="IWorkspacePatchApplier"/> contracts without touching real disk. Every effect still validates and consumes a
+/// <see cref="SecurityGrant"/> exactly as the disk-backed implementation does; only the storage backend and its
+/// concurrency mechanism differ. There are no symbolic links in the virtual tree, so the boundary-crossing failure
+/// modes that exist purely to defend a real filesystem against symlink traversal do not apply here.
 /// </para>
 /// <para>
-/// There is no directory-creation member on any of the implemented
-/// contracts, so a directory can only come to exist through
-/// <see cref="CreateDirectory(FileSystemPath)"/> or as an implicit parent of
-/// a path <see cref="Seed(FileSystemPath, string)"/> installs. Both bypass
-/// grant validation entirely: they play the same role that directly writing
-/// to the sandbox's configured root directory (outside any
-/// <c>SandboxedFileSystem</c> instance method) plays in that implementation's
-/// own tests. Every subsequent <see cref="IFileSystem"/> effect against the
-/// resulting tree is fully protected.
+/// A directory can only come to exist through <see cref="CreateDirectory(FileSystemPath)"/>, through the
+/// <see cref="IDirectoryCreator"/> capability, or as an implicit parent of a path
+/// <see cref="Seed(FileSystemPath, string)"/> installs. <see cref="Seed(FileSystemPath, string)"/> and
+/// <see cref="CreateDirectory(FileSystemPath)"/> bypass grant validation entirely: they play the same role that
+/// directly writing to the operating-system profile's root directory plays in that implementation's own tests. Every
+/// capability call against the resulting tree is fully protected.
 /// </para>
 /// </remarks>
-[Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
 public sealed partial class InMemoryFileSystem:
-    IFileSystem,
-    ILegacyDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,
@@ -70,71 +60,42 @@ public sealed partial class InMemoryFileSystem:
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ILogger<InMemoryFileSystem> _logger;
-    private readonly ISecurityAuditDispatcher? _hostAuditDispatcher;
-    private readonly IIdentifierGenerator<SecurityAuditRecordId>? _hostAuditRecordIds;
+    private readonly ISecurityAuditDispatcher _hostAuditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _hostAuditRecordIds;
 
     /// <inheritdoc/>
     public ComponentId SecurityAudience { get; }
 
-    /// <summary>Initializes a new instance of the <see cref="InMemoryFileSystem"/> class.</summary>
+    /// <summary>Initializes an in-memory volume bound to one keyed profile.</summary>
     /// <param name="options">The validated bound configuration.</param>
     /// <param name="grantStore">The authoritative grant store used immediately before every observation and mutation.</param>
-    /// <param name="timeProvider">The monotonic time source used for elapsed search bounds.</param>
-    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
-    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
-    public InMemoryFileSystem(
-        IOptions<InMemoryFileSystemOptions> options,
-        ISecurityGrantStore grantStore,
-        TimeProvider timeProvider,
-        ILogger<InMemoryFileSystem>? logger = null)
-        : this(options, grantStore, timeProvider, logger, new GuidSecurityEnforcementIntentIdGenerator())
-    {
-    }
-
-    /// <summary>Initializes the in-memory filesystem with a source of fresh per-effect enforcement-intent identities.</summary>
-    /// <param name="options">The validated bound configuration.</param>
-    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
-    /// <param name="timeProvider">The monotonic time source used for elapsed search bounds.</param>
+    /// <param name="timeProvider">The monotonic time source used for elapsed search bounds and metadata timestamps.</param>
     /// <param name="logger">The optional structured logger; a null value selects a null logger.</param>
-    /// <param name="intentIds">The non-null thread-safe source of fresh filesystem enforcement intent identities.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="options"/>, <paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="intentIds"/> is null.</exception>
-    public InMemoryFileSystem(
-        IOptions<InMemoryFileSystemOptions> options,
-        ISecurityGrantStore grantStore,
-        TimeProvider timeProvider,
-        ILogger<InMemoryFileSystem>? logger,
-        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
-        : this(options, grantStore, timeProvider, logger, intentIds, hostAuditDispatcher: null, hostAuditRecordIds: null, hostProfileKey: null)
-    {
-    }
-
-    /// <summary>Initializes an in-memory volume that may expose spec host capability contracts.</summary>
-    /// <param name="options">The validated bound configuration.</param>
-    /// <param name="grantStore">The authoritative grant store.</param>
-    /// <param name="timeProvider">The monotonic clock.</param>
-    /// <param name="logger">The optional logger.</param>
-    /// <param name="intentIds">The enforcement-intent identity generator.</param>
-    /// <param name="hostAuditDispatcher">The audit dispatcher required for host capabilities.</param>
+    /// <param name="intentIds">The thread-safe source of fresh per-effect enforcement-intent identities.</param>
+    /// <param name="hostAuditDispatcher">The audit dispatcher whose required delivery gates every spec host effect.</param>
     /// <param name="hostAuditRecordIds">The audit record identity generator.</param>
-    /// <param name="hostProfileKey">The profile key when registered as a keyed host volume.</param>
+    /// <param name="hostProfileKey">The profile key this volume is registered under; it scopes <see cref="SecurityAudience"/>.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="hostProfileKey"/> is default.</exception>
     public InMemoryFileSystem(
         IOptions<InMemoryFileSystemOptions> options,
         ISecurityGrantStore grantStore,
         TimeProvider timeProvider,
         ILogger<InMemoryFileSystem>? logger,
         IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
-        ISecurityAuditDispatcher? hostAuditDispatcher,
-        IIdentifierGenerator<SecurityAuditRecordId>? hostAuditRecordIds,
-        FileSystemProfileKey? hostProfileKey)
+        ISecurityAuditDispatcher hostAuditDispatcher,
+        IIdentifierGenerator<SecurityAuditRecordId> hostAuditRecordIds,
+        FileSystemProfileKey hostProfileKey)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(intentIds);
+        ArgumentNullException.ThrowIfNull(hostAuditDispatcher);
+        ArgumentNullException.ThrowIfNull(hostAuditRecordIds);
+        ArgumentOutOfRangeException.ThrowIfEqual(hostProfileKey, default);
 
-        SecurityAudience = hostProfileKey is { } profileKey
-            ? new ComponentId($"agentkit.filesystem.inmemory.{profileKey.Value}")
-            : new ComponentId("agentkit.filesystem.inmemory");
+        SecurityAudience = new ComponentId($"agentkit.filesystem.inmemory.{hostProfileKey.Value}");
         _hostAuditDispatcher = hostAuditDispatcher;
         _hostAuditRecordIds = hostAuditRecordIds;
 
@@ -224,103 +185,6 @@ public sealed partial class InMemoryFileSystem:
         lock (_gate)
         {
             return _files.TryGetValue(path.Value, out content);
-        }
-    }
-
-    /// <inheritdoc/>
-    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
-    private async Task<FileReadResult> ReadCoreAsync(LegacyFileReadRequest request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var enforcement = FileSystemEnforcementReceipt.Create(
-            request.Grant,
-            SecurityAudience,
-            SecurityOperationKind.FileRead,
-            SecurityEffect.Observe,
-            [FileSecurityBinding.Resource(request.Path)],
-            FileSecurityBinding.ReadFingerprint(request.Path));
-        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(request.Grant, enforcement, intent, cancellationToken)
-            .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, intent))
-        {
-            return new FileReadDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
-        }
-
-        ImmutableArray<byte> content;
-        lock (_gate)
-        {
-            if (!_files.TryGetValue(request.Path.Value, out content))
-            {
-                return new FileNotFound(request.Path);
-            }
-        }
-
-        return content.Length > _maximumReadBytes
-            ? new FileReadFailed($"File exceeds the configured maximum of {_maximumReadBytes} bytes.")
-            : new FileRead(Encoding.UTF8.GetString(content.AsSpan()), content.Length);
-    }
-
-    /// <inheritdoc/>
-    [Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead.")]
-    private async Task<LegacyFileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentOutOfRangeException.ThrowIfUndefined(request.Mode);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var contentBytes = Encoding.UTF8.GetByteCount(request.Content);
-        if (contentBytes > _maximumWriteBytes)
-        {
-            return new LegacyFileWriteDenied(
-                $"Content is {contentBytes} bytes, exceeding the configured maximum of {_maximumWriteBytes}.");
-        }
-
-        var enforcement = FileSystemEnforcementReceipt.Create(
-            request.Grant,
-            SecurityAudience,
-            SecurityOperationKind.FileWrite,
-            FileSecurityBinding.WriteEffect(request.Mode),
-            [FileSecurityBinding.Resource(request.Path)],
-            FileSecurityBinding.WriteFingerprint(request.Path, request.Content, request.Mode));
-        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(request.Grant, enforcement, intent, cancellationToken)
-            .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, intent))
-        {
-            return new LegacyFileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
-        }
-
-        lock (_gate)
-        {
-            var path = request.Path.Value;
-            var parent = ParentDirectory(path);
-            if ((parent is not null && !_directories.Contains(parent)) || _directories.Contains(path))
-            {
-                return new LegacyFileWriteFailed("The file could not be written.");
-            }
-
-            var exists = _files.TryGetValue(path, out var existing);
-            if (request.Mode == FileWriteMode.CreateNew && exists)
-            {
-                return new LegacyFileAlreadyExists(request.Path);
-            }
-            if (request.Mode == FileWriteMode.ReplaceExisting && !exists)
-            {
-                return new LegacyFileWriteFailed("The replacement target does not exist.");
-            }
-            if (request.Mode == FileWriteMode.Append && !exists)
-            {
-                return new LegacyFileWriteFailed("The append target does not exist.");
-            }
-
-            var bytes = Encoding.UTF8.GetBytes(request.Content);
-            _files[path] = request.Mode == FileWriteMode.Append && exists ? existing.AddRange(bytes) : [.. bytes];
-            return new LegacyFileWritten(contentBytes);
         }
     }
 

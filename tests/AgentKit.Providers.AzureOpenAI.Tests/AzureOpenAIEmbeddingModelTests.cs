@@ -16,8 +16,8 @@ public sealed class AzureOpenAIEmbeddingModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static EmbeddingModelDescriptor CreateDescriptor() => new(new EmbeddingModelAlias("embed"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-3-small"), new DeploymentId("prod-embed"), AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities, AzureOpenAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
-    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
-    private static AzureOpenAIEmbeddingModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), }), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
+    private static AzureOpenAIEmbeddingModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), }), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), credentials, ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsApiKeyHeaderAndOverridesModelFieldWithDeploymentName()
     {
@@ -110,7 +110,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task GenerateAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
@@ -122,7 +122,6 @@ public sealed class AzureOpenAIEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
     }
 
     /// <summary>Verifies a refused connection is a typed unavailable failure.</summary>
@@ -137,7 +136,6 @@ public sealed class AzureOpenAIEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
     /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>

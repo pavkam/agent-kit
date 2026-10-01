@@ -29,6 +29,8 @@ public sealed class LanguageTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(LanguageToolLog.Completed, LanguageToolLog.Cancelled, LanguageToolLog.Faulted);
+    private readonly ILogger<LanguageTool> _logger;
     private readonly ILanguageIntelligenceService _service;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
@@ -51,6 +53,7 @@ public sealed class LanguageTool: IToolInvoker
     /// <param name="queryIds">The replaceable language-query identity source.</param>
     /// <param name="timeProvider">The deterministic security-deadline clock.</param>
     /// <param name="options">The captured model-facing bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured default or ceiling is invalid.</exception>
     public LanguageTool(
@@ -59,7 +62,8 @@ public sealed class LanguageTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<LanguageQueryId> queryIds,
         TimeProvider timeProvider,
-        IOptions<LanguageToolOptions> options)
+        IOptions<LanguageToolOptions> options,
+        ILogger<LanguageTool> logger)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -67,6 +71,7 @@ public sealed class LanguageTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(queryIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _service = service;
         _authoritySelector = authoritySelector;
@@ -79,6 +84,7 @@ public sealed class LanguageTool: IToolInvoker
         _maximumTimeout = options.Value.MaximumTimeout;
         _maximumQueryCharacters = options.Value.MaximumQueryCharacters;
         _maximumTextCharacters = options.Value.MaximumTextCharacters;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
@@ -103,16 +109,16 @@ public sealed class LanguageTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("language"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

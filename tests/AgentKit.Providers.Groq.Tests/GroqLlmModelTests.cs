@@ -6,6 +6,7 @@ namespace AgentKit.Providers.Groq.Tests;
 using System.Net;
 
 using AgentKit.Providers.Groq.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies GroqLlmModel behavior and contracts.</summary>
 public sealed class GroqLlmModelTests
@@ -16,7 +17,7 @@ public sealed class GroqLlmModelTests
         var systemMessage = new SystemMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), runId: null, turnId: null, Now, MessageState.Complete, [new TextPart("You are helpful.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), systemMessage.AgentId, systemMessage.SessionId, conversationId: null, systemMessage.BranchId, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [systemMessage, userMessage], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
     private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), GroqProviderDefaults.ProviderId, GroqProviderDefaults.ApiFamily, new ModelId("llama-3.3-70b-versatile"), deploymentId: null, GroqProviderDefaults.DefaultCapabilities, GroqProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
@@ -29,7 +30,7 @@ public sealed class GroqLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new GroqLlmModel(descriptor, GroqProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new GroqLlmModel(descriptor, GroqProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -51,7 +52,7 @@ public sealed class GroqLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new GroqLlmModel(descriptor, GroqProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new GroqLlmModel(descriptor, GroqProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

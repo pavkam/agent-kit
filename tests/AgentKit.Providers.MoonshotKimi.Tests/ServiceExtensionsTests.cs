@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MoonshotKimi.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -124,6 +126,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMoonshotKimiLlmModel(new ModelAlias("primary"), new ModelId("kimi-k2-0711-preview"));
         _ = services.AddMoonshotKimiLlmModel(new ModelAlias("secondary"), new ModelId("kimi-k1.5"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -138,6 +142,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMoonshotKimi();
         _ = services.AddMoonshotKimiApiKeyCredential("test-key");
         _ = services.AddMoonshotKimiLlmModel(new ModelAlias("chat"), new ModelId("kimi-k2-0711-preview"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MoonshotKimiLlmModel>();
@@ -163,6 +169,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddMoonshotKimiLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MoonshotKimiLlmModel>();
@@ -207,6 +215,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMoonshotKimiApiKeyCredential("test-key");
 
         _ = services.AddMoonshotKimiKnownLlmModel(new ModelAlias("known"), new ModelId("kimi-k2.6"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MoonshotKimiLlmModel>();

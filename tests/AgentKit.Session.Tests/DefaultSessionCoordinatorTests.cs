@@ -1449,7 +1449,7 @@ public sealed class DefaultSessionCoordinatorTests
         var harness = new Harness();
         var descriptor = TestFactory.Descriptor();
         harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
-        var page = new SessionPage([], new SessionSequence(0), hasMore: false);
+        var page = new SessionPage([], new SessionSequence(0), hasMore: false, new SessionReadSnapshot(descriptor.Address, descriptor.ActiveBranchId, new SessionVersion(1), new SessionSequence(0)));
         harness.Store.OnRead = _ => page;
         var context = TestFactory.OperationContext(descriptor.Address);
         var request = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 8);
@@ -1727,7 +1727,7 @@ public sealed class DefaultSessionCoordinatorTests
                     new SecurityPolicyVersion(1), new SecurityDenial("policy_denied", "denied")));
             }
             var grant = new SecurityGrant(new GrantId(Guid.NewGuid()), request.Id, request.Scope, request.Identity,
-                request.Authorization!, request.Audience, request.Kind, request.Effect, request.Resources,
+                request.Authorization, request.Audience, request.Kind, request.Effect, request.Resources,
                 request.InputFingerprint, new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
                 time.GetUtcNow(), time.GetUtcNow().AddMinutes(1), 1);
             Grants.Add(grant);

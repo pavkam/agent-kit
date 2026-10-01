@@ -6,7 +6,6 @@ namespace AgentKit.Session
     public sealed class AgentSessionOptions
     {
         public AgentSessionOptions() { }
-        public AgentKit.SessionBusyBehavior BusyBehavior { get; set; }
         public System.TimeSpan BusyWaitTimeout { get; set; }
         public int MaximumAppendEntries { get; set; }
         public int MaximumPageSize { get; set; }
@@ -107,5 +106,21 @@ namespace AgentKit.Session
     {
         public SessionEntryCodecCatalogOptions(int maximumPayloadBytes) { }
         public int MaximumPayloadBytes { get; }
+    }
+    public sealed class ToolCallAcceptedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public ToolCallAcceptedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ToolCallAcceptedSessionEntryCodec> logger) { }
+        public ToolCallAcceptedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ToolCallAcceptedSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
+    public sealed class ToolCallTerminalSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public ToolCallTerminalSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ToolCallTerminalSessionEntryCodec> logger) { }
+        public ToolCallTerminalSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ToolCallTerminalSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
     }
 }

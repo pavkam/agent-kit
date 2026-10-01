@@ -28,6 +28,16 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddTaskTool_WhenJoinStrategyIsBlank_ThrowsOptionsValidationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddTaskTool(static options => options.JoinStrategy = default);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<TaskToolOptions>>().Value);
+    }
+
+    [Fact]
     public void AddTaskTool_WhenDefaultOptions_PassesValidation()
     {
         var services = new ServiceCollection();

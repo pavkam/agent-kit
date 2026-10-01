@@ -13,7 +13,7 @@ namespace AgentKit;
 /// </remarks>
 public sealed record NetworkBounds
 {
-    /// <summary>Default maximum request body bytes for legacy consolidated constructors.</summary>
+    /// <summary>Default maximum request body bytes applied by the consolidated four-argument constructor and by callers that expose no request bound of their own.</summary>
     public const long DefaultMaximumRequestBytes = 32 * 1024 * 1024;
 
     /// <summary>Initializes split bounds for one operation.</summary>

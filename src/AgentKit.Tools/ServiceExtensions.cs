@@ -294,7 +294,7 @@ public static class ServiceExtensions
         /// <summary>Registers the replaceable default catalog collision policy and its immutable merge coordinator.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>Idempotent default registration preserves host policy and clock choices, adds safe logging, and activates no service. It discovers no source and does not replace the legacy tool catalog.</remarks>
+        /// <remarks>Idempotent default registration preserves host policy and clock choices, adds safe logging, and activates no service. It discovers no source and does not replace the tool catalog.</remarks>
         public IServiceCollection AddToolCatalogMerging()
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -424,16 +424,27 @@ public static class ServiceExtensions
         }
 
         /// <summary>
-        /// Registers the spec-shaped tool runtime: catalog capture, executor pipeline, and projection-policy catalog.
+        /// Registers the spec-shaped tool runtime: catalog capture, executor pipeline, execution-policy selection, the
+        /// session-backed call recorder, the event dispatcher, and the projection-policy catalog.
         /// </summary>
         /// <param name="configure">Optional configuration for <see cref="ToolRuntimeOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
-        /// Idempotent through <c>TryAdd</c> semantics. Register concrete invokers with
+        /// <para>
+        /// Idempotent through <c>TryAdd</c> semantics: every singular axis (resolver, validator, normalizer, projector,
+        /// scheduler, policy selector, recorder, and the unkeyed executor) keeps an earlier host registration, and the
+        /// <c>standard</c> execution policy that first-party tool descriptors name is registered only when nothing already
+        /// claims that exact reference. The default recorder commits through the run's session capability and installs no
+        /// store. Register concrete invokers with
         /// <see cref="AddTool{TInvoker}(IServiceCollection, ToolDescriptor, ServiceLifetime)"/> and toolsets through
-        /// <see cref="AddToolset"/>. Requires <see cref="ISecurityAuthoritySelector"/> from the permissions stack and
-        /// optionally <see cref="IHookDispatcher"/> for tool lifecycle hooks.
+        /// <see cref="AddToolset"/>.
+        /// </para>
+        /// <para>
+        /// Requires <see cref="ISecurityAuthoritySelector"/> from the permissions stack and the engine-wide
+        /// <see cref="IRandomizerFactory"/> that the <c>AgentKit</c> facade registers; optionally <see cref="IHookDispatcher"/>
+        /// for tool lifecycle hooks and <see cref="IApprovalWaitRecorder"/> for durable approval waits.
+        /// </para>
         /// </remarks>
         public IServiceCollection AddAgentTools(Action<ToolRuntimeOptions>? configure = null)
         {
@@ -445,28 +456,35 @@ public static class ServiceExtensions
                 _ = services.Configure(configure);
             }
 
-            _ = services.AddOptions<ToolRuntimeOptions>();
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IToolScheduler, BarrierSegmentToolScheduler>();
+            _ = ToolServiceRegistration.AddEventDispatcher(services);
+            _ = ToolServiceRegistration.AddExecutionPolicySelector(services);
+            if (!services.Any(static descriptor => !descriptor.IsKeyedService
+                    && descriptor.ImplementationInstance is ToolExecutionPolicyRegistration registration
+                    && registration.Reference == DefaultToolExecutionPolicy.StandardReference))
+            {
+                _ = ToolServiceRegistration.AddExecutionPolicy<DefaultToolExecutionPolicy>(
+                    services, DefaultToolExecutionPolicy.StandardReference, replace: false);
+            }
 
+            services.TryAddSingleton<IToolScheduler>(static provider => new BarrierSegmentToolScheduler(
+                provider.GetRequiredService<IToolResultNormalizer>(),
+                provider.GetRequiredService<IOptions<ToolRuntimeOptions>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ToolEventDispatcher>(),
+                provider.GetRequiredService<IRandomizerFactory>(),
+                provider.GetRequiredService<ILogger<BarrierSegmentToolScheduler>>()));
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
+            services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
+                static _ => new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)));
             services.TryAddSingleton<IToolResolver, ToolCallResolver>();
             services.TryAddSingleton<IToolArgumentValidator, ToolArgumentValidator>();
             services.TryAddSingleton<IToolResultNormalizer, ToolResultNormalizer>();
             services.TryAddSingleton<IToolResultProjector, ToolResultProjector>();
+            services.TryAddSingleton<IToolCallRecorder, SessionToolCallRecorder>();
             _ = services.AddToolCatalogCoordinator();
             services.TryAddSingleton<IToolRunCatalogCaptureFactory, ToolRunCatalogCaptureFactory>();
-            services.TryAddSingleton<IToolExecutor>(static provider => new DefaultToolExecutor(
-                provider.GetRequiredService<IToolResolver>(),
-                provider.GetRequiredService<IToolArgumentValidator>(),
-                provider.GetRequiredService<ISecurityAuthoritySelector>(),
-                provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
-                provider.GetRequiredService<IToolScheduler>(),
-                provider.GetRequiredService<ToolSchemaLimits>(),
-                provider.GetRequiredService<IOptions<ToolRuntimeOptions>>(),
-                provider.GetRequiredService<TimeProvider>(),
-                provider.GetRequiredService<ILogger<DefaultToolExecutor>>(),
-                provider.GetService<IHookDispatcher>()));
+            services.TryAddSingleton<IToolExecutor>(static provider =>
+                ToolServiceRegistration.CreateExecutor(provider, provider.GetRequiredService<IToolCallRecorder>()));
 
             return services;
         }
@@ -479,6 +497,13 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> is default.</exception>
+        /// <remarks>
+        /// Idempotent. The executor registered under <paramref name="executorKey"/> commits its accepted and terminal
+        /// records through the recorder keyed by that exact key; this method registers the session-backed default under the
+        /// key when none exists, and an unkeyed recorder never satisfies the selection. An executor or recorder the host
+        /// already registered under the key is preserved; use <see cref="ReplaceToolExecutor{TExecutor}(IServiceCollection, ComponentKey{IToolExecutor})"/>
+        /// or <see cref="ReplaceToolCallRecorder{TRecorder}"/> to change one explicitly.
+        /// </remarks>
         public IServiceCollection AddAgentTools(
             ComponentKey<IToolExecutor> executorKey,
             Action<ToolRuntimeOptions>? configure = null)
@@ -486,7 +511,11 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
             _ = services.AddAgentTools(configure);
-            _ = services.ReplaceToolExecutor<DefaultToolExecutor>(executorKey);
+            services.TryAddKeyedSingleton<IToolCallRecorder, SessionToolCallRecorder>(executorKey.Value);
+            services.TryAddKeyedSingleton<IToolExecutor>(
+                executorKey.Value,
+                (provider, _) => ToolServiceRegistration.CreateExecutor(
+                    provider, provider.GetRequiredKeyedService<IToolCallRecorder>(executorKey.Value)));
             return services;
         }
 
@@ -619,6 +648,145 @@ public static class ServiceExtensions
             _ = services.RemoveAll<IToolResultProjectionPolicyCatalog>();
             _ = services.AddSingleton<IToolResultProjectionPolicyCatalog, TCatalog>();
             return services;
+        }
+
+        /// <summary>Registers an additive execution policy under one exact captured reference.</summary>
+        /// <typeparam name="TPolicy">The pure, concurrently callable policy whose <see cref="IToolExecutionPolicy.Reference"/> equals <paramref name="reference"/>.</typeparam>
+        /// <param name="reference">The nonnull exact policy key and revision; it is also the DI service key.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="reference"/> is null.</exception>
+        /// <exception cref="ArgumentException">The exact reference is already registered; use <see cref="ReplaceToolExecutionPolicy{TPolicy}"/> to change it.</exception>
+        /// <remarks>
+        /// Registers a keyed singleton and a marker without activating anything, and ensures the replaceable
+        /// <see cref="IToolExecutionPolicySelector"/>. Selection is by exact key and version: a reference nobody registers is
+        /// unavailable, never defaulted. A policy whose own reference differs from its registered reference fails when the
+        /// selector is composed. <see cref="DefaultToolExecutionPolicy"/> is a ready implementation.
+        /// </remarks>
+        public IServiceCollection AddToolExecutionPolicy<TPolicy>(ToolExecutionPolicyReference reference)
+            where TPolicy : class, IToolExecutionPolicy
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(reference);
+            return ToolServiceRegistration.AddExecutionPolicy<TPolicy>(services, reference, replace: false);
+        }
+
+        /// <summary>Explicitly replaces the policy registered under one exact reference.</summary>
+        /// <typeparam name="TPolicy">The replacement policy.</typeparam>
+        /// <param name="reference">The nonnull exact reference to replace; an absent reference is added.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="reference"/> is null.</exception>
+        /// <remarks>Removes only the keyed registrations and marker of the exact reference, including opaque factories, without activation. Other references and already-built selectors are unchanged.</remarks>
+        public IServiceCollection ReplaceToolExecutionPolicy<TPolicy>(ToolExecutionPolicyReference reference)
+            where TPolicy : class, IToolExecutionPolicy
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(reference);
+            return ToolServiceRegistration.AddExecutionPolicy<TPolicy>(services, reference, replace: true);
+        }
+
+        /// <summary>Explicitly replaces the singular execution-policy selector.</summary>
+        /// <typeparam name="TSelector">The concurrently callable selector; it must keep selection exact and never fall back.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolExecutionPolicySelector<TSelector>()
+            where TSelector : class, IToolExecutionPolicySelector
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            return ToolServiceRegistration.ReplaceSingular<IToolExecutionPolicySelector, TSelector>(services);
+        }
+
+        /// <summary>Registers an additive observational tool-event sink under a unique identity.</summary>
+        /// <typeparam name="TSink">The concurrently callable singleton sink.</typeparam>
+        /// <param name="registration">The nonnull stable identity and delivery order.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="registration"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">A different sink or registration already uses the same identity; an identical repeat is a no-op.</exception>
+        /// <remarks>Sinks never influence an outcome: the dispatcher isolates failure and bounds each delivery by <see cref="ToolRuntimeOptions.EventSinkTimeout"/>.</remarks>
+        public IServiceCollection AddToolEventSink<TSink>(ToolEventSinkRegistration registration)
+            where TSink : class, IToolEventSink
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(registration);
+            return ToolServiceRegistration.AddEventSink<TSink>(services, registration);
+        }
+
+        /// <summary>Registers the recorder selected by one exact executor key.</summary>
+        /// <typeparam name="TRecorder">The recorder the keyed executor commits accepted and terminal records through.</typeparam>
+        /// <param name="executor">The nondefault executor key; an unkeyed recorder never satisfies it.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executor"/> is default.</exception>
+        /// <exception cref="ArgumentException">The exact key already has a recorder; use <see cref="ReplaceToolCallRecorder{TRecorder}"/> to change it.</exception>
+        public IServiceCollection AddToolCallRecorder<TRecorder>(ComponentKey<IToolExecutor> executor)
+            where TRecorder : class, IToolCallRecorder
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(executor, default);
+            return ToolServiceRegistration.AddRecorder<TRecorder>(services, executor, replace: false);
+        }
+
+        /// <summary>Explicitly replaces the recorder selected by one exact executor key.</summary>
+        /// <typeparam name="TRecorder">The replacement recorder.</typeparam>
+        /// <param name="executor">The nondefault executor key; an absent recorder is added.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executor"/> is default.</exception>
+        /// <remarks>Other executors' recorders and already-built executors are unchanged; nothing is activated.</remarks>
+        public IServiceCollection ReplaceToolCallRecorder<TRecorder>(ComponentKey<IToolExecutor> executor)
+            where TRecorder : class, IToolCallRecorder
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(executor, default);
+            return ToolServiceRegistration.AddRecorder<TRecorder>(services, executor, replace: true);
+        }
+
+        /// <summary>Explicitly replaces the singular tool-call resolver.</summary>
+        /// <typeparam name="TResolver">The concurrently callable resolver that validates run evidence before acquiring an invoker lease.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolResolver<TResolver>()
+            where TResolver : class, IToolResolver
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            return ToolServiceRegistration.ReplaceSingular<IToolResolver, TResolver>(services);
+        }
+
+        /// <summary>Explicitly replaces the singular tool-argument validator.</summary>
+        /// <typeparam name="TValidator">The concurrently callable validator performing bounded canonical schema validation.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolArgumentValidator<TValidator>()
+            where TValidator : class, IToolArgumentValidator
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            return ToolServiceRegistration.ReplaceSingular<IToolArgumentValidator, TValidator>(services);
+        }
+
+        /// <summary>Explicitly replaces the singular terminal result normalizer.</summary>
+        /// <typeparam name="TNormalizer">The concurrently callable normalizer that enforces the captured normalization snapshot.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolResultNormalizer<TNormalizer>()
+            where TNormalizer : class, IToolResultNormalizer
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            return ToolServiceRegistration.ReplaceSingular<IToolResultNormalizer, TNormalizer>(services);
+        }
+
+        /// <summary>Explicitly replaces the singular deterministic tool-result projector.</summary>
+        /// <typeparam name="TProjector">The concurrently callable, effect-free projector.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection ReplaceToolResultProjector<TProjector>()
+            where TProjector : class, IToolResultProjector
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentTools();
+            return ToolServiceRegistration.ReplaceSingular<IToolResultProjector, TProjector>(services);
         }
 
     }

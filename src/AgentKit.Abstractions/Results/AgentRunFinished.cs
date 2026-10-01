@@ -23,7 +23,7 @@ public sealed record AgentRunFinished<TOutput>: AgentRunResult<TOutput>
     /// <param name="metadata">Nonnull immutable final metadata classified by the publisher.</param>
     /// <exception cref="ArgumentOutOfRangeException">A required or present optional identity is default, or a message state is undefined.</exception>
     /// <exception cref="ArgumentNullException">A required collaborator, message, deferred request or message extension bag is null.</exception>
-    /// <exception cref="ArgumentException">An outcome is legacy or noncanonical, collections are uninitialized or duplicate, a message part is null, a candidate is incomplete, or correlation, handoff ownership or deferred evidence differs.</exception>
+    /// <exception cref="ArgumentException">An outcome is not one of the canonical terminal variants, collections are uninitialized or duplicate, a message part is null, a candidate is incomplete, or correlation, handoff ownership or deferred evidence differs.</exception>
     public AgentRunFinished(AgentId agentId, SessionId sessionId, ConversationId? conversationId, RunId runId,
         AgentRunOutcome outcome, RunSettlementOutcome settlement, TOutput? output, MessageCursor previousCursor,
         ImmutableArray<AgentMessage> newMessages, RunUsage usage, ImmutableArray<DeferredOperationRequest> deferredRequests, ExtensionData metadata)

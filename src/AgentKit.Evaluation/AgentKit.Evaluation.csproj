@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>AgentKit.Evaluation</PackageId>
+    <Title>AgentKit.Evaluation</Title>
+    <Description>Versioned agent evaluation plans, evaluators, result stores, report exporters, and a deterministic runner over the public AgentKit engine.</Description>
+    <PackageTags>agents;ai;evaluation;evals;testing</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit/AgentKit.csproj" />
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
+    <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

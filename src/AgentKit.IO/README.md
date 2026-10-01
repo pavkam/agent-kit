@@ -4,9 +4,11 @@ Provide input-promotion policy, a broker for bounded human questions, the
 internal bounded run-event hub, and the run-scoped output publisher over it.
 
 Use these services when coordinating queued input, asking a human for
-information, or exposing one run's live events and final envelope. Complete
-admission, durable publication, channel adapters, and loop integration are part
-of the wider IO architecture still under implementation.
+information, or exposing one run's live events and final envelope. The package
+also owns the session-backed input queue and the durable operation handlers the
+loop's input-promotion and run-settlement boundaries use. Channel adapters
+(HTTP, console, UI, messaging) are application leaves that translate into these
+contracts and are not part of this package.
 
 ## Use this project
 
@@ -44,9 +46,11 @@ Cancellation, an oversized payload, and a default generated identity all stop
 before the queue is touched, and a queue failure propagates rather than becoming
 a substituted outcome.
 
-The coordinator bounds part count only. Payload byte bounds, configured
-preprocessors, and the session-backed `IInputQueue` itself — in particular the
-durable atomic promotion primitive its `PromoteAsync` needs — remain open.
+The coordinator bounds part count only; it applies no payload byte bound and no
+configured preprocessors. The queue it commits through is
+`AddSessionBackedInputQueue`'s `SessionBackedInputQueue`, which is bound to one
+run's session capability so admission and promotion use the session store's
+durable atomic operations.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
@@ -70,8 +74,8 @@ produces an explicit delivery failure.
 
 The hub accepts immutable, already sequenced events. It does not allocate
 durable sequence ranges, persist events, capture a replay snapshot, authorize
-subscribers, deliver required sinks, or settle runs. Those publisher and session
-dependencies remain open.
+subscribers, deliver required sinks, or settle runs. Those belong to the output
+publisher, the session store, and the facade.
 
 The hub's typed subscription adapter implements `IAgentRunStream<TOutput>`.
 Event cancellation, overflow, abandonment, and disposal leave its producer-owned
@@ -83,8 +87,8 @@ correlation and exposes the same envelope on repeated awaits.
 `AgentRunOutputPublisher` is the first-party `IOutputPublisher` for one accepted
 run. It is constructed by the run's owner with that run's immutable correlation,
 an injected clock, and `RunOutputPublisherOptions` live bounds. It is not
-registered in DI, because a run-scoped publisher requires the keyed run
-activation that remains open.
+registered in DI; `AddAgentIO` registers `DefaultOutputPublisher`, built over a
+run-scoped hub, for the keyed run activation.
 
 `PublishAsync` rejects a foreign correlation and a sequence that does not
 advance strictly beyond the last accepted event, and refuses events once
@@ -99,8 +103,8 @@ instead of fabricating an outcome.
 
 This publisher owns live process-local publication only. It reserves no durable
 sequence range, records no publication intent, delivers to no required external
-sink, bounds no event payload bytes, and decides no semantic outcome. Those
-durable publication responsibilities remain open.
+sink, bounds no event payload bytes, and decides no semantic outcome. Durable
+publication belongs to `DefaultOutputPublisher` and its registered sinks.
 
 ## `DefaultOutputPublisher` and `AddAgentIO`
 
@@ -125,17 +129,32 @@ services.AddRunEventSink<MySink>(new RunEventSinkRegistration("my-sink", RunEven
 ```
 
 `AddAgentIO` also binds `InputCoordinatorOptions` with this package's defaults,
-so it is self-sufficient without a separate `AddInputCoordinator` call, and
-validates that a definition's explicit
-`InputCoordinatorKey`/`OutputPublisherKey` resolve to a real registration.
-`AgentDefinition` leaves both keys unset by default, resolving to
-`AgentIOComponentDefaults`. `AgentKit.Loop`'s `DefaultAgentLoop` publishes
-through `AgentRunServices.Publisher` when one is composed: a `ContentDeltaEvent`
-for each streamed model fragment, and a `MessageCommittedEvent` after each
-durable message commit (assistant and tool result); it does not yet publish for
-the final settled outcome, and `AgentRunServicesFactory.Compile` resolves both
-`IInputCoordinator` and `IOutputPublisher` unkeyed rather than routing through
-those per-definition keys — a known interim gap.
+so it is self-sufficient without a separate `AddInputCoordinator` call. A
+definition selects its coordinator and publisher through
+`AgentComponentSelection.Input` and `Output`; composition validation requires
+each selected key to resolve to exactly one registration, and
+`AgentIOComponentDefaults` names the keys `AddAgentIO` is normally called with.
+`AgentKit.Loop`'s `DefaultAgentLoop` publishes through
+`AgentRunServices.Publisher` when one is composed: a `ContentDeltaEvent` for
+each streamed model fragment, and a `MessageCommittedEvent` after each durable
+message commit (assistant and tool result), and the facade completes the
+publisher with the final result envelope once the run settles. The run-plan
+compiler resolves the selected `IInputCoordinator` under its exact key; the
+facade resolves the selected `IOutputPublisher` under its exact key once the run
+identity is bound, because the publisher is scoped to that identity.
+
+## Durable operation handlers
+
+`InputPromotionDurableOperationHandler` and
+`RunSettlementDurableOperationHandler` own the `agentkit.io.input_promotion` and
+`agentkit.io.run_settlement` operation names for the durability coordinator.
+`AddAgentIO` registers both idempotently. They perform no effect of their own:
+the loop wraps each boundary in `DurableBoundaryScope`, publishes its live
+continuation into the engine-wide `DurableBoundaryRegistry`, and the handler
+bridges the coordinator to it. A recovering process holds no continuation, so
+the handler refuses rather than inventing a terminal record for work it never
+ran. The boundaries themselves, their checkpoints, and their recovery semantics
+are described in [AgentKit.Loop](../AgentKit.Loop/README.md#durable-boundaries).
 
 ## Related projects
 
@@ -157,8 +176,8 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/input-and-output.md) —
   intended ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

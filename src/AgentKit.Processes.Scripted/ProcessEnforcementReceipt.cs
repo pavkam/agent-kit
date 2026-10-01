@@ -21,13 +21,9 @@ internal static class ProcessEnforcementReceipt
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
-        return grant.Authorization is { } authorization
-            ? new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, authorization, audience, SecurityOperationKind.Process,
-                SecurityEffect.Execute, resources, fingerprint, grant.RevocationVersion)
-            : new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, audience, SecurityOperationKind.Process, SecurityEffect.Execute,
-                resources, fingerprint, grant.RevocationVersion);
+        return new SecurityEnforcementRequest(
+            grant.Scope, grant.Identity, grant.Authorization, audience, SecurityOperationKind.Process,
+            SecurityEffect.Execute, resources, fingerprint, grant.RevocationVersion);
     }
 
     /// <summary>Determines whether a consumption result authorizes this new exact scripted process-start effect.</summary>

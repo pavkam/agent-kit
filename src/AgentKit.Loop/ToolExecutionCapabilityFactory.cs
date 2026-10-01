@@ -10,6 +10,8 @@ internal static class ToolExecutionCapabilityFactory
     /// <param name="request">The active run request.</param>
     /// <param name="services">The compiled run services.</param>
     /// <param name="turnCorrelation">The turn operation correlation.</param>
+    /// <param name="executionLaneId">The lane that owns the run's session mutations and receives the call records.</param>
+    /// <param name="catalogSnapshot">The run's captured catalog, whose execution-policy references become the capability's bindings.</param>
     /// <param name="runBudget">The run budget when the run declared limits; otherwise null.</param>
     /// <param name="runBudgetCapability">The run-scoped budget capability when the run is budgeted; otherwise null.</param>
     /// <param name="hooks">Optional hook binding forwarded to the tool executor; null when hooks are inactive.</param>
@@ -19,12 +21,15 @@ internal static class ToolExecutionCapabilityFactory
         AgentLoopRunRequest request,
         AgentRunServices services,
         InRunOperationCorrelation turnCorrelation,
+        ExecutionLaneId executionLaneId,
+        ToolCatalogSnapshot catalogSnapshot,
         RunBudget? runBudget,
         BudgetExecutionCapability? runBudgetCapability,
         ToolExecutionHookBinding? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(catalogSnapshot);
 
         var runCoordinator = services.RunCoordinator ?? UnsupportedRunCoordinator.Instance;
         var session = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
@@ -59,7 +64,16 @@ internal static class ToolExecutionCapabilityFactory
             turnCorrelation,
             scope);
 
-        return new ToolExecutionCapability(session, budget, hooks);
+        var bindings = catalogSnapshot.ExecutionPolicies.Values
+            .Distinct()
+            .Select(static reference => new ToolExecutionPolicyBinding(reference))
+            .ToImmutableArray();
+        return new ToolExecutionCapability(
+            session,
+            budget,
+            new ToolCallSessionTarget(request.BranchId, executionLaneId),
+            bindings,
+            hooks);
     }
 
     /// <summary>A budget scope that rejects every reservation; used only to satisfy capability shape for unbudgeted runs.</summary>

@@ -6,13 +6,13 @@ namespace AgentKit.Abstractions.Tests.Budgets;
 public sealed class BudgetCorrectionResultTests
 {
     [Fact]
-    public void BudgetCorrectionResult_WhenPresentAccountingRevisionIsDefault_ThrowsExactParameterName() => Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, default(BudgetAccountingRevision), [], [])).ParamName.ShouldBe("accountingRevision");
+    public void BudgetCorrectionResult_WhenAccountingRevisionIsDefault_ThrowsExactParameterName() => Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, default, [], [])).ParamName.ShouldBe("accountingRevision");
 
     private static BudgetReservationId ReservationId() => new(Guid.Parse("00000000-0000-0000-0000-000000000003"));
     [Fact]
     public void BudgetCorrectionResult_WhenReservationIdIsDefault_ThrowsWithExactParameterName()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(default, 0m, 0m, 1));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(default, 0m, 0m, 1, new BudgetAccountingRevision(1), [], []));
         exception.ParamName.ShouldBe("reservationId");
     }
 
@@ -22,7 +22,7 @@ public sealed class BudgetCorrectionResultTests
     [InlineData(0, 0, 0, "revision")]
     public void BudgetCorrectionResult_WhenNumericConstraintIsInvalid_ThrowsWithExactParameterName(int previousActual, int correctedActual, long revision, string expectedParameterName)
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(new BudgetReservationId(Guid.NewGuid()), previousActual, correctedActual, revision));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCorrectionResult(new BudgetReservationId(Guid.NewGuid()), previousActual, correctedActual, revision, new BudgetAccountingRevision(1), [], []));
         exception.ParamName.ShouldBe(expectedParameterName);
     }
 
@@ -51,16 +51,16 @@ public sealed class BudgetCorrectionResultTests
     [Fact]
     public void OverrunResultArrays_WhenDefaultOrContainingNull_ThrowExactParameterName()
     {
-        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, null, default, [])).ParamName.ShouldBe("createdOverrunHolds");
-        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, null, [null!], [])).ParamName.ShouldBe("createdOverrunHolds");
-        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, null, [], default)).ParamName.ShouldBe("clearedOverrunHolds");
-        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, null, [], [null!])).ParamName.ShouldBe("clearedOverrunHolds");
+        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, new BudgetAccountingRevision(1), default, [])).ParamName.ShouldBe("createdOverrunHolds");
+        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, new BudgetAccountingRevision(1), [null!], [])).ParamName.ShouldBe("createdOverrunHolds");
+        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, new BudgetAccountingRevision(1), [], default)).ParamName.ShouldBe("clearedOverrunHolds");
+        Should.Throw<ArgumentException>(() => new BudgetCorrectionResult(ReservationId(), 1, 1, 1, new BudgetAccountingRevision(1), [], [null!])).ParamName.ShouldBe("clearedOverrunHolds");
     }
 
     [Fact]
     public void OverrunResultArrays_WhenEmptyIsAllowed_PreserveEmptyEvidence()
     {
-        var result = new BudgetCorrectionResult(ReservationId(), 1, 1, 1, null, [], []);
+        var result = new BudgetCorrectionResult(ReservationId(), 1, 1, 1, new BudgetAccountingRevision(1), [], []);
         result.CreatedOverrunHolds.ShouldBeEmpty();
         result.ClearedOverrunHolds.ShouldBeEmpty();
     }
@@ -69,22 +69,9 @@ public sealed class BudgetCorrectionResultTests
     public void Revision_WhenApiShapeIsInspected_HasNoSetter() => typeof(BudgetCorrectionResult).GetProperty(nameof(BudgetCorrectionResult.Revision))!.SetMethod.ShouldBeNull();
 
     [Fact]
-    public void Constructor_WhenFourArgumentOverloadIsUsed_DefaultsHoldEvidenceToEmpty()
-    {
-        var result = new BudgetCorrectionResult(ReservationId(), 0m, 1m, 1);
-        result.ReservationId.ShouldBe(ReservationId());
-        result.PreviousActual.ShouldBe(0m);
-        result.CorrectedActual.ShouldBe(1m);
-        result.Revision.ShouldBe(1);
-        result.AccountingRevision.ShouldBeNull();
-        result.CreatedOverrunHolds.ShouldBeEmpty();
-        result.ClearedOverrunHolds.ShouldBeEmpty();
-    }
-
-    [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new BudgetCorrectionResult(ReservationId(), 0m, 1m, 1);
+        var original = new BudgetCorrectionResult(ReservationId(), 0m, 1m, 1, new BudgetAccountingRevision(1), [], []);
         var copy = original with { };
         copy.ShouldBe(original);
     }

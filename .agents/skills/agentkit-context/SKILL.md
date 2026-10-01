@@ -39,7 +39,13 @@ read the [modern C# rules](../references/modern-csharp.md).
    additive and deterministically ordered, while selected collaborators are
    singular per context profile.
 3. Capture immutable, versioned history, configuration, model, tool, output,
-   authority, and contributor snapshots for each request.
+   authority, and contributor snapshots for each request. Every
+   `ContextAssemblyRequest` carries one atomic `ContextAssemblyEvidence` whose
+   coordinates are cross-checked at construction; there is no evidence-less
+   request, and the assembler resolves instructions from the pinned definition's
+   `InstructionSource` collection rather than a second flat list. The result is
+   an `LlmRequestContext` with its manifest; identity and authorization evidence
+   travel in the provider boundary's protected operation context.
 4. Preserve instruction provenance and precedence. Retrieved, tool-returned,
    imported, or model-generated content remains data and grants no authority.
 5. Reserve mandatory framing, pending input, tools, output contract, minimum

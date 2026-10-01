@@ -21,6 +21,15 @@ internal static class CompactionServiceKeys
     internal static string EventDispatcher(ComponentKey<ICompactor> compactorKey) =>
         $"{compactorKey.Value}\0event-dispatcher";
 
+    internal static string CutSelector(ComponentKey<ICompactor> compactorKey) =>
+        $"{compactorKey.Value}\0cut-selector";
+
+    internal static string Validator(ComponentKey<ICompactor> compactorKey) =>
+        $"{compactorKey.Value}\0validator";
+
+    internal static string EventSink(ComponentKey<ICompactor> compactorKey, CompactionEventSinkId sinkId) =>
+        $"{compactorKey.Value}\0sink\0{sinkId.Value}";
+
     internal static string ActivationCoordinator(ComponentKey<ICompactor> compactorKey) =>
         $"{compactorKey.Value}\0activation";
 }

@@ -49,11 +49,10 @@ public sealed class AgentOutputOptions
     public bool RequireSchemaForStructuredModes { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether a provider is allowed to downgrade a requested
-    /// output mode. This option is declared for parity with the full
-    /// structured-output architecture but is not yet enforced: mode
-    /// negotiation depends on the not-yet-implemented provider capability
-    /// profile wiring at the call site that selects a mode before send.
+    /// Gets or sets whether the processor may downgrade a requested output
+    /// mode to <see cref="OutputMode.Prompted"/> when the selected model's
+    /// capabilities cannot carry it. When <see langword="false"/> an
+    /// unsupported mode is rejected as a provider capability mismatch.
     /// </summary>
     public bool AllowProviderModeDowngrade { get; set; }
 }

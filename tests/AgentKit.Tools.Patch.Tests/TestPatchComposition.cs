@@ -13,7 +13,8 @@ internal static class TestPatchComposition
         IFileSnapshotReader snapshotReader,
         IWorkspacePatchApplier applier,
         ISecurityAuthority authority,
-        PatchToolOptions? options = null)
+        PatchToolOptions? options = null,
+        ILogger<PatchTool>? logger = null)
     {
         var configured = options ?? new PatchToolOptions();
         var profileKey = configured.ProfileKey;
@@ -27,6 +28,7 @@ internal static class TestPatchComposition
             new SequenceSecurityRequestIdGenerator(),
             new SequenceMutationIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(configured));
+            Options.Create(configured),
+            logger ?? NullLogger<PatchTool>.Instance);
     }
 }

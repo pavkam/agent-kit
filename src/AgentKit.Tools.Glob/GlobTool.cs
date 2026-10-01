@@ -33,6 +33,8 @@ public sealed class GlobTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(GlobToolLog.Completed, GlobToolLog.Cancelled, GlobToolLog.Faulted);
+    private readonly ILogger<GlobTool> _logger;
     private readonly IFileGlobber _globber;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -45,6 +47,7 @@ public sealed class GlobTool: IToolInvoker
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated traversal options.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Any configured bound is invalid.</exception>
     public GlobTool(
@@ -52,19 +55,22 @@ public sealed class GlobTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<GlobToolOptions> options)
+        IOptions<GlobToolOptions> options,
+        ILogger<GlobTool> logger)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _globber = serviceProvider.GetRequiredKeyedService<IFileGlobber>(options.Value.ProfileKey.Value);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -91,17 +97,19 @@ public sealed class GlobTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("glob"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken)
+    {
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
-        var result = await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(

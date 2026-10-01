@@ -20,7 +20,7 @@ public sealed class StdioMcpTransportFactoryTests
             .AddInMemorySecurityGrantStore()
             .AddInMemoryApprovalStore()
             .AddInMemorySecurityDecisionStore()
-            .AddAgentPermissions()
+            .AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot)
             .AddStandaloneSecurityProfile(
                 new AgentId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
                 new AgentDefinitionRevision(1),

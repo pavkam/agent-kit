@@ -25,5 +25,8 @@ internal sealed class McpClientOptionsState
         options.MaximumInFlightRequests,
         options.UnknownNotificationPolicy,
         options.StdioProcessExecutorKey,
-        options.StdioSandboxProfileId);
+        options.StdioSandboxProfileId,
+        options.HttpStreamTimeout,
+        options.MaximumHttpResponseBytes,
+        options.HttpDataClassification);
 }

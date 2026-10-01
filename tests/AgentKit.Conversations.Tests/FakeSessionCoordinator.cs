@@ -157,6 +157,27 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
                     new SessionSequence(0))));
     }
 
+    /// <summary>Builds a page captured from the request's exact branch prefix, reaching at least the page's last sequence.</summary>
+    /// <param name="request">The read request being answered.</param>
+    /// <param name="entries">The entries in the page.</param>
+    /// <param name="throughSequence">The last returned sequence.</param>
+    /// <param name="hasMore">Whether entries remain after the page.</param>
+    /// <returns>A page carrying exact snapshot evidence.</returns>
+    public static SessionPage PageFor(
+        SessionReadRequest request,
+        ImmutableArray<SessionEntry> entries,
+        SessionSequence throughSequence,
+        bool hasMore) =>
+        new(
+            entries,
+            throughSequence,
+            hasMore,
+            request.Snapshot ?? new SessionReadSnapshot(
+                request.Context.ToAddress(),
+                request.BranchId,
+                new SessionVersion(1),
+                new SessionSequence(Math.Max(throughSequence.Value, request.FromSequenceExclusive.Value))));
+
     public ValueTask<SessionBranchResult> BranchAsync(
         SessionBranchRequest request,
         SessionProfileSnapshot profile,

@@ -230,20 +230,26 @@ public interface IDurableExecutionBackend
 
 public interface IDurableOperationJournal
 {
+    ComponentId SecurityAudience { get; }
+
     ValueTask<DurableRecordResult> RecordStartAsync(
-        DurableOperationStart start,
+        AuthorizedDurableRequest<DurableOperationStart> start,
         CancellationToken cancellationToken);
 
     ValueTask<DurableRecordResult> RecordCheckpointAsync(
-        DurableCheckpoint checkpoint,
+        AuthorizedDurableRequest<DurableCheckpoint> checkpoint,
         CancellationToken cancellationToken);
 
     ValueTask<DurableRecordResult> RecordTerminalAsync(
-        DurableOperationResult result,
+        AuthorizedDurableRequest<DurableOperationResult> result,
+        CancellationToken cancellationToken);
+
+    ValueTask<DurableRecordResult> RecordWaitingAsync(
+        AuthorizedDurableRequest<DurableOperationWaiting> waiting,
         CancellationToken cancellationToken);
 
     ValueTask<RecoveryEvidenceResult> LoadEvidenceAsync(
-        DurableOperationAddress address,
+        AuthorizedDurableRequest<DurableOperationAddress> address,
         CancellationToken cancellationToken);
 }
 
@@ -315,6 +321,76 @@ handoff, journal access, and reconciliation are protected operations and use the
 authority selected from the captured `DurableExecutionContext.Authorization`;
 their effecting adapters validate the supplied grant again.
 
+### Handlers and mid-operation evidence
+
+```csharp
+namespace AgentKit;
+
+public interface IDurableOperationHandler
+{
+    DurableOperationName OperationName { get; }
+
+    ValueTask<DurableOperationResult> InvokeAsync(
+        DurableInvocationContext context,
+        CancellationToken cancellationToken);
+}
+
+public sealed record DurableInvocationContext
+{
+    RecoverableOperationDescriptor Operation { get; }
+    IExecutionLease Lease { get; }
+    IDurableCheckpointWriter Checkpoints { get; }
+    HookDispatchContext? Hooks { get; }
+}
+
+public interface IDurableCheckpointWriter
+{
+    DurableOperationBinding Binding { get; }
+    FencingToken FencingToken { get; }
+
+    ValueTask<DurableRecordResult> RecordCheckpointAsync(
+        DurableCheckpointKind kind,
+        OperationPayload state,
+        CancellationToken cancellationToken);
+
+    ValueTask<DurableRecordResult> RecordWaitingAsync(
+        DurableWaitCondition condition,
+        CancellationToken cancellationToken);
+}
+```
+
+A handler owns the effect and nothing else. The coordinator owns the fenced
+journal, the execution lease, the captured authorization, and checkpoint
+identity, so it hands each invocation a writer bound to exactly that attempt
+rather than any of those collaborators. A handler can therefore record a
+semantic boundary it reached or a condition it is waiting on, but it cannot
+write under a generation it never acquired, address a record to another
+operation, or bypass the authority named by the operation's captured
+authorization. The writer returns a typed `DurableRecordResult` rather than
+throwing on refusal so a handler that lost ownership can see
+`DurableRecordFenced` and stop. It is revoked when the invocation returns, so a
+writer captured into background work refuses instead of committing under a lease
+the coordinator may have released. A checkpoint replaces the operation's
+complete recorded state; writes are not ordered relative to each other, so a
+handler that needs order awaits each write.
+
+This replaced an earlier `InvokeAsync(descriptor, lease)` shape that gave a
+handler no way to write mid-operation evidence at all. Promotion, settlement,
+activation, and approval waits are exactly mid-operation events, which is why
+the break was made before any of them journaled.
+
+Each checkpoint is authorized with the effect the journal recomputes and
+enforces: start is `Create`, a checkpoint is `Append`, a wait is `Mutate`, and
+the terminal record is `Append`. A grant for any other effect is refused at the
+journal.
+
+A boundary that must not proceed without its evidence calls
+`DurableRecordResult.ThrowIfNotRecorded()` before its effect. The model attempt,
+each tool call, and compaction activation do; a refused or fenced checkpoint
+aborts the boundary before the provider, tool, or session append is reached. A
+boundary whose checkpoint only confirms an effect that already happened, such as
+settlement, does not undo that effect when the record is refused.
+
 Turn identity is causal and optional because some durable work occurs between
 turns; it is persisted unchanged on descriptors, checkpoints, evidence, and
 leases whenever present. A durable binding accepts an
@@ -339,8 +415,9 @@ supplying one this worker has not acquired. Lease-store expiry/CAS and
 reconciliation govern takeover, and a stale prior fence never starts a new
 effect. An absent fence is not a claim that backing storage is local and does
 not weaken captured-grant, audience, resource, fingerprint, fresh-receipt, or
-required-audit validation. This describes the intended adapter contract; current
-abstractions do not yet implement those protected ingress checks.
+required-audit validation. The first-party journals implement these protected
+ingress checks: every write consumes its grant, presents its fence, and is
+audited before it is acknowledged.
 
 AgentKit.Durability supplies sealed backend catalog/selector, coordinator,
 recovery coordinator, and fenced journal decorator classes. The central
@@ -568,6 +645,25 @@ lease require its current fencing token. Cancellation stops local awaiting and
 renewal, then records the true external state. It does not imply a handed-off
 backend operation was cancelled.
 
+## Simple composition
+
+`AgentKit.Simple` offers `WithDurability` for the local path. It registers the
+process-local in-memory journal, lease manager, and backend, the default
+recovery policy, and one profile enabling all seven first-party boundaries, then
+selects that profile on every hosted definition. It also registers the boundary
+handlers the profile needs whose owning package the simple composition does not
+otherwise compose (`AgentKit.IO` for promotion and settlement, compaction for
+activation), idempotently with each owner's own registration.
+
+The adapters are explicitly ephemeral: boundaries, checkpoints, and recovery
+decisions are real and inspectable, but nothing survives the process, so the
+sugar claims no crash recovery. An application that needs durable storage or
+cross-process ownership registers keyed SQLite or JSON adapters and calls
+`AddDurabilityProfile` on `AgentEngineBuilder.Services` instead. The journal is
+a protected boundary and needs a grant store and audit dispatcher, so the sugar
+is paired with `UseLocalDevelopmentDefaults` or an explicit security
+composition.
+
 ## Composition validation and unsupported behavior
 
 Durability remains optional. Once an agent definition selects a durability
@@ -576,6 +672,12 @@ runtime selector, recovery policy, referenced keyed backend, codec for every
 enabled operation version, security authority, hook dispatcher, `TimeProvider`,
 ID generators, and required audit/event persistence. Distributed ownership
 requires backend, journal, and store fencing support.
+
+Validation also requires a registered `IDurableOperationHandler` for every
+operation name a selected profile enables
+(`agentkit.durability.handler.missing`). A profile that lists a boundary
+promises evidence for it, and without a handler the coordinator could only
+refuse that boundary in the middle of a run.
 
 Validation also requires the captured profile version and every backend,
 journal, lease-manager, recovery-policy, definition, configuration, and security
@@ -601,12 +703,66 @@ Model requests, tool calls, compaction, approval waits, and selected hooks may
 become durable operations. Pure deterministic preparation normally replays from
 captured manifests rather than serializing the runtime object graph.
 
-The first-party loop journals two of these: `agentkit.loop.model_request` for a
-turn's single model attempt and `agentkit.loop.tool_call` for each requested
-call. A boundary is journaled only when the selected profile enables its name,
-so durability is additive and never changes what the loop computes. Their
-payloads are manifests of identities and counts, because prompts, tool
-arguments, and results are content and never enter a durable record.
+First-party components journal seven boundaries through one shared mechanism,
+`DurableBoundaryScope` in `AgentKit.Abstractions`. A component resolves its
+definition's profile once, asks whether the profile enables the boundary's name,
+and wraps the work in the coordinator's acceptance, dispatch, and terminal
+commit. The scope publishes the live continuation into an engine-wide
+`DurableBoundaryRegistry` for exactly one operation identity; the
+`DurableBoundaryHandler` subclasses bridge the coordinator to it. A recovering
+process holds no continuation and refuses rather than inventing a terminal
+record, which is what stops a recovered operation from being replayed without
+its live state.
+
+| Operation name                       | Owner and call site                           | Checkpoint written                   |
+| ------------------------------------ | --------------------------------------------- | ------------------------------------ |
+| `agentkit.engine.run_admission`      | `AgentKit` facade, after acceptance commits   | `InputAdmitted`                      |
+| `agentkit.io.input_promotion`        | loop, around `IInputCoordinator.PromoteAsync` | `InputAdmitted` when input committed |
+| `agentkit.loop.model_request`        | loop, around each model attempt               | `ContextManifestCreated`             |
+| `agentkit.loop.tool_call`            | loop, around each requested call              | `ToolCallRecorded`                   |
+| `agentkit.compaction.activation`     | compaction activation coordinator             | `CompactionActivated`, before append |
+| `agentkit.permissions.approval_wait` | approval-wait recorder                        | a waiting record, not a checkpoint   |
+| `agentkit.io.run_settlement`         | loop, after the run's outcome is determined   | `RunSettled`                         |
+
+A boundary is journaled only when the selected profile enables its name, so
+durability is additive and never changes what a component computes. Payloads are
+manifests of identities and counts, because prompts, tool arguments, results,
+approval prompts, and requested resources are content and never enter a durable
+record. Every boundary is declared non-idempotent: a started attempt with no
+terminal record has an unknown effect, so recovery escalates to an operator
+instead of replaying it.
+
+The approval wait records `DefinitelyNotPerformed` certainty through
+`RecordWaitingAsync`, naming the pending approval as its external reference. It
+is evidence, not authority: it grants, widens, and consumes nothing.
+
+**Recorder deviation.** The approval wait is recorded by an
+`IApprovalWaitRecorder` (`DurableApprovalWaitRecorder` in
+`AgentKit.Permissions`) that the component observing a
+`SecurityApprovalRequired` decision calls; the first-party tool executor is that
+component. It is deliberately not recorded inside `SecurityAuthority`. The
+coordinator authorizes every one of its own journal writes through the security
+authority, so an authority that itself called the coordinator would make the two
+construct each other (a service-graph cycle the composition rules forbid, and
+one that deadlocks the container) and would let a deferred journal write journal
+its own wait. Consumers that observe a deferral and want a durable wait inject
+the recorder; the authority never does.
+
+**Tool-call recording and the journal.** The `agentkit.loop.tool_call` boundary
+and the tool runtime's `IToolCallRecorder` write different facts to different
+stores, and neither repeats the other. The journal's `ToolCallRecorded`
+checkpoint is a manifest of identities written before a requested call enters
+the executor, so recovery can tell a call that never reached the tool pipeline
+from one that did. The accepted `ToolCallAcceptedSessionEntry` is the call's
+authoritative acceptance fact in the session record: it is committed after
+authorization and immediately before the invoker starts, and carries the
+resolved tool, declared effects, external idempotency key, grant identity, and
+validated-argument fingerprint. A `ToolCallTerminalSessionEntry` closes it. Read
+together, an accepted entry with no terminal entry is the "effect may have
+started" evidence this document's recovery table reconciles, and a journal
+checkpoint with no accepted entry proves the call was rejected or never
+authorized. The recorder never writes through the journal and the journal never
+writes session entries, so the coordinator's own authorization remains acyclic.
 
 Useful checkpoints occur after admission and promotion, context manifest
 creation, provider terminal validation, tool-call recording, every terminal tool
@@ -617,8 +773,12 @@ stream deltas are not required to reconstruct stable state.
 
 Recovery follows evidence. Work definitely not started may begin. An operation
 with a supported idempotency key may be reconciled or retried. A terminal result
-whose commit is missing may be committed without reinvocation. Work accepted by
-an external durable owner resumes through that owner.
+whose commit is missing may be committed without reinvocation. An operation
+whose evidence already shows a settled state (`Completed` or `Faulted`) recovers
+as its recorded result and writes nothing: re-stamping a committed terminal
+record under a newer fencing generation would ask the journal to replace it with
+a different one. Work accepted by an external durable owner resumes through that
+owner.
 
 A started non-idempotent operation with unknown outcome is not retried. It
 requires reconciliation or operator action. Exactly-once is not achieved by

@@ -3,6 +3,13 @@
 
 namespace AgentKit.Simple.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+using AgentKit.TestSupport;
+
+using Microsoft.Extensions.Logging;
+
 /// <summary>Verifies AgentEngineExtensions behavior and contracts.</summary>
 public sealed class AgentEngineExtensionsTests
 {
@@ -35,7 +42,7 @@ public sealed class AgentEngineExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"],"additionalProperties":false}""");
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
         await using var engine = builder.Build();
 
         var triage = await engine.AskAsync<Triage>("Classify: my invoice is wrong", TestContext.Current.CancellationToken);
@@ -54,7 +61,7 @@ public sealed class AgentEngineExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object","properties":{"category":{"type":"string"},"priority":{"type":"integer"}},"required":["category","priority"]}""");
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
         await using var engine = builder.Build();
 
         var result = await engine.SendAsync("Classify this", TestContext.Current.CancellationToken);
@@ -74,7 +81,7 @@ public sealed class AgentEngineExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object"}""", maximumRepairAttempts: 1);
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
         await using var engine = builder.Build();
 
         var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync<Triage>("Classify", TestContext.Current.CancellationToken));
@@ -103,7 +110,7 @@ public sealed class AgentEngineExtensionsTests
             .UseLocalDevelopmentDefaults()
             .UseOpenAI("sk-test", "gpt-4o-mini")
             .WithOutput<Triage>(/*lang=json,strict*/ """{"type":"object"}""");
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
         await using var engine = builder.Build();
 
         var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync<string>("hi", TestContext.Current.CancellationToken));
@@ -224,14 +231,71 @@ public sealed class AgentEngineExtensionsTests
         exception.Message.ShouldContain("UseLocalDevelopmentDefaults");
     }
 
-    private static AgentEngine Engine(HttpMessageHandler handler, int maxTurns = 4, string apiKey = "sk-test")
+    [Fact]
+    public async Task AskAsync_WhenTheTurnSucceeds_EmitsASimpleAskActivityAndLogWithoutConversationText()
+    {
+        var logger = new RecordingLogger<AgentEngineExtensionsTests>();
+        await using var engine = Engine(new StubOpenAIHandler("classified-reply-5521"), logger: logger);
+        using var activities = CollectSimpleAsk();
+
+        var reply = await engine.AskAsync("classified-question-8842", TestContext.Current.CancellationToken);
+
+        reply.ShouldBe("classified-reply-5521");
+        activities.Snapshot().ShouldContain(static observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), "succeeded"));
+        var entry = logger.Snapshot().Single(static candidate => candidate.EventId.Id is 27000 or 27001);
+        entry.EventId.Id.ShouldBe(27000);
+        SignalAssertions.ShouldNotContainContent(
+            activities.Snapshot(), logger.Snapshot(), [], "classified-reply-5521", "classified-question-8842");
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenTheTurnFails_RecordsTheTypedFailureWithoutLeakingTheProviderSecret()
+    {
+        var logger = new RecordingLogger<AgentEngineExtensionsTests>();
+        await using var engine = Engine(new ThrowingHandler(), apiKey: "sk-super-secret", logger: logger);
+        using var activities = CollectSimpleAsk();
+
+        _ = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hi", TestContext.Current.CancellationToken));
+
+        activities.Snapshot().ShouldContain(static observation =>
+            observation.Status == ActivityStatusCode.Error
+            && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), "faulted")
+            && Equals(observation.GetTagItem(AgentKitTagNames.ErrorType), typeof(SimpleAgentException).FullName));
+        var entry = logger.Snapshot().Single(static candidate => candidate.EventId.Id is 27000 or 27001);
+        entry.EventId.Id.ShouldBe(27001);
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), [], "sk-super-secret");
+    }
+
+    private static ActivityCollector CollectSimpleAsk() =>
+        new(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.SimpleAsk);
+
+    private sealed class SingleLoggerFactory(ILogger logger): ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
+
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private static AgentEngine Engine(HttpMessageHandler handler, int maxTurns = 4, string apiKey = "sk-test", ILogger? logger = null)
     {
         var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI(apiKey, "gpt-4o-mini")
             .WithInstructions("Be brief.")
             .WithMaxTurns(maxTurns);
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
+        if (logger is not null)
+        {
+            _ = builder.Services.Replace(ServiceDescriptor.Singleton<ILoggerFactory>(new SingleLoggerFactory(logger)));
+        }
+
         return builder.Build();
     }
 

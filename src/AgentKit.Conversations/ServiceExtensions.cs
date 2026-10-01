@@ -32,14 +32,10 @@ public static class ServiceExtensions
 
             _ = services.AddOptions<ConversationSessionOptions>()
                 .Configure(configure)
-                .Validate(static options => options.AgentId != default, "AgentId must be set.")
+                .Validate(static options => options.Agent is not null, "Agent must be set.")
+                .Validate(static options => options.Configuration is not null, "Configuration must be set.")
                 .Validate(static options => options.Identity is not null, "Identity must be set.")
-                .Validate(static options => options.SecurityProfileKey != default, "SecurityProfileKey must be set.")
-                .Validate(static options => options.ConfigurationVersion != default, "ConfigurationVersion must be set.")
                 .Validate(static options => options.SessionProfile is not null, "SessionProfile must be set.")
-                .Validate(static options => options.ModelSelectionPolicy is not null, "ModelSelectionPolicy must be set.")
-                .Validate(static options => options.MaxTurns > 0, "MaxTurns must be positive.")
-                .Validate(static options => options.AttemptTimeout > TimeSpan.Zero, "AttemptTimeout must be positive.")
                 .ValidateOnStart();
 
             services.TryAddSingleton(TimeProvider.System);

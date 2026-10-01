@@ -43,8 +43,8 @@ projects above are composition collaborators, not necessarily dependencies.
   ownership and contracts.
 - [Coding-harness tools](../../docs/profiles/coding-harness/coding-harness-built-in-tools.md)
   — the application profile for these features.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

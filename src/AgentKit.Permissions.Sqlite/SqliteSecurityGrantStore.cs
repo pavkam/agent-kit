@@ -211,25 +211,6 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
     /// <inheritdoc/>
     /// <exception cref="ArgumentException"><paramref name="grant"/> or <paramref name="enforcement"/> contains malformed copied evidence that cannot be reconstructed exactly by the bounded codec.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="grant"/> or <paramref name="enforcement"/> contains an invalid scalar or exceeds a configured evidence bound.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before consumption commits.</exception>
-    /// <exception cref="SecurityGrantStoreUnavailableException">The exact target, schema, persisted evidence, lock, or provider operation cannot be validated safely.</exception>
-    /// <remarks>The adapter owns and disposes the per-call connection and immediate transaction. This legacy operation retains no enforcement-intent receipt, so an uncertain persistence acknowledgement cannot be retried automatically as proof of fresh effect authority.</remarks>
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateArguments(grant, enforcement);
-        ArgumentException.ThrowIfNotPersistable(grant, _settings);
-        ArgumentException.ThrowIfNotPersistable(enforcement, _settings);
-        var enforcementPayload = SqliteSecurityGrantCodec.EncodeEnforcement(enforcement, _settings);
-        return ConsumeWithLifecycleAuditAsync(
-            grant, enforcement, enforcementPayload, null, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    /// <exception cref="ArgumentException"><paramref name="grant"/> or <paramref name="enforcement"/> contains malformed copied evidence that cannot be reconstructed exactly by the bounded codec.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="grant"/> or <paramref name="enforcement"/> contains an invalid scalar or exceeds a configured evidence bound.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before consumption and receipt persistence commit together.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The exact target, schema, persisted evidence, lock, or provider operation cannot be validated safely.</exception>
     /// <remarks>The adapter owns and disposes the per-call connection and immediate transaction. After an uncertain acknowledgement, recovery presents the exact same grant, enforcement, and intent; a reconciled receipt is historical evidence and never fresh authority to repeat the protected effect.</remarks>
@@ -326,40 +307,36 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
         byte[] enforcementPayload,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
-        var assessment = await ExecuteAsync(
-            intent is null ? "consume_assess" : "consume_intent_assess",
+        var refusal = await ExecuteAsync(
+            "consume_assess",
             () => AssessConsumption(grant, enforcement, intent, cancellationToken),
             grant,
             intent,
             null).ConfigureAwait(false);
-        if (assessment.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
+        if (refusal is not null)
         {
-            await EmitGrantLifecycleAsync(
-                grant,
-                SecurityAuditOutcome.Denied,
-                _timeProvider.GetUtcNow(),
-                cancellationToken).ConfigureAwait(false);
-            return assessment;
-        }
-
-        if (assessment.Status is GrantConsumptionStatus.Consumed)
-        {
-            if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
+            if (refusal.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
             {
-                return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
+                await EmitGrantLifecycleAsync(
+                    grant,
+                    SecurityAuditOutcome.Denied,
+                    _timeProvider.GetUtcNow(),
+                    cancellationToken).ConfigureAwait(false);
             }
+
+            return refusal;
         }
 
-        if (assessment.Status is not GrantConsumptionStatus.Consumed)
+        if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
         {
-            return assessment;
+            return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
         }
 
         var committed = await ExecuteAsync(
-            intent is null ? "consume" : "consume_intent",
+            "consume",
             () =>
             {
                 RequireReadyForWrites();
@@ -380,10 +357,12 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         return committed;
     }
 
-    private GrantConsumptionResult AssessConsumption(
+    /// <summary>Decides, without mutating, whether a consumption may proceed.</summary>
+    /// <returns>Null when the grant is ready for consumption; otherwise the terminal refusal or reconciliation result.</returns>
+    private GrantConsumptionResult? AssessConsumption(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
         RequireReadyForWrites();
@@ -408,19 +387,16 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
                 "The security grant evidence does not match its authoritative record.");
         }
 
-        if (intent is not null)
+        var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+        var historical = ReadReceipt(connection, transaction, intent.Id);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (historical is not null)
         {
-            var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
-            var historical = ReadReceipt(connection, transaction, intent.Id);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (historical is not null)
-            {
-                return ReceiptMatches(historical, grant, enforcement, intent, effectFingerprint)
-                    ? Result(GrantConsumptionStatus.Reconciled, currentRemainingUses,
-                        "The enforcement intent was reconciled without granting another effect.", historical)
-                    : Result(GrantConsumptionStatus.Mismatch, currentRemainingUses,
-                        "The enforcement intent identity was reused with different evidence.");
-            }
+            return ReceiptMatches(historical, grant, enforcement, intent, effectFingerprint)
+                ? Result(GrantConsumptionStatus.Reconciled, currentRemainingUses,
+                    "The enforcement intent was reconciled without granting another effect.", historical)
+                : Result(GrantConsumptionStatus.Mismatch, currentRemainingUses,
+                    "The enforcement intent identity was reused with different evidence.");
         }
 
         if (revoked || enforcement.RevocationVersion != grant.RevocationVersion)
@@ -438,8 +414,7 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
                 "The concrete effect does not match the security grant.")
             : currentRemainingUses == 0
                 ? Result(GrantConsumptionStatus.Exhausted, 0, "The security grant has no remaining uses.")
-                : Result(GrantConsumptionStatus.Consumed, currentRemainingUses,
-                    "The security grant is ready for consumption.");
+                : null;
     }
 
     private async ValueTask<SecurityGrant?> ReadGrantForAuditAsync(
@@ -495,7 +470,7 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
         byte[] enforcementPayload,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
         Debug.Assert(grant is not null, "Caller-validated grant evidence is required.");
@@ -521,21 +496,14 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
             return Result(GrantConsumptionStatus.Tampered, currentRemainingUses, "The security grant evidence does not match its authoritative record.");
         }
 
-        ContentHash? effectFingerprint = intent is null
-            ? null
-            : SecurityEnforcementBinding.Fingerprint(enforcement, intent);
-        if (intent is not null)
+        var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+        var historical = ReadReceipt(connection, transaction, intent.Id);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (historical is not null)
         {
-            Debug.Assert(effectFingerprint.HasValue, "An intent always has a computed effect fingerprint.");
-            var expectedFingerprint = effectFingerprint.GetValueOrDefault();
-            var historical = ReadReceipt(connection, transaction, intent.Id);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (historical is not null)
-            {
-                return ReceiptMatches(historical, grant, enforcement, intent, expectedFingerprint)
-                    ? Result(GrantConsumptionStatus.Reconciled, currentRemainingUses, "The enforcement intent was reconciled without granting another effect.", historical)
-                    : Result(GrantConsumptionStatus.Mismatch, currentRemainingUses, "The enforcement intent identity was reused with different evidence.");
-            }
+            return ReceiptMatches(historical, grant, enforcement, intent, effectFingerprint)
+                ? Result(GrantConsumptionStatus.Reconciled, currentRemainingUses, "The enforcement intent was reconciled without granting another effect.", historical)
+                : Result(GrantConsumptionStatus.Mismatch, currentRemainingUses, "The enforcement intent identity was reused with different evidence.");
         }
 
         if (revoked || enforcement.RevocationVersion != grant.RevocationVersion)
@@ -558,17 +526,12 @@ public sealed class SqliteSecurityGrantStore: ISecurityGrantStore
         }
 
         var remainingUses = currentRemainingUses - 1;
-        var receipt = intent is null
-            ? null
-            : new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement,
-                intent.RequiredFence, effectFingerprint!.Value, now);
+        var receipt = new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement,
+            intent.RequiredFence, effectFingerprint, now);
         var result = Result(GrantConsumptionStatus.Consumed, remainingUses,
-            intent is null ? "The security grant was consumed." : "The security grant and enforcement intent were consumed.", receipt);
+            "The security grant and enforcement intent were consumed.", receipt);
         cancellationToken.ThrowIfCancellationRequested();
-        if (receipt is not null)
-        {
-            InsertReceipt(connection, transaction, receipt, enforcementPayload);
-        }
+        InsertReceipt(connection, transaction, receipt, enforcementPayload);
         UpdateRemainingUses(connection, transaction, grant.Id, remainingUses);
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();

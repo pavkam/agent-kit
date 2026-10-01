@@ -1,0 +1,145 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Memory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Memory
+{
+    public sealed class AgentMemoryOptions
+    {
+        public AgentMemoryOptions() { }
+        public AgentKit.Memory.MemoryAcceptanceMode AcceptanceMode { get; set; }
+        public bool EnableQueryRewriting { get; set; }
+        public double EstimatedBytesPerToken { get; set; }
+        public System.TimeSpan GrantLifetime { get; set; }
+        public int MaximumRetrievalTokens { get; set; }
+        public int MaximumRetrievedBytes { get; set; }
+        public int MaximumRetrievedItems { get; set; }
+        public int MaximumSemanticRequestsPerOperation { get; set; }
+        public bool RequireExposureAuthorization { get; set; }
+    }
+    public enum MemoryAcceptanceMode
+    {
+        RequireExplicitPolicyAllow = 0,
+        AllowUnlessPolicyDenies = 1,
+    }
+    public enum MemoryEventDelivery
+    {
+        Observational = 0,
+        Required = 1,
+    }
+    public sealed class MemoryEventSinkRegistration : System.IEquatable<AgentKit.Memory.MemoryEventSinkRegistration>
+    {
+        public MemoryEventSinkRegistration(AgentKit.ComponentId id, int order, AgentKit.Memory.MemoryEventDelivery delivery, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime, System.Collections.Immutable.ImmutableArray<AgentKit.MemoryProfileKey> profiles = default) { }
+        public AgentKit.Memory.MemoryEventDelivery Delivery { get; }
+        public AgentKit.ComponentId Id { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.MemoryProfileKey> Profiles { get; }
+        public bool Equals(AgentKit.Memory.MemoryEventSinkRegistration? other) { }
+        public override int GetHashCode() { }
+        public bool Observes(AgentKit.MemoryProfileKey profile) { }
+    }
+    public static class MemoryPolicyProfileKeys
+    {
+        public static AgentKit.MemoryPolicyProfileKey FailClosed { get; }
+    }
+    public sealed class MemoryPolicyRegistration : System.IEquatable<AgentKit.Memory.MemoryPolicyRegistration>
+    {
+        public MemoryPolicyRegistration(AgentKit.MemoryPolicyProfileKey profile, AgentKit.ComponentId id, int order, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime) { }
+        public AgentKit.ComponentId Id { get; }
+        public Microsoft.Extensions.DependencyInjection.ServiceLifetime Lifetime { get; }
+        public int Order { get; }
+        public AgentKit.MemoryPolicyProfileKey Profile { get; }
+    }
+    public sealed class MemoryProfileOptions
+    {
+        public MemoryProfileOptions() { }
+        public AgentKit.DocumentStoreKey? DocumentStore { get; set; }
+        public AgentKit.ComponentKey<AgentKit.IEmbeddingRequestExecutor>? EmbeddingExecutorKey { get; set; }
+        public System.Collections.Generic.List<AgentKit.EmbeddingModelAlias> EmbeddingModels { get; set; }
+        public AgentKit.ComponentKey<AgentKit.IEmbeddingModelSelector>? EmbeddingSelectorKey { get; set; }
+        public bool EnableDurableMemory { get; set; }
+        public bool EnableQueryRewriting { get; set; }
+        public bool EnableRetrieval { get; set; }
+        public AgentKit.DataClassification? MaximumClassification { get; set; }
+        public int? MaximumRetrievalTokens { get; set; }
+        public int? MaximumRetrievedBytes { get; set; }
+        public int? MaximumRetrievedItems { get; set; }
+        public AgentKit.MemoryStoreKey? MemoryStore { get; set; }
+        public AgentKit.MemoryPolicyProfileKey PolicyProfile { get; set; }
+        public AgentKit.QueryRewriterKey? QueryRewriter { get; set; }
+        public bool? RequireExposureAuthorization { get; set; }
+        public AgentKit.ComponentKey<AgentKit.IRerankRequestExecutor>? RerankerExecutorKey { get; set; }
+        public AgentKit.ComponentKey<AgentKit.IRerankerSelector>? RerankerSelectorKey { get; set; }
+        public System.Collections.Generic.List<AgentKit.RerankerAlias> Rerankers { get; set; }
+        public System.Collections.Generic.List<AgentKit.RetrievalSourceKey> RetrievalSources { get; set; }
+        public System.Collections.Generic.List<AgentKit.VectorIndexKey> VectorIndexes { get; set; }
+        public AgentKit.MemoryProfileVersion Version { get; set; }
+    }
+    public static class MemoryRetrievalSourceKeys
+    {
+        public static AgentKit.RetrievalSourceKey Documents { get; }
+        public static AgentKit.RetrievalSourceKey DurableMemory { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentMemory(System.Action<AgentKit.Memory.AgentMemoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryProfile(AgentKit.MemoryProfileKey key, System.Action<AgentKit.Memory.MemoryProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryProfile(AgentKit.MemoryProfileKey key, System.Action<AgentKit.Memory.MemoryProfileOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryStore<TStore>(AgentKit.MemoryStoreKey key)
+                where TStore :  class, AgentKit.IMemoryStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryStore<TStore>(AgentKit.MemoryStoreKey key)
+                where TStore :  class, AgentKit.IMemoryStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDocumentStore<TStore>(AgentKit.DocumentStoreKey key)
+                where TStore :  class, AgentKit.IDocumentStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDocumentStore<TStore>(AgentKit.DocumentStoreKey key)
+                where TStore :  class, AgentKit.IDocumentStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddVectorIndex<TIndex>(AgentKit.VectorIndexKey key)
+                where TIndex :  class, AgentKit.IVectorIndex { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceVectorIndex<TIndex>(AgentKit.VectorIndexKey key)
+                where TIndex :  class, AgentKit.IVectorIndex { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRetrievalSource<TSource>(AgentKit.RetrievalSourceKey key)
+                where TSource :  class, AgentKit.IRetrievalSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceRetrievalSource<TSource>(AgentKit.RetrievalSourceKey key)
+                where TSource :  class, AgentKit.IRetrievalSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDurableMemoryRetrievalSource() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddDocumentRetrievalSource() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddQueryRewriter<TRewriter>(AgentKit.QueryRewriterDescriptor descriptor)
+                where TRewriter :  class, AgentKit.IQueryRewriter { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceQueryRewriter<TRewriter>(AgentKit.QueryRewriterDescriptor descriptor)
+                where TRewriter :  class, AgentKit.IQueryRewriter { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryEmbeddingSelector<TSelector>(AgentKit.ComponentKey<AgentKit.IEmbeddingModelSelector> key)
+                where TSelector :  class, AgentKit.IEmbeddingModelSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryEmbeddingExecutor<TExecutor>(AgentKit.ComponentKey<AgentKit.IEmbeddingRequestExecutor> key)
+                where TExecutor :  class, AgentKit.IEmbeddingRequestExecutor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryRerankerSelector<TSelector>(AgentKit.ComponentKey<AgentKit.IRerankerSelector> key)
+                where TSelector :  class, AgentKit.IRerankerSelector { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryRerankerExecutor<TExecutor>(AgentKit.ComponentKey<AgentKit.IRerankRequestExecutor> key)
+                where TExecutor :  class, AgentKit.IRerankRequestExecutor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryPolicy<TPolicy>(AgentKit.Memory.MemoryPolicyRegistration registration)
+                where TPolicy :  class, AgentKit.IMemoryPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryPolicy<TPolicy>(AgentKit.Memory.MemoryPolicyRegistration registration)
+                where TPolicy :  class, AgentKit.IMemoryPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMemoryEventSink<TSink>(AgentKit.Memory.MemoryEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IMemoryEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDocumentChunker<TChunker>()
+                where TChunker :  class, AgentKit.IDocumentChunker { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryCoordinator<TCoordinator>()
+                where TCoordinator :  class, AgentKit.IMemoryCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDocumentLifecycleCoordinator<TCoordinator>()
+                where TCoordinator :  class, AgentKit.IDocumentLifecycleCoordinator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceRetrievalPipeline<TPipeline>()
+                where TPipeline :  class, AgentKit.IRetrievalPipeline { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceRetrievalBudgetPolicy<TPolicy>()
+                where TPolicy :  class, AgentKit.IRetrievalBudgetPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryPolicyDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IMemoryPolicyDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryEventDispatcher<TDispatcher>()
+                where TDispatcher :  class, AgentKit.IMemoryEventDispatcher { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceMemoryProfileRuntimeSelector<TSelector>()
+                where TSelector :  class, AgentKit.IMemoryProfileRuntimeSelector { }
+        }
+    }
+}

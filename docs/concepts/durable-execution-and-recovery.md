@@ -91,6 +91,20 @@ result identities, invoke the effect, then atomically stage or commit the full
 outcome with the next total state. Hook replay contracts are separate; a hook
 whose result was not consumed durably may rerun.
 
+An operation's handler writes these mid-operation checkpoints, and any waiting
+record, only through the writer the coordinator hands that invocation. The
+writer is bound to one operation attempt and its fencing generation, is revoked
+when the invocation returns, and reports a typed refusal instead of throwing. A
+boundary whose evidence is what makes a later recovery honest MUST treat a
+refused or fenced write as fatal before its effect; a boundary that only
+confirms an effect that already happened MUST NOT undo that effect because the
+record was refused.
+
+A handler-initiated write is authorized with the effect its journal method
+enforces. A grant for a different effect is refused at the journal, so a writer
+whose authorization drifts from the journal journals nothing while appearing to
+succeed unless its result is checked.
+
 ## Recovery classification
 
 After failure, every nonterminal operation MUST be classified:
@@ -101,6 +115,7 @@ After failure, every nonterminal operation MUST be classified:
 | Started with idempotency key and queryable result | Reconcile, then retry/query                           |
 | Started, effect unknown, non-idempotent           | Do not retry; require operator/tool reconciliation    |
 | Terminal result exists, commit missing            | Idempotently commit without reinvocation              |
+| Terminal result committed and state settled       | Report the recorded result; write nothing             |
 | Complete outcome is durably staged out of order   | Materialize it when its source position is eligible   |
 | Durable external owner accepted handoff           | Resume waiting/query that owner                       |
 | Durable retry or deferred not-before state        | Return waiting; wake and re-drive after its condition |
@@ -209,6 +224,17 @@ arbitrary external effect executed exactly once.
   adapters fails composition without creating process-local substitutes.
 - A SQLite journal retains committed total state through reopen but does not
   authorize a second worker or prove an external effect stopped.
+- Process loss after a model request started but before its terminal record is
+  committed leaves a non-idempotent unknown effect: recovery requires an
+  operator and never calls the provider again.
+- Recovering an already-settled operation returns its recorded result without a
+  second terminal write or an effect.
+- A refused or fenced checkpoint before the model request, tool invocation, or
+  compaction append stops the boundary before that effect.
+- A selected profile that enables an operation no registered handler owns fails
+  composition instead of losing the boundary's evidence mid-run.
+- A deferred approval journals a not-performed wait naming the pending approval;
+  the durability coordinator's own writes cannot journal a wait for themselves.
 
 ## Related specifications
 

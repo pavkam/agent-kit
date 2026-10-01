@@ -68,9 +68,9 @@ dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 
 AgentKit is in alpha: the runtime, providers, tools, and storage work, the
 public API can still change, and the
-[current status](docs/getting-started.md#current-status) says what remains. The
-[documentation home](docs/index.md) covers architecture, concepts, the project
-catalog, and the provider reference.
+[current status](docs/getting-started.md#current-status) covers versioning and
+how to evaluate it. The [documentation home](docs/index.md) covers architecture,
+concepts, the project catalog, and the provider reference.
 
 ## Contributing
 

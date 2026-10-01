@@ -33,6 +33,7 @@ public sealed record ToolInvocationContext
     /// <param name="deadline">The instant by which this attempt must settle.</param>
     /// <param name="progress">The nonnull bounded live-progress reporter for this attempt.</param>
     /// <param name="sessionProfile">Optional captured session profile for session-backed invokers; null when not required.</param>
+    /// <param name="externalIdempotencyKey">The stable external key for keyed idempotency, present exactly when the descriptor declares <see cref="IdempotencyClassification.IdempotentWithKey"/>; otherwise null.</param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// An identity or <paramref name="toolVersion"/> is default, or <paramref name="attempt"/> is not positive.
     /// </exception>
@@ -59,7 +60,8 @@ public sealed record ToolInvocationContext
         DateTimeOffset invocationStartedAt,
         DateTimeOffset deadline,
         IToolProgressReporter progress,
-        SessionProfileSnapshot? sessionProfile = null)
+        SessionProfileSnapshot? sessionProfile = null,
+        IdempotencyKey? externalIdempotencyKey = null)
     {
         AcceptedToolCall.ValidateIdentities(agentId, sessionId, runId, turnId, operationId, callId);
         ArgumentNullException.ThrowIfNull(tool);
@@ -69,6 +71,14 @@ public sealed record ToolInvocationContext
         ValidateGrantScope(agentId, sessionId, runId, turnId, operationId, invocationGrant);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(attempt);
         ArgumentNullException.ThrowIfNull(progress);
+        ArgumentException.ThrowIfNotEqual(
+            externalIdempotencyKey.HasValue,
+            tool.Effects.Idempotency is IdempotencyClassification.IdempotentWithKey,
+            nameof(externalIdempotencyKey));
+        if (externalIdempotencyKey is { } key)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(externalIdempotencyKey));
+        }
 
         CallId = callId;
         Tool = tool;
@@ -81,7 +91,12 @@ public sealed record ToolInvocationContext
         Deadline = deadline;
         Progress = progress;
         SessionProfile = sessionProfile;
+        ExternalIdempotencyKey = externalIdempotencyKey;
     }
+
+    /// <summary>Gets the stable external idempotency key.</summary>
+    /// <value>Present exactly for keyed idempotency and identical across every attempt of the call, so an effecting host can deduplicate a replay; otherwise null.</value>
+    public IdempotencyKey? ExternalIdempotencyKey { get; }
 
     /// <summary>Gets the optional captured session profile.</summary>
     /// <value>Session-backed tools use this evidence; null when the invoker does not require it.</value>
@@ -162,14 +177,15 @@ public sealed record ToolInvocationContext
         && InvocationStartedAt == other.InvocationStartedAt
         && Deadline == other.Deadline
         && ReferenceEquals(Progress, other.Progress)
-        && SessionProfile == other.SessionProfile;
+        && SessionProfile == other.SessionProfile
+        && ExternalIdempotencyKey == other.ExternalIdempotencyKey;
 
     /// <summary>Returns a hash compatible with complete structural equality.</summary>
     /// <returns>A hash over every scalar/reference field.</returns>
     public override int GetHashCode()
     {
         var hash = HashCode.Combine(CallId, Tool, ToolVersion, InvocationGrant, Attempt, RequestedAt, InvocationStartedAt, Deadline);
-        return SessionProfile is null ? hash : HashCode.Combine(hash, SessionProfile);
+        return HashCode.Combine(hash, SessionProfile, ExternalIdempotencyKey);
     }
 
     /// <summary>Validates that a grant's scope is bound to the supplied identity and in-run correlation.</summary>

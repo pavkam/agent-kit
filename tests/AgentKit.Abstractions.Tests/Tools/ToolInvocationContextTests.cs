@@ -97,4 +97,47 @@ public sealed class ToolInvocationContextTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void Constructor_WhenToolDeclaresKeyedIdempotency_RoundTripsTheExternalKey()
+    {
+        var tool = KeyedDescriptor();
+        var context = new ToolInvocationContext(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, tool, tool.Version,
+            JsonDocument.Parse("{}").RootElement, Grant(), 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch.AddMinutes(1), Progress(), externalIdempotencyKey: new IdempotencyKey("key-1"));
+
+        context.ExternalIdempotencyKey.ShouldBe(new IdempotencyKey("key-1"));
+    }
+
+    [Fact]
+    public void Constructor_WhenKeyedToolHasNoExternalKey_ThrowsExactParameter()
+    {
+        var tool = KeyedDescriptor();
+
+        Should.Throw<ArgumentException>(() => new ToolInvocationContext(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, tool, tool.Version,
+            JsonDocument.Parse("{}").RootElement, Grant(), 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch.AddMinutes(1), Progress())).ParamName.ShouldBe("externalIdempotencyKey");
+    }
+
+    [Fact]
+    public void Constructor_WhenToolIsNotKeyedButKeyIsSupplied_ThrowsExactParameter()
+    {
+        var tool = Descriptor();
+
+        Should.Throw<ArgumentException>(() => new ToolInvocationContext(
+            TestAgentId, TestSessionId, TestRunId, TestTurnId, TestOperationId, CallId, tool, tool.Version,
+            JsonDocument.Parse("{}").RootElement, Grant(), 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch.AddMinutes(1), Progress(), externalIdempotencyKey: new IdempotencyKey("key-1"))).ParamName.ShouldBe("externalIdempotencyKey");
+    }
+
+    private static ToolDescriptor KeyedDescriptor()
+    {
+        var baseline = Descriptor();
+        return new ToolDescriptor(
+            baseline.Id, baseline.Version, baseline.Name, baseline.Description, baseline.InputSchema, baseline.OutputSchema,
+            new ToolEffects(ToolEffect.Mutating, IdempotencyClassification.IdempotentWithKey, null),
+            baseline.ExecutionHints, baseline.SourceId, baseline.Extensions);
+    }
 }

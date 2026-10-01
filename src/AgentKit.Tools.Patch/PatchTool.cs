@@ -27,6 +27,8 @@ public sealed class PatchTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(PatchToolLog.Completed, PatchToolLog.Cancelled, PatchToolLog.Faulted);
+    private readonly ILogger<PatchTool> _logger;
     private readonly IFileSnapshotReader _snapshotReader;
     private readonly IWorkspacePatchApplier _applier;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -42,6 +44,7 @@ public sealed class PatchTool: IToolInvoker
     /// <param name="mutationIds">The per-entry mutation identity generator.</param>
     /// <param name="timeProvider">The deterministic authority-deadline clock.</param>
     /// <param name="options">The validated parser and complete-file bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is not positive.</exception>
     public PatchTool(
@@ -50,7 +53,8 @@ public sealed class PatchTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<WorkspaceMutationId> mutationIds,
         TimeProvider timeProvider,
-        IOptions<PatchToolOptions> options)
+        IOptions<PatchToolOptions> options,
+        ILogger<PatchTool> logger)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -58,6 +62,7 @@ public sealed class PatchTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(mutationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumPatchBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumEntries);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumFileBytes);
@@ -69,6 +74,7 @@ public sealed class PatchTool: IToolInvoker
         _mutationIds = mutationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration.</summary>
@@ -93,16 +99,16 @@ public sealed class PatchTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("patch"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

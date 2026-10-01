@@ -23,6 +23,7 @@ public static class ServiceExtensions
         public IServiceCollection AddReadTool(Action<ReadFileToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<ReadFileToolOptions>()
                 .Validate(static value => value.DefaultMaximumLines > 0, "DefaultMaximumLines must be positive.")
                 .Validate(static value => value.MaximumLines > 0, "MaximumLines must be positive.")

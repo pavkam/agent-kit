@@ -22,7 +22,7 @@ internal static class OperatingSystemFileOperations
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = options.Roots.FirstOrDefault(r => r.RootId == operation.ResolvedTarget.RootId);
-        if (root is null || !PosixFileOperations.IsUnderRoot(operation.ResolvedTarget.HostTargetPath, root.HostRootPath))
+        if (root is null || !PosixFileOperations.IsResolvedUnderRoot(operation.ResolvedTarget, root.HostRootPath))
         {
             return new FileReadOpenDenied("The resolved target is outside the configured file root.");
         }
@@ -53,43 +53,23 @@ internal static class OperatingSystemFileOperations
         var effectiveMax = Math.Min(
             operation.Request.Bounds.MaxBytes,
             options.Bounds.MaximumReadBytes);
-        var probe = PosixFileOperations.TryOpenRegularFileReadOnly(operation.ResolvedTarget.HostTargetPath);
+        var probe = PosixFileOperations.TryOpenRegularFileReadOnly(
+            root.HostRootPath,
+            operation.ResolvedTarget.RelativePath.Value,
+            cancellationToken);
         return probe.Status switch
         {
             PosixFileOperations.PosixOpenReadStatus.NotFound => new FileReadOpenNotFound(),
             PosixFileOperations.PosixOpenReadStatus.Denied => new FileReadOpenDenied(probe.Message!),
             PosixFileOperations.PosixOpenReadStatus.Unsupported => new FileReadOpenFailed(probe.Message!),
             PosixFileOperations.PosixOpenReadStatus.Failed => new FileReadOpenFailed(probe.Message!),
-            PosixFileOperations.PosixOpenReadStatus.Success => OpenBoundedHandle(
-                operation.ResolvedTarget.HostTargetPath,
-                probe.Length,
-                effectiveMax),
+            PosixFileOperations.PosixOpenReadStatus.Success => OpenBoundedHandle(probe.Stream!, probe.Length, effectiveMax),
             _ => new FileReadOpenFailed("The file could not be read."),
         };
     }
 
-    private static FileReadHandleOpened OpenBoundedHandle(string hostTargetPath, long snapshotLength, long effectiveMax)
+    private static FileReadHandleOpened OpenBoundedHandle(FileStream fileStream, long snapshotLength, long effectiveMax)
     {
-        FileStream fileStream;
-        try
-        {
-            fileStream = new FileStream(
-                hostTargetPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 81920,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-        }
-        catch (FileNotFoundException)
-        {
-            throw new UnreachableException("The target was observed then disappeared before the read handle opened.");
-        }
-        catch (IOException)
-        {
-            throw new UnreachableException("The target could not be reopened after authorization.");
-        }
-
         var bounded = new OperatingSystemBoundedReadStream(fileStream, snapshotLength, effectiveMax);
         var metadata = new FileMetadata(snapshotLength, lastModifiedUtc: null, contentFingerprint: null);
         return new FileReadHandleOpened(new OperatingSystemFileReadHandle(metadata, bounded));

@@ -11,20 +11,11 @@ namespace AgentKit.Conversations;
 /// </remarks>
 public sealed record ConversationToolCallEvent: ConversationEvent
 {
-    /// <summary>Initializes a tool-call event.</summary>
-    /// <param name="toolName">The nonblank display name of the requested tool.</param>
-    /// <param name="argumentsJson">The requested arguments, serialized as JSON text.</param>
-    /// <exception cref="ArgumentException"><paramref name="toolName"/> is null, empty, or consists only of whitespace.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="argumentsJson"/> is <see langword="null"/>.</exception>
-    public ConversationToolCallEvent(string toolName, string argumentsJson)
-        : this(default, toolName, argumentsJson)
-    {
-    }
-
     /// <summary>Initializes a correlated tool-call event.</summary>
     /// <param name="callId">The typed call identity preserved through execution and result projection.</param>
     /// <param name="toolName">The nonblank display name of the requested tool.</param>
     /// <param name="argumentsJson">The requested arguments, serialized as JSON text.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="callId"/> is the default value.</exception>
     /// <exception cref="ArgumentException"><paramref name="toolName"/> is blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="argumentsJson"/> is null.</exception>
     public ConversationToolCallEvent(ToolCallId callId, string toolName, string argumentsJson)
@@ -37,6 +28,7 @@ public sealed record ConversationToolCallEvent: ConversationEvent
     /// <param name="toolName">The nonblank alias advertised to the model.</param>
     /// <param name="argumentsJson">The requested arguments serialized as JSON text.</param>
     /// <param name="presentation">The optional bounded observational presentation.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="callId"/> is the default value.</exception>
     /// <exception cref="ArgumentException"><paramref name="toolName"/> is blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="argumentsJson"/> is null.</exception>
     public ConversationToolCallEvent(
@@ -45,6 +37,7 @@ public sealed record ConversationToolCallEvent: ConversationEvent
         string argumentsJson,
         ToolPresentation? presentation)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(callId, default);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(argumentsJson);
         CallId = callId;
@@ -53,7 +46,7 @@ public sealed record ConversationToolCallEvent: ConversationEvent
         Presentation = presentation;
     }
 
-    /// <summary>Gets the typed call identity, or the default value for events created by the legacy constructor.</summary>
+    /// <summary>Gets the typed call identity preserved through execution and result projection.</summary>
     public ToolCallId CallId { get; init; }
 
     /// <summary>Gets the display name of the requested tool.</summary>

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.XAI;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.OpenAICompatible;
 
 /// <summary>
@@ -17,7 +18,7 @@ public sealed class XAIEmbeddingModel: OpenAICompatibleEmbeddingModelBase
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
     /// <param name="credentials">Resolves the current xAI credential.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <param name="profileSelector"></param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
@@ -27,10 +28,10 @@ public sealed class XAIEmbeddingModel: OpenAICompatibleEmbeddingModelBase
         IOpenAIEmbeddingRequestTranslator translator,
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         IProviderProfileRuntimeSelector? profileSelector = null)
-        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider, profileSelector)
+        : base(descriptor, profile, translator, responseParser, credentials, egress, timeProvider, profileSelector)
     {
     }
 }

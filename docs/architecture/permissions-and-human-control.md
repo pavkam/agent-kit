@@ -296,11 +296,12 @@ public interface ISecurityAuthority
 }
 ```
 
-**Interim types (WS3-C1).** The following shapes are not shown elsewhere in this
-document. They are additive contracts introduced ahead of the chunks that wire
-them into `ISecurityPolicy`, the policy catalog, and the authority so that later
-chunks add behavior to an existing shape rather than inventing it under schedule
-pressure.
+**Policy and approval-channel types.** The following shapes are not shown
+elsewhere in this document. `SecurityPolicyContext` is the parameter
+`ISecurityPolicy.EvaluateAsync` receives, `SecurityAllowConstraints` is
+`SecurityPolicyResult.Constraints` and the authority intersects it across
+policies, and the snapshot results are what the policy catalog and selector
+return.
 
 ```csharp
 namespace AgentKit;
@@ -315,13 +316,13 @@ public enum ApprovalAuthenticationMethod
     ApiCredential,
 }
 
-/// <summary>Carries the immutable evidence a policy needs to evaluate one request. WS3-C3 adds this as a parameter to <see cref="ISecurityPolicy.EvaluateAsync"/>.</summary>
+/// <summary>Carries the immutable evidence a policy needs to evaluate one request.</summary>
 public sealed record SecurityPolicyContext(
     SecurityAuthorizationContext Authorization,
     SecurityRevocationVersion RevocationVersion,
     DateTimeOffset EvaluatedAt);
 
-/// <summary>One policy's optional intersecting bounds for an allow or approval-conditioned proposal. WS3-C3 adds this as <c>SecurityPolicyResult.Constraints</c> and wires intersection into the authority.</summary>
+/// <summary>One policy's optional intersecting bounds for an allow or approval-conditioned proposal.</summary>
 public sealed record SecurityAllowConstraints(
     ImmutableArray<ProtectedResource>? Resources,
     SecurityEffect? Effect,
@@ -479,9 +480,15 @@ public interface IApprovalStore
 
 public interface ISecurityGrantStore
 {
+    ValueTask RegisterAsync(
+        SecurityGrant grant,
+        CancellationToken cancellationToken);
+
+    // One operation: consumption and the permission-to-start receipt commit together.
     ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken);
 
     ValueTask<GrantRevocationResult> RevokeAsync(
@@ -491,15 +498,18 @@ public interface ISecurityGrantStore
 }
 ```
 
-**Interim types (WS3-C1).** The following shapes are not shown elsewhere in this
-document. They are additive contracts that later chunks (C6a grant
-issuer/decision store, C7a typed revocation, C8a handler dispatcher, C8b durable
-resolution) wire into the authority and broker.
+**Authority and broker collaborators.** The following shapes are not shown
+elsewhere in this document. The authority mints grants through
+`ISecurityGrantIssuer` and records every terminal decision through
+`ISecurityDecisionStore`, the broker routes requests through
+`IApprovalHandlerDispatcher` and resolves durable approvals through
+`IApprovalBroker.ResolveAsync`, and grant stores revoke through the typed
+`RevokeAsync` overload.
 
 ```csharp
 namespace AgentKit;
 
-/// <summary>Routes one approval request to the configured additive handlers and returns the first decisive outcome. WS3-C8a wires this into <c>ApprovalBroker</c> in place of a single injected handler.</summary>
+/// <summary>Routes one approval request to the configured additive handlers and returns the first decisive outcome.</summary>
 public interface IApprovalHandlerDispatcher
 {
     ValueTask<ApprovalHandlerResult> TryResolveAsync(
@@ -507,7 +517,7 @@ public interface IApprovalHandlerDispatcher
         CancellationToken cancellationToken);
 }
 
-/// <summary>Mints bounded security grants from an already-decided allow or approved scope. WS3-C6a extracts this from the authority's inline minting logic.</summary>
+/// <summary>Mints bounded security grants from an already-decided allow or approved scope.</summary>
 public interface ISecurityGrantIssuer
 {
     ValueTask<SecurityGrant> IssueAsync(
@@ -518,7 +528,7 @@ public interface ISecurityGrantIssuer
         CancellationToken cancellationToken);
 }
 
-/// <summary>Durably records every terminal security decision, independent of grant, approval, and audit-sink storage. WS3-C6a wires this into the authority.</summary>
+/// <summary>Durably records every terminal security decision, independent of grant, approval, and audit-sink storage.</summary>
 public interface ISecurityDecisionStore
 {
     ValueTask RecordAsync(SecurityDecision decision, CancellationToken cancellationToken);
@@ -537,7 +547,7 @@ public sealed record GrantAlreadyRevoked(GrantId GrantId): GrantRevocationResult
 public sealed record GrantRevocationNotFound(GrantId GrantId): GrantRevocationResult;
 public sealed record GrantRevocationUnavailable(GrantId GrantId, string SafeReason): GrantRevocationResult;
 
-/// <summary>Closed terminal result of resolving one durable approval request through the broker's durable resolution path. WS3-C8b adds <c>IApprovalBroker.ResolveAsync(ApprovalResponse, CancellationToken)</c> returning this type.</summary>
+/// <summary>Closed terminal result of resolving one durable approval request through the broker's durable resolution path. Returned by <c>IApprovalBroker.ResolveAsync(ApprovalResponse, CancellationToken)</c>.</summary>
 public abstract record ApprovalResolutionResult;
 public sealed record ApprovalResolved(ApprovalResponse Response): ApprovalResolutionResult;
 public sealed record ApprovalAlreadyResolved(ApprovalResponse Response): ApprovalResolutionResult;
@@ -564,12 +574,13 @@ does so beneath both coordinator contracts.
 `AgentKit.Permissions` owns these contracts and security coordination but no
 concrete store. `AgentKit.Permissions.InMemory` supplies explicitly ephemeral
 adapters. `AgentKit.Permissions.Sqlite` supplies durable local adapters for the
-security state whose consistency requirements SQLite can meet. Hosts configure
-and register one leaf explicitly; `AddAgentPermissions` never chooses a store,
-connection, database path, or fallback. Both leaves run the same security-store
-conformance suites for shared operations, while durable deferral, required-audit
-acceptance, multi-process access, and transaction claims are tested only when
-the selected adapter advertises them.
+security state whose consistency requirements SQLite can meet, and
+`AgentKit.Permissions.Json` supplies inspectable single-writer file adapters.
+Hosts configure and register one leaf explicitly; `AddAgentPermissions` never
+chooses a store, connection, database path, or fallback. All leaves run the same
+security-store conformance suites for shared operations, while durable deferral,
+required-audit acceptance, multi-process access, and transaction claims are
+tested only when the selected adapter advertises them.
 
 The effecting component calls `ValidateAndConsumeAsync` immediately before the
 effect using a fresh `SecurityEnforcementRequest`. File, network, process,
@@ -689,6 +700,15 @@ public static class ServiceExtensions
             PermissionServiceRegistration.AddSecurityAuditSink<TSink>(
                 services,
                 registration);
+
+        public IServiceCollection AddSecurityAuditSink<TSink>(
+            SecurityAuditSinkRegistration registration,
+            Func<IServiceProvider, TSink> factory)
+            where TSink : class, ISecurityAuditSink =>
+            PermissionServiceRegistration.AddSecurityAuditSink<TSink>(
+                services,
+                registration,
+                factory);
 
         public IServiceCollection ReplaceSecurityAuthority<TAuthority>(
             ComponentKey<ISecurityAuthority> key)

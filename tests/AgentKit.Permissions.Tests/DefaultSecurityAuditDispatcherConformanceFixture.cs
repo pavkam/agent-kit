@@ -26,6 +26,7 @@ public sealed class DefaultSecurityAuditDispatcherConformanceFixture: ISecurityA
         _ = services.AddSingleton<TimeProvider>(_timeProvider);
         _ = services.AddAgentPermissions(options =>
         {
+            options.PolicySnapshot = TestSupport.TestSecurityEvidence.PolicySnapshot;
             options.AuditDelivery = delivery;
             options.AuditDeliveryTimeout = deliveryTimeout;
         });

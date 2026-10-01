@@ -10,6 +10,7 @@ namespace AgentKit.Permissions
         public AgentPermissionOptions() { }
         public AgentKit.SecurityAuditDelivery AuditDelivery { get; set; }
         public System.TimeSpan AuditDeliveryTimeout { get; set; }
+        public AgentKit.DurabilityProfileKey? DurabilityProfile { get; set; }
         public AgentKit.HeadlessApprovalBehavior HeadlessApprovalBehavior { get; set; }
         public System.TimeSpan MaximumGrantLifetime { get; set; }
         public int MaximumGrantUses { get; set; }
@@ -21,6 +22,10 @@ namespace AgentKit.Permissions
     {
         public AllowAllSecurityPolicy() { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ApprovalWaitDurableOperationHandler : AgentKit.DurableBoundaryHandler
+    {
+        public ApprovalWaitDurableOperationHandler(AgentKit.DurableBoundaryRegistry registry) { }
     }
     public sealed class DefaultApprovalBroker : AgentKit.IApprovalBroker
     {
@@ -40,7 +45,7 @@ namespace AgentKit.Permissions
     }
     public sealed class DefaultSecurityPolicySelector : AgentKit.ISecurityPolicySelector
     {
-        public DefaultSecurityPolicySelector(AgentKit.ISecurityPolicyCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options) { }
+        public DefaultSecurityPolicySelector(AgentKit.ISecurityPolicyCatalog catalog) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicySnapshotResult> SelectAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultSecurityRevocationGeneration : AgentKit.ISecurityRevocationGeneration
@@ -54,6 +59,11 @@ namespace AgentKit.Permissions
         public DenyAllSecurityAuthority(Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.DenyAllSecurityAuthority> logger) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DurableApprovalWaitRecorder : AgentKit.IApprovalWaitRecorder
+    {
+        public DurableApprovalWaitRecorder(Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, System.TimeProvider timeProvider, AgentKit.DurableBoundaryRegistry durableInvocations, AgentKit.IDurableExecutionCoordinator? durableExecution = null, AgentKit.IDurabilityProfileCatalog? durabilityProfiles = null, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.DurableApprovalWaitRecorder>? logger = null) { }
+        public System.Threading.Tasks.ValueTask RecordAsync(AgentKit.SecurityRequest request, AgentKit.ApprovalRequest approval, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
@@ -77,6 +87,10 @@ namespace AgentKit.Permissions
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentPermissions(System.Action<AgentKit.Permissions.AgentPermissionOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityProfilePublication(AgentKit.SecurityProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink(AgentKit.SecurityAuditSinkRegistration registration, AgentKit.ISecurityAuditSink sink) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink<TSink>(AgentKit.SecurityAuditSinkRegistration registration)
+                where TSink :  class, AgentKit.ISecurityAuditSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink<TSink>(AgentKit.SecurityAuditSinkRegistration registration, System.Func<System.IServiceProvider, TSink> factory)
+                where TSink :  class, AgentKit.ISecurityAuditSink { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.ISecurityAuthority authority) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStandaloneSecurityProfile(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityProfileKey profileKey, AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.SecurityProfileVersion? profileVersion = default, long policyVersion = 1, System.Action<AgentKit.Permissions.AgentPermissionOptions>? configurePermissions = null) { }

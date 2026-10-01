@@ -106,14 +106,16 @@ public sealed class ApprovalScopeBindingTests
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("21000000-0000-0000-0000-000000000002")),
                 null));
+        var identity = TestExecutionIdentity.Create(
+            new TenantId("tenant"),
+            new PrincipalId("requester"),
+            ExecutionSubjectKind.Human);
         return new SecurityRequest(
             new SecurityRequestId(Guid.Parse("31000000-0000-0000-0000-000000000003")),
             scope,
             null,
-            TestExecutionIdentity.Create(
-                new TenantId("tenant"),
-                new PrincipalId("requester"),
-                ExecutionSubjectKind.Human),
+            identity,
+            TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity),
             new ComponentId("test"),
             SecurityOperationKind.FileWrite,
             SecurityEffect.CreateOrReplace,

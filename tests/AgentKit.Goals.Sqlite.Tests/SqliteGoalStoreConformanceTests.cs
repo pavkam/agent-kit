@@ -1,0 +1,7 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Goals.Sqlite.Tests;
+
+/// <summary>Runs the shared <see cref="IGoalStore"/> contract suite against the SQLite adapter.</summary>
+public sealed class SqliteGoalStoreConformanceTests: GoalStoreConformanceTests<SqliteGoalStoreConformanceFixture>;

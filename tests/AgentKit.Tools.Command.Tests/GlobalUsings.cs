@@ -9,6 +9,8 @@ global using AgentKit;
 global using AgentKit.Tools.Command;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;
 
 global using Shouldly;

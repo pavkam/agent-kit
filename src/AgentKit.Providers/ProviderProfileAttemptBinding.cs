@@ -11,7 +11,7 @@ public static class ProviderProfileAttemptBinding
     /// </summary>
     /// <param name="binding">The descriptor binding, when present.</param>
     /// <param name="operation">The protected operation for profile selection.</param>
-    /// <param name="fallbackCredentials">The legacy credential source used when no binding is configured.</param>
+    /// <param name="fallbackCredentials">The credential source used when the descriptor carries no profile binding.</param>
     /// <param name="profileSelector">The optional profile runtime selector.</param>
     /// <param name="providerId">The provider identity used in typed failures.</param>
     /// <param name="cancellationToken">A token used to cancel selection.</param>

@@ -116,7 +116,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(now);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
             result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             Volatile.Read(ref counts).ShouldBe(1);
             Volatile.Read(ref durations).ShouldBe(0);
@@ -226,7 +226,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             clock.Advance(TimeSpan.FromMinutes(10));
-            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
             result.Status.ShouldBe(GrantConsumptionStatus.Expired);
             var activity = stopped.ShouldNotBeNull();
             activity.Status.ShouldBe(ActivityStatusCode.Error);
@@ -270,19 +270,19 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             var enforcement = TestGrantFactory.CreateEnforcement(grant);
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-            var consumed = await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+            var consumed = await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
             clock.Advance(TimeSpan.FromMinutes(10));
-            var expired = await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+            var expired = await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
             using var cancellation = new CancellationTokenSource();
             cancellation.Cancel();
-            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, cancellation.Token));
+            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), cancellation.Token));
             File.Delete(path);
-            _ = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken));
+            _ = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken));
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
             expired.Status.ShouldBe(GrantConsumptionStatus.Expired);
             var entries = logger.Snapshot().Where(static entry => entry.Properties.TryGetValue("Operation", out var operation) && IsConsumeFamily(operation?.ToString())).ToArray();
             entries.Select(static entry => (entry.EventId.Id, entry.Level, entry.Properties["Outcome"]?.ToString())).ShouldBe([
-                (19000, LogLevel.Debug, "consumed"),
+                (19000, LogLevel.Debug, "success"),
                 (19000, LogLevel.Debug, "consumed"),
                 (19001, LogLevel.Warning, "expired"),
                 (19001, LogLevel.Warning, "cancelled"),
@@ -399,7 +399,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             await stores[0].InitializeTrustedAsync(clock, TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await stores[0].RegisterAsync(grant, TestContext.Current.CancellationToken);
-            var result = await stores[^1].ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            var result = await stores[^1].ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
             result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         }
         finally
@@ -602,7 +602,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             };
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             await store.RegisterAsync(replay, TestContext.Current.CancellationToken);
-            var consumed = await store.ValidateAndConsumeAsync(replay, TestGrantFactory.CreateEnforcement(replay), TestContext.Current.CancellationToken);
+            var consumed = await store.ValidateAndConsumeAsync(replay, TestGrantFactory.CreateEnforcement(replay), NewIntent(), TestContext.Current.CancellationToken);
             consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         }
         finally
@@ -632,7 +632,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
                 _ = command.ExecuteNonQuery();
             }
 
-            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
         }
         finally
@@ -662,7 +662,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
                 _ = command.ExecuteNonQuery();
             }
 
-            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
             using var verification = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
             verification.Open();
@@ -688,7 +688,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
             File.Delete(path);
-            var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+            var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
             exception.ParamName.ShouldBe("enforcement");
         }
         finally
@@ -713,7 +713,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             // still allows to construct: a null element inside a non-default, non-empty Resources array.
             var exception = await Should.ThrowAsync<ArgumentException>(async () => await store.RegisterAsync(grant with { Resources = [null!] }, TestContext.Current.CancellationToken));
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
             exception.GetType().ShouldBe(typeof(ArgumentException));
             exception.ParamName.ShouldBe("grant");
             result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
@@ -737,7 +737,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             await store.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
             var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
 
-            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
 
             result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
             result.IntentReceipt.ShouldBeNull();
@@ -995,7 +995,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             }
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
         }
@@ -1033,7 +1033,7 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
             }
 
             var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
-                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
 
             exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
         }
@@ -1152,4 +1152,6 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         settingsException.ParamName.ShouldBe("settings");
         timeException.ParamName.ShouldBe("timeProvider");
     }
+
+    private static SecurityEnforcementIntent NewIntent() => new(new SecurityEnforcementIntentId(Guid.NewGuid()), null);
 }

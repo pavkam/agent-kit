@@ -3,22 +3,28 @@
 
 namespace AgentKit.Artifacts;
 
-/// <summary>Preserves complete truncated process streams through the configured artifact coordinator.</summary>
+/// <summary>Preserves complete truncated process streams through one keyed artifact coordinator.</summary>
+/// <remarks>The sink is bound to the coordinator it is constructed over. It never selects a coordinator or profile itself and aborts staging when publication fails.</remarks>
 public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
 {
     private readonly IArtifactCoordinator _artifacts;
-    private readonly AgentArtifactOptions _options;
+    private readonly ArtifactDirectoryId _directory;
+    private readonly AgentArtifactOptionsSnapshot _options;
 
-    /// <summary>Initializes the process-output adapter over the selected artifact coordinator and policy.</summary>
-    /// <param name="artifacts">The protected artifact coordinator.</param>
+    /// <summary>Initializes the process-output adapter over one coordinator and captured policy.</summary>
+    /// <param name="artifacts">The protected artifact coordinator this sink is bound to.</param>
+    /// <param name="defaultDirectory">The profile's default directory, used when the options name none.</param>
     /// <param name="options">The captured artifact and process-output policy.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
-    public ArtifactProcessOutputSink(IArtifactCoordinator artifacts, IOptions<AgentArtifactOptions> options)
+    /// <exception cref="ArgumentException"><paramref name="defaultDirectory"/> is blank.</exception>
+    internal ArtifactProcessOutputSink(IArtifactCoordinator artifacts, ArtifactDirectoryId defaultDirectory, AgentArtifactOptionsSnapshot options)
     {
         ArgumentNullException.ThrowIfNull(artifacts);
+        ArgumentException.ThrowIfNullOrWhiteSpace(defaultDirectory.Value, nameof(defaultDirectory));
         ArgumentNullException.ThrowIfNull(options);
         _artifacts = artifacts;
-        _options = options.Value;
+        _directory = options.ProcessOutputDirectory ?? defaultDirectory;
+        _options = options;
     }
 
     /// <inheritdoc/>
@@ -34,16 +40,16 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             _options.ProcessOutputClassification,
             request.Scope.SessionId.HasValue ? ArtifactOwnershipKind.Session : ArtifactOwnershipKind.Run,
             ArtifactMutability.Immutable,
-            new ArtifactRetention(_options.ProcessOutputRetentionPolicy, null, false));
+            new ArtifactRetention(_options.ProcessOutputRetentionPolicy, null, false),
+            null);
         using var content = new MemoryStream([.. request.Content], writable: false);
         var prepare = await _artifacts.PrepareAsync(new ArtifactPrepareRequest(
             request.Scope.AgentId,
             request.Scope.SessionId,
             null,
             request.Scope.Correlation,
-            request.Identity,
             request.Authorization,
-            _options.ProcessOutputDirectory,
+            _directory,
             metadata,
             content,
             Suffix(request.IdempotencyKey, "prepare")), cancellationToken).ConfigureAwait(false);
@@ -59,7 +65,6 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             request.Scope.SessionId,
             null,
             request.Scope.Correlation,
-            request.Identity,
             request.Authorization,
             Suffix(request.IdempotencyKey, "finalize")), cancellationToken).ConfigureAwait(false);
         if (finalized is ArtifactFinalized committed)
@@ -72,7 +77,6 @@ public sealed class ArtifactProcessOutputSink: IProcessOutputArtifactSink
             request.Scope.AgentId,
             request.Scope.SessionId,
             request.Scope.Correlation,
-            request.Identity,
             request.Authorization,
             ArtifactAbortReason.ReferenceCommitFailure,
             Suffix(request.IdempotencyKey, "abort")), CancellationToken.None).ConfigureAwait(false);

@@ -7,7 +7,7 @@ namespace AgentKit.FileSystem.InMemory;
 /// <remarks>
 /// This is a mutable options type bound through <see cref="Microsoft.Extensions.Options.IOptions{TOptions}"/>;
 /// it is configured once at composition time and treated as read-only by
-/// every consumer afterward. Unlike <c>SandboxedFileSystemOptions</c>, there is
+/// every consumer afterward. Unlike the operating-system profile options, there is
 /// no root directory: every path is resolved against a process-local virtual
 /// tree that exists only for the lifetime of the <see cref="InMemoryFileSystem"/>
 /// instance.

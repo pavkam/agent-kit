@@ -8,10 +8,12 @@ tool has already been authorized.
 
 ## Use this project
 
-Start with `AddSandboxedFileSystem` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior.
+Start with `AddOperatingSystemFileSystem` in
+[ServiceExtensions.cs](ServiceExtensions.cs); it registers one keyed profile
+whose reader, writer, directory reader, glob, search, snapshot, atomic replace,
+and patch capabilities are discovered through `IFileSystemSelector`. Read the
+overloads and XML documentation for required collaborators, lifetimes, and
+duplicate-registration behavior.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
@@ -42,8 +44,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/file-system.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

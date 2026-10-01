@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenRouter.Tests;
 using System.Net;
 
 using AgentKit.Providers.OpenRouter.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies OpenRouterLlmModel behavior and contracts.</summary>
 public sealed class OpenRouterLlmModelTests
@@ -16,7 +17,7 @@ public sealed class OpenRouterLlmModelTests
         var systemMessage = new SystemMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), runId: null, turnId: null, Now, MessageState.Complete, [new TextPart("You are helpful.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), systemMessage.AgentId, systemMessage.SessionId, conversationId: null, systemMessage.BranchId, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [systemMessage, userMessage], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
     private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), OpenRouterProviderDefaults.ProviderId, OpenRouterProviderDefaults.ApiFamily, new ModelId("openai/gpt-4o"), deploymentId: null, OpenRouterProviderDefaults.DefaultCapabilities, OpenRouterProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
@@ -31,7 +32,7 @@ public sealed class OpenRouterLlmModelTests
             ApplicationTitle = "AgentKit Tests",
         };
         var descriptor = CreateDescriptor();
-        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("sk-or-real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("sk-or-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -56,7 +57,7 @@ public sealed class OpenRouterLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

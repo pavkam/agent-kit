@@ -38,7 +38,7 @@ public sealed class ServiceExtensionsTests
         var scope = new SecurityAuthorizationScope(agentId, sessionId, correlation);
         var policyVersion = new SecurityPolicyVersion(1);
         var authorization = captured ? new SecurityAuthorizationContext(new SecurityProfileKey("test"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("90000000-0000-0000-0000-000000000003")), policyVersion, new ContentHash("sha256:test-policy")), new ComponentKey<ISecurityAuthority>("test"), new AgentDefinitionRevision(0), new ConfigurationVersion(1), scope, identity) : null;
-        var grant = authorization is { } context ? new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, context, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1) : new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1);
+        var grant = authorization is { } context ? new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, context, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1) : new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1);
         return new HumanQuestionRequest(id, agentId, sessionId, toolCallId, correlation, identity, "Choose.", options, false, deadline, grant);
     }
 
@@ -380,6 +380,79 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         var exception = Should.Throw<ArgumentNullException>(() => services.AddRunEventSink<FakeRunEventSink>(null!));
         exception.ParamName.ShouldBe("registration");
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenAFactoryIsSupplied_BuildsTheSinkFromTheFactoryUnderItsDeclaredName()
+    {
+        var services = new ServiceCollection();
+        var sink = new FakeRunEventSink();
+
+        _ = services.AddRunEventSink(new RunEventSinkRegistration("factory", RunEventDelivery.Required, 0), _ => sink);
+        using var provider = services.BuildServiceProvider();
+
+        var binding = provider.GetServices<IRunEventSink>().ShouldHaveSingleItem().ShouldBeOfType<RunEventSinkBinding>();
+        binding.Inner.ShouldBeSameAs(sink);
+        binding.Registration.SinkName.ShouldBe("factory");
+        binding.Registration.Delivery.ShouldBe(RunEventDelivery.Required);
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenTheSameSinkTypeIsRegisteredUnderTwoNamesWithFactories_KeepsBothInstancesIndependent()
+    {
+        var services = new ServiceCollection();
+        var first = new FakeRunEventSink();
+        var second = new FakeRunEventSink();
+
+        _ = services.AddRunEventSink(new RunEventSinkRegistration("one", RunEventDelivery.BestEffort, 0), _ => first);
+        _ = services.AddRunEventSink(new RunEventSinkRegistration("two", RunEventDelivery.BestEffort, 1), _ => second);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetServices<IRunEventSink>().Cast<RunEventSinkBinding>().Select(static binding => binding.Inner).ToArray()
+            .ShouldBe([first, second]);
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenAFactoryRegistrationRepeatsIdentically_IsIdempotent()
+    {
+        var services = new ServiceCollection();
+        var registration = new RunEventSinkRegistration("factory", RunEventDelivery.BestEffort, 0);
+
+        _ = services.AddRunEventSink(registration, _ => new FakeRunEventSink());
+        _ = services.AddRunEventSink(registration, _ => new FakeRunEventSink());
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(IRunEventSink)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenAFactoryRegistrationReusesANameWithADifferentDelivery_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddRunEventSink(new RunEventSinkRegistration("factory", RunEventDelivery.BestEffort, 0), _ => new FakeRunEventSink());
+
+        _ = Should.Throw<InvalidOperationException>(() => services.AddRunEventSink(
+            new RunEventSinkRegistration("factory", RunEventDelivery.Required, 0), _ => new FakeRunEventSink()));
+    }
+
+    [Fact]
+    public void AddRunEventSink_WhenFactoryArgumentsAreNull_ThrowsArgumentNullExceptionNamingThem()
+    {
+        var registration = new RunEventSinkRegistration("factory", RunEventDelivery.BestEffort, 0);
+
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddRunEventSink(registration, _ => new FakeRunEventSink())).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddRunEventSink(null!, _ => new FakeRunEventSink())).ParamName.ShouldBe("registration");
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddRunEventSink<FakeRunEventSink>(registration, null!)).ParamName.ShouldBe("factory");
+    }
+
+    [Fact]
+    public void AddAgentIO_WhenRequiredSinksAreRegistered_ResolvesTheDrainCoordinator()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentIO(InputKey, OutputKey);
+        _ = services.AddRunEventSink(new RunEventSinkRegistration("required", RunEventDelivery.Required, 0), _ => new FakeRunEventSink());
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<IRequiredRunEventSinkCoordinator>().ShouldBeOfType<RequiredRunEventSinkCoordinator>();
     }
 
     private static RunScopeIdentity SampleIdentity() => new(

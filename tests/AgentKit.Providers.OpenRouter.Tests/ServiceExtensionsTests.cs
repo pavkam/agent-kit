@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenRouter.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -109,6 +111,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouterLlmModel(new ModelAlias("fast"), new ModelId("openai/gpt-4o-mini"));
         _ = services.AddOpenRouterLlmModel(new ModelAlias("claude"), new ModelId("anthropic/claude-3.5-sonnet"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -123,6 +127,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
         _ = services.AddOpenRouterLlmModel(new ModelAlias("chat"), new ModelId("openai/gpt-4o"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenRouterLlmModel>();
@@ -139,6 +145,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("openai/text-embedding-3-small"));
         _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("openai/text-embedding-3-large"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -153,6 +161,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
         _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("openai/text-embedding-3-small"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OpenRouterEmbeddingModel>();
@@ -178,6 +188,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddOpenRouterLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenRouterLlmModel>();

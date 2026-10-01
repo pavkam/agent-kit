@@ -3,10 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Output
 {
-    public static class AgentOutputDefaults
-    {
-        public static AgentKit.ComponentKey<AgentKit.IOutputProcessor> ProcessorKey { get; }
-    }
     public sealed class AgentOutputOptions
     {
         public AgentOutputOptions() { }

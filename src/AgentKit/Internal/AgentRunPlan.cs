@@ -15,9 +15,10 @@ using AgentKit;
 /// service provider.
 /// </para>
 /// <para>
-/// <see cref="HookDispatchContext"/> is intentionally absent. Run-scoped hook activation has not landed, and
-/// this plan does not invent a stand-in context. <see cref="OptionalCapabilities"/> is
-/// <see cref="AgentOptionalCapabilitySelection.None"/> until a definition carries an explicit selection.
+/// <see cref="HookDispatchContext"/> is intentionally absent: hook activation is run-scoped state the loop owns
+/// (a <c>HookActivationScope</c> that mints a fresh dispatch context per emission), so a plan built before the run
+/// exists never holds a dispatch identity. <see cref="OptionalCapabilities"/> is
+/// <see cref="AgentOptionalCapabilitySelection.None"/> when a definition enables no optional capability.
 /// </para>
 /// </remarks>
 internal sealed record AgentRunPlan

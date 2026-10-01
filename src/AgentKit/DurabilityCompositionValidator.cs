@@ -23,6 +23,10 @@ internal static class DurabilityCompositionValidator
     /// <param name="definitions">The published agent definitions this composition can run.</param>
     /// <param name="profileCatalog">The registered durability profile catalog, or null when none is registered.</param>
     /// <param name="componentRegistrations">The non-null build-local registration evidence.</param>
+    /// <param name="operationHandlers">
+    /// The non-null registered durable operation handlers, resolved only when a definition selects durability. A
+    /// profile that enables an operation name none of them owns is diagnosed.
+    /// </param>
     /// <param name="diagnostics">The accumulating diagnostic builder this validator appends to.</param>
     /// <remarks>
     /// Each definition reports at most one missing-profile diagnostic: without a resolved profile snapshot there are
@@ -32,11 +36,14 @@ internal static class DurabilityCompositionValidator
         ImmutableArray<AgentDefinition> definitions,
         IDurabilityProfileCatalog? profileCatalog,
         ComponentRegistrationSnapshot componentRegistrations,
+        IReadOnlyCollection<IDurableOperationHandler> operationHandlers,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
         Debug.Assert(!definitions.IsDefault, "Durability validation runs only over a materialized definition set.");
         Debug.Assert(componentRegistrations is not null, "Durability validation requires registration evidence.");
+        Debug.Assert(operationHandlers is not null, "Durability validation requires the registered handlers.");
         Debug.Assert(diagnostics is not null, "Durability validation appends to a caller-owned builder.");
+        var handledNames = operationHandlers.Select(static handler => handler.OperationName).ToHashSet();
 
         var validatedEngineWide = false;
         foreach (var definition in definitions)
@@ -88,6 +95,18 @@ internal static class DurabilityCompositionValidator
                 profileKey,
                 "agentkit.durability.backend.missing",
                 diagnostics);
+
+            // A profile that lists a boundary promises evidence for it, and a boundary with no handler can never be
+            // journaled: the coordinator refuses it in the middle of a run. Reporting it here keeps that promise
+            // honest at composition instead of discovering it as a silently missing record.
+            foreach (var operation in profile.EnabledOperations.Where(name => !handledNames.Contains(name)))
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.durability.handler.missing",
+                    $"Durability profile '{profileKey.Value}' enables operation '{operation.Value}' but no durable "
+                    + "operation handler is registered for it. Register the package that owns the operation or remove "
+                    + "it from the profile."));
+            }
         }
     }
 

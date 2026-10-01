@@ -12,39 +12,43 @@ public sealed record ArtifactFinalizeRequest
     /// <param name="sessionId">The optional owning session.</param>
     /// <param name="toolCallId">The causing tool call.</param>
     /// <param name="correlation">The causal operation.</param>
-    /// <param name="identity">The authenticated identity.</param>
-    /// <param name="authorization">The captured authorization evidence for authority selection.</param>
+    /// <param name="authorization">The captured authorization evidence; its scope must equal the agent, session, and correlation.</param>
     /// <param name="idempotencyKey">The caller-owned replay key.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="preparationId"/> is empty.</exception>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="idempotencyKey"/> is blank.</exception>
-    public ArtifactFinalizeRequest(ArtifactPreparationId preparationId, AgentId agentId, SessionId? sessionId, ToolCallId? toolCallId, OperationCorrelation correlation, ExecutionIdentity identity, SecurityAuthorizationContext authorization, IdempotencyKey idempotencyKey)
+    /// <exception cref="ArgumentException"><paramref name="idempotencyKey"/> is blank or the authorization scope differs from the supplied scope.</exception>
+    public ArtifactFinalizeRequest(
+        ArtifactPreparationId preparationId, AgentId agentId, SessionId? sessionId, ToolCallId? toolCallId,
+        OperationCorrelation correlation, SecurityAuthorizationContext authorization, IdempotencyKey idempotencyKey)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(preparationId, default);
         ArgumentNullException.ThrowIfNull(correlation);
-        ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(authorization);
         ArgumentException.ThrowIfNotEqual(
             authorization.Scope, new SecurityAuthorizationScope(agentId, sessionId, correlation), nameof(authorization));
-        ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
         PreparationId = preparationId; AgentId = agentId; SessionId = sessionId; ToolCallId = toolCallId;
-        Correlation = correlation; Identity = identity; Authorization = authorization; IdempotencyKey = idempotencyKey;
+        Correlation = correlation; Authorization = authorization; IdempotencyKey = idempotencyKey;
     }
+
     /// <summary>Gets the staged preparation.</summary>
     public ArtifactPreparationId PreparationId { get; }
+
     /// <summary>Gets the acting agent.</summary>
     public AgentId AgentId { get; }
+
     /// <summary>Gets the optional owning session.</summary>
     public SessionId? SessionId { get; }
+
     /// <summary>Gets the causing tool call.</summary>
     public ToolCallId? ToolCallId { get; }
+
     /// <summary>Gets the causal operation.</summary>
     public OperationCorrelation Correlation { get; }
-    /// <summary>Gets the authenticated identity.</summary>
-    public ExecutionIdentity Identity { get; }
+
     /// <summary>Gets the captured authorization evidence.</summary>
     public SecurityAuthorizationContext Authorization { get; }
+
     /// <summary>Gets the caller-owned replay key.</summary>
     public IdempotencyKey IdempotencyKey { get; }
 }

@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddPlanTool(Action<PlanToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<PlanToolOptions>()
                 .Validate(static value => value.MaximumTitleCharacters > 0, "MaximumTitleCharacters must be positive.")
                 .Validate(static value => value.MaximumItemCharacters > 0, "MaximumItemCharacters must be positive.")

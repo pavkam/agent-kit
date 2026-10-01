@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Anthropic.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -29,18 +31,12 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddAnthropic_WhenRegistered_DisablesTheHttpClientTimeoutInFavorOfThePerRequestDeadline()
+    public void AddAnthropic_WhenRegistered_RegistersNoHttpClientOrSocketsHttpHandler()
     {
-        // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered attempt
-        // regardless of the caller's LlmModelRequest.Deadline, since this adapter's own deadlineSource
-        // is layered on top of, not instead of, the transport-level timeout.
         var services = new ServiceCollection();
         _ = services.AddAnthropic();
 
-        using var provider = services.BuildServiceProvider();
-        var client = provider.GetRequiredService<HttpClient>();
-
-        client.Timeout.ShouldBe(Timeout.InfiniteTimeSpan);
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(HttpClient) || descriptor.ServiceType == typeof(SocketsHttpHandler));
     }
 
     [Fact]
@@ -100,6 +96,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAnthropicLlmModel(new ModelAlias("fast"), new ModelId("claude-haiku-4-5"));
         _ = services.AddAnthropicLlmModel(new ModelAlias("smart"), new ModelId("claude-sonnet-4-5"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -114,6 +112,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAnthropic();
         _ = services.AddAnthropicApiKeyCredential("sk-ant-test-key");
         _ = services.AddAnthropicLlmModel(new ModelAlias("chat"), new ModelId("claude-sonnet-4-5"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AnthropicLlmModel>();
@@ -139,6 +139,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddAnthropicLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AnthropicLlmModel>();
@@ -183,6 +185,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAnthropicApiKeyCredential("sk-ant-test-key");
 
         _ = services.AddAnthropicKnownLlmModel(new ModelAlias("known"), new ModelId("claude-sonnet-4-5"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AnthropicLlmModel>();

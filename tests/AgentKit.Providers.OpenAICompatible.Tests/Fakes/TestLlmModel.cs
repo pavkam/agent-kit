@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 
+using AgentKit.Providers.Egress;
+
 /// <summary>
 /// The minimal concrete <see cref="OpenAICompatibleLlmModelBase"/>
 /// subclass used to test the shared base pipeline directly, standing in
@@ -16,7 +18,7 @@ internal sealed class TestLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     public TestLlmModel(
         ModelDescriptor descriptor,
@@ -24,9 +26,9 @@ internal sealed class TestLlmModel: OpenAICompatibleLlmModelBase
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider)
-        : base(descriptor, profile, translator, streamParser, credentials, httpClient, timeProvider)
+        : base(descriptor, profile, translator, streamParser, credentials, egress, timeProvider)
     {
     }
 }

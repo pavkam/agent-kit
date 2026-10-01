@@ -67,6 +67,7 @@ public sealed class OverrunHoldStateTests
         var enforcement = new SecurityEnforcementRequest(
             securityScope,
             identity,
+            TestSupport.TestSecurityEvidence.Authorization(securityScope.AgentId, securityScope.SessionId, securityScope.Correlation, identity),
             new ComponentId("budget-operator"),
             SecurityOperationKind.StateMutation,
             SecurityEffect.Mutate,

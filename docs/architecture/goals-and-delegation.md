@@ -14,15 +14,12 @@ Goal values, stores, messages, leases, and join-policy contracts live in
 AgentKit.Abstractions. The package remains optional until an application
 registers goal behavior.
 
-The coding-harness task tool uses a protected adapter boundary:
-`DefaultTaskDelegationBroker` consumes the exact `Delegation/Create` grant
-before forwarding a grant-free `TaskDelegationPrompt` to an explicitly selected
-`ITaskDelegationChannel`. These `TaskDelegation*` contracts are intentionally
-adapter-specific and do not claim to be the complete coordinator contracts
-below. A channel is responsible for resolving an active parent goal, narrowing
-authority and the child tool catalog, reserving budget, idempotently creating
-durable child state, deterministic joining, and terminal settlement. No channel
-is registered implicitly because those application facts cannot be fabricated.
+The coding-harness `task` tool builds one canonical `DelegationRequest` and
+hands it to `IDelegationCoordinator`. The coordinator owns the ordered gauntlet,
+the exact `Delegation/Create` grant, the durable child goal, and the wait; the
+tool authorizes nothing itself and no channel is registered implicitly, because
+stores, dispatchers, and profiles are application facts that cannot be
+fabricated.
 
 `AgentEngine` is one process-level host for many `AgentDefinition` instances,
 not one agent. Goal state and every target-selection decision therefore carry
@@ -651,6 +648,127 @@ Cancellation propagates according to the declared relationship. Already
 performed effects remain truthful and visible. A child may be durably handed
 off, but every attempt must eventually settle or require explicit external
 action.
+
+## Implementation notes and recorded deviations
+
+The shapes above are normative and minimal. The landed implementation refines
+them as follows; each refinement narrows a contract or names a mechanism the
+minimal shape left open, and none widens authority.
+
+### Packages and dependency direction
+
+- `AgentKit.Abstractions` holds every goal, delegation, join, event, policy,
+  budget, parking, intent-signal, child-runner, and agent-message contract.
+- `AgentKit.Goals` is the behavioral runtime (coordinators, registry, selectors,
+  policy pipeline, budget manager, event dispatcher, join strategies, local
+  dispatcher, session-backed store). It references only Abstractions and
+  Observability.
+- `AgentKit.Goals.InMemory`, `.Json`, and `.Sqlite` are store leaves. They share
+  one pure reducer and planner compiled from the source-only folder
+  `AgentKit.Goals.Storage.Shared` into each assembly as internal code, so the
+  three adapters cannot drift; the durable leaves also compile
+  `AgentKit.Goals.Storage.Durable` (document shapes over `AgentKit.Storage.Json`
+  evidence). These folders are not packages and register nothing. All stores run
+  the same conformance suite.
+- `AgentKit.Goals.Hosting` is an application leaf depending on Abstractions,
+  Observability, and the `AgentKit` facade. It supplies the worker, the slot
+  pool and wait parking, the engine-backed child runner, and the engine-backed
+  agent-message channel. The facade and the Goals runtime never reference it.
+
+### Contracts
+
+- `IGoalCoordinator` takes `...Command` values that carry the captured
+  `SecurityAuthorizationContext` and obtains its own single-use grants from the
+  captured authority; `IGoalStore` takes `...Request` values that carry the
+  exact `SecurityGrant`. The coordinator also exposes `LoadAsync`,
+  `ReadChildrenAsync`, and `StartAttemptAsync`. Attempt changes ride on
+  transitions (`GoalAttemptStart`, `GoalAttemptSettlement`) so a status change
+  and its attempt commit atomically. `GoalRecord` carries the durable
+  `Sequence`, `ChildOrdinal`, `SettledSequence`, and the stored `Delegation`.
+- `IGoalStore.ReadIntentsAsync` scans open delegated children across tenants for
+  a host worker. It is authorized by a scanner identity the host configured on
+  the store, not by a grant, because no caller holds a tenant-spanning grant.
+- `IGoalJoinStrategy` evaluates a `GoalJoinEvaluationRequest` (the join request,
+  the children in ordinal order, and whether the wait cutoff elapsed).
+  Strategies are pure and never read completion order or a clock.
+- A run's implicit root goal uses the run's identity (`RunRootGoal`), is
+  materialized Proposed, Ready, Active by the delegation coordinator on first
+  use, and stamps delegation depth in goal extension data.
+- Child goal, delegation, attempt, and creation-key identities derive
+  deterministically from the parent goal and the request's idempotency key
+  (`DelegationIdentity`), so a retried request resolves to the one child. Replay
+  equivalence deliberately ignores creation time, originating run, deadline,
+  budget, and authorization on goal creation, and occurrence time, run, and
+  operation on transitions.
+- The delegation coordinator's dependencies differ from the sketch: it takes the
+  profile catalog, grant issuer, dispatcher selector, wait parking, and options,
+  and takes no hook dispatcher. The live `HookDispatchContext` is passed only to
+  the security authority when the grant is requested.
+
+### Child ownership, claim, and run identity
+
+- The child goal is owned by the parent's agent and session, which is what lets
+  the parent read it under its own authorization; the attempt records the agent
+  that actually executes it and the session provisioned for that attempt.
+- `DelegationChildResult` leaves session, attempt, and run absent while the
+  status is `Dispatched`, and the coordinator reports them from durable state
+  once the worker has recorded them.
+- The worker claims a ready child with one atomic transition that records the
+  attempt before anything runs, so a duplicate intent can never start a second
+  run. The engine assigns the run identity after admission, so the attempt's
+  `RunId` is the identity reserved at claim time and the settled
+  `GoalOutcomeReference.RunId` is the authoritative identity of the run that
+  executed; results report the outcome's run.
+- A running attempt left by a previous incarnation is settled as failed with
+  unknown side effects. There is no automatic retry, because the effects of the
+  lost run are unknown; a retry is an explicit new attempt.
+- The dispatcher's delegation grant is consumed by the dispatcher; the worker
+  then mutates goals through the coordinator under the delegation's captured
+  authorization, so it never widens authority and never writes a store directly.
+
+### Waiting, parking, and hosting
+
+- The parent waits by re-reading durable child state through the injected clock.
+  While it waits, the coordinator parks the waiting run's session. The worker
+  binds each claimed attempt's session to its slot, so a waiting child gives its
+  slot back and a one-slot worker can run a chain of nested delegations.
+- The wake-up signal is best effort and lossy; durable state is truth. The
+  worker scans the configured profiles' durable intents at startup and
+  periodically, which recovers work after process loss. A store that cannot
+  discover intents (the session-backed store never persists delegation
+  authorization) is reached only by the signal.
+- A host starts the hosted worker at startup. A standalone engine has no host,
+  so the first committed intent starts it and disposing the engine's provider
+  stops it.
+- The child budget is reserved as a child scope through `IBudgetAuthority` when
+  one is composed, but the engine exposes no per-run budget injection, so the
+  child run is bounded by its turn limit and the delegation deadline rather than
+  by that scope. The recorded `AllowedTools` scope is narrowed and audited, but
+  the engine has no per-run tool filter, so the child's tool surface is its own
+  definition's.
+- `IDelegationChildRunner` provisions a session and runs one claimed attempt.
+  The engine-backed runner awaits `Agent.RunAsync`, which works with every
+  output publisher; replace it to run children elsewhere.
+
+### Communication
+
+`IAgentMessageChannel` admits a message as steering or follow-up input through
+the recipient's public input path. The input identity derives deterministically
+from the sender, recipient session, and idempotency key, and the sender,
+recipient, causal goal and attempt, and key travel as input extension data
+marked `instruction_authority: false`. The recipient session's store owns
+idempotency and conflict detection. No model-facing messaging tool is provided.
+
+### Composition validation
+
+The facade's goals validator proves, for every definition that selects a goal
+profile, that the profile is published and that the singular coordinators,
+selectors, catalog, pipeline, budget manager, and event dispatcher are
+registered, and that the store, dispatcher, and each join strategy the profile
+names are registered under exactly those keys. It reads descriptors and the
+profile catalog only and never activates a store, dispatcher, or worker. It does
+not prove delegation-policy identities or the behavior of a policy; the pipeline
+fails closed when a selected policy is unregistered or the ordering is cyclic.
 
 ## Related concept specifications
 

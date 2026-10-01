@@ -33,7 +33,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     private readonly SessionProfileSnapshot _sessionProfile;
     private readonly ImmutableDictionary<ToolId, ConversationToolPresentationBinding> _toolPresentationBindings;
     private readonly IToolPresenter? _toolPresenter;
-    private readonly OutputDefinition? _output;
+    private readonly bool _structuredOutput;
     private readonly int _maxTurns;
     private readonly TimeSpan _attemptTimeout;
 
@@ -191,11 +191,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="options">The validated agent composition this session drives turns for.</param>
     /// <param name="logger">The optional logger that receives safe turn diagnostics; a null logger is used when omitted.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <see cref="ConversationSessionOptions.AgentId"/> or <see cref="ConversationSessionOptions.SecurityProfileKey"/>
-    /// or <see cref="ConversationSessionOptions.ConfigurationVersion"/> is default, or
-    /// <see cref="ConversationSessionOptions.MaxTurns"/> or <see cref="ConversationSessionOptions.AttemptTimeout"/>
-    /// is not positive.
+    /// <exception cref="ArgumentException">
+    /// The pinned agent does not select the supplied session profile, or the configuration fingerprint differs from the
+    /// session profile's.
     /// </exception>
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
@@ -227,7 +225,10 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="logger">The optional content-safe diagnostics logger.</param>
     /// <param name="toolPresenter">The optional observational presenter used for bounded live tool rendering.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null, or a required option is unset.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">An identity, limit, or timeout option is invalid.</exception>
+    /// <exception cref="ArgumentException">
+    /// The pinned agent does not select the supplied session profile, a tool presentation binding duplicates an identity or
+    /// alias, or the configuration fingerprint differs from the session profile's.
+    /// </exception>
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
@@ -246,24 +247,15 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         ArgumentNullException.ThrowIfNull(options);
         var optionValues = options.Value;
         ArgumentNullException.ThrowIfNull(optionValues);
-        ArgumentOutOfRangeException.ThrowIfEqual(optionValues.AgentId, default, nameof(options));
+        var agent = optionValues.Agent;
+        ArgumentNullException.ThrowIfNull(agent, nameof(options));
+        var configuration = optionValues.Configuration;
+        ArgumentNullException.ThrowIfNull(configuration, nameof(options));
         ArgumentNullException.ThrowIfNull(optionValues.Identity, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfEqual(optionValues.SecurityProfileKey, default, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfEqual(optionValues.ConfigurationVersion, default, nameof(options));
-        ArgumentNullException.ThrowIfNull(optionValues.SessionProfile, nameof(options));
-        ArgumentNullException.ThrowIfNull(optionValues.ModelSelectionPolicy, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.MaxTurns, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(optionValues.AttemptTimeout, TimeSpan.Zero, nameof(options));
-        ArgumentException.ThrowIfNotEqual(optionValues.Agent is null, optionValues.Configuration is null, nameof(options));
-        if (optionValues is { Agent: { } agent, Configuration: { } configuration })
-        {
-            ArgumentException.ThrowIfNotEqual(agent.Id, optionValues.AgentId, nameof(options));
-            ArgumentException.ThrowIfNotEqual(agent.Revision, optionValues.AgentDefinitionRevision, nameof(options));
-            ArgumentException.ThrowIfNotEqual(agent.SecurityProfile, optionValues.SecurityProfileKey, nameof(options));
-            ArgumentException.ThrowIfNotEqual(agent.SessionProfile, optionValues.SessionProfile.Reference.Key, nameof(options));
-            ArgumentException.ThrowIfNotEqual(configuration.Version, optionValues.ConfigurationVersion, nameof(options));
-            ArgumentException.ThrowIfNotEqual(configuration.Fingerprint, optionValues.SessionProfile.ConfigurationFingerprint, nameof(options));
-        }
+        var sessionProfile = optionValues.SessionProfile;
+        ArgumentNullException.ThrowIfNull(sessionProfile, nameof(options));
+        ArgumentException.ThrowIfNotEqual(agent.SessionProfile, sessionProfile.Reference.Key, nameof(options));
+        ArgumentException.ThrowIfNotEqual(configuration.Fingerprint, sessionProfile.ConfigurationFingerprint, nameof(options));
 
         var toolPresentationBindings = CaptureToolPresentationBindings(optionValues);
 
@@ -275,17 +267,16 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultConversationSession>.Instance;
         _toolPresenter = toolPresenter;
 
-        _agentId = optionValues.AgentId;
+        _agentId = agent.Id;
         _identity = optionValues.Identity;
-        _securityProfileKey = optionValues.SecurityProfileKey;
-        _agentDefinitionRevision = optionValues.AgentDefinitionRevision;
-        _configurationVersion = optionValues.ConfigurationVersion;
-        _sessionProfile = optionValues.SessionProfile;
+        _securityProfileKey = agent.SecurityProfile;
+        _agentDefinitionRevision = agent.Revision;
+        _configurationVersion = configuration.Version;
+        _sessionProfile = sessionProfile;
         _toolPresentationBindings = toolPresentationBindings;
-        _output = optionValues.Output;
-        ArgumentException.ThrowIfContainsNull([.. optionValues.BudgetLimits], nameof(options));
-        _maxTurns = optionValues.MaxTurns;
-        _attemptTimeout = optionValues.AttemptTimeout;
+        _structuredOutput = agent.Output.Mode != OutputMode.Text;
+        _maxTurns = agent.RunDefaults.MaxTurns;
+        _attemptTimeout = agent.RunDefaults.AttemptTimeout;
     }
 
     /// <inheritdoc/>
@@ -416,7 +407,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
         try
         {
-            if (_output is null)
+            if (!_structuredOutput)
             {
                 var result = await _turnExecutor.RunAsync<string>(turnRequest, cancellationToken).ConfigureAwait(false);
                 return await MapTypedResult(result, observer, cancellationToken).ConfigureAwait(false);
@@ -628,12 +619,11 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         return page.ThroughSequence == previous;
     }
 
-    /// <summary>Validates and freezes the optional descriptor evidence against the exact advertised definitions.</summary>
+    /// <summary>Validates and freezes the optional descriptor evidence.</summary>
     /// <param name="options">The already non-null conversation options.</param>
     /// <returns>An immutable map keyed by canonical tool identity.</returns>
     /// <exception cref="ArgumentException">
-    /// A binding is absent from the advertised tools, duplicates an identity or alias, or otherwise disagrees with
-    /// the advertised definition.
+    /// A binding duplicates a canonical tool identity or advertised alias.
     /// </exception>
     private static ImmutableDictionary<ToolId, ConversationToolPresentationBinding> CaptureToolPresentationBindings(
         ConversationSessionOptions options)
@@ -644,13 +634,6 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         foreach (var binding in options.ToolPresentationBindings)
         {
             ArgumentNullException.ThrowIfNull(binding, nameof(options));
-            if (!options.Tools.Contains(binding.AdvertisedTool))
-            {
-                throw new ArgumentException(
-                    "Every tool presentation binding must reference an equal advertised tool definition.",
-                    nameof(options));
-            }
-
             if (!bindings.TryAdd(binding.Descriptor.Id, binding)
                 || !aliases.Add(binding.AdvertisedTool.Name))
             {

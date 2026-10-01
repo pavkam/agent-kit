@@ -1,0 +1,155 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.FileSystem;
+
+internal sealed partial class OperatingSystemWorkspaceHost
+{
+    /// <inheritdoc/>
+    public IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return EnumerateObservedAsync(operation, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<FileSystemEntry> EnumerateObservedAsync(
+        AuthorizedDirectoryEnumeration operation,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var outcome = await ObserveValueTaskAsync(
+            "enumerate", operation.Grant.RequestId, token => EnumerateCoreAsync(operation, token),
+            static result => result.Status.ToString(), cancellationToken).ConfigureAwait(false);
+        foreach (var entry in outcome.RequireEntries())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return entry;
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<GlobResult> GlobAsync(GlobRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveValueTaskAsync(
+            "glob", request.Grant.RequestId, token => GlobCoreAsync(request, token),
+            static result => result.Status.ToString(), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<FileSearchResult> SearchAsync(
+        FileSearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveValueTaskAsync(
+            "search", request.Grant.RequestId, token => SearchCoreAsync(request, token),
+            static result => result.Status.ToString(), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<FileSnapshotResult> ReadSnapshotAsync(
+        FileSnapshotRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveValueTaskAsync(
+            "snapshot", request.Grant.RequestId, token => ReadSnapshotCoreAsync(request, token),
+            static result => result.Status.ToString(), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<AtomicFileReplaceResult> ReplaceAsync(
+        AtomicFileReplaceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveValueTaskAsync(
+            "replace", request.Grant.RequestId, token => ReplaceCoreAsync(request, token),
+            static result => result.Status.ToString(), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<WorkspacePatchResult> ApplyPatchAsync(
+        WorkspacePatchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveValueTaskAsync(
+            "patch", requestId: null, token => ApplyPatchCoreAsync(request, token),
+            static result => result.Status.ToString(), cancellationToken);
+    }
+
+    private async ValueTask<TResult> ObserveValueTaskAsync<TResult>(
+        string operation,
+        SecurityRequestId? requestId,
+        Func<CancellationToken, ValueTask<TResult>> action,
+        Func<TResult, string> classify,
+        CancellationToken cancellationToken)
+    {
+        using var activity = StartFileSystemActivity(operation, requestId);
+        try
+        {
+            var result = await action(cancellationToken).ConfigureAwait(false);
+            CompleteFileSystemObservation(activity, operation, requestId, classify(result));
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            FailFileSystemObservation(activity, operation, requestId, "cancelled", nameof(OperationCanceledException));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            FailFileSystemObservation(
+                activity, operation, requestId, "failed", exception.GetType().FullName ?? exception.GetType().Name);
+            FileSystemLog.Failed(
+                _logger,
+                operation,
+                requestId,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            throw;
+        }
+    }
+
+    private static Activity? StartFileSystemActivity(string operation, SecurityRequestId? requestId)
+    {
+        var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.FileSystemOperation);
+        _ = activity?.SetTag(AgentKitTagNames.FileSystemOperation, operation);
+        _ = activity?.SetTag(AgentKitTagNames.SecurityRequestId, requestId?.ToString());
+        return activity;
+    }
+
+    private void CompleteFileSystemObservation(
+        Activity? activity, string operation, SecurityRequestId? requestId, string outcome)
+    {
+        var normalized = NormalizeOutcome(outcome);
+        if (IsFailureOutcome(normalized))
+        {
+            activity.SetFailed(normalized, outcome);
+        }
+        else
+        {
+            activity.SetSuccessful(normalized);
+        }
+
+        FileSystemLog.Completed(_logger, operation, requestId, outcome);
+        FileSystemMetrics.Record(operation, normalized);
+    }
+
+    private void FailFileSystemObservation(
+        Activity? activity, string operation, SecurityRequestId? requestId, string outcome, string errorType)
+    {
+        activity.SetFailed(outcome, errorType);
+        FileSystemLog.Completed(_logger, operation, requestId, outcome);
+        FileSystemMetrics.Record(operation, outcome);
+    }
+
+    private static string NormalizeOutcome(string outcome) => outcome.ToLowerInvariant();
+
+    private static bool IsFailureOutcome(string outcome) =>
+        outcome.Contains("fail", StringComparison.Ordinal)
+        || outcome.Contains("partial", StringComparison.Ordinal)
+        || outcome.Contains("unknown", StringComparison.Ordinal);
+}

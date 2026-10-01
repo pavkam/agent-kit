@@ -224,42 +224,32 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
-    public void Build_WhenDefinitionExplicitlySelectsAnInputCoordinatorKeyWithNoMatchingRegistration_RejectsWithAnOptionalCollaboratorDiagnostic()
+    public void Build_WhenDefinitionSelectsAnInputCoordinatorKeyWithNoMatchingRegistration_RejectsWithAnInputCoordinatorDiagnostic()
     {
-        var definition = CompositionTestData.Definition() with { InputCoordinatorKey = new ComponentKey<IInputCoordinator>("missing") };
+        var definition = CompositionTestData.Definition().WithComponents(input: new ComponentKey<IInputCoordinator>("missing"));
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
 
-        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.optional-collaborator.missing");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.input-coordinator.missing");
     }
 
     [Fact]
-    public void Build_WhenDefinitionExplicitlySelectsAnOutputPublisherKeyWithNoMatchingRegistration_RejectsWithAnOptionalCollaboratorDiagnostic()
+    public void Build_WhenDefinitionSelectsAnOutputPublisherKeyWithNoMatchingRegistration_RejectsWithAnOutputPublisherDiagnostic()
     {
-        var definition = CompositionTestData.Definition() with { OutputPublisherKey = new ComponentKey<IOutputPublisher>("missing") };
+        var definition = CompositionTestData.Definition().WithComponents(output: new ComponentKey<IOutputPublisher>("missing"));
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
 
-        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.optional-collaborator.missing");
-    }
-
-    [Fact]
-    public async Task Build_WhenDefinitionDoesNotSelectAnInputCoordinatorOrOutputPublisherKey_AcceptsWithoutRequiringEither()
-    {
-        var builder = CompositionTestData.RunnableBuilder();
-
-        await using var engine = builder.Build();
-
-        _ = engine;
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.output-publisher.missing");
     }
 
     [Fact]
     public async Task Build_WhenDefinitionExplicitlySelectsAMatchingKeyedInputCoordinator_Accepts()
     {
         var key = new ComponentKey<IInputCoordinator>("matching");
-        var definition = CompositionTestData.Definition() with { InputCoordinatorKey = key };
+        var definition = CompositionTestData.Definition().WithComponents(input: key);
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
         _ = builder.Services.AddKeyedSingleton<IInputCoordinator>(key.Value, static (_, _) => throw new InvalidOperationException("Unused test coordinator."));
 
@@ -702,7 +692,9 @@ public sealed class AgentEngineBuilderTests
     {
         await using var engine = CompositionTestData.RunnableBuilder().Build();
         engine.ComponentRegistrations.RepresentsCompleteRunnableGraph.ShouldBeFalse();
-        engine.ComponentRegistrations.UnrepresentedRequiredSpine.ShouldContain(ComponentContractReference.Unkeyed<IAgentLoop>());
+        engine.ComponentRegistrations.UnrepresentedRequiredSpine.ShouldContain(ComponentContractReference.Unkeyed<IAgentDefinitionCatalog>());
+        engine.ComponentRegistrations.UnrepresentedRequiredSpine.ShouldContain(
+            new ComponentContractReference(typeof(IAgentLoop), AgentLoopComponentDefaults.LoopKeyValue));
     }
 
     private static ComponentRegistrationDescriptor Registration<TContract, TImplementation>(ServiceLifetime lifetime, params ComponentContractReference[] dependencies)
@@ -716,20 +708,6 @@ public sealed class AgentEngineBuilderTests
     private sealed class RunIdGenerator: IIdentifierGenerator<RunId>
     {
         public RunId Create() => new(Guid.NewGuid());
-    }
-
-    [Fact]
-    public void Build_WhenDefinitionUsesLegacyUnconfiguredShape_RejectsAsUnrunnable()
-    {
-        var configured = CompositionTestData.Definition();
-        var legacy = new AgentDefinition(configured.Id, configured.Revision, configured.DisplayName, configured.Models, configured.ModelRequirements, configured.Instructions, configured.Settings, configured.RunDefaults, configured.Extensions);
-        var builder = AgentEngine.CreateBuilder();
-        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
-        CompositionTestData.AddHookKernelForEngineValidation(builder.Services);
-        _ = builder.Services.AddAgent(legacy);
-        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
-        var exception = Should.Throw<AgentCompositionException>(builder.Build);
-        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.definition.profiles.missing");
     }
 
     [Fact]
@@ -759,10 +737,31 @@ public sealed class AgentEngineBuilderTests
     {
         var definition = CompositionTestData.Definition();
         var publication = CompositionTestData.RunProfile(definition);
-        var mismatched = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, publication.SecurityProfile.ConfigurationVersion, new SecurityProfileKey("different"), publication.SecurityProfile.ProfileVersion, publication.SecurityProfile.PolicySnapshot, publication.SecurityProfile.AuthorityKey), publication.SessionProfile);
+        var mismatched = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, publication.SecurityProfile.ConfigurationVersion, new SecurityProfileKey("different"), publication.SecurityProfile.ProfileVersion, publication.SecurityProfile.PolicySnapshot, publication.SecurityProfile.AuthorityKey), publication.SessionProfile, publication.HookProfile, publication.BudgetProfile, publication.Configuration);
         var reader = new MutableRunProfilePublicationReader(new AgentRunProfilePublicationSnapshot([mismatched]), new AgentRunProfilePublicationFound(mismatched));
         var builder = Builder(definition, reader);
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.run-profile.key-mismatch");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Build_WhenPublicationHookOrBudgetProfileDiffersFromTheDefinition_RejectsComposition(bool hook)
+    {
+        var definition = CompositionTestData.Definition();
+        var publication = CompositionTestData.RunProfile(definition);
+        var mismatched = new AgentRunProfilePublication(
+            publication.SecurityProfile,
+            publication.SessionProfile,
+            hook ? new HookProfileKey("other-hooks") : publication.HookProfile,
+            hook ? publication.BudgetProfile : new BudgetProfileKey("other-budget"),
+            publication.Configuration);
+        var reader = new MutableRunProfilePublicationReader(new AgentRunProfilePublicationSnapshot([mismatched]), new AgentRunProfilePublicationFound(mismatched));
+        var builder = Builder(definition, reader);
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.run-profile.key-mismatch");
     }
 
@@ -801,7 +800,7 @@ public sealed class AgentEngineBuilderTests
     {
         var definition = CompositionTestData.Definition();
         var validated = CompositionTestData.RunProfile(definition);
-        var replacement = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, new ConfigurationVersion(2), validated.SecurityProfile.ProfileKey, validated.SecurityProfile.ProfileVersion, validated.SecurityProfile.PolicySnapshot, validated.SecurityProfile.AuthorityKey), validated.SessionProfile);
+        var replacement = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, new ConfigurationVersion(2), validated.SecurityProfile.ProfileKey, validated.SecurityProfile.ProfileVersion, validated.SecurityProfile.PolicySnapshot, validated.SecurityProfile.AuthorityKey), validated.SessionProfile, validated.HookProfile, validated.BudgetProfile, new EffectiveConfigurationSnapshot(new ConfigurationVersion(2), validated.SessionProfile.ConfigurationFingerprint, [], []));
         var reader = new AlternatingRunProfilePublicationReader(new AgentRunProfilePublicationSnapshot([validated]), new AgentRunProfilePublicationSnapshot([replacement]), new AgentRunProfilePublicationFound(replacement));
         var runIds = new CountingRunIdGenerator();
         var builder = AgentEngine.CreateBuilder();

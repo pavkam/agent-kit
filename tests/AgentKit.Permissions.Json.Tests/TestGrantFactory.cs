@@ -34,12 +34,14 @@ internal static class TestGrantFactory
                 new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
                 new RunId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null));
+        var grantIdentity = identity ?? TestExecutionIdentity.Create(
+            new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         return new SecurityGrant(
             grantId ?? new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
             requestId ?? new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
             scope,
-            identity ?? TestExecutionIdentity.Create(
-                new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+            grantIdentity,
+            TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, grantIdentity),
             new ComponentId("filesystem"),
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
@@ -62,6 +64,7 @@ internal static class TestGrantFactory
         return new SecurityEnforcementRequest(
             grant.Scope,
             grant.Identity,
+            grant.Authorization,
             grant.Audience,
             grant.Kind,
             grant.Effect,

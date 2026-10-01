@@ -162,9 +162,9 @@ namespace AgentKit.Storage.Json
     }
     public sealed class JsonSecurityEnforcementRequest : System.IEquatable<AgentKit.Storage.Json.JsonSecurityEnforcementRequest>
     {
-        public JsonSecurityEnforcementRequest(AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, long RevocationVersion) { }
+        public JsonSecurityEnforcementRequest(AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, long RevocationVersion) { }
         public string Audience { get; init; }
-        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public AgentKit.Storage.Json.JsonExecutionIdentity Identity { get; init; }
         public string InputFingerprint { get; init; }
@@ -184,7 +184,7 @@ namespace AgentKit.Storage.Json
                     System.Guid RequestId,
                     AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope,
                     AgentKit.Storage.Json.JsonExecutionIdentity Identity,
-                    AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization,
+                    AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization,
                     string Audience,
                     AgentKit.SecurityOperationKind Kind,
                     AgentKit.SecurityEffect Effect,
@@ -199,7 +199,7 @@ namespace AgentKit.Storage.Json
         public int AllowedUses { get; init; }
         public System.Guid? ApprovalResponseId { get; init; }
         public string Audience { get; init; }
-        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public System.DateTimeOffset ExpiresAt { get; init; }
         public System.Guid Id { get; init; }
@@ -228,9 +228,9 @@ namespace AgentKit.Storage.Json
     }
     public sealed class JsonSecurityRequest : System.IEquatable<AgentKit.Storage.Json.JsonSecurityRequest>
     {
-        public JsonSecurityRequest(System.Guid Id, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, System.Guid? ToolCallId, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, System.DateTimeOffset Deadline, int RequestedUses) { }
+        public JsonSecurityRequest(System.Guid Id, AgentKit.Storage.Json.JsonSecurityAuthorizationScope Scope, System.Guid? ToolCallId, AgentKit.Storage.Json.JsonExecutionIdentity Identity, AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization, string Audience, AgentKit.SecurityOperationKind Kind, AgentKit.SecurityEffect Effect, System.Collections.Immutable.ImmutableArray<AgentKit.Storage.Json.JsonProtectedResource> Resources, string InputFingerprint, System.DateTimeOffset Deadline, int RequestedUses) { }
         public string Audience { get; init; }
-        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext? Authorization { get; init; }
+        public AgentKit.Storage.Json.JsonSecurityAuthorizationContext Authorization { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public System.Guid Id { get; init; }

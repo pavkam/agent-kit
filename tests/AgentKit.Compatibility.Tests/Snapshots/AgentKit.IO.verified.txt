@@ -35,11 +35,19 @@ namespace AgentKit.IO
         public int MaximumInputParts { get; set; }
         public AgentKit.ConfigurationVersion PreprocessingConfigurationVersion { get; set; }
     }
+    public sealed class InputPromotionDurableOperationHandler : AgentKit.DurableBoundaryHandler
+    {
+        public InputPromotionDurableOperationHandler(AgentKit.DurableBoundaryRegistry registry) { }
+    }
     public sealed class RunOutputPublisherOptions : System.IEquatable<AgentKit.IO.RunOutputPublisherOptions>
     {
         public RunOutputPublisherOptions(int maximumSubscriptions = 32, int capacityPerSubscription = 256) { }
         public int CapacityPerSubscription { get; }
         public int MaximumSubscriptions { get; }
+    }
+    public sealed class RunSettlementDurableOperationHandler : AgentKit.DurableBoundaryHandler
+    {
+        public RunSettlementDurableOperationHandler(AgentKit.DurableBoundaryRegistry registry) { }
     }
     public static class ServiceExtensions
     {
@@ -59,6 +67,8 @@ namespace AgentKit.IO
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputPublisher<TPublisher>(AgentKit.ComponentKey<AgentKit.IOutputPublisher> key)
                 where TPublisher :  class, AgentKit.IOutputPublisher { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunEventSink<TSink>(AgentKit.RunEventSinkRegistration registration)
+                where TSink :  class, AgentKit.IRunEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunEventSink<TSink>(AgentKit.RunEventSinkRegistration registration, System.Func<System.IServiceProvider, TSink> factory)
                 where TSink :  class, AgentKit.IRunEventSink { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
         }

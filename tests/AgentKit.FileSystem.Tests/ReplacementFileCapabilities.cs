@@ -4,10 +4,8 @@
 namespace AgentKit.FileSystem.Tests;
 
 /// <summary>Provides distinguishable replacements for each narrow filesystem capability without performing host effects.</summary>
-[Obsolete("Legacy host surface.")]
-
 internal sealed class ReplacementFileCapabilities:
-    ILegacyDirectoryReader,
+    IDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,
@@ -18,8 +16,8 @@ internal sealed class ReplacementFileCapabilities:
     public ComponentId SecurityAudience { get; } = new("replacement-file-capability");
 
     /// <inheritdoc/>
-    public ValueTask<DirectoryEnumerationResult> EnumerateAsync(
-        DirectoryEnumerationRequest request,
+    public IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     /// <inheritdoc/>

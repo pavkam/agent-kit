@@ -3,13 +3,13 @@
 
 namespace AgentKit.Processes.Scripted;
 
-/// <summary>Maps structured start requests onto scripted legacy resolve requests.</summary>
+/// <summary>Maps structured start requests onto the resolve requests the scripted resolver consumes.</summary>
 internal static class ScriptedProcessStartMapping
 {
-    /// <summary>Builds a legacy resolve request for the scripted resolver.</summary>
+    /// <summary>Builds the resolve request for the scripted resolver.</summary>
     /// <param name="start">The structured start request.</param>
     /// <param name="snapshot">The captured scripted profile.</param>
-    /// <returns>The legacy resolve request.</returns>
+    /// <returns>The resolve request.</returns>
     /// <exception cref="ArgumentNullException">A required reference is null.</exception>
     internal static ProcessResolveRequest ToResolveRequest(ProcessStartRequest start, ScriptedProcessOptionsSnapshot snapshot)
     {

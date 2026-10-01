@@ -1,0 +1,29 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Goals.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Goals.InMemory
+{
+    public sealed class InMemoryGoalStore : AgentKit.IGoalStore
+    {
+        public InMemoryGoalStore(AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, AgentKit.Goals.InMemory.InMemoryGoalStoreOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.InMemory.InMemoryGoalStore>? logger = null) { }
+        public AgentKit.GoalStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalCreateResult> CreateAsync(AgentKit.GoalCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalLoadResult> LoadAsync(AgentKit.GoalLoadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadChildrenAsync(AgentKit.GoalChildrenRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadIntentsAsync(AgentKit.GoalIntentScanRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalTransitionResult> TransitionAsync(AgentKit.GoalTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemoryGoalStoreOptions
+    {
+        public InMemoryGoalStoreOptions() { }
+        public System.Collections.Generic.List<AgentKit.ComponentId> AuthorizedIntentScanners { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryGoalStore(AgentKit.GoalStoreKey key, System.Action<AgentKit.Goals.InMemory.InMemoryGoalStoreOptions>? configure = null) { }
+        }
+    }
+}

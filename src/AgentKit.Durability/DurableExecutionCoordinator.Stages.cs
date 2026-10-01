@@ -443,9 +443,20 @@ internal sealed partial class DurableExecutionCoordinator
         RecoverableOperationDescriptor operation,
         IExecutionLease lease,
         RecoveryCommitRecordedResult decision,
+        DurableOperationState recordedState,
         long started,
         CancellationToken cancellationToken)
     {
+        // An operation whose evidence already shows a settled state reached its terminal record in an earlier
+        // attempt. Re-stamping that record under this attempt's generation would ask the journal to replace a
+        // terminal result with a different one, which it refuses, so recovery reports the recorded outcome as it
+        // stands and writes nothing.
+        if (recordedState is DurableOperationState.Completed or DurableOperationState.Faulted)
+        {
+            Succeed(scope, DurableCoordinatorStage.Recover, DurableCoordinatorOutcome.Committed, started);
+            return decision.Result;
+        }
+
         // A recorded terminal result is committed exactly as it was produced, under this attempt's generation.
         // Re-recording the outcome is a projection, never a second invocation of the effect.
         var result = decision.Result with { FencingToken = lease.FencingToken };

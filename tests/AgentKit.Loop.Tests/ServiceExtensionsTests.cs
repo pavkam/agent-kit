@@ -195,6 +195,19 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
+    public void AddAgentLoop_WhenHookDispatchTimeoutIsNotPositive_FailsValidationOnAccess(int seconds)
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop(LoopKey, options => options.HookDispatchTimeout = TimeSpan.FromSeconds(seconds));
+
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
     public void AddAgentLoop_WhenObserverDeliveryTimeoutIsNotPositive_FailsValidationOnAccess(int seconds)
     {
         var services = BuildComposableServices();
@@ -213,6 +226,7 @@ public sealed class ServiceExtensionsTests
         options.HistoryReadPageSize.ShouldBe(200);
         options.AppendConflictRetryLimit.ShouldBe(5);
         options.SettlementTimeout.ShouldBe(TimeSpan.FromSeconds(30));
+        options.HookDispatchTimeout.ShouldBe(TimeSpan.FromSeconds(30));
         options.ObserverDeliveryTimeout.ShouldBe(TimeSpan.FromSeconds(5));
     }
 

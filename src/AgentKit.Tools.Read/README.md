@@ -22,7 +22,8 @@ requested offset; an explicit `limit` above `ReadFileToolOptions.MaximumLines`
 is rejected as invalid arguments before authorization or any read. A successful
 outcome carries the `agentkit.read.complete` extension (`true` or `false`) so
 callers can tell whether lines remain beyond the returned window. Byte and
-encoding limits belong to the selected `IFileSystem`, not to these options.
+encoding limits belong to the selected keyed file-system profile, not to these
+options.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
@@ -49,8 +50,8 @@ projects above are composition collaborators, not necessarily dependencies.
   ownership and contracts.
 - [Coding-harness tools](../../docs/profiles/coding-harness/coding-harness-built-in-tools.md)
   — the application profile for these features.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

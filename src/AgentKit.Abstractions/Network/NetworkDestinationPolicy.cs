@@ -17,17 +17,13 @@ using System.Net.Sockets;
 /// fields, safe to share across threads without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller security-request
-/// and grant model the full network architecture describes, which
-/// additionally binds authority to a canonical destination, data
-/// classification, and request fingerprint through a shared security
-/// authority. Until that authority is wired into this call site, this
-/// policy is the equivalent of the file-system boundary's own structural
-/// sandbox check: an independent, always-enforced second check that a
-/// higher-level allow cannot be used to reach a destination outside the
-/// configured policy. It is never a substitute for that separate
-/// authorization decision, only a narrower guarantee this package can make
-/// on its own.
+/// This policy is the network boundary's structural sandbox check, the
+/// equivalent of the file-system boundary's own: an independent,
+/// always-enforced second check, beside the security grant the transport
+/// consumes for the exact destination, that a higher-level allow cannot be
+/// used to reach a destination outside the configured policy. It is never a
+/// substitute for that separate authorization decision, only a narrower
+/// guarantee this package can make on its own.
 /// </para>
 /// </remarks>
 public sealed record NetworkDestinationPolicy

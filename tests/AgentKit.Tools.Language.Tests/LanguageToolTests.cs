@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Language.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 
@@ -21,7 +25,6 @@ public sealed class LanguageToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":0}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":999999999}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":\"soon\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrQuery(string json)
     {
         var service = new RecordingLanguageService();
@@ -35,7 +38,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_PerformsNoQuery()
     {
         var service = new RecordingLanguageService();
@@ -51,7 +53,6 @@ public sealed class LanguageToolTests
     [InlineData("implementations", LanguageQueryKind.Implementations, true)]
     [InlineData("references", LanguageQueryKind.References, true)]
     [InlineData("document_symbols", LanguageQueryKind.DocumentSymbols, false)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenDocumentActionValid_UsesExactSecurityEvidence(string action, LanguageQueryKind kind, bool positionRequired)
     {
         var service = new RecordingLanguageService
@@ -78,7 +79,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWorkspaceSymbolQueryExceedsCharacterBoundary_RejectsWithoutAuthorization()
     {
         var service = new RecordingLanguageService();
@@ -96,7 +96,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWorkspaceSymbolQueryValid_OmitsPathAndHashesQueryInEvidence()
     {
         var service = new RecordingLanguageService
@@ -116,7 +115,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReturnsOversizedSnapshot_ProjectsBoundedLossAwareOutput()
     {
         var location = new LanguageLocation(new FileSystemPath("src/very-long-name.cs"), new LanguageRange(new LanguagePosition(0, 1), new LanguagePosition(2, 3)), new ContentHash("sha256:document"));
@@ -139,7 +137,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSymbolsPresentAndNoFieldExceedsBoundary_ProjectsCompleteSymbolEntries()
     {
         var shortLocation = new LanguageLocation(
@@ -177,7 +174,6 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenProviderReportsStale_ReturnsFailureWithTypedSnapshot()
     {
         var service = new RecordingLanguageService
@@ -199,7 +195,6 @@ public sealed class LanguageToolTests
     [InlineData(LanguageQueryStatus.TimedOut, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
     [InlineData(LanguageQueryStatus.Cancelled, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
     [InlineData(LanguageQueryStatus.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenQueryDoesNotSucceed_PreservesExactStageAndCertainty(LanguageQueryStatus status, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
     {
         var service = new RecordingLanguageService
@@ -213,7 +208,7 @@ public sealed class LanguageToolTests
         result.Outcome.Retryable.ShouldBeFalse();
     }
 
-    private static LanguageTool CreateTool(ILanguageIntelligenceService service, ISecurityAuthority authority, LanguageToolOptions? options = null) => new(service, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
+    private static LanguageTool CreateTool(ILanguageIntelligenceService service, ISecurityAuthority authority, LanguageToolOptions? options = null, ILogger<LanguageTool>? logger = null) => new(service, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()), logger ?? NullLogger<LanguageTool>.Instance);
     private static LanguageToolOptions OptionsForTool() => new()
     {
         DefaultMaximumResults = 10,
@@ -224,7 +219,7 @@ public sealed class LanguageToolTests
         MaximumTextCharacters = 100,
     };
     private static LanguageQueryResult Success(LanguageQueryKind kind) => new(LanguageQueryStatus.Success, kind, null, [], [], [], true, null);
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), LanguageTool.Descriptor);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), LanguageTool.Descriptor);
     [Fact]
     public void LanguageTool_WhenMaximumTextCharactersInvalid_ThrowsExactParameter()
     {
@@ -232,7 +227,31 @@ public sealed class LanguageToolTests
         {
             MaximumTextCharacters = 0
         };
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LanguageTool(new RecordingLanguageService(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LanguageTool(new RecordingLanguageService(), new FixedSecurityAuthoritySelector(new RecordingSecurityAuthority()), new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options), NullLogger<LanguageTool>.Instance));
         exception.ParamName.ShouldBe("MaximumTextCharacters");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<LanguageTool>();
+        var tool = CreateTool(new RecordingLanguageService(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), LanguageTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33300);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
     }
 }

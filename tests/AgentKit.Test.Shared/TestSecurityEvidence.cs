@@ -50,6 +50,13 @@ public static class TestSecurityEvidence
             Authorization(agentId, sessionId, correlation, identity),
             SessionProfile());
 
+    /// <summary>Gets the policy snapshot every <see cref="Authorization"/> value captures.</summary>
+    /// <value>The immutable snapshot reference a test authority is bound to so it evaluates that captured evidence.</value>
+    public static SecurityPolicySnapshotReference PolicySnapshot { get; } = new(
+        new SecurityPolicySnapshotId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
+        new SecurityPolicyVersion(1),
+        new ContentHash("sha256:test-policy"));
+
     /// <summary>Creates captured authorization matching the supplied operation address and identity.</summary>
     /// <param name="agentId">The operation's agent.</param>
     /// <param name="sessionId">The operation's optional session.</param>

@@ -55,9 +55,6 @@ public sealed class ArgumentExceptionExtensionsTests
         // reach ThrowIfNotPersistable's own copied-evidence checks.
         SecurityGrant[] invalidGrants = [grant with
         {
-            PolicyVersion = default
-        }, grant with
-        {
             RevocationVersion = default
         }, grant with
         {

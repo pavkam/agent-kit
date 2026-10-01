@@ -7,7 +7,7 @@ before the effect, and output repair, compaction, and context allocation reserve
 through the same authority.
 
 Owning documents: [Budgets](../architecture/budgets.md),
-[Budgets concept](../concepts/budgets.md).
+[Budgets concept](../concepts/usage-limits-and-budgets.md).
 
 ## Progress
 

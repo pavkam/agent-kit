@@ -1,0 +1,58 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Evaluation.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Evaluation.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteEvaluationResultStore(AgentKit.Evaluation.EvaluationResultStoreKey key, AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreTarget target, System.Action<AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreOptions>? configure = null) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public sealed class SqliteEvaluationResultStore : AgentKit.Evaluation.IEvaluationResultStore
+    {
+        public SqliteEvaluationResultStore(AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreTarget target, AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreSettings settings, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Evaluation.Sqlite.SqliteEvaluationResultStore>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationStoreResult> AppendAsync(AgentKit.Evaluation.EvaluationCaseResult result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationReadResult> ReadAsync(AgentKit.Evaluation.EvaluationResultQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteEvaluationStoreInstanceId : System.IEquatable<AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreInstanceId>
+    {
+        public SqliteEvaluationStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteEvaluationStoreOptions
+    {
+        public SqliteEvaluationStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteEvaluationStoreSettings : System.IEquatable<AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreSettings>
+    {
+        public SqliteEvaluationStoreSettings(System.TimeSpan lockTimeout, int maximumRecordBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteEvaluationStoreTarget : System.IEquatable<AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreTarget>
+    {
+        public SqliteEvaluationStoreTarget(string databasePath, AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreInstanceId expectedInstanceId, AgentKit.Evaluation.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Evaluation.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Evaluation.Sqlite.SqliteEvaluationStoreInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Evaluation.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Evaluation.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+}

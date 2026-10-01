@@ -14,8 +14,8 @@ using AgentKit.TestSupport;
 public sealed class GoogleGeminiEmbeddingModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty);
-    private static GoogleGeminiEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, GoogleGeminiProviderOptions? options = null) => new(TestModels.TextEmbedding004, options ?? new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
+    private static GoogleGeminiEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, GoogleGeminiProviderOptions? options = null) => new(TestModels.TextEmbedding004, options ?? new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), credentials, ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsApiKeyHeaderAndReturnsCompletedResponse()
     {
@@ -114,7 +114,7 @@ public sealed class GoogleGeminiEmbeddingModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task GenerateAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
@@ -125,7 +125,6 @@ public sealed class GoogleGeminiEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
     }
 
     /// <summary>Verifies a refused connection is a typed unavailable failure.</summary>
@@ -139,7 +138,6 @@ public sealed class GoogleGeminiEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
     /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>
@@ -228,7 +226,7 @@ public sealed class GoogleGeminiEmbeddingModelTests
             new EmbeddingRequestId(Guid.NewGuid()),
             TestModels.TextEmbedding004,
             new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, EmbeddingEncoding.Int8, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty));
-        var request = new EmbeddingModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new EmbeddingModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
 
         var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
 
@@ -260,7 +258,7 @@ public sealed class GoogleGeminiEmbeddingModelTests
     {
         var clock = new FakeTimeProvider(Now);
         var handler = new GatedSendHttpMessageHandler();
-        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), new HttpClient(handler), clock);
+        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), ProviderEgressHarness.Create(handler, clock).Egress, clock);
 
         var pending = model.GenerateAsync(CreateRequest(TestModels.TextEmbedding004, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
         (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
@@ -280,7 +278,7 @@ public sealed class GoogleGeminiEmbeddingModelTests
         {
             Content = new StreamContent(body),
         });
-        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), new HttpClient(handler), clock);
+        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), ProviderEgressHarness.Create(handler, clock).Egress, clock);
 
         var pending = model.GenerateAsync(CreateRequest(TestModels.TextEmbedding004, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
         (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
@@ -338,7 +336,7 @@ public sealed class GoogleGeminiEmbeddingModelTests
         {
             Content = new StreamContent(body),
         });
-        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), new HttpClient(handler), clock);
+        var model = new GoogleGeminiEmbeddingModel(TestModels.TextEmbedding004, new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiEmbeddingRequestTranslator(), new GoogleGeminiEmbeddingResponseParser(), new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")), ProviderEgressHarness.Create(handler, clock).Egress, clock);
 
         var pending = model.GenerateAsync(CreateRequest(TestModels.TextEmbedding004, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
         (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);

@@ -6,6 +6,41 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records entry to one recorder write using safe correlation identities only.</summary>
+    /// <param name="logger">The recorder's type-specific logger.</param><param name="stage">The bounded record stage: accepted or terminal.</param><param name="agentId">The owning agent.</param><param name="sessionId">The owning session.</param><param name="runId">The active run.</param><param name="turnId">The active turn.</param><param name="toolCallId">The correlated call.</param>
+    [LoggerMessage(4110, LogLevel.Debug, "Recording {Stage} tool call {ToolCallId} for agent {AgentId}, session {SessionId}, run {RunId}, turn {TurnId}.")]
+    internal static partial void CallRecordStarted(ILogger logger, string stage, AgentId agentId, SessionId sessionId, RunId runId, TurnId turnId, ToolCallId toolCallId);
+
+    /// <summary>Records the bounded terminal outcome of one recorder write without arguments, results, or exception text.</summary>
+    /// <param name="logger">The recorder's type-specific logger.</param><param name="level">Severity matching the semantic outcome.</param><param name="stage">The bounded record stage: accepted or terminal.</param><param name="agentId">The owning agent.</param><param name="sessionId">The owning session.</param><param name="runId">The active run.</param><param name="turnId">The active turn.</param><param name="toolCallId">The correlated call.</param><param name="outcome">A closed recording outcome.</param>
+    [LoggerMessage(EventId = 4111, Message = "Recorded {Stage} tool call {ToolCallId} for agent {AgentId}, session {SessionId}, run {RunId}, turn {TurnId} with outcome {Outcome}.")]
+    internal static partial void CallRecordCompleted(ILogger logger, LogLevel level, string stage, AgentId agentId, SessionId sessionId, RunId runId, TurnId turnId, ToolCallId toolCallId, string outcome);
+
+    /// <summary>Records that no execution policy is registered under the exact captured reference.</summary>
+    /// <param name="logger">The selector's type-specific logger.</param><param name="policyKey">The unavailable policy key.</param><param name="policyVersion">The exact unavailable revision.</param>
+    [LoggerMessage(4120, LogLevel.Warning, "Tool execution policy {PolicyKey} at version {PolicyVersion} is unavailable.")]
+    internal static partial void ExecutionPolicyUnavailable(ILogger logger, ToolExecutionPolicyKey policyKey, ToolExecutionPolicyVersion policyVersion);
+
+    /// <summary>Records exact selection of an execution policy without copying its plan.</summary>
+    /// <param name="logger">The selector's type-specific logger.</param><param name="policyKey">The selected policy key.</param><param name="policyVersion">The exact selected revision.</param>
+    [LoggerMessage(4121, LogLevel.Debug, "Selected tool execution policy {PolicyKey} at version {PolicyVersion}.")]
+    internal static partial void ExecutionPolicySelected(ILogger logger, ToolExecutionPolicyKey policyKey, ToolExecutionPolicyVersion policyVersion);
+
+    /// <summary>Records that a selected policy refused or could not produce a valid plan.</summary>
+    /// <param name="logger">The executor's type-specific logger.</param><param name="policyKey">The planning policy key.</param><param name="policyVersion">The planning policy revision.</param><param name="reason">A closed bounded reason: rejected, mismatched, or faulted.</param>
+    [LoggerMessage(4122, LogLevel.Warning, "Tool execution policy {PolicyKey} at version {PolicyVersion} did not plan its calls: {Reason}.")]
+    internal static partial void ExecutionPlanRefused(ILogger logger, ToolExecutionPolicyKey policyKey, ToolExecutionPolicyVersion policyVersion, string reason);
+
+    /// <summary>Records that one sink failed or timed out while observing an event, without the event content.</summary>
+    /// <param name="logger">The dispatcher's type-specific logger.</param><param name="sinkId">The registered sink identity.</param><param name="errorType">The exception type name, or Timeout.</param>
+    [LoggerMessage(4130, LogLevel.Warning, "Tool event sink {SinkId} failed to observe an event with error type {ErrorType}.")]
+    internal static partial void EventSinkFailed(ILogger logger, string sinkId, string errorType);
+
+    /// <summary>Records a scheduled retry of a failed tool attempt without arguments, results, or failure text.</summary>
+    /// <param name="logger">The scheduler's type-specific logger.</param><param name="toolCallId">The correlated call.</param><param name="toolId">The retried tool.</param><param name="failedAttempt">The positive attempt that failed.</param><param name="delay">The backoff before the next attempt.</param>
+    [LoggerMessage(4140, LogLevel.Information, "Retrying tool call {ToolCallId} for tool {ToolId} after failed attempt {FailedAttempt} with backoff {Delay}.")]
+    internal static partial void RetryScheduled(ILogger logger, ToolCallId toolCallId, ToolId toolId, int failedAttempt, TimeSpan delay);
+
     /// <summary>Records entry to coordinated discovery, merge, and schema/capability preflight without publication content.</summary>
     /// <param name="logger">The coordinator's type-specific logger.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
     [LoggerMessage(4100, LogLevel.Debug, "Starting tool catalog coordination for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]

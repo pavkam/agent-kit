@@ -288,6 +288,29 @@ public sealed class DurableExecutionCoordinatorTests
         harness.Journal.Calls.ShouldBe(["LoadEvidence", "RecordTerminal"]);
     }
 
+    [Theory]
+    [InlineData(DurableOperationState.Completed)]
+    [InlineData(DurableOperationState.Faulted)]
+    public async Task RecoverAsync_WhenTheRecordedResultIsAlreadySettled_ReturnsItWithoutWritingOrReinvoking(
+        DurableOperationState settledState)
+    {
+        using var harness = new DurabilityRuntimeHarness();
+        var operation = DurableJournalTestData.Descriptor();
+        var recorded = DurableJournalTestData.Result(new FencingToken(1), state: settledState);
+        harness.Journal.EvidenceResult = new RecoveryEvidenceLoaded(Evidence(
+            state: settledState,
+            terminalResultRecorded: true,
+            recordedResult: recorded,
+            descriptor: operation));
+
+        var result = await harness.Coordinator.RecoverAsync(
+            operation.Address, operation.ExecutionContext, hooks: null, TestContext.Current.CancellationToken);
+
+        result.ShouldBe(recorded);
+        harness.Handler!.Invocations.ShouldBe(0);
+        harness.Journal.Calls.ShouldBe(["LoadEvidence"]);
+    }
+
     [Fact]
     public async Task RecoverAsync_WhenCommittingARecordedResult_RestampsItUnderTheCurrentGeneration()
     {
@@ -437,19 +460,19 @@ public sealed class DurableExecutionCoordinatorTests
     [Fact]
     public async Task ExecuteAsync_WhenObserved_StartsOneExecuteActivityWithATruthfulTerminalStatus()
     {
-        using var activities = Collect(AgentKitActivityNames.DurableExecute);
+        using var activities = new TraceScopedActivityCollector(AgentKitActivityNames.DurableExecute);
         using var harness = new DurabilityRuntimeHarness();
 
         _ = await harness.Coordinator.ExecuteAsync(
             DurableJournalTestData.Descriptor(), hooks: null, TestContext.Current.CancellationToken);
 
-        activities.Snapshot().Single().Status.ShouldBe(ActivityStatusCode.Ok);
+        activities.Snapshot().Single().ShouldBe(ActivityStatusCode.Ok);
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenTheOperationFails_MarksTheExecuteActivityAsError()
     {
-        using var activities = Collect(AgentKitActivityNames.DurableExecute);
+        using var activities = new TraceScopedActivityCollector(AgentKitActivityNames.DurableExecute);
         using var harness = new DurabilityRuntimeHarness();
         harness.Authority.DenyReason = "The test authority denied this durable write.";
 
@@ -457,13 +480,13 @@ public sealed class DurableExecutionCoordinatorTests
             async () => await harness.Coordinator.ExecuteAsync(
                 DurableJournalTestData.Descriptor(), hooks: null, TestContext.Current.CancellationToken));
 
-        activities.Snapshot().Single().Status.ShouldBe(ActivityStatusCode.Error);
+        activities.Snapshot().Single().ShouldBe(ActivityStatusCode.Error);
     }
 
     [Fact]
     public async Task RecoverAsync_WhenObserved_StartsOneRecoverActivity()
     {
-        using var activities = Collect(AgentKitActivityNames.DurableRecover);
+        using var activities = new TraceScopedActivityCollector(AgentKitActivityNames.DurableRecover);
         using var harness = new DurabilityRuntimeHarness();
         var operation = DurableJournalTestData.Descriptor();
         harness.Journal.EvidenceResult = new RecoveryEvidenceLoaded(Evidence(
@@ -472,7 +495,7 @@ public sealed class DurableExecutionCoordinatorTests
         _ = await harness.Coordinator.RecoverAsync(
             operation.Address, operation.ExecutionContext, hooks: null, TestContext.Current.CancellationToken);
 
-        activities.Snapshot().Single().Status.ShouldBe(ActivityStatusCode.Ok);
+        activities.Snapshot().Single().ShouldBe(ActivityStatusCode.Ok);
     }
 
     [Fact]
@@ -542,11 +565,6 @@ public sealed class DurableExecutionCoordinatorTests
 
         exception.ParamName.ShouldBe("handlers");
     }
-
-    private static ActivityCollector Collect(string activityName) =>
-        new(
-            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            observation => observation.OperationName == activityName);
 
     private static RecoveryEvidence Evidence(
         DurableOperationState state = DurableOperationState.Accepted,

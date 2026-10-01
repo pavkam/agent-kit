@@ -6,6 +6,7 @@ namespace AgentKit.Providers.DeepSeek.Tests;
 using System.Diagnostics;
 
 using AgentKit.Providers.Groq;
+using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -75,6 +76,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
         _ = services.AddDeepSeekLlmModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
         _ = services.AddDeepSeekLlmModel(new ModelAlias("reasoner"), new ModelId("deepseek-reasoner"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
         models.Length.ShouldBe(2);
@@ -88,6 +90,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
         _ = services.AddDeepSeekLlmModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();
         model.Alias.ShouldBe(new ModelAlias("chat"));
@@ -114,6 +117,8 @@ public sealed class ServiceExtensionsTests
             RegisterGroq(services);
             RegisterDeepSeek(services);
         }
+
+        _ = services.AddProviderEgressTestServices();
 
         await using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
@@ -159,6 +164,8 @@ public sealed class ServiceExtensionsTests
 
         _ = services.AddDeepSeekLlmModel(descriptor);
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();
         model.Alias.ShouldBe(descriptor.Alias);
@@ -202,6 +209,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
 
         _ = services.AddDeepSeekKnownLlmModel(new ModelAlias("known"), new ModelId("deepseek-flash"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();

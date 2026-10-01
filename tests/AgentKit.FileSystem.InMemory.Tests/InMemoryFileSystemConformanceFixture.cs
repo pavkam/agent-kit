@@ -11,33 +11,27 @@ using Microsoft.Extensions.Options;
 public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformanceFixture
 {
     private ISecurityAuditDispatcher _audit = new AcceptingAuditDispatcher();
-    [Obsolete("Legacy host surface.")]
     private InMemoryFileSystem _fileSystem;
 
     /// <summary>Initializes a fresh in-memory volume with host capabilities.</summary>
-    [Obsolete("Legacy host surface.")]
     public InMemoryFileSystemConformanceFixture() => _fileSystem = CreateFileSystem();
 
     /// <inheritdoc/>
     public bool SupportsSymlinkRejection => false;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public IFileReader Reader => _fileSystem;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public IFileWriter Writer => _fileSystem;
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public IDirectoryCreator? DirectoryCreator => _fileSystem;
 
     /// <inheritdoc/>
     public ISecurityGrantStore GrantStore { get; } = TestSecurity.GrantStore();
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public async ValueTask SeedFileAsync(string relativePath, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default)
     {
         var operation = CreateAuthorizedWrite(relativePath, content, FileWriteDisposition.CreateOrReplace);
@@ -108,7 +102,6 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
     }
 
     /// <inheritdoc/>
-    [Obsolete("Legacy host surface.")]
     public void UseRejectingAudit()
     {
         _audit = new RejectingAuditDispatcher();
@@ -118,7 +111,6 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
     /// <inheritdoc/>
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    [Obsolete("Legacy host surface.")]
     private InMemoryFileSystem CreateFileSystem() => new(
             Options.Create(new InMemoryFileSystemOptions()),
             GrantStore,

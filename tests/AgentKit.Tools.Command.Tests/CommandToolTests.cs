@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Command.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 public sealed class CommandToolTests
@@ -288,7 +292,8 @@ public sealed class CommandToolTests
         RecordingExecutableResolver resolver,
         RecordingProcessExecutor executor,
         ISecurityAuthority authority,
-        CommandToolOptions? options = null)
+        CommandToolOptions? options = null,
+        ILogger<CommandTool>? logger = null)
     {
         var selector = new FixedProcessExecutorSelector(resolver, executor);
         return new CommandTool(
@@ -297,7 +302,8 @@ public sealed class CommandToolTests
             new FixedSecurityRequestIdGenerator(),
             new FixedProcessOperationIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(options ?? OptionsForTool()));
+            Options.Create(options ?? OptionsForTool()),
+            logger ?? NullLogger<CommandTool>.Instance);
     }
 
     private static CommandToolOptions OptionsForTool()
@@ -316,7 +322,7 @@ public sealed class CommandToolTests
         return options;
     }
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
@@ -331,4 +337,28 @@ public sealed class CommandToolTests
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch), CommandTool.Descriptor);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<CommandTool>();
+        var tool = CreateTool(new RecordingExecutableResolver(), new RecordingProcessExecutor(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), CommandTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33000);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

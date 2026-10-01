@@ -6,7 +6,6 @@ namespace AgentKit.Tests;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
-using AgentKit.IO;
 using AgentKit.Observability;
 using AgentKit.TestSupport;
 
@@ -100,27 +99,21 @@ public sealed class AgentTests
         var effects = new AdmissionRunEffects();
         await using var engine = Build(catalog, effects, new CountingRunIdGenerator());
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
-        var reconstructed = new AgentDefinition(
-            definition.Id,
-            definition.Revision,
-            definition.DisplayName,
-            new ModelSelectionPolicy(
+        var reconstructed = definition with
+        {
+            Models = new ModelSelectionPolicy(
                 [.. definition.Models.Candidates],
                 definition.Models.Fallback,
                 definition.Models.Downgrade,
                 new ExtensionData([.. definition.Models.Extensions.Values])),
-            definition.ModelRequirements,
-            new AgentInstructionSources([.. definition.InstructionSources]),
-            definition.Settings,
-            definition.RunDefaults,
-            new ExtensionData([.. definition.Extensions.Values]),
-            definition.SecurityProfile,
-            definition.SessionProfile);
+            Instructions = [.. definition.Instructions],
+            Extensions = new ExtensionData([.. definition.Extensions.Values]),
+        };
         catalog.Publish(2, reconstructed);
         _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
         definition.ShouldBe(reconstructed);
         definition.GetHashCode().ShouldBe(reconstructed.GetHashCode());
-        effects.Requests.ShouldHaveSingleItem().Instructions.ShouldBe(reconstructed.Instructions, ignoreOrder: false);
+        effects.Requests.ShouldHaveSingleItem().Agent.Instructions.ShouldBe(reconstructed.Instructions, ignoreOrder: false);
     }
 
     [Fact]
@@ -285,22 +278,15 @@ public sealed class AgentTests
         var effects = new AdmissionRunEffects();
         await using var engine = Build(catalog, effects, new CountingRunIdGenerator());
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken)).RequireResolved();
-        var changedInstruction = definition.Instructions[0] with
+        var original = InstructionSourceProjection.ToMessages(definition.Instructions)[0];
+        var changedInstruction = original with
         {
             Parts = [new TextPart("changed instruction", TextSemantics.Plain, ExtensionData.Empty)],
         };
-        var changed = new AgentDefinition(
-            definition.Id,
-            definition.Revision,
-            definition.DisplayName,
-            definition.Models,
-            definition.ModelRequirements,
-            [changedInstruction],
-            definition.Settings,
-            definition.RunDefaults,
-            definition.Extensions,
-            definition.SecurityProfile,
-            definition.SessionProfile);
+        var changed = definition with
+        {
+            Instructions = InstructionSourceProjection.FromMessages([changedInstruction], definition.Revision),
+        };
         catalog.Publish(2, changed);
         _ = (await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken)).ShouldBeOfType<AgentRunRejected<string>>();
         effects.Requests.ShouldBeEmpty();
@@ -368,8 +354,7 @@ public sealed class AgentTests
         var loop = new GatedAgentLoop();
         var sessions = new InMemoryTestSessionCoordinator();
         var builder = CompositionTestData.SendableBuilder(loop, sessions);
-        _ = builder.Services.AddSessionBackedInputQueue();
-        _ = builder.Services.AddInputCoordinator();
+        CompositionTestData.UseFirstPartyIo(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
         var identity = CompositionTestData.Identity();
@@ -542,7 +527,7 @@ public sealed class AgentTests
         var loop = new GatedAgentLoop { Gate = new TaskCompletionSource() };
         var sessions = new InMemoryTestSessionCoordinator();
         var builder = CompositionTestData.SendableBuilder(loop, sessions);
-        _ = builder.Services.AddInputCoordinator().AddSessionBackedInputQueue();
+        CompositionTestData.UseFirstPartyIo(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
         var identity = CompositionTestData.Identity();
@@ -570,7 +555,7 @@ public sealed class AgentTests
         var loop = new GatedAgentLoop();
         var sessions = new InMemoryTestSessionCoordinator();
         var builder = CompositionTestData.SendableBuilder(loop, sessions);
-        _ = builder.Services.AddInputCoordinator().AddSessionBackedInputQueue();
+        CompositionTestData.UseFirstPartyIo(builder.Services);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
         var identity = CompositionTestData.Identity();
@@ -768,14 +753,19 @@ public sealed class AgentTests
     }
 
     private static ActivityCollector AdmissionActivities(AgentId agentId) => new(source => source.Name == AgentKitDiagnostics.ActivitySourceName, observation => observation.OperationName == AgentKitActivityNames.AgentAdmission && Equals(observation.GetTagItem(AgentKitTagNames.AgentId), agentId.ToString()));
-    private static AgentDefinition DefinitionWithInstruction() => new(CompositionTestData.AgentId, new AgentDefinitionRevision(1), "test agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [new SystemMessage(new MessageId(Guid.Parse("d0000000-0000-0000-0000-000000000004")), CompositionTestData.AgentId, CompositionTestData.SessionId, conversationId: null, CompositionTestData.BranchId, runId: null, turnId: null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("keep this", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
+    private static AgentDefinition DefinitionWithInstruction() => CompositionTestData.Definition() with
+    {
+        Instructions = InstructionSourceProjection.FromMessages(
+            [new SystemMessage(new MessageId(Guid.Parse("d0000000-0000-0000-0000-000000000004")), CompositionTestData.AgentId, CompositionTestData.SessionId, conversationId: null, CompositionTestData.BranchId, runId: null, turnId: null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("keep this", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)],
+            new AgentDefinitionRevision(1)),
+    };
 
     [Fact]
     public async Task RunAsync_WhenRuntimePublicationDiffersFromPinnedSnapshot_RejectsBeforeIdentifiersOrLoop()
     {
         var definition = CompositionTestData.Definition();
         var pinned = CompositionTestData.RunProfile(definition);
-        var changed = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, new ConfigurationVersion(2), pinned.SecurityProfile.ProfileKey, pinned.SecurityProfile.ProfileVersion, pinned.SecurityProfile.PolicySnapshot, pinned.SecurityProfile.AuthorityKey), pinned.SessionProfile);
+        var changed = new AgentRunProfilePublication(new SecurityProfilePublication(definition.Id, definition.Revision, new ConfigurationVersion(2), pinned.SecurityProfile.ProfileKey, pinned.SecurityProfile.ProfileVersion, pinned.SecurityProfile.PolicySnapshot, pinned.SecurityProfile.AuthorityKey), pinned.SessionProfile, pinned.HookProfile, pinned.BudgetProfile, new EffectiveConfigurationSnapshot(new ConfigurationVersion(2), pinned.SessionProfile.ConfigurationFingerprint, [], []));
         var reader = new MutableRunProfilePublicationReader(new AgentRunProfilePublicationSnapshot([pinned]), new AgentRunProfilePublicationFound(pinned));
         var selector = new TestSecurityProfileSelector();
         var runIds = new CountingRunIdGenerator();

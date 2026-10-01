@@ -12,6 +12,11 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 ## Start with these tests
 
 - [WebSearchToolTests](WebSearchToolTests.cs)
+- [NetworkWebSearchProviderTests](NetworkWebSearchProviderTests.cs) — grant
+  contents, denial before I/O, cancellation, bounds, and signal hygiene over
+  `HandlerNetworkTransport`
+- [ServiceExtensionsTests](ServiceExtensionsTests.cs) — no `HttpClient`
+  registration, fail-closed composition, and DI replacement
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

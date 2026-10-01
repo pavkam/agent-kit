@@ -62,6 +62,17 @@ public sealed class AgentLoopOptions
     public TimeSpan SettlementTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// Gets or sets the deadline window the loop grants every hook dispatch it starts, measured from the instant the
+    /// dispatch begins. Defaults to 30 seconds.
+    /// </summary>
+    /// <value>
+    /// A positive duration carried as the dispatch's <see cref="HookDispatchMetadata.Deadline"/>. A composed hook
+    /// dispatcher also enforces its own host ceiling and honors whichever deadline is earlier, so lowering the host
+    /// ceiling never requires changing this value.
+    /// </value>
+    public TimeSpan HookDispatchTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Gets or sets the bound on delivering one run event to the request's <see cref="IAgentRunObserver"/> when
     /// the delivery must not use the caller's (possibly already cancelled) token, such as terminal tool results
     /// of an interrupted batch. Defaults to 5 seconds.

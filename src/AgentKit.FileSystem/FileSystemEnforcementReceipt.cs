@@ -27,12 +27,9 @@ internal static class FileSystemEnforcementReceipt
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentOutOfRangeException.ThrowIfUndefined(effect);
         ArgumentException.ThrowIfDefaultOrEmpty(resources);
-        return grant.Authorization is { } authorization
-            ? new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, authorization, audience, kind, effect, resources, fingerprint,
-                grant.RevocationVersion)
-            : new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, audience, kind, effect, resources, fingerprint, grant.RevocationVersion);
+        return new SecurityEnforcementRequest(
+            grant.Scope, grant.Identity, grant.Authorization, audience, kind, effect, resources, fingerprint,
+            grant.RevocationVersion);
     }
 
     /// <summary>Determines whether a consumption result permits this new exact filesystem effect.</summary>

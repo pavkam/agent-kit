@@ -4,9 +4,9 @@
 namespace AgentKit.Providers.GoogleGemini.Tests;
 
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Headers;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
@@ -16,15 +16,19 @@ public sealed class GoogleApiErrorFailureFactoryTests
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static readonly ProviderId Provider = new("google-test");
 
-    private static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string body) => new(statusCode)
-    {
-        Content = new StringContent(body, Encoding.UTF8, "application/json"),
-    };
+    private static ProviderEgressResponse Response(HttpStatusCode statusCode, string? body = null, string mediaType = "application/json") =>
+        new(new StreamNetworkResponse(
+            (int) statusCode,
+            new MemoryStream(body is null ? [] : Encoding.UTF8.GetBytes(body)),
+            body is null ? [] : [new NetworkHeader("Content-Type", mediaType)]));
+
+    private static ProviderEgressResponse FaultingResponse(HttpStatusCode statusCode, FaultingReadStream stream) =>
+        new(new StreamNetworkResponse((int) statusCode, stream));
 
     [Fact]
     public async Task CreateAsync_WhenBodyCarriesMappedStatus_UsesBodyStatusAndRetainsCodeAndMessageEvidence()
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.BadRequest,
             /*lang=json,strict*/ """{ "error": { "code": 400, "message": "Invalid value at 'contents'.", "status": "INVALID_ARGUMENT" } }""");
 
@@ -43,7 +47,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBodyStatusAndHttpStatusDisagree_PrefersBodyStatus()
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.InternalServerError,
             /*lang=json,strict*/ """{ "error": { "code": 500, "message": "Quota exceeded.", "status": "RESOURCE_EXHAUSTED" } }""");
 
@@ -61,7 +65,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [InlineData(HttpStatusCode.ServiceUnavailable, ProviderFailureKind.Unavailable)]
     public async Task CreateAsync_WhenBodyStatusIsUnmapped_FallsBackToHttpStatusAndKeepsProviderCode(HttpStatusCode statusCode, ProviderFailureKind expected)
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             statusCode,
             /*lang=json,strict*/ """{ "error": { "code": 0, "message": "future", "status": "FUTURE_STATUS" } }""");
 
@@ -75,10 +79,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBodyIsNotJson_FallsBackToHttpStatusWithParseCauseAndNoEvidence()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway)
-        {
-            Content = new StringContent("<html>bad gateway</html>", Encoding.UTF8, "text/html"),
-        };
+        await using var response = Response(HttpStatusCode.BadGateway, "<html>bad gateway</html>", "text/html");
 
         var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
 
@@ -93,7 +94,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBodyIsAbsent_FallsBackToHttpStatus()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.Conflict);
+        await using var response = Response(HttpStatusCode.Conflict);
 
         var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
 
@@ -105,10 +106,9 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBodyReadFaults_KeepsHttpStatusAndRetainsCause()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
-        {
-            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray())),
-        };
+        await using var response = FaultingResponse(
+            HttpStatusCode.InternalServerError,
+            FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()));
 
         var failure = await GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), TestContext.Current.CancellationToken);
 
@@ -120,7 +120,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenRetryAfterHeaderPresent_ResolvesRetryAfter()
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.TooManyRequests,
             /*lang=json,strict*/ """{ "error": { "code": 429, "message": "slow down", "status": "RESOURCE_EXHAUSTED" } }""");
         response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(7));
@@ -136,7 +136,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     {
         // Google APIs communicate RESOURCE_EXHAUSTED retry guidance through error.details[] entries of
         // type google.rpc.RetryInfo with a retryDelay (such as "20s"), not through a Retry-After header.
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.TooManyRequests,
             /*lang=json,strict*/ """
             {
@@ -160,7 +160,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBodyCarriesFractionalRetryDelayAmongOtherDetailTypes_ParsesTheRetryInfoEntry()
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.TooManyRequests,
             /*lang=json,strict*/ """
             {
@@ -184,7 +184,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenBothHeaderAndRetryInfoDetailPresent_PrefersTheHeader()
     {
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.TooManyRequests,
             /*lang=json,strict*/ """
             {
@@ -209,7 +209,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     public async Task CreateAsync_WhenHostileMessage_NeverPlacesItInSafeMessage()
     {
         const string hostile = "Authorization failed for sk-live-super-secret; tenant alice@example.test.";
-        using var response = JsonResponse(
+        await using var response = Response(
             HttpStatusCode.Unauthorized,
             JsonSerializer.Serialize(new { error = new { code = 401, message = hostile, status = "UNAUTHENTICATED" } }));
 
@@ -225,14 +225,13 @@ public sealed class GoogleApiErrorFailureFactoryTests
     public async Task CreateAsync_WhenCancelledDuringBodyRead_PropagatesCancellation()
     {
         using var cancellation = new CancellationTokenSource();
-        using var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
-        {
-            Content = new StreamContent(new FaultingReadStream(() =>
+        await using var response = FaultingResponse(
+            HttpStatusCode.InternalServerError,
+            new FaultingReadStream(() =>
             {
                 cancellation.Cancel();
                 return new OperationCanceledException(cancellation.Token);
-            })),
-        };
+            }));
 
         _ = await Should.ThrowAsync<OperationCanceledException>(
             () => GoogleApiErrorFailureFactory.CreateAsync(response, Provider, new FakeTimeProvider(Now), cancellation.Token));
@@ -250,7 +249,7 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [Fact]
     public async Task CreateAsync_WhenTimeProviderIsNull_ThrowsArgumentNullException()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadRequest);
+        await using var response = Response(HttpStatusCode.BadRequest);
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
             () => GoogleApiErrorFailureFactory.CreateAsync(response, Provider, null!, TestContext.Current.CancellationToken));
@@ -259,9 +258,9 @@ public sealed class GoogleApiErrorFailureFactoryTests
     }
 
     [Fact]
-    public void CreateInterrupted_WhenCalled_RetainsStatusAndRetryAfterWithoutProviderCode()
+    public async Task CreateInterrupted_WhenCalled_RetainsStatusAndRetryAfterWithoutProviderCode()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway);
+        await using var response = Response(HttpStatusCode.BadGateway);
         response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(3));
         var cause = new TaskCanceledException("timed out");
 
@@ -287,9 +286,9 @@ public sealed class GoogleApiErrorFailureFactoryTests
     }
 
     [Fact]
-    public void CreateInterrupted_WhenKindIsUndefined_ThrowsArgumentOutOfRangeException()
+    public async Task CreateInterrupted_WhenKindIsUndefined_ThrowsArgumentOutOfRangeException()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway);
+        await using var response = Response(HttpStatusCode.BadGateway);
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
             () => GoogleApiErrorFailureFactory.CreateInterrupted(response, Provider, (ProviderFailureKind) 9999, "Interrupted.", null, new FakeTimeProvider(Now)));
@@ -301,9 +300,9 @@ public sealed class GoogleApiErrorFailureFactoryTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void CreateInterrupted_WhenSafeMessageIsNullOrWhiteSpace_ThrowsArgumentException(string? safeMessage)
+    public async Task CreateInterrupted_WhenSafeMessageIsNullOrWhiteSpace_ThrowsArgumentException(string? safeMessage)
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway);
+        await using var response = Response(HttpStatusCode.BadGateway);
 
         var exception = Should.Throw<ArgumentException>(
             () => GoogleApiErrorFailureFactory.CreateInterrupted(response, Provider, ProviderFailureKind.Timeout, safeMessage!, null, new FakeTimeProvider(Now)));
@@ -312,9 +311,9 @@ public sealed class GoogleApiErrorFailureFactoryTests
     }
 
     [Fact]
-    public void CreateInterrupted_WhenTimeProviderIsNull_ThrowsArgumentNullException()
+    public async Task CreateInterrupted_WhenTimeProviderIsNull_ThrowsArgumentNullException()
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway);
+        await using var response = Response(HttpStatusCode.BadGateway);
 
         var exception = Should.Throw<ArgumentNullException>(
             () => GoogleApiErrorFailureFactory.CreateInterrupted(response, Provider, ProviderFailureKind.Timeout, "Interrupted.", null, null!));

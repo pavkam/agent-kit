@@ -3,83 +3,72 @@
 
 namespace AgentKit.Abstractions.Tests.Context;
 
-/// <summary>Verifies <see cref="ContextAssemblyRequest"/> evidence-aware construction.</summary>
+/// <summary>Verifies <see cref="ContextAssemblyRequest"/> evidence-bound construction.</summary>
 public sealed class ContextAssemblyRequestTests
 {
     [Fact]
     public void Constructor_WhenEvidenceIsNull_ThrowsBeforeDerivingHistory() =>
-        Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(default, default, default, default, default, default, null!, [], null!, [], null!, null!, null!)).ParamName.ShouldBe("evidence");
+        Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(default, default, default, default, default, default, Model(), null!, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty)).ParamName.ShouldBe("evidence");
 
     [Fact]
     public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
     {
+        var evidence = CreateEvidence();
         var model = Model();
         var toolChoice = LlmToolChoice.Auto;
         var settings = LlmRequestSettings.Default;
         var extensions = ExtensionData.Empty;
-        var request = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), model, [], [], [], toolChoice, settings, extensions);
-        request.AgentId.ShouldBe(AgentId());
-        request.SessionId.ShouldBe(SessionId());
-        request.BranchId.ShouldBe(BranchId());
-        request.RunId.ShouldBe(RunId());
-        request.TurnId.ShouldBe(TurnId());
+
+        var request = Request(evidence, model, [], toolChoice, settings, extensions);
+
+        request.AgentId.ShouldBe(evidence.Agent.Id);
+        request.SessionId.ShouldBe(evidence.History.SourceCursor.SessionId);
+        request.BranchId.ShouldBe(evidence.History.SourceCursor.BranchId);
+        request.RunId.ShouldBe(Correlation(evidence).RunId);
+        request.TurnId.ShouldBe(Correlation(evidence).TurnId!.Value);
         request.ModelRequestId.ShouldBe(ModelRequestId());
         request.Model.ShouldBeSameAs(model);
-        request.Instructions.ShouldBeEmpty();
-        request.History.ShouldBeEmpty();
-        request.Evidence.ShouldBeNull();
+        request.Evidence.ShouldBeSameAs(evidence);
+        request.History.ShouldBe(evidence.History.Messages);
         request.Tools.ShouldBeEmpty();
         request.ToolChoice.ShouldBe(toolChoice);
         request.Settings.ShouldBe(settings);
         request.Extensions.ShouldBe(extensions);
+        request.Output.ShouldBeNull();
     }
 
     [Fact]
     public void Constructor_WhenModelIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), null!, [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentNullException>(() => Request(CreateEvidence(), null!, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("model");
-    }
-
-    [Fact]
-    public void Constructor_WhenInstructionsAreDefault_ThrowsExactParameter()
-    {
-        var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), default, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
-        exception.ParamName.ShouldBe("instructions");
-    }
-
-    [Fact]
-    public void Constructor_WhenHistoryIsDefault_ThrowsExactParameter()
-    {
-        var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], default(ImmutableArray<AgentMessage>), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
-        exception.ParamName.ShouldBe("history");
     }
 
     [Fact]
     public void Constructor_WhenToolsAreDefault_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], default, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentException>(() => Request(CreateEvidence(), Model(), default, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("tools");
     }
 
     [Fact]
     public void Constructor_WhenToolChoiceIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], null!, LlmRequestSettings.Default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentNullException>(() => Request(CreateEvidence(), Model(), [], null!, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("toolChoice");
     }
 
     [Fact]
     public void Constructor_WhenSettingsIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, null!, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentNullException>(() => Request(CreateEvidence(), Model(), [], LlmToolChoice.Auto, null!, ExtensionData.Empty));
         exception.ParamName.ShouldBe("settings");
     }
 
     [Fact]
     public void Constructor_WhenExtensionsIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, null!));
+        var exception = Should.Throw<ArgumentNullException>(() => Request(CreateEvidence(), Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, null!));
         exception.ParamName.ShouldBe("extensions");
     }
 
@@ -92,7 +81,7 @@ public sealed class ContextAssemblyRequestTests
     public void Constructor_WhenEvidenceCoordinatesDisagree_ThrowsExactParameter(string mismatch)
     {
         var evidence = CreateEvidence();
-        var correlation = (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
+        var correlation = Correlation(evidence);
         var otherId = Guid.Parse("99999999-9999-9999-9999-999999999999");
         var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(
             mismatch == "agentId" ? new AgentId(otherId) : evidence.Agent.Id,
@@ -100,7 +89,7 @@ public sealed class ContextAssemblyRequestTests
             mismatch == "branchId" ? new BranchId(otherId) : evidence.History.SourceCursor.BranchId,
             mismatch == "runId" ? new RunId(otherId) : correlation.RunId,
             mismatch == "turnId" ? new TurnId(otherId) : correlation.TurnId!.Value,
-            ModelRequestId(), Model(), [], evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
+            ModelRequestId(), Model(), evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe(mismatch);
     }
 
@@ -110,7 +99,7 @@ public sealed class ContextAssemblyRequestTests
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        var agent = TestSupport.AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), null);
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
@@ -118,77 +107,106 @@ public sealed class ContextAssemblyRequestTests
         var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(1), new ContentHash("sha256:configuration"), [], []);
         var evidence = new ContextAssemblyEvidence(agent, identity, history, authorization, configuration);
 
-        var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(agentId, sessionId, evidence.History.SourceCursor.BranchId, default, default, ModelRequestId(), Model(), [], evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentException>(() => new ContextAssemblyRequest(agentId, sessionId, evidence.History.SourceCursor.BranchId, default, default, ModelRequestId(), Model(), evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("evidence");
     }
 
     [Fact]
     public void Equals_WhenSameValues_InstancesAreEqual()
     {
-        var first = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var second = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var evidence = CreateEvidence();
+        var first = Request(evidence, Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var second = Request(evidence, Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
     [Fact]
-    public void Equals_WhenEvidenceDiffers_IsNotEqual()
+    public void Equals_WhenEvidenceHistoryDiffers_IsNotEqual()
     {
         var evidence = CreateEvidence();
-        var correlation = (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
-        var withEvidence = new ContextAssemblyRequest(evidence.Agent.Id, evidence.History.SourceCursor.SessionId, evidence.History.SourceCursor.BranchId, correlation.RunId, correlation.TurnId!.Value, ModelRequestId(), Model(), [], evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var withoutEvidence = new ContextAssemblyRequest(evidence.Agent.Id, evidence.History.SourceCursor.SessionId, evidence.History.SourceCursor.BranchId, correlation.RunId, correlation.TurnId!.Value, ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        withEvidence.ShouldNotBe(withoutEvidence);
+        var other = new ContextAssemblyEvidence(
+            evidence.Agent,
+            evidence.Identity,
+            new HistoryView(evidence.History.SourceCursor, [HistoryMessage(evidence)], []),
+            evidence.Authorization,
+            evidence.Configuration);
+
+        Request(evidence, Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty)
+            .ShouldNotBe(Request(other, Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty));
     }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [], [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var original = Request(CreateEvidence(), Model(), [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         var copy = original with { };
         copy.ShouldBe(original);
     }
 
     [Fact]
-    public void Equals_WhenInstructionsHistoryAndToolsAreNonEmpty_HasEqualHashCode()
+    public void Equals_WhenHistoryAndToolsAreNonEmpty_HasEqualHashCode()
     {
-        AgentMessage instruction = new UserMessage(new MessageId(Guid.Parse("70000000-0000-0000-0000-000000000007")), AgentId(), SessionId(), null, BranchId(), null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("system", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
-        AgentMessage historyMessage = new UserMessage(new MessageId(Guid.Parse("80000000-0000-0000-0000-000000000008")), AgentId(), SessionId(), null, BranchId(), RunId(), TurnId(), DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var source = CreateEvidence();
+        var evidence = new ContextAssemblyEvidence(
+            source.Agent,
+            source.Identity,
+            new HistoryView(source.History.SourceCursor, [HistoryMessage(source)], []),
+            source.Authorization,
+            source.Configuration);
         var tool = new LlmToolDefinition(new ToolId("tool"), "tool", null, default);
-        var first = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [instruction], [historyMessage], [tool], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var second = new ContextAssemblyRequest(AgentId(), SessionId(), BranchId(), RunId(), TurnId(), ModelRequestId(), Model(), [instruction], [historyMessage], [tool], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var first = Request(evidence, Model(), [tool], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var second = Request(evidence, Model(), [tool], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
-    private static AgentId AgentId() => new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
-    private static SessionId SessionId() => new(Guid.Parse("20000000-0000-0000-0000-000000000002"));
-    private static BranchId BranchId() => new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
-    private static RunId RunId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
-    private static TurnId TurnId() => new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     private static ModelRequestId ModelRequestId() => new(Guid.Parse("60000000-0000-0000-0000-000000000006"));
+
     private static ModelDescriptor Model() => new(new ModelAlias("chat"), new ProviderId("provider"), new ApiFamilyId("api"), new ModelId("model"), null, new ModelCapabilities(true, true, true, true, true, true, true, ExtensionData.Empty), new ModelLimits(4096, 1024), null, ExtensionData.Empty);
 
-    [Fact]
-    public void Constructor_WhenEvidenceCoordinatesAgree_DerivesExactHistory()
-    {
-        var evidence = CreateEvidence();
-        var correlation = (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
-        var capabilities = new ModelCapabilities(true, true, true, true, true, true, true, ExtensionData.Empty);
-        var model = new ModelDescriptor(new ModelAlias("chat"), new ProviderId("provider"), new ApiFamilyId("api"), new ModelId("model"), null, capabilities, new ModelLimits(4096, 1024), null, ExtensionData.Empty);
+    private static InRunOperationCorrelation Correlation(ContextAssemblyEvidence evidence) =>
+        (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
 
-        var request = new ContextAssemblyRequest(evidence.Agent.Id, evidence.History.SourceCursor.SessionId, evidence.History.SourceCursor.BranchId, correlation.RunId, correlation.TurnId!.Value, new ModelRequestId(Guid.NewGuid()), model, [], evidence, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+    private static ContextAssemblyRequest Request(
+        ContextAssemblyEvidence evidence,
+        ModelDescriptor model,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
+        ExtensionData extensions) => new(
+        evidence.Agent.Id,
+        evidence.History.SourceCursor.SessionId,
+        evidence.History.SourceCursor.BranchId,
+        Correlation(evidence).RunId,
+        Correlation(evidence).TurnId!.Value,
+        ModelRequestId(),
+        model,
+        evidence,
+        tools,
+        toolChoice,
+        settings,
+        extensions);
 
-        request.Evidence.ShouldBeSameAs(evidence);
-        request.History.ShouldBe(evidence.History.Messages);
-    }
+    private static UserMessage HistoryMessage(ContextAssemblyEvidence evidence) => new UserMessage(
+        new MessageId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
+        evidence.Agent.Id,
+        evidence.History.SourceCursor.SessionId,
+        null,
+        evidence.History.SourceCursor.BranchId,
+        Correlation(evidence).RunId,
+        Correlation(evidence).TurnId,
+        DateTimeOffset.UnixEpoch,
+        MessageState.Complete,
+        [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)],
+        ExtensionData.Empty);
 
     private static ContextAssemblyEvidence CreateEvidence()
     {
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = new AgentDefinition(agentId, revision, "agent", new ModelSelectionPolicy([new ModelAlias("chat")]), ModelRequirements.None, [], LlmRequestSettings.Default, new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty, new SecurityProfileKey("security"), new SessionProfileKey("session"));
+        var agent = TestSupport.AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new InRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), new RunId(Guid.Parse("50000000-0000-0000-0000-000000000001")), new TurnId(Guid.Parse("60000000-0000-0000-0000-000000000001")));
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);

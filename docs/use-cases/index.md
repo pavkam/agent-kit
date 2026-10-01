@@ -15,8 +15,9 @@ finished.
 
 ## Worked examples in the repository
 
-Two complete programs ship under `examples/`. These pages explain what each one
-composes and why.
+Three complete programs ship under `examples/`. The first two have pages that
+explain what each composes and why; the evaluation example documents itself in
+its [README](../../examples/Evaluation/README.md).
 
 | Example                                | What it shows                                                                                                  |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -34,7 +35,7 @@ composes and why.
 | [Local private assistant on Ollama](local-private-assistant.md)            | Swapping the provider through `builder.Services` and `UseModel`, with no data leaving the machine.                  |
 | [Web research assistant](web-research-assistant.md)                        | The `web_fetch` tool behind an egress allow-list, and plugging in your own search provider for `web_search`.        |
 | [Background ticket-triage worker](ticket-triage-worker.md)                 | One engine, eight concurrent ticket sessions, typed decisions, cancellation, telemetry, and required audit.         |
-| [Order lookup with your own tool](domain-tool-integration.md)              | Writing an `ITool` over an application service, registering it, and allowing only the tools you name.               |
+| [Order lookup with your own tool](domain-tool-integration.md)              | Writing an `IToolInvoker` over an application service, registering it, and exposing only the toolset you name.      |
 | [Delegating to specialist agents](delegating-to-specialists.md)            | Three agents on one engine: the `task` tool, the delegation broker, and a channel that sends the specialist a turn. |
 | [Testing an agent without a live model](testing-agents-offline.md)         | A loopback HTTP handler, an in-memory file system you can seed, and asserting on committed events.                  |
 

@@ -67,7 +67,7 @@ public sealed class ArgumentExceptionExtensionsTests
     public void ThrowIfDefaultOrEmpty_WhenUsedBySecurityRequest_CoversProductionCallSite()
     {
         var grant = SecurityTestData.Grant();
-        var exception = Should.Throw<ArgumentException>(() => new SecurityRequest(grant.RequestId, grant.Scope, null, grant.Identity, grant.Audience, grant.Kind, grant.Effect, [], grant.InputFingerprint, grant.ExpiresAt));
+        var exception = Should.Throw<ArgumentException>(() => new SecurityRequest(grant.RequestId, grant.Scope, null, grant.Identity, grant.Authorization, grant.Audience, grant.Kind, grant.Effect, [], grant.InputFingerprint, grant.ExpiresAt));
         exception.ParamName.ShouldBe("resources");
     }
 
@@ -343,12 +343,23 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     [Fact]
-    public void ThrowIfInvalidIntentReceipt_WhenReceiptIsNull_AcceptsEveryDefinedStatus()
+    public void ThrowIfInvalidIntentReceipt_WhenReceiptIsNull_AcceptsEveryStatusThatCarriesNoAuthorityEvidence()
     {
-        foreach (var status in Enum.GetValues<GrantConsumptionStatus>())
+        foreach (var status in Enum.GetValues<GrantConsumptionStatus>().Where(static status => status is not (GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)))
         {
             Should.NotThrow(() => ArgumentException.ThrowIfInvalidIntentReceipt(status, null));
         }
+    }
+
+    [Theory]
+    [InlineData(GrantConsumptionStatus.Consumed)]
+    [InlineData(GrantConsumptionStatus.Reconciled)]
+    public void ThrowIfInvalidIntentReceipt_WhenSuccessfulStatusLacksReceipt_ThrowsExactArgumentException(GrantConsumptionStatus status)
+    {
+        SecurityEnforcementIntentReceipt? receipt = null;
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfInvalidIntentReceipt(status, receipt));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("receipt");
     }
 
     [Theory]
@@ -387,7 +398,7 @@ public sealed class ArgumentExceptionExtensionsTests
     {
         var scope = new SecurityAuthorizationScope(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
         var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-        var enforcement = new SecurityEnforcementRequest(scope, identity, new ComponentId("component"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [new ProtectedResource(ProtectedResourceKind.ApplicationState, "resource")], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
+        var enforcement = new SecurityEnforcementRequest(scope, identity, TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("component"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [new ProtectedResource(ProtectedResourceKind.ApplicationState, "resource")], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
         return new SecurityEnforcementIntentReceipt(new SecurityEnforcementIntentId(Guid.NewGuid()), new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), enforcement, null, new ContentHash("sha256:effect"), DateTimeOffset.UnixEpoch);
     }
 
@@ -780,6 +791,35 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     private static OutputSchemaEngineProfile Profile(ImmutableArray<JsonSchemaDialectId>? dialects = null, ImmutableArray<string>? assertions = null, ImmutableArray<string>? annotations = null) => new(new OutputSchemaProfileId("test"), new OutputSchemaProfileVersion(1), _dialect, dialects ?? [_dialect], assertions ?? ["type"], annotations ?? ["title"]);
+    [Theory]
+    [InlineData("https://example.com/resource/1")]
+    [InlineData("s3://bucket/key")]
+    public void ThrowIfNotStableUnsignedUri_WhenStableAndUnsigned_DoesNotThrow(string value)
+    {
+        var uri = new Uri(value);
+        Should.NotThrow(() => ArgumentException.ThrowIfNotStableUnsignedUri(uri));
+    }
+
+    [Theory]
+    [InlineData("relative/path")]
+    [InlineData("https://user:secret@example.com/resource")]
+    [InlineData("https://example.com/resource?sig=abc")]
+    [InlineData("https://example.com/resource#fragment")]
+    public void ThrowIfNotStableUnsignedUri_WhenSignedOrRelative_InfersParameterName(string value)
+    {
+        var uri = new Uri(value, UriKind.RelativeOrAbsolute);
+        var action = () => ArgumentException.ThrowIfNotStableUnsignedUri(uri);
+        action.ShouldThrow<ArgumentException>().ParamName.ShouldBe(nameof(uri));
+    }
+
+    [Fact]
+    public void ThrowIfNotStableUnsignedUri_WhenNull_ThrowsArgumentNullExceptionWithInferredParameterName()
+    {
+        Uri uri = null!;
+        var action = () => ArgumentException.ThrowIfNotStableUnsignedUri(uri);
+        action.ShouldThrow<ArgumentNullException>().ParamName.ShouldBe(nameof(uri));
+    }
+
     [Fact]
     public void ThrowIfInvalidWebResultUri_WhenCredentialFreeHttps_DoesNotThrow()
     {

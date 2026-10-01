@@ -594,23 +594,24 @@ the service graph one-way: consumer → budget abstraction → ledger/policy/sin
 
 ### Loop consumption
 
-`AgentDefinition.BudgetLimits` and `AgentLoopRunRequest.BudgetLimits` carry a
-run's limits; `AgentRunServices.Budgets` carries the authority the run scope
-resolved. When limits are declared, `DefaultAgentLoop` creates one run scope
-addressed by tenant, principal, agent, session, and run, then reserves before it
-commits to each turn (`agentkit.turns`), model request
-(`agentkit.model.requests`), and tool call (`agentkit.tools.attempted`), and
-accounts provider-reported input, output, and reasoning tokens and USD cost
-after each response. A refused reservation carrying full budget-limit evidence
-settles the run as `RunLimitReached` naming the dimension; a held overrun or an
-unsupported reservation outcome, which carry no such evidence, settle the run as
-`RunFailed` instead of fabricating it. A refused tool-call reservation settles
-that call as a rejected result with `ToolTerminalStatus.ResourceLimitExceeded`.
-A budgeted request without a composed authority fails closed. Pre-effect
-estimation of unknown token cost, parent host/tenant scopes, and named budget
-profiles remain to be wired; `AgentKit.Simple.WithBudget` composes the
-authority, the in-memory ledger when no other is registered, and the default
-agent's limits.
+A definition selects its run budget profile through
+`AgentComponentSelection.BudgetProfile` and the profile supplies the run's
+limits; `AgentLoopRunRequest` carries no inline limits.
+`AgentRunServices.Budgets` carries the authority the run scope resolved. Every
+run selects a profile, so `DefaultAgentLoop` creates one run scope addressed by
+tenant, principal, agent, session, and run, then reserves before it commits to
+each turn (`agentkit.turns`), model request (`agentkit.model.requests`), and
+tool call (`agentkit.tools.attempted`), and accounts provider-reported input,
+output, and reasoning tokens and USD cost after each response. A refused
+reservation carrying full budget-limit evidence settles the run as
+`RunLimitReached` naming the dimension; a held overrun or an unsupported
+reservation outcome, which carry no such evidence, settle the run as `RunFailed`
+instead of fabricating it. A refused tool-call reservation settles that call as
+a rejected result with `ToolTerminalStatus.ResourceLimitExceeded`. A budgeted
+request without a composed authority fails closed. Pre-effect estimation of
+unknown token cost, parent host/tenant scopes, and named budget profiles remain
+to be wired; `AgentKit.Simple.WithBudget` composes the authority, the in-memory
+ledger when no other is registered, and the default agent's limits.
 
 ## Validation and unsupported behavior
 

@@ -7,14 +7,19 @@ internal static class TestSecurity
 {
     public static ISecurityGrantStore GrantStore() => new AlwaysConsumeGrantStore();
 
-    public static SecurityGrant Grant() => new(
-        new GrantId(Guid.NewGuid()),
-        new SecurityRequestId(Guid.NewGuid()),
-        new SecurityAuthorizationScope(
+    public static SecurityGrant Grant()
+    {
+        var __scope = new SecurityAuthorizationScope(
             new AgentId(Guid.NewGuid()),
             null,
-            new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null)),
-        TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+            new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
+        var __identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        return new(
+        new GrantId(Guid.NewGuid()),
+        new SecurityRequestId(Guid.NewGuid()),
+        __scope,
+        __identity,
+        TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
         new ComponentId("agentkit.filesystem.sandboxed"),
         SecurityOperationKind.FileRead,
         SecurityEffect.Observe,
@@ -25,6 +30,7 @@ internal static class TestSecurity
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.MaxValue,
         1);
+    }
 
     internal static SecurityGrant CapturedGrant(
         ComponentId audience,
@@ -66,8 +72,8 @@ internal static class TestSecurity
 
     internal sealed class RecordingGrantStore: ISecurityGrantStore
     {
-        public GrantConsumptionResult Result { get; set; } = new(
-            GrantConsumptionStatus.Consumed, 0, "Consumed by recording test store.");
+        /// <summary>Gets or sets a non-consumption result every attempt reports, or null to consume with a matching receipt.</summary>
+        public GrantConsumptionResult? Result { get; set; }
 
         public SecurityEnforcementRequest? LastEnforcement { get; private set; }
 
@@ -75,20 +81,9 @@ internal static class TestSecurity
 
         public Action? OnIntentConsumption { get; set; }
 
-        public bool IncludeIntentReceipt { get; set; } = true;
-
         public bool ReturnExactIntentReceipt { get; set; } = true;
 
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant,
-            SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default)
-        {
-            LastEnforcement = enforcement;
-            return ValueTask.FromResult(Result);
-        }
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant,
@@ -100,23 +95,25 @@ internal static class TestSecurity
             LastEnforcement = enforcement;
             LastIntent = intent;
             OnIntentConsumption?.Invoke();
-            var receipt = IncludeIntentReceipt
-                && (Result.Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
-                ? new SecurityEnforcementIntentReceipt(
-                    ReturnExactIntentReceipt
-                        ? intent.Id
-                        : new SecurityEnforcementIntentId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
-                    grant.Id,
-                    grant.RequestId,
-                    enforcement,
-                    intent.RequiredFence,
-                    SecurityEnforcementBinding.Fingerprint(enforcement, intent),
-                    DateTimeOffset.UnixEpoch)
-                : null;
+            if (Result is { } configured)
+            {
+                return ValueTask.FromResult(configured);
+            }
+
+            var receipt = new SecurityEnforcementIntentReceipt(
+                ReturnExactIntentReceipt
+                    ? intent.Id
+                    : new SecurityEnforcementIntentId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                grant.Id,
+                grant.RequestId,
+                enforcement,
+                intent.RequiredFence,
+                SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                DateTimeOffset.UnixEpoch);
             return ValueTask.FromResult(new GrantConsumptionResult(
-                Result.Status,
-                Result.RemainingUses,
-                Result.SafeMessage,
+                GrantConsumptionStatus.Consumed,
+                0,
+                "Consumed by recording test store.",
                 receipt));
         }
 
@@ -130,12 +127,6 @@ internal static class TestSecurity
     private sealed class AlwaysConsumeGrantStore: ISecurityGrantStore
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant,
-            SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed by test store."));
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant,

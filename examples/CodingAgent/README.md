@@ -159,17 +159,17 @@ in front of Codex or Claude Code:
   transcript scrolls. Markdown remains reserved for assistant and user prose,
   where CommonMark formatting is actually wanted.
 - **A right-hand sidebar tracks live session context**: a running token/cost
-  total (from the real `ConversationUsageEvent` the model provider reports — see
-  the gap below) and a live todo checklist (☐ pending, ◐ in progress, ☑
-  completed, ✗ blocked), parsed straight from the `todo` tool's own results as
-  the agent works through a multi-step task. The system prompt tells the model
-  to use the todo tool for anything beyond a couple of tool calls.
+  total (from the real `ConversationUsageEvent` the model provider reports) and
+  a live todo checklist (☐ pending, ◐ in progress, ☑ completed, ✗ blocked),
+  parsed straight from the `todo` tool's own results as the agent works through
+  a multi-step task. The system prompt tells the model to use the todo tool for
+  anything beyond a couple of tool calls.
 - **The status bar carries live context**: a compact tokens/cost summary, the
   current model id, and the workspace's directory name sit right-aligned,
   separated from the busy/ready indicator so you never lose track of what a
   session has cost or which agent/workspace it belongs to.
 
-### Remaining UI gaps
+### Navigation and persistence
 
 The composer supports multiline editing and safe multiline paste. The sidebar
 collapses on narrow terminals, and Page Up/Page Down plus Follow latest provide
@@ -190,224 +190,30 @@ through the composition in `AgentRuntime.cs` block by block, and the
 (approval before writes, sandboxed commands, human questions) and rebuild them
 on the builder sugar.
 
-Composing a single working conversational turn — session creation, a user
-message, a multi-turn tool-calling loop, and a real provider round trip —
-originally needed far more than the four packages `AgentKit.Loop`'s own
-registration doc lists (`ISessionCoordinator`, `IContextAssembler`,
-`IToolInvoker`, one `ILlmModel`). Building this example the first time surfaced
-eight distinct composition gaps, all documented below. **Every one of them has
-since been fixed at the library level**, and `AgentRuntime.cs` now composes the
-fixes directly instead of working around the gaps by hand: see
-[the git history of this file](https://github.com/pavkam/agent-kit/commits/main/examples/CodingAgent/AgentRuntime.cs)
-for the before/after, or read `AgentKit.Conversations`, `AgentKit.Permissions`,
-and `AgentKit.Tools`'s READMEs for the new APIs themselves.
+`AgentRuntime.cs` composes an `AgentEngine` with one pinned `AgentDefinition`
+that selects every required collaborator by key, and `AddConversationSession`
+takes that definition and its `EffectiveConfigurationSnapshot` instead of
+repeating the model policy, instructions, tools, and limits. `AgentRuntimeTests`
+builds the whole composition, so engine validation failures surface in the test
+run. The pieces it exercises end to end are the ones a real conversational turn
+needs: session creation, message admission, a multi-turn tool-calling loop with
+bounded rebasing when a tool commits its own session entries, interrupted
+terminal results for cancelled tool calls, per-call approval through the
+security authority, and a real provider round trip.
 
-## Gaps found in AgentKit while building this — and how each was fixed
+Driving the example against a substantial repository also taught two lessons
+about the tools themselves, both reflected in the system prompt in
+`AgentRuntime.cs`:
 
-None of these were exotic: every one blocked the very first message of any
-application composing a real conversational turn, and this example was (as far
-as a repository-wide search showed) the first thing in this checkout to ever
-exercise this exact path.
-
-1. **No facade method admitted a user message into a run.** `AgentRunOptions`
-   carries a session/branch/identity and bounded overrides, but no message, and
-   `AgentEngine` deliberately never exposes its container. **Fixed** by the new
-   `AgentKit.Conversations` package: `AddConversationSession` +
-   `IConversationSession.SendAsync` compose session creation, message admission,
-   and one full agent-loop run behind a single call, for exactly the "one
-   in-process conversation with one composed agent" case this example needs.
-   `AgentRuntime.cs` no longer hand-rolls
-   `ISessionCoordinator`/`ISecurityProfileSelector` calls at all.
-2. **No first-party `ISecurityPolicy` allowed process execution**, and
-3. **no first-party `ISecurityPolicy` allowed session state either** — both
-   **fixed** by the new `AllowAllSecurityPolicy` in `AgentKit.Permissions`,
-   registered with `AddAllowAllSecurityPolicy()`. It's a deliberately blunt,
-   local/single-tenant-only instrument (see its own remarks); this example's two
-   hand-written policy files (`AllowWorkspaceProcessExecutionPolicy.cs`,
-   `AllowLocalSessionStatePolicy.cs`) are gone because the library now ships the
-   equivalent.
-4. **A silent authorization trap:** `SecurityAuthority` denied every request
-   with `"security.captured_context_mismatch"` unless
-   `AgentPermissionOptions.PolicySnapshot` was explicitly configured to the
-   exact same `SecurityPolicySnapshotReference` published for that profile — the
-   default was `null`, so this failed for every composition that didn't know to
-   set it, and getting it right required building a provider once to grab the
-   constructed `ISecurityAuthority` before the keyed binding and publication
-   could even be registered. **Fixed** by `AddStandaloneSecurityProfile` in
-   `AgentKit.Permissions`: it derives the snapshot, wires
-   `AgentPermissionOptions`, and registers the profile publication and a _lazy_
-   keyed authority binding (a new
-   `AddSecurityAuthority(ComponentKey<ISecurityAuthority>)` overload that
-   resolves the container's own authority the first time it's needed) — no
-   intermediate provider build required. `AgentRuntime.cs`'s ~90-line, two-build
-   security setup is now six lines.
-5. **Audit delivery was `Required` by default with no sink registered.**
-   Unchanged by design (it's the correct fail-closed default), but
-   `AddStandaloneSecurityProfile`'s `configurePermissions` delegate makes opting
-   into `SecurityAuditDelivery.BestEffort` for a local composition a one-line,
-   discoverable choice instead of a separate manual step.
-6. **`AllowListToolAuthorizer` started with an empty allow-list and there was no
-   way to populate it from the tools actually registered.** **Fixed** by
-   `AgentToolsOptions.AllowAllRegisteredTools`: setting it to `true` grants
-   every catalog-registered tool at once. `AgentRuntime.cs` no longer probe-
-   builds a temporary provider just to collect `ToolId`s.
-7. **The Command tool's required sandbox profile id wasn't discoverable without
-   reading source.** Still just one supported profile
-   (`PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile`), but the runtime
-   failure now lists every registered profile id instead of a bare "not
-   registered" message, so a typo or a genuinely unregistered profile is
-   diagnosable without reading `OperatingSystemProcessRunner` source.
-8. **No helper converted a tool's `ToolDescriptor` into the `LlmToolDefinition`
-   a model request needs.** **Fixed** by
-   `ToLlmToolDefinition`/`ToLlmToolDefinitions` in `AgentKit.Tools`.
-   `AgentRuntime.cs` populates its tool list with
-   `services.AddOptions<ConversationSessionOptions>().Configure<IEnumerable<ITool>>(...)`
-   — no probe-build needed for this either, since `Configure<TDep>` resolves its
-   dependency lazily when the options are first materialized.
-
-The net effect: `AgentRuntime.cs` shrank from roughly 490 lines to about 185,
-and the ~90 lines of security/tool-allow-list boilerplate that used to need two
-separate `BuildServiceProvider()` calls are gone entirely — one build, at the
-end, is all this example needs now.
-
-Adding Escape-to-cancel (below) surfaced two more, more serious, gaps — serious
-enough that a single cancelled command silently broke every future turn in the
-session:
-
-1. **`DefaultConversationSession.SendAsync` ignored `AgentRunOutcome`
-   entirely.** Any outcome other than the successful case — a turn limit, a
-   cancelled run, a context-preparation failure, anything — was reported back as
-   `Succeeded = true` with zero events, because `SendCoreAsync` never inspected
-   which outcome variant it got. This turned every real failure into a silent,
-   empty "success," which is exactly how the bug below stayed invisible until
-   traced by hand. **Fixed:** `SendCoreAsync` now checks for the successful
-   outcome (`RunSucceeded`, since a later workstream unified the outcome family
-   onto the canonical `RunSucceeded`/`RunIdle`/`RunCancelled`/`RunLimitReached`/
-   `RunPolicyHalted`/`RunFailed` set) explicitly and otherwise reports
-   `Succeeded = false` with a human-readable description of the actual outcome
-   (turn limit reached, model selection failed, context preparation failed,
-   cancelled, etc.), from a new exhaustive `DescribeIncompleteOutcome` switch
-   covering every outcome type.
-2. **A tool call cancelled mid-batch permanently corrupted the session.**
-   `DefaultAgentLoop.InvokeToolsAsync` had no cancellation handling around
-   `_toolInvoker.InvokeAsync`: cancelling while a tool was running either threw
-   straight out of the loop (leaving the just-committed assistant message's tool
-   call with no matching result) or — for `OperatingSystemProcessRunner`, which
-   absorbs cancellation internally and returns a normal, non-throwing
-   "cancelled" result — completed the batch but still hit this same broken state
-   one layer up. Either way, every later turn in that session then failed
-   context assembly with
-   `ContextPreparationFailure { Kind = BrokenToolCallCausality }`, because the
-   assembler requires every tool call to have exactly one matching terminal
-   result. **Fixed:** `InvokeToolsAsync` now catches
-   `OperationCanceledException` around each invocation and, once cancellation is
-   observed (thrown or silently absorbed), synthesizes an `Interrupted` result
-   for that call and every call still remaining in the batch, then
-   unconditionally appends the turn with `CancellationToken.None` — every tool
-   call always gets a matching result before cancellation is allowed to
-   propagate.
-
-Both fixes have regression tests (`DefaultConversationSessionTests`,
-`DefaultAgentLoopTests`) covering the outcome-reporting fix and both
-cancellation shapes (thrown and silently absorbed).
-
-Building the sidebar (tokens/cost and a live todo list) surfaced two more gaps,
-one a missing feature and one a real correctness bug that only a session-state
-tool like `todo` could trigger:
-
-1. **A model response's real usage evidence (input/output tokens, estimated
-   cost) was computed by the provider and attached to every committed
-   `AssistantMessage`, but `AgentKit.Conversations` never projected it into
-   anything a caller could read** — `DefaultConversationSession.ProjectEvents`
-   iterated an assistant message's content parts but never looked at its
-   `Response.Usage`. A UI that wants to show running cost, like this example's
-   sidebar and status bar, had no supported way to get it. **Fixed** by a new
-   `ConversationUsageEvent(ModelUsage Usage)` case on the `ConversationEvent`
-   hierarchy, raised right after a turn's other events whenever
-   `ModelUsage.ReportState` isn't `NotReported` — a provider or model that never
-   reports usage simply never raises it.
-2. **A tool that commits its own session entries mid-turn permanently broke that
-   turn**, and it's not exotic: the `AgentKit.Tools.Plan` package's `todo` tool
-   does exactly this by design (`SessionPlanStateStore` persists every plan
-   revision as a session entry through the same `ISessionCoordinator` the turn
-   itself is using). `DefaultAgentLoop` tracks the branch's expected version
-   once per turn in a local `currentVersion` variable and only advances it after
-   its _own_ appends; it had no way to notice that the `todo` tool's append —
-   running independently, in the middle of the same turn's tool batch — had
-   already moved the real branch version forward. The turn's next append (the
-   tool result) then failed with `SessionAppendConflict`, and — because of the
-   bug above, before it was fixed — that failure surfaced first as a silent
-   phantom "success" and only later as `ContextPreparationFailure`. With that
-   bug fixed, it instead surfaced honestly as a session-operation failure
-   (`AgentRunSessionOperationFailed` at the time; the outcome family was later
-   unified onto the canonical set, so this reports as `RunFailed` with a safe
-   message today), but the run still never completed: asking this example to
-   combine two files "using the todo tool to track your steps" reliably failed
-   with _"the session branch advanced from the expected version 2 to 3 before
-   the append committed"_ the moment the `todo` tool ran between two of the
-   loop's own appends. `SessionAppendConflict`'s own remarks are explicit that
-   this is deliberate — "the store never rebases the request against the newer
-   version or silently retries; the caller decides whether to reload and
-   reattempt with a fresh expected version" — but `DefaultAgentLoop` never did.
-   **Fixed:** `AppendWithDiagnosticsAsync` now retries a conflicting append
-   (bounded to 5 attempts) by rebasing both the request's `ExpectedVersion` and
-   every entry's own `Sequence` onto the conflict's reported `ActualVersion`
-   before resubmitting — rebasing only the version and not the entries' sequence
-   numbers looked like a fix on the first pass but just traded one error for
-   another (a sequence-continuity rejection), since each entry's sequence had
-   been computed from the stale version at build time. Both call sites (the
-   assistant-message append and the tool-result append) share this one retry
-   path. Two regression tests (`DefaultAgentLoopTests`) simulate exactly this
-   interleaving — a conflicting append followed by a successful retry at the
-   corrected version — for both the assistant-message and tool-result append;
-   the two pre-existing tests asserting a _persistent_ conflict still fails
-   outright continue to pass unchanged.
-
-Two more things surfaced only by actually driving this example against a real,
-substantial repository (this one) instead of a small scratch directory — the
-kind of gap that only shows up once you stop testing against a toy workspace:
-
-1. **`glob` and `search` patterns provide zero traversal pruning of their own —
-   only `base_path` does, and it is easy to assume otherwise.** Both tools' own
-   descriptions already say they "never follow symlinks or consult ambient
-   ignore files," but that undersells the practical consequence:
-   `TraverseGlobDirectory`/`TraverseSearchDirectoryAsync` walk every entry under
-   `base_path` (the workspace root, by default) unconditionally, and only check
-   the entry's full relative path against `pattern`/`path_pattern` _after_
-   visiting it. A literal directory prefix embedded in the pattern itself, like
-   `"src/AgentKit.Loop/**/*.cs"`, reads as if it scopes the walk the way a shell
-   glob would — it does not; the walk still covers the entire tree, `bin/`,
-   `obj/`, `.git`-adjacent build output, and all. Pointing this example at this
-   very repository and asking it to "find a bug" reproduced the failure
-   directly: the model's very first call, a plain `**/*` glob at depth 3,
-   immediately failed with "The glob retained-result limit was exceeded," and a
-   narrower-looking pattern scoped to one small project still failed with "The
-   glob visited-entry limit was exceeded" — because `src/AgentKit.Loop`'s own
-   accumulated `bin/`/`obj/` output (from this session's own repeated builds)
-   was still being walked in full before any filtering happened. This is not a
-   library bug — `base_path` exists precisely to provide the traversal root a
-   caller needs — but it is a sharp edge a model (or a person) reaches for the
-   wrong tool to solve on the first try almost every time. **Addressed** in
-   `AgentRuntime.cs`'s system prompt: it now states plainly that
-   `pattern`/`path_pattern` only filters after the fact, that `base_path` is the
-   only argument that actually limits what gets walked, and to glob a shallow
-   `base_path` first to discover layout before ever recursing into a specific
-   project directory.
-2. **Multi-line tool output rendered as Markdown prose silently loses its own
-   line breaks.** CommonMark joins adjacent non-blank lines into one paragraph
-   unless every line ends with a hard break; feeding a tool result — a
-   `read_file` result being the clearest case — through `Document` as plain text
-   therefore collapsed an entire source file into one visually continuous line,
-   which is exactly as unreadable as it sounds and was not caught until this
-   pass actually read a real file back in the running app instead of only
-   checking that a card rendered at all. **Fixed** by no longer routing tool
-   calls, tool results, or file content through `Document`/Markdown at all:
-   every one of them now renders through `CodeView` instead (see below), which
-   preserves line structure unconditionally regardless of content and adds real
-   syntax color on top when the extension or payload type is one the bundled
-   catalog covers. `Document`/Markdown is now reserved for actual prose — the
-   assistant's and the user's own messages — where CommonMark's own formatting
-   is genuinely wanted.
+- `glob` and `search` patterns filter only after the walk visits an entry;
+  `base_path` is the only argument that limits traversal. The prompt tells the
+  model to glob a shallow `base_path` first and recurse into a specific project
+  directory only afterwards.
+- Multi-line tool output rendered as Markdown prose loses its line breaks, so
+  tool calls, results, and file content render through `CodeView`, which
+  preserves line structure and adds syntax color where the bundled catalog
+  covers the language. `Document`/Markdown is reserved for the assistant's and
+  the user's prose.
 
 ## Rough edges found in SharpVision
 

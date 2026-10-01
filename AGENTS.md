@@ -29,13 +29,31 @@ code being changed and call out any unresolved conflict.
   engine component.
 - First-party implementations live in focused projects such as `AgentKit.Loop`,
   `AgentKit.Budgets`, `AgentKit.Context`, `AgentKit.Context.Compaction`,
-  `AgentKit.Hooks`, `AgentKit.Identity`, `AgentKit.IO`, `AgentKit.Output`,
-  `AgentKit.Session`, `AgentKit.Permissions`, `AgentKit.Providers`, and
-  `AgentKit.Tools`.
+  `AgentKit.Hooks`, `AgentKit.Identity`, `AgentKit.IO`, `AgentKit.Memory`,
+  `AgentKit.Output`, `AgentKit.Session`, `AgentKit.Permissions`,
+  `AgentKit.Providers`, `AgentKit.Tools`, `AgentKit.Artifacts`,
+  `AgentKit.Durability`, and `AgentKit.Goals`. Context contributors that need a
+  runtime beyond `AgentKit.Context` are leaves such as
+  `AgentKit.Context.Project` and `AgentKit.Context.Retrieval`.
+- Application leaves over the public `AgentKit` facade and the runtime packages
+  are `AgentKit.Conversations` (one bound session over the engine's admission
+  path), `AgentKit.Simple` (fluent builder sugar over public registrations,
+  never a second runtime), `AgentKit.Goals.Hosting` (a host-owned worker that
+  drains durable delegation intents through the public engine), and
+  `AgentKit.Evaluation`. No foundation or runtime package references them.
 - Tool features use `AgentKit.Tools.<ToolName>`. Provider integrations use
   `AgentKit.Providers.<ProviderName>`. Storage adapters use
   `AgentKit.<Owner>.InMemory`, `AgentKit.<Owner>.Sqlite`,
-  `AgentKit.<Owner>.Json`, or `AgentKit.<Owner>.<ProviderName>`.
+  `AgentKit.<Owner>.Json`, or `AgentKit.<Owner>.<ProviderName>`. The
+  `AgentKit.<Owner>.Storage.Shared` and `.Storage.Durable` directories are
+  source compiled into several leaves of one family, not projects or packages.
+- `AgentKit.Evaluation` is an application leaf over the public `AgentKit`
+  facade: versioned plans and cases, keyed evaluators (deterministic built-ins
+  and an explicit-model judge), result-store selection, report exporters, and a
+  bounded deterministic runner. Its result stores are the
+  `AgentKit.Evaluation.InMemory`, `.Sqlite`, and `.Json` leaves under one
+  conformance suite; none is installed by default. `examples/Evaluation`
+  composes it end to end.
 - `AgentKit.Storage.Json` is shared storage-family machinery for the `.Json`
   leaves. It owns atomic document replacement, flushed newline-delimited record
   logs, advisory single-writer locking, the fingerprinted encoding contract, and
@@ -44,6 +62,11 @@ code being changed and call out any unresolved conflict.
 - Concrete providers, storage, transports, filesystem implementations, and
   hosting integrations are leaves; foundation and runtime packages never
   reference them.
+- `AgentKit.Observability` is the shared exporter-free diagnostics surface.
+  `AgentKit.Observability.OpenTelemetry` is the first-party exporter leaf: it
+  adapts run events and security audit records through the public
+  `AddRunEventSink` and `AddSecurityAuditSink` registrations, consumes no
+  exporter SDK, and is never referenced by foundation or runtime packages.
 - `AgentKit.Providers.OpenAICompatible` is shared protocol-family machinery.
   Applications normally select concrete packages such as
   `AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, or
@@ -146,14 +169,16 @@ The architecture index defines document authority and change rules.
   factory and validator, one session directory/store selector, one hook dispatch
   kernel/point-definition catalog/profile selector, one security authority
   selector/policy catalog, one approval broker, one model catalog, one
-  provider-profile runtime selector, one budget authority, and a `TimeProvider`.
-  For every runnable agent definition it must resolve exactly one selected loop,
-  continuation policy, input coordinator, output publisher, context assembler,
-  session coordinator/run coordinator/profile and store, hook profile, security
+  provider-profile runtime selector, one budget authority, a `TimeProvider`, one
+  `IRandomizerFactory`, and one `IContentHasher`. For every runnable agent
+  definition it must resolve exactly one selected loop, continuation policy,
+  input coordinator, output publisher, context assembler, session
+  coordinator/run coordinator/profile and store, hook profile, security
   authority/profile, model selector, model request executor, and at least one
   compatible conversational model, output processor, and run budget profile.
-  Multiple keyed implementations may coexist; optional capabilities validate
-  their own required collaborators when selected.
+  Each keyed selection resolves under its exact key; an unkeyed registration
+  never satisfies it. Multiple keyed implementations may coexist; optional
+  capabilities validate their own required collaborators when selected.
 
 ### Hooks
 
@@ -222,6 +247,13 @@ The architecture index defines document authority and change rules.
 - Translate provider failures into a small stable taxonomy while retaining the
   original status, provider code, request identifier, and exception as
   diagnostic context.
+- Concrete provider adapters never own an HTTP client, handler, or SDK
+  transport. Every conversation, embedding, and reranking attempt sends through
+  `ProviderEgress` in `AgentKit.Providers`, which obtains a per-attempt
+  provider-egress grant bound to the exact endpoint/credential profile binding,
+  a resolution grant, and a send grant, and sends through `INetworkTransport`;
+  missing authority, enforcement, or required audit refuses with the stable
+  taxonomy before any I/O, and redirects are never followed.
 
 ### Messages, loops, and goals
 
@@ -415,6 +447,16 @@ The architecture index defines document authority and change rules.
 - Process-local caches, immutable snapshots, and synchronization gates are not
   persistence adapters. They must not be presented as durable stores, but need
   not be externalized merely because they retain transient state.
+- Durable memory retention is fail-closed: a model may propose a memory, but
+  only a registered memory policy that explicitly allows it (or an explicit
+  engine option) retains it. Retrieval is a policy-controlled context source
+  whose candidates are untrusted data: each passes authorization, stale
+  filtering against authoritative state, a per-candidate exposure grant, and a
+  budget, and keeps its source identity and provenance. The runtime installs no
+  store, index, retrieval source, embedding model, or reranker by default; a
+  profile names each by key. A document version becomes retrievable only when
+  its active-version pointer switches, and deletion commits a tombstone before
+  any index or purge cleanup and names uncleaned stores in its receipt.
 - Behavioral projections may reuse an explicitly selected store abstraction and
   its transaction boundary. Do not create a parallel SQLite database for
   session-backed input, plan, goal, or settlement state.

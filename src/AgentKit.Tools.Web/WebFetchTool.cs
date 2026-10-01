@@ -22,6 +22,8 @@ public sealed class WebFetchTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(WebFetchToolLog.Completed, WebFetchToolLog.Cancelled, WebFetchToolLog.Faulted);
+    private readonly ILogger<WebFetchTool> _logger;
     private readonly INetworkNameResolver _resolver;
     private readonly INetworkTransport _transport;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -41,6 +43,7 @@ public sealed class WebFetchTool: IToolInvoker
     /// <param name="operationIds">The replaceable network-operation identity source.</param>
     /// <param name="timeProvider">The deterministic overall-deadline clock.</param>
     /// <param name="options">The captured host bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public WebFetchTool(
@@ -50,7 +53,8 @@ public sealed class WebFetchTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<NetworkOperationId> operationIds,
         TimeProvider timeProvider,
-        IOptions<WebFetchToolOptions> options)
+        IOptions<WebFetchToolOptions> options,
+        ILogger<WebFetchTool> logger)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(transport);
@@ -59,6 +63,7 @@ public sealed class WebFetchTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _resolver = resolver;
         _transport = transport;
@@ -67,6 +72,7 @@ public sealed class WebFetchTool: IToolInvoker
         _operationIds = operationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
@@ -91,16 +97,16 @@ public sealed class WebFetchTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("web_fetch"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

@@ -24,4 +24,16 @@ internal interface IAgentRunScopeFactory
         ResolvedAgentDefinition definition,
         AgentRunRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>Opens one scope, lets the caller build the request from that scope, then compiles the plan.</summary>
+    /// <param name="definition">The resolved definition to compile.</param>
+    /// <param name="prepareRequest">Builds the request from the scope provider; it must not retain the provider.</param>
+    /// <param name="cancellationToken">Cancels preparation. The scope is disposed on cancellation and failure.</param>
+    /// <returns>The compilation result and, only when compilation succeeded, a lease the caller owns.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="definition"/> or <paramref name="prepareRequest"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
+    internal ValueTask<(AgentRunPlanCompilationResult Result, AgentRunScopeLease? Lease)> PrepareAsync(
+        ResolvedAgentDefinition definition,
+        Func<IServiceProvider, CancellationToken, ValueTask<AgentRunRequest>> prepareRequest,
+        CancellationToken cancellationToken);
 }

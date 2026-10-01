@@ -8,24 +8,11 @@ internal sealed class TestGrantStore: ISecurityGrantStore
     internal GrantConsumptionStatus Status { get; set; } = GrantConsumptionStatus.Consumed;
     internal List<SecurityEnforcementRequest> Enforcements { get; } = [];
     internal List<SecurityEnforcementIntent> Intents { get; } = [];
-    internal bool IncludeReceipt { get; set; } = true;
     internal bool ReturnExactReceipt { get; set; } = true;
     internal Action? OnConsume { get; set; }
 
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
-
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        Enforcements.Add(enforcement);
-        return ValueTask.FromResult(new GrantConsumptionResult(
-            Status,
-            0,
-            Status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied."));
-    }
 
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
@@ -37,7 +24,7 @@ internal sealed class TestGrantStore: ISecurityGrantStore
         Enforcements.Add(enforcement);
         Intents.Add(intent);
         OnConsume?.Invoke();
-        var receipt = IncludeReceipt && (Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
+        var receipt = (Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
             ? new SecurityEnforcementIntentReceipt(
                 ReturnExactReceipt
                     ? intent.Id
@@ -62,29 +49,47 @@ internal sealed class TestGrantStore: ISecurityGrantStore
         return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
     }
 
-    internal static SecurityGrant Grant() => new(
-        new GrantId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
-        new SecurityRequestId(Guid.Parse("20000000-0000-0000-0000-000000000002")),
-        new SecurityAuthorizationScope(
+    internal static SecurityGrant Grant()
+    {
+        var scope = new SecurityAuthorizationScope(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             null,
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
-                null)),
-        TestExecutionIdentity.Create(
+                null));
+        var identity = TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human),
-        new ComponentId("agentkit.language.scripted"),
-        SecurityOperationKind.FileRead,
-        SecurityEffect.Observe,
-        [new ProtectedResource(ProtectedResourceKind.File, "src/a.cs")],
-        new InputFingerprint("sha256:scripted"),
-        new SecurityPolicyVersion(1),
-        new SecurityRevocationVersion(1),
-        DateTimeOffset.UnixEpoch,
-        DateTimeOffset.MaxValue,
-        1);
+            ExecutionSubjectKind.Human);
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("test"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("11000000-0000-0000-0000-000000000011")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:test-policy")),
+            new ComponentKey<ISecurityAuthority>("test"),
+            new AgentDefinitionRevision(0),
+            new ConfigurationVersion(1),
+            scope,
+            identity);
+        return new SecurityGrant(
+            new GrantId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
+            new SecurityRequestId(Guid.Parse("20000000-0000-0000-0000-000000000002")),
+            scope,
+            identity,
+            authorization,
+            new ComponentId("agentkit.language.scripted"),
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [new ProtectedResource(ProtectedResourceKind.File, "src/a.cs")],
+            new InputFingerprint("sha256:scripted"),
+            new SecurityPolicyVersion(1),
+            new SecurityRevocationVersion(1),
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.MaxValue,
+            1);
+    }
 
     internal static SecurityGrant CapturedGrant(
         LanguageQueryId queryId,
@@ -96,18 +101,7 @@ internal sealed class TestGrantStore: ISecurityGrantStore
         TimeSpan timeout)
     {
         var grant = Grant();
-        var authorization = new SecurityAuthorizationContext(
-            new SecurityProfileKey("test"),
-            new SecurityProfileVersion(1),
-            new SecurityPolicySnapshotReference(
-                new SecurityPolicySnapshotId(Guid.Parse("11000000-0000-0000-0000-000000000011")),
-                new SecurityPolicyVersion(1),
-                new ContentHash("sha256:test-policy")),
-            new ComponentKey<ISecurityAuthority>("test"),
-            new AgentDefinitionRevision(0),
-            new ConfigurationVersion(1),
-            grant.Scope,
-            grant.Identity);
+        var authorization = grant.Authorization;
         return new SecurityGrant(
             grant.Id,
             grant.RequestId,

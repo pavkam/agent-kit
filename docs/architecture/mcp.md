@@ -137,6 +137,30 @@ defines reconnection and session behavior through AgentKit network abstractions
 and a network grant. A successful MCP login authorizes a connection, not every
 tool, resource, root, model request, or user interaction.
 
+The official SDK `HttpClientTransport` keeps owning Streamable HTTP and legacy
+SSE protocol behavior, but it is constructed over an `HttpClient` whose only
+handler is `NetworkMcpHttpHandler`, so it never creates a socket, resolves DNS,
+or follows a redirect itself. For every request, event-stream read, and session
+deletion the handler refuses anything other than `GET`, `POST`, or `DELETE` to
+the endpoint's exact origin (a server-announced legacy message URL on another
+origin therefore never receives the endpoint's credentials), freezes the body
+into immutable bytes within the message bound, and, under the authority captured
+with the session's protected operation, obtains a resolution grant, resolves,
+obtains a send grant bound to the resolved addresses, method, destination,
+hashed header values, body hash, bounds, and classification, and sends through
+`INetworkTransport`. The connect grant authorizes opening the transport and is
+consumed before it exists; neither it nor the per-MCP-request grant can stand in
+for the per-exchange network grants. Bounds are finite and configurable:
+exchanges the client starts (`POST`, `DELETE`) last at most the request timeout;
+the standalone `GET` event stream lasts at most `HttpStreamTimeout`; every
+response is bounded by `MaximumHttpResponseBytes` while it streams, and the
+request body by the message bound. An overrun faults the stream instead of
+surfacing truncated content, and the SDK's own `Last-Event-ID` reconnection
+resumes event streams. Redirects are never followed (zero declared), refusals
+and failures surface to the SDK as content-free `HttpRequestException`s, and the
+body of an answered exchange is owned by the returned message and released with
+it.
+
 OAuth state is endpoint- and audience-bound. Client registration, PKCE verifier,
 CSRF state, staged tokens, refresh, invalidation, and any loopback callback
 listener have explicit owners and lifetimes. A successful exchange atomically
@@ -331,17 +355,17 @@ at that lower boundary.
 
 ## First-party classes and dependencies
 
-| Package class                                                           | Role and injected dependencies                                                                                                                                                                                                   |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `McpToolContract<TTools>` in AgentKit.Mcp                               | Validate and capture one immutable object-in/object-out reflection surface, including distinct tool contract versions                                                                                                            |
-| `McpToolClientFactory<TTools>` and `McpToolClient<TTools>`              | Connect an official SDK transport, capture the negotiated protocol revision, validate versioned remote tools, publish immutable catalog generations, and invoke through expressions                                              |
-| `WithAgentKitTools<TTools>` in AgentKit.Mcp.Server                      | Generate JSON schemas and official SDK handlers from one concrete reflected tool class and publish namespaced tool-version metadata                                                                                              |
-| `McpClientSessionFactory` and `McpClientSession` in AgentKit.Mcp.Client | Protocol lifecycle, correlation, bounds, catalog snapshots, `IIdentifierGenerator<McpSessionId>`, `IIdentifierGenerator<McpRequestId>`, `TimeProvider`, security authority/grant store, audit, and a keyed MCP transport factory |
-| `McpToolProvider` / `McpToolInvoker`                                    | Adapt a catalog snapshot to `IToolProvider` / `IToolInvoker`; use the ordinary tool validation, scheduling, security, result, and audit pipeline                                                                                 |
-| `McpResourceSource` and `McpPromptSource`                               | Adapt resources or user-selected prompts through retrieval/context trust and security contracts; never inject them directly into history                                                                                         |
-| `StdioMcpTransportFactory`                                              | Uses process contracts and a process grant; owns the child, bounded stderr, and streams                                                                                                                                          |
-| `HttpMcpTransportFactory`                                               | Uses network contracts and a network grant; credential acquisition stays in the endpoint integration                                                                                                                             |
-| `McpServer` and `AgentKitPrimitiveHandler` in AgentKit.Mcp.Server       | Authenticate the peer, map requests to selected AgentKit capabilities, and invoke the shared security authority before exposing any effect                                                                                       |
+| Package class                                                           | Role and injected dependencies                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `McpToolContract<TTools>` in AgentKit.Mcp                               | Validate and capture one immutable object-in/object-out reflection surface, including distinct tool contract versions                                                                                                               |
+| `McpToolClientFactory<TTools>` and `McpToolClient<TTools>`              | Connect an official SDK transport, capture the negotiated protocol revision, validate versioned remote tools, publish immutable catalog generations, and invoke through expressions                                                 |
+| `WithAgentKitTools<TTools>` in AgentKit.Mcp.Server                      | Generate JSON schemas and official SDK handlers from one concrete reflected tool class and publish namespaced tool-version metadata                                                                                                 |
+| `McpClientSessionFactory` and `McpClientSession` in AgentKit.Mcp.Client | Protocol lifecycle, correlation, bounds, catalog snapshots, `IIdentifierGenerator<McpSessionId>`, `IIdentifierGenerator<McpRequestId>`, `TimeProvider`, security authority/grant store, audit, and a keyed MCP transport factory    |
+| `McpToolProvider` / `McpToolInvoker`                                    | Adapt a catalog snapshot to `IToolProvider` / `IToolInvoker`; use the ordinary tool validation, scheduling, security, result, and audit pipeline                                                                                    |
+| `McpResourceSource` and `McpPromptSource`                               | Adapt resources or user-selected prompts through retrieval/context trust and security contracts; never inject them directly into history                                                                                            |
+| `StdioMcpTransportFactory`                                              | Uses process contracts and a process grant; owns the child, bounded stderr, and streams                                                                                                                                             |
+| `HttpMcpTransportFactory` and `NetworkMcpHttpHandler`                   | Hand the official SDK transport an `HttpClient` over the handler, which sends every exchange through `INetworkNameResolver`/`INetworkTransport` under per-exchange grants; credential acquisition stays in the endpoint integration |
+| `McpServer` and `AgentKitPrimitiveHandler` in AgentKit.Mcp.Server       | Authenticate the peer, map requests to selected AgentKit capabilities, and invoke the shared security authority before exposing any effect                                                                                          |
 
 The client factory owns mechanics rather than policy or agent state:
 
@@ -552,8 +576,15 @@ open session injects unkeyed or monitored endpoint options. The defaults are
 finite client-mechanics bounds only. Server commands/URLs, credentials,
 authentication audiences, and endpoint selection remain explicit host
 configuration; AgentKit never invents them. Validation rejects non-positive
-timeouts or limits, a frame limit larger than the message limit, and any
-endpoint whose transport or credential reference is incomplete.
+timeouts or limits, a frame limit larger than the message limit, an HTTP
+response bound below the message limit, an undefined HTTP data classification
+(default `Confidential`), and any endpoint whose transport or credential
+reference is incomplete. Each endpoint kind registers only its own transport
+factory (`AddMcpHttpEndpoint` the HTTP one, `AddMcpStdioEndpoint` the stdio
+one), so an application that uses one kind never needs the other's process or
+network collaborators; the HTTP factory additionally requires
+`INetworkNameResolver` and `INetworkTransport`, and resolving it without them
+fails instead of reaching a raw client.
 
 ## Build validation and unsupported behavior
 

@@ -7,495 +7,121 @@ namespace AgentKit.FileSystem.InMemory.Tests;
 public sealed class InMemoryFileSystemTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenDependencyIsNull_ThrowsArgumentNullExceptionNamingIt()
     {
-        var exception = Should.Throw<ArgumentNullException>(
-            () => new InMemoryFileSystem(null!, TestSecurity.GrantStore(), TimeProvider.System));
-        exception.ParamName.ShouldBe("options");
+        var options = Options.Create(new InMemoryFileSystemOptions());
+        var store = TestSecurity.GrantStore();
+        var intents = new GuidSecurityEnforcementIntentIdGenerator();
+        var audit = new AcceptingAuditDispatcher();
+        var auditIds = new GuidSecurityAuditRecordIdGenerator();
+        var key = new FileSystemProfileKey("test");
+
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(null!, store, TimeProvider.System, null, intents, audit, auditIds, key))
+            .ParamName.ShouldBe("options");
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(options, null!, TimeProvider.System, null, intents, audit, auditIds, key))
+            .ParamName.ShouldBe("grantStore");
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(options, store, null!, null, intents, audit, auditIds, key))
+            .ParamName.ShouldBe("timeProvider");
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(options, store, TimeProvider.System, null, null!, audit, auditIds, key))
+            .ParamName.ShouldBe("intentIds");
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(options, store, TimeProvider.System, null, intents, null!, auditIds, key))
+            .ParamName.ShouldBe("hostAuditDispatcher");
+        Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(options, store, TimeProvider.System, null, intents, audit, null!, key))
+            .ParamName.ShouldBe("hostAuditRecordIds");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
+    public void Constructor_WhenProfileKeyIsDefault_ThrowsArgumentOutOfRangeException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new InMemoryFileSystem(
-            Options.Create(new InMemoryFileSystemOptions()), TestSecurity.GrantStore(), TimeProvider.System, null, null!));
-        exception.ParamName.ShouldBe("intentIds");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new InMemoryFileSystem(
+            Options.Create(new InMemoryFileSystemOptions()),
+            TestSecurity.GrantStore(),
+            TimeProvider.System,
+            null,
+            new GuidSecurityEnforcementIntentIdGenerator(),
+            new AcceptingAuditDispatcher(),
+            new GuidSecurityAuditRecordIdGenerator(),
+            default));
+
+        exception.ParamName.ShouldBe("hostProfileKey");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void Constructor_WhenLoggerArgumentIsNull_UsesNullLogger() =>
-        _ = new InMemoryFileSystem(Options.Create(new InMemoryFileSystemOptions()), TestSecurity.GrantStore(), TimeProvider.System, null);
+    public void Constructor_WhenLoggerArgumentIsNull_UsesTheNullLogger() =>
+        Should.NotThrow(() => CreateFileSystem(logger: null));
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenRequestNull_ThrowsArgumentNullException()
-    {
-        var fs = CreateFileSystem();
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => fs.ReadAsync(null!, TestContext.Current.CancellationToken));
-        exception.ParamName.ShouldBe("request");
-    }
+    public void SecurityAudience_WhenProfileIsBound_IsScopedToTheProfileKey() =>
+        CreateFileSystem().SecurityAudience.ShouldBe(new ComponentId("agentkit.filesystem.inmemory.test"));
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenRequestNull_ThrowsArgumentNullException()
-    {
-        var fs = CreateFileSystem();
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => fs.WriteAsync(null!, TestContext.Current.CancellationToken));
-        exception.ParamName.ShouldBe("request");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenFileDoesNotExist_CreatesFileAndReturnsWritten()
-    {
-        var fs = CreateFileSystem();
-        var request = new FileWriteRequest(new FileSystemPath("notes.txt"), "hello world", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant());
-        var result = await fs.WriteAsync(request, TestContext.Current.CancellationToken);
-        var written = result.ShouldBeOfType<LegacyFileWritten>();
-        written.BytesWritten.ShouldBe(11L);
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("hello world");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenParentDirectoryMissing_DoesNotCreateParentDirectory()
-    {
-        var fs = CreateFileSystem();
-        var request = new FileWriteRequest(new FileSystemPath("sub/dir/notes.txt"), "nested", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant());
-        var result = await fs.WriteAsync(request, TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWriteFailed>();
-        var enumeration = await fs.EnumerateAsync(new DirectoryEnumerationRequest(new FileSystemPath("sub"), 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        enumeration.Status.ShouldBe(DirectoryEnumerationStatus.NotFound);
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheTarget()
-    {
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Reconciled, 0, "Reconciled."),
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        var path = new FileSystemPath("reconciled.txt");
-        var result = await fs.WriteAsync(new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
-        fs.TryReadAllBytes(path, out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheTarget()
-    {
-        using var cancellation = new CancellationTokenSource();
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            OnIntentConsumption = cancellation.Cancel
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        var path = new FileSystemPath("cancelled-before-write.txt");
-        var action = async () => await fs.WriteAsync(new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), cancellation.Token);
-        _ = await action.ShouldThrowAsync<OperationCanceledException>();
-        fs.TryReadAllBytes(path, out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
-    {
-        const string text = "captured";
-        var store = new InMemorySecurityGrantStore(TimeProvider.System);
-        var fs = CreateFileSystem(grantStore: store);
-        var path = new FileSystemPath("captured-write.txt");
-        var grant = TestSecurity.CapturedGrant(fs.SecurityAudience, SecurityOperationKind.FileWrite, FileSecurityBinding.WriteEffect(FileWriteMode.CreateOrOverwrite), [FileSecurityBinding.Resource(path)], FileSecurityBinding.WriteFingerprint(path, text, FileWriteMode.CreateOrOverwrite));
-        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        var result = await fs.WriteAsync(new FileWriteRequest(path, text, FileWriteMode.CreateOrOverwrite, grant), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWritten>();
-        fs.TryReadAllBytes(path, out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe(text);
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenFileExists_ReturnsContent()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("notes.txt"), "existing content");
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        var read = result.ShouldBeOfType<FileRead>();
-        read.Content.ShouldBe("existing content");
-        read.Bytes.ShouldBe(16L);
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenFileDoesNotExist_ReturnsFileNotFound()
-    {
-        var fs = CreateFileSystem();
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileNotFound>();
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenGrantDenied_LeaksNoTargetExistenceAndUsesExactBinding(bool createTarget)
-    {
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 1, "Grant does not match."),
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        if (createTarget)
-        {
-            fs.Seed(new FileSystemPath("possibly-secret.txt"), "secret");
-        }
-
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("possibly-secret.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldBe("Grant does not match.");
-        var enforcement = store.LastEnforcement.ShouldNotBeNull();
-        enforcement.Resources.ShouldBe([FileSecurityBinding.Resource(new FileSystemPath("possibly-secret.txt"))]);
-        enforcement.InputFingerprint.ShouldBe(FileSecurityBinding.ReadFingerprint(new FileSystemPath("possibly-secret.txt")));
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenConsumedReceiptIsMissing_DoesNotReadTheTarget()
-    {
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            IncludeIntentReceipt = false
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        fs.Seed(new FileSystemPath("receipt-missing.txt"), "protected");
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("receipt-missing.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenReceiptReferencesAnotherIntent_DoesNotReadTheTarget()
-    {
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            ReturnExactIntentReceipt = false
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        fs.Seed(new FileSystemPath("receipt-mismatch.txt"), "protected");
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("receipt-mismatch.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
-    {
-        const string path = "captured-read.txt";
-        var store = new InMemorySecurityGrantStore(TimeProvider.System);
-        var fs = CreateFileSystem(grantStore: store);
-        fs.Seed(new FileSystemPath(path), "captured");
-        var filePath = new FileSystemPath(path);
-        var grant = TestSecurity.CapturedGrant(fs.SecurityAudience, SecurityOperationKind.FileRead, SecurityEffect.Observe, [FileSecurityBinding.Resource(filePath)], FileSecurityBinding.ReadFingerprint(filePath));
-        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(filePath, grant), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<FileRead>().Content.ShouldBe("captured");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeCreateNewAndFileExists_ReturnsFileAlreadyExists()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("notes.txt"), "already here");
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "new content", FileWriteMode.CreateNew, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileAlreadyExists>();
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("already here");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenConcurrentCreateNewTargetsSamePath_CreatesExactlyOnce()
-    {
-        var fs = CreateFileSystem();
-        var first = new FileWriteRequest(new FileSystemPath("notes.txt"), "first", FileWriteMode.CreateNew, TestSecurity.Grant());
-        var second = new FileWriteRequest(new FileSystemPath("notes.txt"), "second", FileWriteMode.CreateNew, TestSecurity.Grant());
-        var results = await Task.WhenAll(fs.WriteAsync(first, TestContext.Current.CancellationToken), fs.WriteAsync(second, TestContext.Current.CancellationToken));
-        results.Count(static result => result is LegacyFileWritten).ShouldBe(1);
-        results.Count(static result => result is LegacyFileAlreadyExists).ShouldBe(1);
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBeOneOf("first", "second");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenRequestWasMutatedToUndefinedMode_ThrowsBeforeEffects()
-    {
-        var fs = CreateFileSystem();
-        var request = new FileWriteRequest(new FileSystemPath("notes.txt"), "content", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()) with
-        {
-            Mode = (FileWriteMode) int.MaxValue
-        };
-        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(() => fs.WriteAsync(request, TestContext.Current.CancellationToken));
-        exception.ParamName.ShouldBe("request.Mode");
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeAppendAndTargetIsMissing_DoesNotCreateTheFile()
-    {
-        // file-system-access-and-bounds.md write-disposition table: Append + missing target => "Not found, no mutation".
-        var fs = CreateFileSystem();
-
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("absent.log"), "line", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<LegacyFileWriteFailed>();
-        fs.TryReadAllBytes(new FileSystemPath("absent.log"), out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeAppend_AppendsToExistingContent()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("notes.txt"), "first-");
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "second", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWritten>();
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("first-second");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeCreateOrOverwrite_ReplacesExistingContent()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("notes.txt"), "old content that is longer");
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "new", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWritten>();
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("new");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeReplaceExistingAndFileExists_ReplacesExactContent()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("notes.txt"), "old content");
-
-        var result = await fs.WriteAsync(new FileWriteRequest(
-            new FileSystemPath("notes.txt"), " \t", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<LegacyFileWritten>();
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe(" \t");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenModeReplaceExistingAndFileMissing_DoesNotCreateTarget()
-    {
-        var fs = CreateFileSystem();
-
-        var result = await fs.WriteAsync(new FileWriteRequest(
-            new FileSystemPath("notes.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
-            TestContext.Current.CancellationToken);
-
-        result.ShouldBeOfType<LegacyFileWriteFailed>().SafeMessage.ShouldContain("does not exist");
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
-    {
-        var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
-        fs.Seed(new FileSystemPath("notes.txt"), "this is too long");
-        var result = await fs.ReadAsync(new LegacyFileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileReadFailed>();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenContentExceedsMaximumWriteBytes_ReturnsLegacyFileWriteDenied()
-    {
-        var fs = CreateFileSystem(o => o.MaximumWriteBytes = 4);
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "this is too long", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWriteDenied>();
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenGrantDenied_DoesNotMutateAndUsesExactDispositionBinding()
-    {
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Revoked, 1, "Grant is revoked."),
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        fs.Seed(new FileSystemPath("notes.txt"), "original");
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "replacement", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.ShouldBeOfType<LegacyFileWriteDenied>().SafeMessage.ShouldBe("Grant is revoked.");
-        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
-        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("original");
-        var enforcement = store.LastEnforcement.ShouldNotBeNull();
-        enforcement.Effect.ShouldBe(SecurityEffect.CreateOrReplace);
-        enforcement.InputFingerprint.ShouldBe(FileSecurityBinding.WriteFingerprint(new FileSystemPath("notes.txt"), "replacement", FileWriteMode.CreateOrOverwrite));
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void Seed_WhenParentMissing_ThrowsInvalidOperationException()
-    {
-        var fs = CreateFileSystem();
-        _ = Should.Throw<InvalidOperationException>(() => fs.Seed(new FileSystemPath("sub/notes.txt"), "content"));
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void Seed_WhenPathIsDirectory_ThrowsInvalidOperationException()
-    {
-        var fs = CreateFileSystem();
-        fs.CreateDirectory(new FileSystemPath("sub"));
-        _ = Should.Throw<InvalidOperationException>(() => fs.Seed(new FileSystemPath("sub"), "content"));
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void CreateDirectory_WhenFileOccupiesAncestor_ThrowsInvalidOperationException()
-    {
-        var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("sub"), "content");
-        _ = Should.Throw<InvalidOperationException>(() => fs.CreateDirectory(new FileSystemPath("sub/nested")));
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task CreateDirectory_CreatesEveryMissingAncestor()
     {
         var fs = CreateFileSystem();
         fs.CreateDirectory(new FileSystemPath("src/nested"));
-        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(new FileSystemPath("src/nested"), 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.Status.ShouldBe(DirectoryEnumerationStatus.Success);
+
+        var entries = await EnumerateAsync(fs, new FileSystemPath("src"));
+
+        entries.Select(static entry => (entry.Name.Value, entry.IsDirectory)).ShouldBe([("nested", true)]);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public void TryReadAllBytes_WhenAbsent_ReturnsFalse()
-    {
-        var fs = CreateFileSystem();
-        fs.TryReadAllBytes(new FileSystemPath("missing.txt"), out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenRootContainsEntries_ReturnsOrdinalPagesWithStableCursor()
+    public async Task EnumerateAsync_WhenRootContainsEntries_YieldsOrdinalOrderWithDirectoryFlags()
     {
         var fs = CreateFileSystem();
         fs.Seed(new FileSystemPath("b.txt"), "b");
         fs.Seed(new FileSystemPath("a.txt"), "a");
         fs.CreateDirectory(new FileSystemPath("c"));
-        var first = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 2, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        var second = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 2, first.Continuation, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        first.Status.ShouldBe(DirectoryEnumerationStatus.Success);
-        first.Entries.Select(static entry => entry.Path.Value).ShouldBe(["a.txt", "b.txt"]);
-        _ = first.Continuation.ShouldNotBeNull();
-        second.Status.ShouldBe(DirectoryEnumerationStatus.Success);
-        second.Entries.Select(static entry => entry.Path.Value).ShouldBe(["c"]);
-        second.Continuation.ShouldBeNull();
-        second.SnapshotFingerprint.ShouldBe(first.SnapshotFingerprint);
+
+        var entries = await EnumerateAsync(fs, null);
+
+        entries.Select(static entry => (entry.Name.Value, entry.IsDirectory))
+            .ShouldBe([("a.txt", false), ("b.txt", false), ("c", true)]);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenDirectoryChangesBetweenPages_ReturnsSnapshotChanged()
+    public async Task EnumerateAsync_WhenPathNamesASubdirectory_YieldsOnlyItsChildren()
     {
         var fs = CreateFileSystem();
-        fs.Seed(new FileSystemPath("a.txt"), "a");
-        fs.Seed(new FileSystemPath("b.txt"), "b");
-        var first = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 1, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        fs.Seed(new FileSystemPath("c.txt"), "c");
-        var resumed = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 1, first.Continuation, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        resumed.Status.ShouldBe(DirectoryEnumerationStatus.SnapshotChanged);
-        resumed.Entries.ShouldBeEmpty();
+        fs.CreateDirectory(new FileSystemPath("src/nested"));
+        fs.Seed(new FileSystemPath("src/main.cs"), "m");
+        fs.Seed(new FileSystemPath("root.txt"), "r");
+
+        var entries = await EnumerateAsync(fs, new FileSystemPath("src"));
+
+        entries.Select(static entry => (entry.Name.Value, entry.IsDirectory)).ShouldBe([("main.cs", false), ("nested", true)]);
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenSnapshotExceedsConfiguredBound_ReturnsLimitExceeded()
+    public async Task EnumerateAsync_WhenSnapshotExceedsConfiguredBound_ThrowsIOException()
     {
         var fs = CreateFileSystem(options => options.MaximumDirectorySnapshotEntries = 2);
         fs.Seed(new FileSystemPath("a.txt"), "a");
         fs.Seed(new FileSystemPath("b.txt"), "b");
         fs.Seed(new FileSystemPath("c.txt"), "c");
-        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 1, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.Status.ShouldBe(DirectoryEnumerationStatus.LimitExceeded);
+
+        var exception = await Should.ThrowAsync<IOException>(async () => await EnumerateAsync(fs, null));
+
+        exception.ShouldNotBeOfType<DirectoryNotFoundException>();
+        exception.Message.ShouldBe("The directory exceeds the configured snapshot limit of 2 entries.");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenDirectoryDoesNotExist_ReturnsNotFound()
+    public async Task EnumerateAsync_WhenDirectoryDoesNotExist_ThrowsDirectoryNotFoundException()
     {
         var fs = CreateFileSystem();
-        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(new FileSystemPath("missing"), 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.Status.ShouldBe(DirectoryEnumerationStatus.NotFound);
+
+        _ = await Should.ThrowAsync<DirectoryNotFoundException>(async () => await EnumerateAsync(fs, new FileSystemPath("missing")));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    [Obsolete("Legacy host surface.")]
-
     public async Task EnumerateAsync_WhenGrantDenied_LeaksNoDirectoryExistenceAndUsesExactBinding(bool createDirectory)
     {
         var store = new TestSecurity.RecordingGrantStore
         {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 1, "Grant does not match."),
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 1, "Grant does not match.", null),
         };
         var fs = CreateFileSystem(grantStore: store);
         if (createDirectory)
@@ -504,18 +130,197 @@ public sealed class InMemoryFileSystemTests
         }
 
         var path = new FileSystemPath("possibly-secret");
-        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(path, 7, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        result.Status.ShouldBe(DirectoryEnumerationStatus.Denied);
-        result.SafeMessage.ShouldBe("Grant does not match.");
+
+        var exception = await Should.ThrowAsync<UnauthorizedAccessException>(async () => await EnumerateAsync(fs, path));
+
+        exception.Message.ShouldBe("Grant does not match.");
         var enforcement = store.LastEnforcement.ShouldNotBeNull();
         enforcement.Kind.ShouldBe(SecurityOperationKind.DirectoryRead);
+        enforcement.Audience.ShouldBe(fs.SecurityAudience);
         enforcement.Resources.ShouldBe([DirectorySecurityBinding.Resource(path)]);
-        enforcement.InputFingerprint.ShouldBe(DirectorySecurityBinding.Fingerprint(path, 7, null));
+        enforcement.InputFingerprint.ShouldBe(DirectorySecurityBinding.Fingerprint(path));
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
+    public void EnumerateAsync_WhenOperationIsNull_ThrowsArgumentNullExceptionBeforeEnumerating()
+    {
+        var fs = CreateFileSystem();
 
+        Should.Throw<ArgumentNullException>(() => fs.EnumerateAsync(null!)).ParamName.ShouldBe("operation");
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestSecurity.RecordingGrantStore { OnIntentConsumption = cancellation.Cancel };
+        var fs = CreateFileSystem(grantStore: store);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await EnumerateWithTokenAsync(fs, null, grant: null, cancellation.Token));
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_RethrowsIt()
+    {
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await EnumerateAsync(fs, null));
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
+    {
+        const string protectedPath = "content-must-not-enter-diagnostics";
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath(protectedPath));
+        var grant = TestSecurity.Grant();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.FileSystemOperation
+                    && Equals(activity.GetTagItem(AgentKitTagNames.SecurityRequestId), grant.RequestId.ToString()))
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        _ = await EnumerateAsync(fs, new FileSystemPath(protectedPath), grant);
+
+        var observed = stopped.ShouldNotBeNull();
+        observed.GetTagItem(AgentKitTagNames.FileSystemOperation).ShouldBe("enumerate");
+        observed.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedPath);
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenLoggerIsEnabledAndEnumerationSucceeds_EmitsCompletedStructuredEvent()
+    {
+        var logger = new RecordingLogger<InMemoryFileSystem>();
+        var fs = CreateFileSystem(logger: logger);
+        fs.Seed(new FileSystemPath("notes.txt"), "content");
+        var grant = TestSecurity.Grant();
+
+        _ = await EnumerateAsync(fs, null, grant);
+
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(11100);
+        completed.State["Operation"].ShouldBe("enumerate");
+        completed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        completed.State["Outcome"].ShouldBe("Success");
+        completed.Message.ShouldNotContain("notes.txt");
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<InMemoryFileSystem>();
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore(), logger: logger);
+        var grant = TestSecurity.Grant();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await EnumerateAsync(fs, null, grant));
+
+        var failed = logger.Snapshot().Single(static entry => entry.EventId.Id == 11101);
+        failed.State["Operation"].ShouldBe("enumerate");
+        failed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
+    private static Task<List<FileSystemEntry>> EnumerateAsync(InMemoryFileSystem fs, FileSystemPath? path, SecurityGrant? grant = null) =>
+        EnumerateWithTokenAsync(fs, path, grant, TestContext.Current.CancellationToken);
+
+    private static async Task<List<FileSystemEntry>> EnumerateWithTokenAsync(
+        InMemoryFileSystem fs,
+        FileSystemPath? path,
+        SecurityGrant? grant,
+        CancellationToken cancellationToken)
+    {
+        var relative = path?.Value ?? ".";
+        var target = new ResolvedFileTarget(
+            new FileRootId("workspace"),
+            new NormalizedRelativePath(relative),
+            relative,
+            FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8),
+            FileSecurityBinding.ContentFingerprint("target"u8));
+        var entries = new List<FileSystemEntry>();
+        await foreach (var entry in fs.EnumerateAsync(new AuthorizedDirectoryEnumeration(target, grant ?? TestSecurity.Grant()), cancellationToken))
+        {
+            entries.Add(entry);
+        }
+
+        return entries;
+    }
+
+    private sealed class AcceptingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
+    }
+
+    private sealed class ThrowingGrantStore: ISecurityGrantStore
+    {
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Unexpected grant store failure.");
+
+        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(reason);
+            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
+        }
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenOperationIsNull_ThrowsArgumentNullException()
+    {
+        var fs = CreateFileSystem();
+        var content = new FileWriteContent("x"u8.ToArray(), FileSecurityBinding.ContentFingerprint("x"u8));
+
+        var exception = await Should.ThrowAsync<ArgumentNullException>(
+            async () => await fs.WriteAsync(null!, content, TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("operation");
+    }
+
+    [Fact]
+    public void Seed_WhenParentMissing_ThrowsInvalidOperationException()
+    {
+        var fs = CreateFileSystem();
+        _ = Should.Throw<InvalidOperationException>(() => fs.Seed(new FileSystemPath("sub/notes.txt"), "content"));
+    }
+
+    [Fact]
+    public void Seed_WhenPathIsDirectory_ThrowsInvalidOperationException()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("sub"));
+        _ = Should.Throw<InvalidOperationException>(() => fs.Seed(new FileSystemPath("sub"), "content"));
+    }
+
+    [Fact]
+    public void CreateDirectory_WhenFileOccupiesAncestor_ThrowsInvalidOperationException()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("sub"), "content");
+        _ = Should.Throw<InvalidOperationException>(() => fs.CreateDirectory(new FileSystemPath("sub/nested")));
+    }
+
+    [Fact]
+    public void TryReadAllBytes_WhenAbsent_ReturnsFalse()
+    {
+        var fs = CreateFileSystem();
+        fs.TryReadAllBytes(new FileSystemPath("missing.txt"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task GlobAsync_WhenRecursivePatternMatches_ReturnsDeterministicCompleteResults()
     {
         var fs = CreateFileSystem();
@@ -531,8 +336,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenBasePathIsSet_MatchesPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
     {
         var fs = CreateFileSystem();
@@ -549,8 +352,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenHiddenExcluded_DoesNotVisitDotPrefixedSubtrees()
     {
         var fs = CreateFileSystem();
@@ -564,8 +365,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenSubtreeExcluded_PrunesItBeforeVisitBoundIsConsumed()
     {
         var fs = CreateFileSystem();
@@ -589,8 +388,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenNoNameMatches_ReturnsDistinctNoMatchesOutcome()
     {
         var fs = CreateFileSystem();
@@ -602,8 +399,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenVisitBoundExceeded_ReturnsPartialIncompleteLimitOutcome()
     {
         var fs = CreateFileSystem();
@@ -617,8 +412,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenBaseDirectoryMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -627,13 +420,11 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenGrantDenied_DoesNotObserveAndUsesExactBinding()
     {
         var store = new TestSecurity.RecordingGrantStore
         {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Revoked, 1, "Grant is revoked."),
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Revoked, 1, "Grant is revoked.", null),
         };
         var fs = CreateFileSystem(grantStore: store);
         var pattern = new GlobPattern("**/*.cs");
@@ -645,8 +436,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
     {
         var fs = CreateFileSystem();
@@ -656,8 +445,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenRetainedResultLimitReached_ReturnsLimitExceededDuringMatchRetention()
     {
         var fs = CreateFileSystem();
@@ -670,8 +457,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task GlobAsync_WhenLimitIsReachedDeepInTraversal_PropagatesTerminalStatusToAncestor()
     {
         var fs = CreateFileSystem();
@@ -686,110 +471,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
-    {
-        using var cancellation = new CancellationTokenSource();
-        var store = new TestSecurity.RecordingGrantStore
-        {
-            OnIntentConsumption = cancellation.Cancel
-        };
-        var fs = CreateFileSystem(grantStore: store);
-        var action = async () => await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), cancellation.Token);
-        _ = await action.ShouldThrowAsync<OperationCanceledException>();
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_LogsFailureAndRethrows()
-    {
-        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken).AsTask());
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task WriteAsync_WhenLoggerIsEnabledAndWriteSucceeds_EmitsCompletedStructuredEvent()
-    {
-        var logger = new RecordingLogger<InMemoryFileSystem>();
-        var fs = CreateFileSystem(logger: logger);
-        var grant = TestSecurity.Grant();
-        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("notes.txt"), "hello", FileWriteMode.CreateOrOverwrite, grant), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<LegacyFileWritten>();
-        var completed = logger.Snapshot().ShouldHaveSingleItem();
-        completed.EventId.Id.ShouldBe(11100);
-        completed.State["Operation"].ShouldBe("write");
-        completed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
-        completed.State["Outcome"].ShouldBe("written");
-        completed.Message.ShouldNotContain("notes.txt");
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task EnumerateAsync_WhenLoggerIsEnabledAndGrantStoreThrowsUnexpectedException_EmitsFailedStructuredEvent()
-    {
-        var logger = new RecordingLogger<InMemoryFileSystem>();
-        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore(), logger: logger);
-        var grant = TestSecurity.Grant();
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, grant), TestContext.Current.CancellationToken).AsTask());
-        var failed = logger.Snapshot().Single(static entry => entry.EventId.Id == 11101);
-        failed.State["Operation"].ShouldBe("enumerate");
-        failed.State["SecurityRequestId"].ShouldBe(grant.RequestId);
-        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
-    }
-
-    private sealed class ThrowingGrantStore: ISecurityGrantStore
-    {
-        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Unexpected grant store failure.");
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Unexpected grant store failure.");
-
-        public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(reason);
-            return ValueTask.FromResult<GrantRevocationResult>(new GrantRevoked(grantId, reason));
-        }
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
-    public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
-    {
-        const string protectedPath = "content-must-not-enter-diagnostics.txt";
-        var request = new LegacyFileReadRequest(new FileSystemPath(protectedPath), TestSecurity.Grant());
-        Activity? stopped = null;
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
-            ActivityStopped = activity =>
-            {
-                if (activity.OperationName == AgentKitActivityNames.FileSystemOperation && Equals(activity.GetTagItem(AgentKitTagNames.SecurityRequestId), request.Grant.RequestId.ToString()))
-                {
-                    stopped = activity;
-                }
-            },
-        };
-        ActivitySource.AddActivityListener(listener);
-        var fs = CreateFileSystem();
-        _ = await fs.ReadAsync(request, TestContext.Current.CancellationToken);
-        var activity = stopped.ShouldNotBeNull();
-        activity.GetTagItem(AgentKitTagNames.FileSystemOperation).ShouldBe("read");
-        activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedPath);
-    }
-
-    [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenLiteralMatches_ReturnsDeterministicVersionedByteLocations()
     {
         var fs = CreateFileSystem();
@@ -809,8 +490,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenRegexAndPathFilterProvided_UsesPinnedEngines()
     {
         var fs = CreateFileSystem();
@@ -822,8 +501,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenSubtreeExcluded_PrunesItBeforeCandidateFileBoundIsConsumed()
     {
         var fs = CreateFileSystem();
@@ -858,8 +535,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenBasePathIsSet_MatchesPathPatternAgainstBaseRelativePathAndPrefixesResultsOnce()
     {
         var fs = CreateFileSystem();
@@ -875,8 +550,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenFilesAreHiddenBinaryOrInvalidUtf8_ExcludesThemWithoutDecoding()
     {
         var fs = CreateFileSystem();
@@ -890,8 +563,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenMatchLimitReached_ReturnsTypedPartialResult()
     {
         var fs = CreateFileSystem();
@@ -903,8 +574,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenRetainedMatchesExactlyEqualLimit_RemainsComplete()
     {
         var fs = CreateFileSystem();
@@ -916,8 +585,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenMatchingLineIsLong_RetainsBoundedContextContainingMatch()
     {
         var fs = CreateFileSystem();
@@ -932,8 +599,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenProjectionWindowWouldSplitAMultiByteCharacter_AdjustsBothEdgesToValidUtf8()
     {
         // "é" is 2 UTF-8 bytes (0xC3 0xA9); with MaximumLineBytes=29 the naive half-context math lands the
@@ -950,8 +615,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -962,8 +625,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
     {
         var fs = CreateFileSystem();
@@ -974,8 +635,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenRequestExceedsHostCeiling_DeniesBeforeTraversal()
     {
         var fs = CreateFileSystem(o => o.MaximumSearchMatches = 1);
@@ -987,13 +646,11 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenGrantDenied_DoesNotCheckBaseExistence()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
         {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied."),
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied.", null),
         };
         var fs = CreateFileSystem(grantStore: grantStore);
         var request = SearchRequest(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("missing"));
@@ -1007,8 +664,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenDurationElapses_ReturnsTypedTimeout()
     {
         var fs = CreateFileSystem(timeProvider: new AdvancingTimeProvider());
@@ -1019,8 +674,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenLaterSiblingFollowsATerminatedSubtree_SkipsItWithoutOpening()
     {
         var fs = CreateFileSystem();
@@ -1038,8 +691,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task SearchAsync_WhenCandidateExceedsRemainingByteBudget_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem();
@@ -1051,8 +702,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReadSnapshotAsync_WhenSuccessful_ReturnsExactBytesHashAndEnforcement()
     {
         byte[] bytes = [0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a];
@@ -1072,13 +721,11 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReadSnapshotAsync_WhenGrantDenied_DoesNotRevealMissingTarget()
     {
         var grantStore = new TestSecurity.RecordingGrantStore
         {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied."),
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied.", null),
         };
         var fs = CreateFileSystem(grantStore: grantStore);
         var result = await fs.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("missing"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
@@ -1087,8 +734,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReadSnapshotAsync_WhenRequestMaximumBytesExceedsConfiguredBound_ReturnsDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 10);
@@ -1099,8 +744,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReadSnapshotAsync_WhenTargetIsMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -1109,8 +752,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReadSnapshotAsync_WhenFileExceedsRequestByteBound_ReturnsLimitExceeded()
     {
         var fs = CreateFileSystem();
@@ -1120,8 +761,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenContentExceedsMaximumWriteBytes_ReturnsDenied()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2);
@@ -1135,8 +774,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenTargetIsMissing_ReturnsNotFound()
     {
         var fs = CreateFileSystem();
@@ -1145,8 +782,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenExpectedVersionMatches_CommitsAtomically()
     {
         var fs = CreateFileSystem();
@@ -1170,8 +805,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenExpectedVersionChanged_ReturnsConflictWithoutMutation()
     {
         var fs = CreateFileSystem();
@@ -1184,8 +817,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenGrantDenied_DoesNotMutate()
     {
         var fs = CreateFileSystem();
@@ -1193,7 +824,7 @@ public sealed class InMemoryFileSystemTests
         fs.TryReadAllBytes(new FileSystemPath("a.txt"), out var bytes).ShouldBeTrue();
         var grantStore = new TestSecurity.RecordingGrantStore
         {
-            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied."),
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Denied.", null),
         };
         var deniedFs = CreateFileSystem(grantStore: grantStore);
         deniedFs.Seed(new FileSystemPath("a.txt"), "current");
@@ -1204,8 +835,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ReplaceAsync_WhenTwoPlansRace_OnlyOneExpectedVersionCommits()
     {
         var fs = CreateFileSystem();
@@ -1223,8 +852,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenCreateIsValid_CommitsAtomicallyWithExactSecurityBinding()
     {
         var store = new RecordingGrantStore();
@@ -1243,8 +870,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenMixedPlanIsValid_CommitsInSourceOrderWithHonestVisibilityStatus()
     {
         var store = new RecordingGrantStore();
@@ -1278,8 +903,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenLaterPreconditionIsStale_RejectsWholePlanBeforeEffects()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1295,8 +918,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenLaterGrantIsDenied_ObservesAndMutatesNothing()
     {
         var store = new RecordingGrantStore(deniedIndex: 1);
@@ -1311,8 +932,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenPathsOverlap_RejectsBeforeGrantConsumption()
     {
         var store = new RecordingGrantStore();
@@ -1329,8 +948,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenCreateTargetExists_DoesNotReplaceIt()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1343,8 +960,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenEntryCountExceedsConfiguredBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumPatchEntries = 1, grantStore: new RecordingGrantStore());
@@ -1357,8 +972,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenEntryKindDoesNotMatchItsConcreteContract_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1371,8 +984,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenTwoEntriesShareTheSameMutationIdentity_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
@@ -1386,8 +997,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenSingleEntryContentExceedsWriteBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2, grantStore: new RecordingGrantStore());
@@ -1398,8 +1007,6 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public async Task ApplyPatchAsync_WhenAggregateContentExceedsPatchByteBoundary_RejectsBeforeGrantConsumption()
     {
         var fs = CreateFileSystem(o => o.MaximumPatchBytes = 5, grantStore: new RecordingGrantStore());
@@ -1411,8 +1018,6 @@ public sealed class InMemoryFileSystemTests
         result.SafeMessage.ShouldNotBeNull().ShouldContain("aggregate byte boundary");
     }
 
-    [Obsolete("Legacy host surface.")]
-
     private static InMemoryFileSystem CreateFileSystem(
         Action<InMemoryFileSystemOptions>? configure = null,
         ISecurityGrantStore? grantStore = null,
@@ -1421,7 +1026,15 @@ public sealed class InMemoryFileSystemTests
     {
         var options = new InMemoryFileSystemOptions();
         configure?.Invoke(options);
-        return new InMemoryFileSystem(Options.Create(options), grantStore ?? TestSecurity.GrantStore(), timeProvider ?? TimeProvider.System, logger);
+        return new InMemoryFileSystem(
+            Options.Create(options),
+            grantStore ?? TestSecurity.GrantStore(),
+            timeProvider ?? TimeProvider.System,
+            logger,
+            new GuidSecurityEnforcementIntentIdGenerator(),
+            new AcceptingAuditDispatcher(),
+            new GuidSecurityAuditRecordIdGenerator(),
+            new FileSystemProfileKey("test"));
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
@@ -1452,8 +1065,6 @@ public sealed class InMemoryFileSystemTests
 
     private static WorkspaceMutationId PatchMutationId(int suffix) => new(Guid.Parse($"20000000-0000-0000-0000-{suffix:D12}"));
 
-    [Obsolete("Legacy host surface.")]
-
     private static ContentHash Fingerprint(InMemoryFileSystem fs, string path)
     {
         fs.TryReadAllBytes(new FileSystemPath(path), out var bytes).ShouldBeTrue();
@@ -1465,13 +1076,6 @@ public sealed class InMemoryFileSystemTests
         public List<SecurityEnforcementRequest> Enforcements { get; } = [];
 
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default)
-        {
-            Enforcements.Add(enforcement);
-            var denied = Enforcements.Count - 1 == deniedIndex;
-            return ValueTask.FromResult(new GrantConsumptionResult(denied ? GrantConsumptionStatus.Unknown : GrantConsumptionStatus.Consumed, 0, denied ? "Denied by test store." : "Consumed by test store."));
-        }
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default)
         {

@@ -10,9 +10,18 @@ boundary around protected operations.
 
 Start with `AddMcpClient` and `AddMcpToolSource` in
 [ServiceExtensions.cs](ServiceExtensions.cs) for engine-owned sessions,
-transports, and `IToolProvider` discovery. The legacy `AddMcpToolClient` path
-remains for caller-supplied SDK transports. Read the overload XML for required
-security, store, and catalog collaborators.
+transports, and `IToolProvider` discovery. `AddMcpToolClient<TTools>` is the
+separate reflected-typed-client surface over a caller-supplied SDK transport.
+Read the overload XML for required security, store, and catalog collaborators.
+
+HTTP endpoints (`AddMcpHttpEndpoint`) route every exchange of the official SDK
+transport through `INetworkNameResolver` and `INetworkTransport` under
+per-exchange resolution and send grants; register
+[AgentKit.Network](../AgentKit.Network/README.md) (or a replacement) first. The
+SDK never opens a socket or follows a redirect, and requests to any origin other
+than the configured endpoint's are refused. Stdio endpoints
+(`AddMcpStdioEndpoint`) go through the process boundary instead; each endpoint
+kind registers only its own transport factory.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
@@ -37,8 +46,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/mcp.md) — intended ownership
   and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

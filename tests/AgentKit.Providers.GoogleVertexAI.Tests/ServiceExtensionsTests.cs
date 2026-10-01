@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleVertexAI.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -140,6 +142,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleVertexAILlmModel(new ModelAlias("fast"), new ModelId("gemini-2.5-flash"));
         _ = services.AddGoogleVertexAILlmModel(new ModelAlias("smart"), new ModelId("gemini-2.5-pro"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -154,6 +158,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleVertexAI(ConfigureOptions);
         _ = services.AddGoogleVertexAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
         _ = services.AddGoogleVertexAILlmModel(new ModelAlias("chat"), new ModelId("gemini-2.5-flash"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleVertexAILlmModel>();
@@ -170,6 +176,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-005"));
         _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("gemini"), new ModelId("gemini-embedding-001"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -184,6 +192,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleVertexAI(ConfigureOptions);
         _ = services.AddGoogleVertexAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
         _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-005"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<GoogleVertexAIEmbeddingModel>();
@@ -209,6 +219,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddGoogleVertexAILlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleVertexAILlmModel>();

@@ -179,7 +179,7 @@ namespace AgentKit.Permissions.Json
         public AgentKit.Storage.Json.JsonSecurityEnforcementIntentReceipt? Receipt { get; init; }
         public int? RemainingUses { get; init; }
         public bool? Revoked { get; init; }
-        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForConsumption(AgentKit.GrantId grantId, int remainingUses, AgentKit.SecurityEnforcementIntentReceipt? receipt) { }
+        public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForConsumption(AgentKit.GrantId grantId, int remainingUses, AgentKit.SecurityEnforcementIntentReceipt receipt) { }
         public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForReceipt(AgentKit.SecurityEnforcementIntentReceipt receipt) { }
         public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForRegistration(AgentKit.SecurityGrant grant) { }
         public static AgentKit.Permissions.Json.JsonSecurityGrantLogRecord ForRevocation(AgentKit.GrantId grantId) { }
@@ -202,7 +202,6 @@ namespace AgentKit.Permissions.Json
         public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantRevocationResult> RevokeAsync(AgentKit.GrantId grantId, AgentKit.RevocationReason reason, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public readonly struct JsonSecurityGrantStoreInstanceId : System.IEquatable<AgentKit.Permissions.Json.JsonSecurityGrantStoreInstanceId>

@@ -46,7 +46,8 @@ Stdio and HTTP transports have different ownership and authorization rules.
 Stdio requires bounded framing, stderr handling, child-process cleanup, and host
 control of its environment. HTTP requires current transport semantics,
 authentication challenges, audience-bound credentials, reconnect behavior, and
-bounded response handling.
+bounded response handling; in AgentKit those are enforced by routing the SDK's
+`HttpClient` through a handler over `INetworkTransport`, not by the SDK.
 
 ## Security
 

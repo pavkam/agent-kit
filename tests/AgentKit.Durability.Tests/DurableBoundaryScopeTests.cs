@@ -111,6 +111,41 @@ public sealed class DurableBoundaryScopeTests
             .Request.Descriptor.Name.ShouldBe(IoDurableOperations.InputPromotion);
     }
 
+    /// <summary>
+    /// Verifies every handler-initiated write is authorized with the exact effect the journals recompute and enforce,
+    /// because a grant for any other effect is refused at the journal and the boundary would journal nothing.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTheBoundaryWritesMidOperation_AuthorizesTheEffectEachJournalMethodEnforces()
+    {
+        var registry = new DurableBoundaryRegistry();
+        using var harness = Harness(registry);
+        var scope = Scope(harness, registry);
+        var reference = new ExternalOperationReference(DurabilityRuntimeHarness.BackendKey, "approval-1");
+
+        _ = await scope.ExecuteAsync(
+            IoDurableOperations.InputPromotion,
+            IoDurableOperations.InputPromotionVersion,
+            DurableJournalTestData.Authorization(),
+            DurableJournalTestData.Payload(),
+            SecurityEffect.Append,
+            hooks: null,
+            async (context, token) =>
+            {
+                _ = await context.Checkpoints.RecordCheckpointAsync(
+                    DurableCheckpointKind.InputAdmitted, context.Operation.Input, token).ConfigureAwait(false);
+                _ = await context.Checkpoints.RecordWaitingAsync(
+                    new DurableWaitCondition(SideEffectCertainty.DefinitelyNotPerformed, reference, notBefore: null),
+                    token).ConfigureAwait(false);
+                return true;
+            },
+            TestContext.Current.CancellationToken);
+
+        // Start creates the record, a checkpoint appends to it, a wait mutates its state, and the terminal appends.
+        harness.Authority.Requests.Select(static request => request.Effect).ShouldBe(
+            [SecurityEffect.Create, SecurityEffect.Append, SecurityEffect.Mutate, SecurityEffect.Append]);
+    }
+
     /// <summary>Verifies a boundary waiting on an external owner records that wait with its own certainty.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenTheBoundaryWaitsOnAnExternalOwner_JournalsTheWaitingRecord()

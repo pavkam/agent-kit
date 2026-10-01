@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -85,6 +87,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCohereLlmModel(new ModelAlias("fast"), new ModelId("command-a-05-2026"));
         _ = services.AddCohereLlmModel(new ModelAlias("smart"), new ModelId("command-a-plus-05-2026"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -99,6 +103,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCohere();
         _ = services.AddCohereApiKeyCredential("cohere-test-key");
         _ = services.AddCohereLlmModel(new ModelAlias("chat"), new ModelId("command-a-plus-05-2026"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<CohereLlmModel>();
@@ -115,6 +121,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("embed-v4.0"));
         _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("embed-english-v3.0"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -129,6 +137,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCohere();
         _ = services.AddCohereApiKeyCredential("cohere-test-key");
         _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("embed-v4.0"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<CohereEmbeddingModel>();
@@ -154,6 +164,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddCohereLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<CohereLlmModel>();
@@ -198,6 +210,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddCohereApiKeyCredential("cohere-test-key");
 
         _ = services.AddCohereKnownLlmModel(new ModelAlias("known"), new ModelId("command-a-03-2025"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<CohereLlmModel>();

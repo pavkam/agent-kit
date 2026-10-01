@@ -120,7 +120,7 @@ public sealed class SqliteSessionDatabaseTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyWholeBlobTableExists_LeavesItInertAndCreatesRelationalSchemaFresh()
+    public void Constructor_WhenWholeBlobTableAlreadyExists_LeavesItInertAndCreatesRelationalSchemaFresh()
     {
         // The pre-1.0 single-row-blob format is a breaking change: ApplyKnownMigrations never reads or reinterprets
         // it, it just creates the new relational tables fresh alongside the untouched legacy table.

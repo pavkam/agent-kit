@@ -1,0 +1,63 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Artifacts.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Artifacts.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteArtifactStore(AgentKit.ArtifactBackendKey key, AgentKit.Artifacts.Sqlite.SqliteArtifactTarget target, System.Action<AgentKit.Artifacts.Sqlite.SqliteArtifactOptions>? configure = null) { }
+        }
+    }
+    public readonly struct SqliteArtifactInstanceId : System.IEquatable<AgentKit.Artifacts.Sqlite.SqliteArtifactInstanceId>
+    {
+        public SqliteArtifactInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteArtifactOptions
+    {
+        public SqliteArtifactOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteArtifactSettings : System.IEquatable<AgentKit.Artifacts.Sqlite.SqliteArtifactSettings>
+    {
+        public SqliteArtifactSettings(System.TimeSpan lockTimeout, int maximumRecordBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Artifacts.Sqlite.SqliteArtifactSettings CreateDefault() { }
+    }
+    public sealed class SqliteArtifactStore : AgentKit.IArtifactStore, System.IDisposable
+    {
+        public SqliteArtifactStore(AgentKit.Artifacts.Sqlite.SqliteArtifactTarget target, AgentKit.Artifacts.Sqlite.SqliteArtifactSettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Artifacts.Sqlite.SqliteArtifactStore>? logger = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreAbortResult> AbortAsync(AgentKit.ArtifactStoreAbortRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreDeleteResult> DeleteAsync(AgentKit.ArtifactStoreDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreFinalizeResult> FinalizeAsync(AgentKit.ArtifactStoreFinalizeRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ArtifactStorePrepareResult> PrepareAsync(AgentKit.ArtifactStorePrepareRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ArtifactStoreReadResult> ReadAsync(AgentKit.ArtifactStoreReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SqliteArtifactTarget : System.IEquatable<AgentKit.Artifacts.Sqlite.SqliteArtifactTarget>
+    {
+        public SqliteArtifactTarget(string databasePath, AgentKit.Artifacts.Sqlite.SqliteArtifactInstanceId expectedInstanceId, AgentKit.Artifacts.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Artifacts.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Artifacts.Sqlite.SqliteArtifactInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Artifacts.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Artifacts.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+}

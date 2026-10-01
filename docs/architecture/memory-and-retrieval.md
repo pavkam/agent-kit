@@ -823,6 +823,143 @@ cannot be recalled. The deletion contract states that limit, plus retention,
 backup, and externally owned-content constraints. Eventual physical cleanup is
 never advertised as immediate erasure everywhere.
 
+## Implementation notes and recorded deviations
+
+The shapes above are normative and minimal. The landed implementation refines
+them as follows; each refinement narrows a contract or names a mechanism the
+minimal shape left open, and none widens authority.
+
+### Packages and dependency direction
+
+- `AgentKit.Abstractions` holds every memory, document, vector, retrieval,
+  policy, event, profile-runtime, and document-lifecycle contract.
+- `AgentKit.Memory` is the behavioral runtime. It references only Abstractions
+  and Observability and never references sessions, providers, or stores.
+- `AgentKit.Memory.InMemory`, `.Sqlite`, and `.Json` are store leaves. They
+  share one pure planner and state model compiled from the source-only folders
+  `AgentKit.Memory.Storage.Shared` and `AgentKit.Memory.Storage.Durable` into
+  each assembly as internal code, so the three adapters cannot drift. These
+  folders are not packages and register nothing. All adapters run the same three
+  conformance suites (memory store, document store, vector index).
+- `AgentKit.Context.Retrieval` is a leaf over `AgentKit.Context` because
+  contributor registration needs the context package. It depends on Abstractions
+  only for the retrieval pipeline and profile catalog.
+- The facade validates selected profiles through Abstractions types only and
+  never references `AgentKit.Memory`.
+
+### Contracts
+
+- Result types are sealed records with static factories rather than an abstract
+  base with sealed subtypes; `MemoryStoreFailure(Kind, SafeMessage)` is the one
+  typed refusal shared by the memory, document, and vector families.
+- `IMemoryStore` adds `ListAsync`; `IDocumentStore` adds `ActivateAsync`, the
+  atomic active-version pointer switch; `IVectorIndex` adds `SecurityAudience`,
+  `IsDurable`, and `ApproximateSearch`.
+- `IMemoryCoordinator` and `IDocumentLifecycleCoordinator` take command values
+  that carry the captured `MemoryOperationContext` (and so the captured
+  authorization), not a grant. The coordinators obtain their own single-use
+  grant for each store call from the authority the captured authorization names.
+  Stores take request values that carry the exact `SecurityGrant`.
+- `IDocumentLifecycleCoordinator` is an addition to the minimal shape. It owns
+  the stage, embed, index, activate sequence and the deletion propagation that
+  the stores cannot perform across families.
+- `HookDispatchContext` is omitted from the coordinator and pipeline, as in the
+  goals runtime.
+- `DataClassification` is the existing generic ordered sensitivity. A profile
+  and a query each carry a ceiling; a query ceiling above the profile ceiling is
+  refused, never lowered.
+- `EmbeddingSpaceCompatibility.IsSameVectorSpaceAs` compares the vector space
+  and ignores per-response identifiers, purpose, alias, and extension data, so
+  query and document embeddings of one model are comparable while different
+  spaces are never mixed on dimension alone.
+- Deletion receipts report store-wide, monotonically increasing generations.
+  Purge replaces a record's body with the purged marker and clears write
+  receipts; reads of a deleted record return a tombstone value, never the body.
+  Vector deletion receipts are retained in a bounded window of 4096.
+
+### Fail-closed defaults
+
+- The default policy profile is `agentkit.fail-closed` and the default
+  acceptance mode is `RequireExplicitPolicyAllow`: a proposal is retained only
+  when a registered policy explicitly allows it, any denial wins, and a policy
+  that throws, is unavailable, or returns an unknown decision refuses the
+  proposal. `AllowUnlessPolicyDenies` is an explicit engine option.
+- Exposure authorization (an egress grant per candidate) is required by default.
+  A profile may not disable it while the engine requires it.
+- First-party retrieval sources are never installed implicitly. An application
+  registers `AddDurableMemoryRetrievalSource` or `AddDocumentRetrievalSource`
+  and names the key in a profile. Embedding and reranker components are keyed
+  and required by name; there is no global fallback.
+- A source failure degrades only that source; the pipeline fails when every
+  selected source fails. A query embedding that cannot be produced removes
+  embedding-dependent sources rather than querying the wrong space. A reranker
+  that is unavailable keeps the original ranking. An exposure check that cannot
+  be evaluated, or a required event sink that cannot record the retrieval, fails
+  the retrieval and exposes nothing.
+
+### Retrieval
+
+- Candidates are untrusted data. The keyword source scores the fraction of
+  distinct query terms a record contains; the document source searches only
+  indexes in the query embedding's vector space and resolves each hit against
+  the authoritative document state.
+- Stale candidates are dropped before reranking: a durable-memory hit must still
+  be active, unexpired, and textually identical to the stored record, and a
+  document hit must belong to the active version's chunk set. The summary counts
+  stale, unauthorized, duplicate, budget-omitted, and unavailable-source
+  omissions.
+- The default budget policy stops at the first candidate that would exceed the
+  item, byte, or estimated-token ceiling; it never skips ahead to a smaller
+  candidate, so ordering stays stable.
+- The retrieval context contributor queries with the latest user message under
+  the request's captured authorization and correlation, so the memory context
+  always agrees with the authorization that was issued for that request. A
+  refused retrieval contributes nothing and a content-free warning diagnostic.
+
+### Documents, chunking, and deletion
+
+- `DeterministicTextChunker` splits on paragraph boundaries and hard-splits an
+  over-long paragraph. Chunk identity is a SHA-256 derived value over document
+  id, version, chunker version, ordinal, and content hash.
+- Publication stages the version inactive, embeds the chunks under an egress
+  grant, upserts vectors only into indexes in the embedding's vector space, and
+  switches the active pointer with the previously observed active version as the
+  expected value. A failure before the switch leaves the previous version
+  active; replaying a publication that is already active with identical content
+  is idempotent, and with different content is a conflict. After the switch the
+  superseded version's vectors are removed on a best-effort basis.
+- Deletion commits the tombstone, removes the receipt's chunk vectors from every
+  profile index, and purges the body only when every index is clean. Stores
+  whose cleanup failed are named in the receipt's pending stores. Already
+  transmitted data cannot be recalled, and pending physical cleanup is never
+  reported as immediate erasure.
+
+### Storage adapters
+
+- The in-memory adapters are explicitly ephemeral. SQLite memory and document
+  stores are durable local stores; the SQLite vector index is an exact scan and
+  advertises `ApproximateSearch=false`. It makes no claim of distributed
+  indexing or cross-store atomicity.
+- The Json adapters hold an advisory exclusive lock, flush every acknowledged
+  record, and recover a torn trailing append. The Json document store writes one
+  whole document per log line and suits modest documents.
+
+### Composition validation
+
+The facade's memory validator proves, for every definition that selects a memory
+profile, that the profile compiled and is published and that the singular
+coordinator, pipeline, catalog, runtime selector, dispatchers, budget policy,
+store selector, security authority selector, budget authority, and
+`TimeProvider` are registered. It also proves that each store, index, source,
+rewriter, embedding, and reranker component the profile names is registered
+under exactly those keys, that named vector indexes come with an embedding
+selection, and that a model catalog exists when embedding or reranking is named.
+It reads descriptors and the compiled catalog only and never activates a store,
+index, or source. A profile that fails to compile is reported as a diagnostic
+rather than an exception. It does not prove memory-policy behavior or
+vector-space compatibility, which are checked before I/O at publication and
+retrieval.
+
 ## Related concept specifications
 
 - [Memory, retrieval, and storage](../concepts/memory-retrieval-and-storage.md)

@@ -9,6 +9,8 @@ global using AgentKit.Permissions.InMemory;
 global using AgentKit.Tools.Plan;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;
 
 global using Shouldly;

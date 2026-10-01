@@ -217,6 +217,74 @@ namespace AgentKit.Providers
         public System.Threading.Tasks.ValueTask<AgentKit.ModelDescriptorSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
     }
 }
+namespace AgentKit.Providers.Egress
+{
+    public sealed class ProviderEgress
+    {
+        public ProviderEgress(AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.INetworkNameResolver resolver, AgentKit.INetworkTransport transport, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.NetworkOperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Providers.Egress.ProviderEgressOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Providers.Egress.ProviderEgress>? logger = null) { }
+        public static AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Providers.Egress.ProviderEgressResult> SendAsync(AgentKit.Providers.Egress.ProviderEgressRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ProviderEgressBodyFault
+    {
+        public static AgentKit.ProviderFailureKind Classify(System.IO.IOException exception, out string safeMessage) { }
+    }
+    public enum ProviderEgressOperation
+    {
+        Conversation = 0,
+        Embedding = 1,
+        Reranking = 2,
+    }
+    public sealed class ProviderEgressOptions
+    {
+        public ProviderEgressOptions() { }
+        public AgentKit.NetworkDataClassification Classification { get; set; }
+        public System.TimeSpan ConnectTimeout { get; set; }
+        public long MaximumRequestBytes { get; set; }
+        public long MaximumResponseBytes { get; set; }
+    }
+    public sealed class ProviderEgressRefused : AgentKit.Providers.Egress.ProviderEgressResult, System.IEquatable<AgentKit.Providers.Egress.ProviderEgressRefused>
+    {
+        public ProviderEgressRefused(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class ProviderEgressRequest : System.IEquatable<AgentKit.Providers.Egress.ProviderEgressRequest>
+    {
+        public ProviderEgressRequest(AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.Providers.Egress.ProviderEgressOperation kind, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointId endpointId, AgentKit.ProviderOperationBinding? binding, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, string? modelRevision, int attempt, System.DateTimeOffset deadline, bool streaming, System.Net.Http.HttpRequestMessage message) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public int Attempt { get; init; }
+        public AgentKit.ProviderOperationBinding? Binding { get; init; }
+        public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderEndpointId EndpointId { get; init; }
+        public AgentKit.Providers.Egress.ProviderEgressOperation Kind { get; init; }
+        public System.Net.Http.HttpRequestMessage Message { get; init; }
+        public AgentKit.ModelId ModelId { get; init; }
+        public string? ModelRevision { get; init; }
+        public AgentKit.ProtectedSemanticOperationContext? Operation { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
+        public bool Streaming { get; init; }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForConversation(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, System.Net.Http.HttpRequestMessage message, bool streaming) { }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForEmbedding(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.EmbeddingModelRequest request, System.Net.Http.HttpRequestMessage message) { }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForReranking(AgentKit.RerankerDescriptor descriptor, AgentKit.RerankModelRequest request, System.Net.Http.HttpRequestMessage message) { }
+    }
+    public sealed class ProviderEgressResponse : System.IAsyncDisposable
+    {
+        public ProviderEgressResponse(AgentKit.INetworkResponse network) { }
+        public System.Net.Http.HttpContent Content { get; }
+        public System.Net.Http.Headers.HttpResponseHeaders Headers { get; }
+        public bool IsSuccessStatusCode { get; }
+        public System.Net.HttpStatusCode StatusCode { get; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public abstract class ProviderEgressResult : System.IEquatable<AgentKit.Providers.Egress.ProviderEgressResult> { }
+    public sealed class ProviderEgressSent : AgentKit.Providers.Egress.ProviderEgressResult, System.IEquatable<AgentKit.Providers.Egress.ProviderEgressSent>
+    {
+        public ProviderEgressSent(AgentKit.Providers.Egress.ProviderEgressResponse response) { }
+        public AgentKit.Providers.Egress.ProviderEgressResponse Response { get; init; }
+    }
+}
 namespace AgentKit.Providers.Http
 {
     public static class HttpStatusFailureKindMapper

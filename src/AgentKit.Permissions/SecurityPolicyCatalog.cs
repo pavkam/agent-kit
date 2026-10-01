@@ -32,7 +32,6 @@ public sealed class SecurityPolicyCatalog: ISecurityPolicyCatalog
 
         var captured = new Dictionary<SecurityPolicySnapshotReference, SecurityPolicySnapshotReference>();
         Retain(captured, optionValues.PolicySnapshot);
-        Retain(captured, SecurityPolicyEvaluationContexts.CreateUncapturedReference(new SecurityPolicyVersion(optionValues.PolicyVersion)));
 
         foreach (var publication in publications)
         {

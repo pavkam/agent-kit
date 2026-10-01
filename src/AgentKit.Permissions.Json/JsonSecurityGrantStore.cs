@@ -197,19 +197,6 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     /// <inheritdoc/>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the consumption append begins.</exception>
     /// <exception cref="SecurityGrantStoreUnavailableException">The store is uninitialized, or the append cannot be completed and flushed.</exception>
-    /// <remarks>This receiptless path retains no attempt evidence, so an uncertain acknowledgement cannot later be proven to have consumed a use.</remarks>
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateArguments(grant, enforcement);
-        return ConsumeWithLifecycleAuditAsync(grant, enforcement, null, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before the consumption append begins.</exception>
-    /// <exception cref="SecurityGrantStoreUnavailableException">The store is uninitialized, or the append cannot be completed and flushed.</exception>
     /// <remarks>
     /// The remaining-use decrement and the receipt are written as one line, so recovery never observes a consumed use
     /// without its receipt. Presenting the same intent again returns <see cref="GrantConsumptionStatus.Reconciled"/> with
@@ -298,39 +285,35 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     private async ValueTask<GrantConsumptionResult> ConsumeWithLifecycleAuditAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
-        var preview = await ExecuteAsync(
-            intent is null ? "consume_assess" : "consume_intent_assess",
+        var refusal = await ExecuteAsync(
+            "consume_assess",
             () => PreviewConsumption(grant, enforcement, intent, cancellationToken),
             grant,
             intent).ConfigureAwait(false);
-        if (preview.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
+        if (refusal is not null)
         {
-            await EmitGrantLifecycleAsync(
-                grant,
-                SecurityAuditOutcome.Denied,
-                _timeProvider.GetUtcNow(),
-                cancellationToken).ConfigureAwait(false);
-            return preview;
-        }
-
-        if (preview.Status is GrantConsumptionStatus.Consumed)
-        {
-            if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
+            if (refusal.Status is GrantConsumptionStatus.Revoked or GrantConsumptionStatus.Expired)
             {
-                return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
+                await EmitGrantLifecycleAsync(
+                    grant,
+                    SecurityAuditOutcome.Denied,
+                    _timeProvider.GetUtcNow(),
+                    cancellationToken).ConfigureAwait(false);
             }
+
+            return refusal;
         }
 
-        if (preview.Status is not GrantConsumptionStatus.Consumed)
+        if (await RefuseConsumptionAuditAsync(grant, _timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
         {
-            return preview;
+            return Result(GrantConsumptionStatus.Unknown, 0, "Required grant lifecycle audit was not accepted.");
         }
 
         var committed = await ExecuteAsync(
-            intent is null ? "consume" : "consume_intent",
+            "consume",
             () => CommitConsumption(grant, enforcement, intent, cancellationToken),
             grant,
             intent).ConfigureAwait(false);
@@ -346,10 +329,12 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
         return committed;
     }
 
-    private GrantConsumptionResult PreviewConsumption(
+    /// <summary>Decides, without mutating, whether a consumption may proceed.</summary>
+    /// <returns>Null when the grant is ready for consumption; otherwise the terminal refusal or reconciliation result.</returns>
+    private GrantConsumptionResult? PreviewConsumption(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
         Debug.Assert(grant is not null, "Caller-validated grant evidence is required.");
@@ -368,13 +353,10 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                     "The security grant evidence does not match its authoritative record.");
             }
 
-            ContentHash? fingerprint = intent is null
-                ? null
-                : SecurityEnforcementBinding.Fingerprint(enforcement, intent);
-            if (intent is not null && _receipts.TryGetValue(intent.Id, out var historical))
+            var fingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+            if (_receipts.TryGetValue(intent.Id, out var historical))
             {
-                Debug.Assert(fingerprint.HasValue, "An intent always has a computed effect fingerprint.");
-                return ReceiptMatches(historical, grant, enforcement, intent, fingerprint.GetValueOrDefault())
+                return ReceiptMatches(historical, grant, enforcement, intent, fingerprint)
                     ? Result(GrantConsumptionStatus.Reconciled, state.RemainingUses,
                         "The enforcement intent was reconciled without granting another effect.", historical)
                     : Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
@@ -396,17 +378,14 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                     "The concrete effect does not match the security grant.")
                 : state.RemainingUses == 0
                     ? Result(GrantConsumptionStatus.Exhausted, 0, "The security grant has no remaining uses.")
-                    : Result(
-                        GrantConsumptionStatus.Consumed,
-                        state.RemainingUses,
-                        "The security grant is ready for consumption.");
+                    : null;
         }
     }
 
     private GrantConsumptionResult CommitConsumption(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        SecurityEnforcementIntent? intent,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken)
     {
         Debug.Assert(grant is not null, "Caller-validated grant evidence is required.");
@@ -415,10 +394,9 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
         lock (_gate)
         {
             RequireInitialized();
-            var result = PreviewConsumption(grant, enforcement, intent, cancellationToken);
-            if (result.Status is not GrantConsumptionStatus.Consumed)
+            if (PreviewConsumption(grant, enforcement, intent, cancellationToken) is { } refusal)
             {
-                return result;
+                return refusal;
             }
 
             if (!_grants.TryGetValue(grant.Id, out var state))
@@ -426,27 +404,18 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                 return Result(GrantConsumptionStatus.Unknown, 0, "The security grant is unknown.");
             }
 
-            ContentHash? fingerprint = intent is null
-                ? null
-                : SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+            var fingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
             var now = _timeProvider.GetUtcNow();
             var remainingUses = state.RemainingUses - 1;
-            var receipt = intent is null
-                ? null
-                : new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement,
-                    intent.RequiredFence, fingerprint!.Value, now);
+            var receipt = new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement,
+                intent.RequiredFence, fingerprint, now);
             cancellationToken.ThrowIfCancellationRequested();
             AppendRecord(JsonSecurityGrantLogRecord.ForConsumption(grant.Id, remainingUses, receipt), cancellationToken);
             _grants[grant.Id] = state with { RemainingUses = remainingUses };
-            if (receipt is not null)
-            {
-                _receipts[receipt.IntentId] = receipt;
-            }
+            _receipts[receipt.IntentId] = receipt;
 
             return Result(GrantConsumptionStatus.Consumed, remainingUses,
-                intent is null
-                    ? "The security grant was consumed."
-                    : "The security grant and enforcement intent were consumed.",
+                "The security grant and enforcement intent were consumed.",
                 receipt);
         }
     }
@@ -560,12 +529,8 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
                     {
                         RemainingUses = RequireUses(record.RemainingUses, state.Grant.AllowedUses),
                     };
-                    if (record.Receipt is { } receipt)
-                    {
-                        var value = receipt.ToDomain();
-                        _receipts[value.IntentId] = value;
-                    }
-
+                    var consumed = Require(record.Receipt, "consumption").ToDomain();
+                    _receipts[consumed.IntentId] = consumed;
                     return;
                 }
             case JsonSecurityGrantLogRecordKind.Revoked:
@@ -677,9 +642,7 @@ public sealed partial class JsonSecurityGrantStore: ISecurityGrantStore, IDispos
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(reason), "A bounded terminal reason is required.");
         Debug.Assert(remainingUses >= 0, "Remaining uses are never negative.");
-        return receipt is null
-            ? new GrantConsumptionResult(status, remainingUses, reason)
-            : new GrantConsumptionResult(status, remainingUses, reason, receipt);
+        return new GrantConsumptionResult(status, remainingUses, reason, receipt);
     }
 
     private static bool EnforcementMatches(SecurityGrant grant, SecurityEnforcementRequest enforcement) =>

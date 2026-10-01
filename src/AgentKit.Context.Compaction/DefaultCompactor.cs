@@ -59,6 +59,7 @@ public sealed class DefaultCompactor: ICompactor
     private readonly IIdentifierGenerator<CompactionManifestId> _manifestIds;
     private readonly TimeProvider _timeProvider;
     private readonly ComponentKey<ICompactor> _compactorKey;
+    private readonly ImmutableArray<CompactionStrategyKey> _defaultStrategyOrder;
     private readonly int _sourceReadPageSize;
     private readonly ILogger<DefaultCompactor> _logger;
 
@@ -101,53 +102,11 @@ public sealed class DefaultCompactor: ICompactor
         _manifestIds = manifestIds;
         _timeProvider = timeProvider;
         _compactorKey = compactionOptions.CompactorKey;
+        _defaultStrategyOrder = compactionOptions.DefaultStrategyOrder;
         _sourceReadPageSize = options.Value.SourceReadPageSize;
         _logger = logger ?? NullLogger<DefaultCompactor>.Instance;
         _ = entryIds;
     }
-
-    /// <summary>Initializes a compactor for tests and legacy call sites with one fixed strategy.</summary>
-    public DefaultCompactor(
-        ISessionCoordinator coordinator,
-        ICompactionCutSelector cutSelector,
-        ICompactionStrategy strategy,
-        ICompactionValidator validator,
-        ICompactionSizeEstimator estimator,
-        IIdentifierGenerator<CompactionManifestId> manifestIds,
-        IIdentifierGenerator<SessionEntryId> entryIds,
-        TimeProvider timeProvider,
-        IOptions<CompactionOptions> options,
-        ILogger<DefaultCompactor>? logger = null)
-        : this(
-            coordinator,
-            cutSelector,
-            new FixedCompactionStrategyResolver(strategy),
-            validator,
-            new SessionCompactionActivationCoordinator(
-                entryIds,
-                timeProvider,
-                options ?? throw new ArgumentNullException(nameof(options))),
-            new DefaultCompactionEventDispatcher(
-                AgentContextCompactionComponentDefaults.CompactorKey,
-                [],
-                EmptyServiceProvider.Instance),
-            estimator,
-            manifestIds,
-            entryIds,
-            timeProvider,
-            options,
-            new ContextCompactionOptionsSnapshot(
-                AgentContextCompactionComponentDefaults.CompactorKey,
-                maximumAttempts: 2,
-                maximumSourceEntries: options.Value.MaximumSourceEntries,
-                maximumSourceBytes: 8 * 1024 * 1024,
-                maximumSummaryTokens: 2048,
-                minimumRetainedEntries: 8,
-                maximumValidationIssues: 64,
-                minimumReductionRatio: 0.20,
-                attemptTimeout: TimeSpan.FromMinutes(2),
-                persistRejectedCandidates: false),
-            logger) => ArgumentNullException.ThrowIfNull(options);
 
     /// <inheritdoc/>
     public Task<CompactionResult> CompactAsync(
@@ -268,6 +227,71 @@ public sealed class DefaultCompactor: ICompactor
     }
 
     /// <summary>
+    /// Produces a checkpoint by trying the ordered strategies, falling back to the next key only when a strategy
+    /// declines with a typed unsupported result.
+    /// </summary>
+    /// <returns>
+    /// Exactly one of the produced checkpoint or a typed terminal result: a missing strategy, a failed or cancelled
+    /// strategy, or, when every strategy declined, the last strategy's rejection.
+    /// </returns>
+    private async Task<(CompactionCheckpointProduced? Produced, CompactionResult? Terminal)> ProduceCheckpointAsync(
+        CompactionRequest request,
+        CompactionSourceSnapshot source,
+        CompactionCut cut,
+        ImmutableArray<CompactionStrategyKey> strategyOrder,
+        BudgetExecutionCapability? budget,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(!strategyOrder.IsDefaultOrEmpty, "A compaction policy or default order always names a strategy.");
+
+        var context = request.Context;
+        CompactionRejection? declined = null;
+        foreach (var strategyKey in strategyOrder)
+        {
+            var resolution = await _strategies
+                .ResolveAsync(_compactorKey, strategyKey, cancellationToken)
+                .ConfigureAwait(false);
+            if (resolution is CompactionStrategyNotFound notFound)
+            {
+                return (null, new CompactionFailed(
+                    context,
+                    new CompactionFailure(
+                        CompactionFailureKind.StrategyFailure,
+                        $"No compaction strategy '{notFound.StrategyKey}' is registered for compactor '{notFound.CompactorKey}'.",
+                        retryable: false,
+                        ExtensionData.Empty)));
+            }
+
+            var strategy = ((CompactionStrategyResolved) resolution).Strategy;
+            var result = await strategy.ProduceAsync(
+                new CompactionStrategyRequest(request, source, cut),
+                budget,
+                cancellationToken).ConfigureAwait(false);
+            switch (result)
+            {
+                case CompactionCheckpointProduced produced:
+                    return (produced, null);
+                case CompactionStrategyUnsupported unsupported:
+                    declined = unsupported.Rejection;
+                    break;
+                case CompactionStrategyFailed failed:
+                    return (null, new CompactionFailed(context, failed.Failure));
+                case CompactionStrategyCancelled:
+                    return (null, new CompactionCancelled(
+                        context,
+                        CompactionCommitState.NotAttempted,
+                        "The compaction strategy was cancelled before activation was attempted."));
+                default:
+                    throw new InvalidOperationException(
+                        $"Compaction strategy '{strategyKey}' returned the unsupported result type '{result.GetType().Name}'.");
+            }
+        }
+
+        Debug.Assert(declined is not null, "Every ordered strategy declined, so a rejection was recorded.");
+        return (null, new CompactionRejected(context, declined));
+    }
+
+    /// <summary>
     /// Runs the attempt pipeline: deadline check, source load, cut selection, production, validation, activation.
     /// </summary>
     private async Task<CompactionResult> CompactCoreAsync(
@@ -290,6 +314,17 @@ public sealed class DefaultCompactor: ICompactor
                 new CompactionRejection(
                     CompactionRejectionKind.DeadlineExceeded,
                     "The request deadline had already passed when the attempt started.",
+                    ExtensionData.Empty));
+        }
+
+        if (request.Policy is { } policy && !policy.CompactorKey.Equals(_compactorKey))
+        {
+            // A snapshot compiled for another compactor key carries strategy keys this compactor never registered.
+            return new CompactionRejected(
+                context,
+                new CompactionRejection(
+                    CompactionRejectionKind.PolicyViolation,
+                    "The request's compaction policy was compiled for a different compactor key.",
                     ExtensionData.Empty));
         }
 
@@ -338,41 +373,15 @@ public sealed class DefaultCompactor: ICompactor
                     ExtensionData.Empty));
         }
 
-        var strategyKey = request.Policy?.StrategyOrder is { Length: > 0 } order
-            ? order[0]
-            : ExtractiveCompactionStrategy.StrategyKey;
-        var strategyResolution = await _strategies
-            .ResolveAsync(_compactorKey, strategyKey, cancellationToken)
-            .ConfigureAwait(false);
-        if (strategyResolution is CompactionStrategyNotFound notFound)
+        var strategyOrder = request.Policy?.StrategyOrder is { Length: > 0 } order ? order : _defaultStrategyOrder;
+        var (produced, strategyTerminal) = await ProduceCheckpointAsync(
+            request, source, cut, strategyOrder, budget, cancellationToken).ConfigureAwait(false);
+        if (produced is null)
         {
-            return new CompactionFailed(
-                context,
-                new CompactionFailure(
-                    CompactionFailureKind.StrategyFailure,
-                    $"No compaction strategy '{notFound.StrategyKey}' is registered for compactor '{notFound.CompactorKey}'.",
-                    retryable: false,
-                    ExtensionData.Empty));
+            Debug.Assert(strategyTerminal is not null, "A production that yields no checkpoint must yield a typed terminal result.");
+            return strategyTerminal;
         }
 
-        var strategy = ((CompactionStrategyResolved) strategyResolution).Strategy;
-        var strategyResult = await strategy.ProduceAsync(
-            new CompactionStrategyRequest(request, source, cut),
-            budget,
-            cancellationToken).ConfigureAwait(false);
-
-        switch (strategyResult)
-        {
-            case CompactionStrategyUnsupported unsupported:
-                return new CompactionRejected(context, unsupported.Rejection);
-            case CompactionStrategyFailed strategyFailed:
-                return new CompactionFailed(context, strategyFailed.Failure);
-            case CompactionCheckpointProduced:
-            default:
-                break;
-        }
-
-        var produced = (CompactionCheckpointProduced) strategyResult;
         var coveredIds = cut.CoveredEntryIds.ToImmutableHashSet();
         var coveredEntries = source.Entries.Where(e => coveredIds.Contains(e.Id)).ToImmutableArray();
         var before = _estimator.EstimateEntries(coveredEntries);
@@ -578,17 +587,7 @@ public sealed class DefaultCompactor: ICompactor
                         ExtensionData.Empty)));
             }
 
-            if (page.Snapshot is not { } pageSnapshot)
-            {
-                // Without exact snapshot evidence the observed version and tip cannot be established; fail closed.
-                return (null, new CompactionFailed(
-                    request.Context,
-                    new CompactionFailure(
-                        CompactionFailureKind.SourceUnavailable,
-                        "The session store did not supply exact read snapshot evidence.",
-                        retryable: false,
-                        ExtensionData.Empty)));
-            }
+            var pageSnapshot = page.Snapshot;
 
             if (pinned is null)
             {

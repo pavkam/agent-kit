@@ -14,41 +14,41 @@ public sealed class ArtifactFinalizeRequestTests
         var correlation = Correlation();
         var identity = Identity();
         var key = new IdempotencyKey("finalize");
-        var request = new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, correlation, identity, Authorization(), key);
+        var request = new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, correlation, Authorization(), key);
         request.PreparationId.ShouldBe(PreparationId());
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
         request.ToolCallId.ShouldBeNull();
         request.Correlation.ShouldBe(correlation);
-        request.Identity.ShouldBe(identity);
+        request.Authorization.Identity.ShouldBe(identity);
         request.IdempotencyKey.ShouldBe(key);
     }
 
     [Fact]
     public void ArtifactFinalizeRequest_WhenPreparationIdentityIsEmpty_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactFinalizeRequest(default, AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), new IdempotencyKey("finalize")));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ArtifactFinalizeRequest(default, AgentId(), SessionId(), null, Correlation(), Authorization(), new IdempotencyKey("finalize")));
         exception.ParamName.ShouldBe("preparationId");
     }
 
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, null!, Identity(), Authorization(), new IdempotencyKey("finalize")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, null!, Authorization(), new IdempotencyKey("finalize")));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
-    public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
+    public void Constructor_WhenAuthorizationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), null!, null!, new IdempotencyKey("finalize")));
-        exception.ParamName.ShouldBe("identity");
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), null!, new IdempotencyKey("finalize")));
+        exception.ParamName.ShouldBe("authorization");
     }
 
     [Fact]
     public void Constructor_WhenIdempotencyKeyIsBlank_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), default));
+        var exception = Should.Throw<ArgumentException>(() => new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), Authorization(), default));
         exception.ParamName.ShouldBe("idempotencyKey");
     }
 
@@ -63,7 +63,7 @@ public sealed class ArtifactFinalizeRequestTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), Identity(), Authorization(), new IdempotencyKey("finalize"));
+        var original = new ArtifactFinalizeRequest(PreparationId(), AgentId(), SessionId(), null, Correlation(), Authorization(), new IdempotencyKey("finalize"));
         var copy = original with { };
         copy.ShouldBe(original);
     }

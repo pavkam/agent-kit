@@ -43,5 +43,22 @@ fence. Timer expiry alone cannot prove an orphan or authorize garbage collection
 that races a late reference commit. Finalize and abort have one conditional
 winner; artifact storage never calls back into the referencing coordinator.
 
+## Composition
+
+- `AddAgentArtifacts(key, profileKey)` registers one keyed coordinator bound to
+  a versioned `AddArtifactProfile` whose routes name `ArtifactBackendKey`s; the
+  application registers every keyed `IArtifactStore` (`.InMemory`, `.Sqlite`,
+  `.Json`, or `.FileSystem`) explicitly. No registration order selects a store.
+- `AgentOptionalCapabilitySelection.ArtifactCoordinator` selects the coordinator
+  per agent. The facade's `ArtifactCompositionValidator` reads
+  `IArtifactCoordinatorCatalog` evidence and requires the keyed coordinator and
+  a keyed store for every routed backend; it never resolves either.
+- Finalize, abort, and reconcile carry no directory, so the coordinator probes
+  the profile's distinct backends in deterministic order and relies on the
+  store's conditional transition as the single winner.
+- Storage adapters share the planner, state machine, gateway, and enforcement in
+  `AgentKit.Artifacts.Storage.Shared` (compiled into each leaf) and run one
+  conformance suite.
+
 Use the specification's acceptance scenarios for focused tests, then run the
 artifact store's shared conformance suite and DI replacement checks.

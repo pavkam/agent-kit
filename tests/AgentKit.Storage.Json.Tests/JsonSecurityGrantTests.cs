@@ -3,10 +3,10 @@
 
 namespace AgentKit.Storage.Json.Tests;
 
-/// <summary>Verifies that a persisted grant reproduces its bounded authority exactly and never gains authorization it lacked.</summary>
+/// <summary>Verifies that a persisted grant reproduces its bounded authority exactly, including its captured authorization.</summary>
 /// <remarks>
-/// A grant is the most consequential value this package persists. Two properties dominate these cases: a grant issued through
-/// the unpinned path must not acquire snapshot-bound authorization on read, and the validity window must be reconstructed
+/// A grant is the most consequential value this package persists. Two properties dominate these cases: a document that
+/// lost its captured authorization is rejected rather than reconstructed, and the validity window must be reconstructed
 /// through the real constructor so both cross-checking init accessors see real instants rather than a default.
 /// </remarks>
 public sealed class JsonSecurityGrantTests
@@ -23,7 +23,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenProjectedFromDomain_ReproducesEqualGrant()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: true);
+        var original = TestEvidenceFactory.Grant();
 
         JsonSecurityGrant.FromDomain(original).ToDomain().ShouldBe(original);
     }
@@ -32,33 +32,29 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenDecodedFromCanonicalJson_ReproducesEqualGrant()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: true);
+        var original = TestEvidenceFactory.Grant();
 
         var document = TestCanonicalJson.Cycle(JsonSecurityGrant.FromDomain(original));
 
         document.ToDomain().ShouldBe(original);
     }
 
-    /// <summary>Verifies an unpinned grant stays unpinned instead of being upgraded to snapshot-bound authority.</summary>
+    /// <summary>Verifies a persisted grant without captured authorization is rejected rather than reconstructed with a fabricated one.</summary>
     [Fact]
-    public void ToDomain_WhenGrantHasNoCapturedAuthorization_DoesNotGainOne()
+    public void ToDomain_WhenGrantDocumentHasNoCapturedAuthorization_ThrowsArgumentNullException()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: false);
-        original.Authorization.ShouldBeNull();
+        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant()) with { Authorization = null! };
 
-        var document = JsonSecurityGrant.FromDomain(original);
-        document.Authorization.ShouldBeNull();
+        var exception = Should.Throw<ArgumentNullException>(document.ToDomain);
 
-        var restored = TestCanonicalJson.Cycle(document).ToDomain();
-        restored.Authorization.ShouldBeNull();
-        restored.ShouldBe(original);
+        exception.ParamName.ShouldBe("Authorization");
     }
 
     /// <summary>Verifies a grant issued with captured authorization keeps it through storage rather than losing it.</summary>
     [Fact]
     public void ToDomain_WhenGrantHasCapturedAuthorization_RetainsIt()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: true);
+        var original = TestEvidenceFactory.Grant();
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityGrant.FromDomain(original)).ToDomain();
 
@@ -71,7 +67,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenGrantBindsResources_PreservesResourceOrder()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: true);
+        var original = TestEvidenceFactory.Grant();
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityGrant.FromDomain(original)).ToDomain();
 
@@ -85,7 +81,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenValidityWindowIsPersisted_ReproducesBothInstants()
     {
-        var original = TestEvidenceFactory.Grant(withAuthorization: false);
+        var original = TestEvidenceFactory.Grant();
 
         var restored = TestCanonicalJson.Cycle(JsonSecurityGrant.FromDomain(original)).ToDomain();
 
@@ -98,7 +94,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenScopeIsNull_ThrowsArgumentNullException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Scope = null! };
 
         var exception = Should.Throw<ArgumentNullException>(document.ToDomain);
@@ -110,7 +106,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenIdentityIsNull_ThrowsArgumentNullException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Identity = null! };
 
         var exception = Should.Throw<ArgumentNullException>(document.ToDomain);
@@ -122,7 +118,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenResourcesContainNull_ThrowsArgumentException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Resources = [null!] };
 
         var exception = Should.Throw<ArgumentException>(document.ToDomain);
@@ -134,7 +130,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenResourcesAreEmpty_ThrowsArgumentException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Resources = [] };
 
         _ = Should.Throw<ArgumentException>(document.ToDomain);
@@ -144,7 +140,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenIdIsEmpty_ThrowsArgumentOutOfRangeException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Id = Guid.Empty };
 
         _ = Should.Throw<ArgumentOutOfRangeException>(document.ToDomain);
@@ -154,7 +150,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenAudienceIsBlank_ThrowsArgumentException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Audience = " " };
 
         _ = Should.Throw<ArgumentException>(document.ToDomain);
@@ -164,7 +160,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenInputFingerprintIsBlank_ThrowsArgumentException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { InputFingerprint = "\t" };
 
         _ = Should.Throw<ArgumentException>(document.ToDomain);
@@ -174,7 +170,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenEffectIsUndefined_ThrowsArgumentOutOfRangeException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { Effect = (SecurityEffect) 99 };
 
         _ = Should.Throw<ArgumentOutOfRangeException>(document.ToDomain);
@@ -184,7 +180,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenAllowedUsesIsZero_ThrowsArgumentOutOfRangeException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { AllowedUses = 0 };
 
         _ = Should.Throw<ArgumentOutOfRangeException>(document.ToDomain);
@@ -194,7 +190,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenExpiryIsNotLaterThanNotBefore_ThrowsArgumentOutOfRangeException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { ExpiresAt = TestEvidenceFactory.Instant };
 
         _ = Should.Throw<ArgumentOutOfRangeException>(document.ToDomain);
@@ -204,7 +200,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void ToDomain_WhenAuthorizationPolicyVersionDisagrees_ThrowsArgumentException()
     {
-        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: true));
+        var source = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var document = source with { PolicyVersion = 9 };
 
         _ = Should.Throw<ArgumentException>(document.ToDomain);
@@ -214,7 +210,7 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void Equals_WhenTwoDocumentsDecodedIndependently_ReturnsTrue()
     {
-        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: true));
+        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
 
         var first = TestCanonicalJson.Cycle(document);
         var second = TestCanonicalJson.Cycle(document);
@@ -227,19 +223,19 @@ public sealed class JsonSecurityGrantTests
     [Fact]
     public void Equals_WhenResourceOrderDiffers_ReturnsFalse()
     {
-        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: true));
+        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
         var reordered = document with { Resources = [.. document.Resources.Reverse()] };
 
         document.Equals(reordered).ShouldBeFalse();
     }
 
-    /// <summary>Verifies the presence of captured authorization alone changes equality, since it is authority-bearing evidence.</summary>
+    /// <summary>Verifies the captured authorization alone changes equality, since it is authority-bearing evidence.</summary>
     [Fact]
-    public void Equals_WhenOneDocumentHasCapturedAuthorization_ReturnsFalse()
+    public void Equals_WhenCapturedAuthorizationDiffers_ReturnsFalse()
     {
-        var pinned = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: true));
-        var unpinned = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant(withAuthorization: false));
+        var document = JsonSecurityGrant.FromDomain(TestEvidenceFactory.Grant());
+        var other = document with { Authorization = document.Authorization with { ProfileKey = "other-profile" } };
 
-        pinned.Equals(unpinned).ShouldBeFalse();
+        document.Equals(other).ShouldBeFalse();
     }
 }

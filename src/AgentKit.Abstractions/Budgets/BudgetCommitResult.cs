@@ -18,39 +18,30 @@ namespace AgentKit;
 /// </remarks>
 public sealed record BudgetCommitResult
 {
-    /// <summary>Initializes a new instance of the <see cref="BudgetCommitResult"/> record.</summary>
-    /// <param name="reservationId">The reservation this result settles.</param>
+    /// <summary>Initializes authoritative settlement evidence including its ledger accounting revision and created holds.</summary>
+    /// <param name="reservationId">The settled reservation.</param>
     /// <param name="reserved">The originally reserved amount.</param>
-    /// <param name="actual">The actual amount committed.</param>
+    /// <param name="actual">The truthful actual amount committed.</param>
     /// <param name="released">The unused amount released back to the scope.</param>
     /// <param name="overrun">The amount by which <paramref name="actual"/> exceeded <paramref name="reserved"/>, if any.</param>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="reserved"/>, <paramref name="actual"/>, <paramref name="released"/>,
-    /// or <paramref name="overrun"/> is negative.
-    /// </exception>
+    /// <param name="accountingRevision">The positive ledger revision that recorded this settlement.</param>
+    /// <param name="createdOverrunHolds">The holds created by this accounting transition.</param>
+    /// <exception cref="ArgumentOutOfRangeException">An amount is negative or <paramref name="accountingRevision"/> is the default value.</exception>
+    /// <exception cref="ArgumentException"><paramref name="createdOverrunHolds"/> is default or contains null.</exception>
     public BudgetCommitResult(
         BudgetReservationId reservationId,
         decimal reserved,
         decimal actual,
         decimal released,
-        decimal overrun)
-        : this(reservationId, reserved, actual, released, overrun, null, [])
-    {
-    }
-
-    /// <summary>Initializes authoritative settlement evidence including its ledger accounting revision and created holds.</summary>
-    /// <param name="reservationId">The settled reservation.</param><param name="reserved">The reserved amount.</param><param name="actual">The truthful actual.</param><param name="released">The unused amount.</param><param name="overrun">The row overrun.</param><param name="accountingRevision">The positive ledger revision, or null only for compatibility-created values.</param><param name="createdOverrunHolds">The holds created by this accounting transition.</param>
-    /// <exception cref="ArgumentOutOfRangeException">An amount is negative.</exception><exception cref="ArgumentException"><paramref name="createdOverrunHolds"/> is default or contains null.</exception>
-    public BudgetCommitResult(BudgetReservationId reservationId, decimal reserved, decimal actual, decimal released, decimal overrun, BudgetAccountingRevision? accountingRevision, ImmutableArray<BudgetOverrunHold> createdOverrunHolds)
+        decimal overrun,
+        BudgetAccountingRevision accountingRevision,
+        ImmutableArray<BudgetOverrunHold> createdOverrunHolds)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(reserved);
         ArgumentOutOfRangeException.ThrowIfNegative(actual);
         ArgumentOutOfRangeException.ThrowIfNegative(released);
         ArgumentOutOfRangeException.ThrowIfNegative(overrun);
-        if (accountingRevision is { } presentAccountingRevision)
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(presentAccountingRevision, default, nameof(accountingRevision));
-        }
+        ArgumentOutOfRangeException.ThrowIfEqual(accountingRevision, default);
         ArgumentException.ThrowIfDefault(createdOverrunHolds);
         ArgumentException.ThrowIfContainsNull(createdOverrunHolds);
 
@@ -78,8 +69,10 @@ public sealed record BudgetCommitResult
     /// <summary>Gets the amount by which <see cref="Actual"/> exceeded <see cref="Reserved"/>, if any.</summary>
     public decimal Overrun { get; init; }
 
-    /// <summary>Gets the ledger accounting revision.</summary><value>A positive revision for ledger-produced results; null for compatibility-created values.</value>
-    public BudgetAccountingRevision? AccountingRevision { get; }
+    /// <summary>Gets the ledger accounting revision.</summary>
+    /// <value>The positive revision at which the ledger recorded this settlement.</value>
+    public BudgetAccountingRevision AccountingRevision { get; }
+
     /// <summary>Gets holds created atomically with settlement.</summary><value>An initialized immutable array ordered by charged lineage.</value>
     public ImmutableArray<BudgetOverrunHold> CreatedOverrunHolds { get; }
 

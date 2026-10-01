@@ -13,10 +13,31 @@ public interface IArtifactStoreConformanceFixture: IAsyncDisposable
     /// <summary>Gets an authenticated identity in a distinct tenant partition.</summary>
     public ExecutionIdentity SecondaryIdentity { get; }
 
+    /// <summary>Gets the fixture's deterministic current instant.</summary>
+    public DateTimeOffset Now { get; }
+
+    /// <summary>Moves the fixture's deterministic clock forward, which the store under test observes.</summary>
+    /// <param name="duration">The non-negative duration to advance.</param>
+    public void Advance(TimeSpan duration);
+
     /// <summary>Creates the public store contract through the implementation's normal composition path.</summary>
     /// <param name="cancellationToken">Cancels fixture composition before it completes.</param>
     /// <returns>The fixture-owned store under test.</returns>
     public ValueTask<IArtifactStore> CreateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Creates valid metadata for content with optional retention, external ownership, and hash declaration.</summary>
+    /// <param name="content">The complete content the metadata declares.</param>
+    /// <param name="retention">The requested retention, or a policy named <c>conformance</c> without expiry or hold when omitted.</param>
+    /// <param name="externalOwnership">External ownership evidence; its presence makes the metadata externally owned and managed.</param>
+    /// <param name="declaredContentHash">An explicit declared hash, or the exact SHA-256 fingerprint when omitted.</param>
+    /// <param name="declaredLength">An explicit declared length, or the exact length when omitted.</param>
+    /// <returns>Valid immutable metadata.</returns>
+    public ArtifactMetadata CreateMetadata(
+        byte[] content,
+        ArtifactRetention? retention = null,
+        ExternalArtifactOwnership? externalOwnership = null,
+        ContentHash? declaredContentHash = null,
+        long? declaredLength = null);
 
     /// <summary>Creates a valid deterministic preparation request, with optional values used by replay and partition cases.</summary>
     /// <param name="content">The complete content staged by the request.</param>
@@ -28,6 +49,9 @@ public interface IArtifactStoreConformanceFixture: IAsyncDisposable
     /// <param name="createdAt">The staging instant, or the fixture's deterministic current instant when omitted.</param>
     /// <param name="lifetime">The positive staging lifetime, or five minutes when omitted.</param>
     /// <param name="grantFingerprint">The grant fingerprint, or the exact request fingerprint when omitted.</param>
+    /// <param name="metadata">The declared metadata, or <see cref="CreateMetadata"/> defaults when omitted.</param>
+    /// <param name="declaredTenant">A separately carried tenant that differs from the identity, or the identity's tenant when omitted.</param>
+    /// <param name="declaredCreator">A separately carried creator that differs from the identity, or the identity's principal when omitted.</param>
     /// <returns>A valid request whose grant can be registered through <see cref="RegisterGrantAsync"/>.</returns>
     public ArtifactStorePrepareRequest CreatePrepare(
         byte[] content,
@@ -38,7 +62,10 @@ public interface IArtifactStoreConformanceFixture: IAsyncDisposable
         ArtifactVersion? version = null,
         DateTimeOffset? createdAt = null,
         TimeSpan? lifetime = null,
-        InputFingerprint? grantFingerprint = null);
+        InputFingerprint? grantFingerprint = null,
+        ArtifactMetadata? metadata = null,
+        TenantId? declaredTenant = null,
+        PrincipalId? declaredCreator = null);
 
     /// <summary>Creates a publication request for one preparation and authenticated identity.</summary>
     /// <param name="preparationId">The preparation to publish.</param>

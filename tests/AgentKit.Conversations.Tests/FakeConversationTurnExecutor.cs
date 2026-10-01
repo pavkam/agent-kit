@@ -188,7 +188,7 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
     private AgentAdmissionRejection Rejection(ConversationTurnRunRequest request, string reason) =>
         new(
             request.AgentId,
-            LoopOptions.AgentDefinitionRevision,
+            LoopOptions.Agent!.Revision,
             new AgentCatalogVersion(1),
             reason);
 
@@ -207,26 +207,17 @@ internal sealed class FakeConversationTurnExecutor(FakeAgentLoop loop, FakeSessi
         var authorization = TestSecurityEvidence.Authorization(request.AgentId, sessionId, correlation, request.Identity);
         var options = LoopOptions;
         return new AgentLoopRunRequest(
-            request.AgentId,
+            options.Agent!,
             sessionId,
             _coordinator.BranchId,
             runId,
             request.Identity,
             authorization,
             TestSecurityEvidence.SessionProfile(),
-            options.ModelSelectionPolicy!,
-            options.ModelRequirements,
-            [.. options.Instructions],
-            [.. options.Tools],
-            options.ToolChoice,
-            options.RequestSettings,
+            options.Configuration!,
             request.MaxTurns,
             request.AttemptTimeout,
-            ExtensionData.Empty)
-        {
-            Output = options.Output,
-            BudgetLimits = [.. options.BudgetLimits],
-        };
+            ExtensionData.Empty);
     }
 
     private static AgentRunServices CreateServices() =>

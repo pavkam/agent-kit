@@ -15,7 +15,10 @@ internal sealed record McpClientOptionsSnapshot
         int maximumInFlightRequests,
         McpUnknownNotificationPolicy unknownNotificationPolicy,
         ProcessExecutorKey stdioProcessExecutorKey,
-        SandboxProfileId stdioSandboxProfileId)
+        SandboxProfileId stdioSandboxProfileId,
+        TimeSpan httpStreamTimeout,
+        long maximumHttpResponseBytes,
+        NetworkDataClassification httpDataClassification)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(handshakeTimeout, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(requestTimeout, TimeSpan.Zero);
@@ -24,6 +27,9 @@ internal sealed record McpClientOptionsSnapshot
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumMessageBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumInFlightRequests);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maximumFrameBytes, maximumMessageBytes);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(httpStreamTimeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumHttpResponseBytes, maximumMessageBytes);
+        ArgumentOutOfRangeException.ThrowIfUndefined(httpDataClassification);
 
         HandshakeTimeout = handshakeTimeout;
         RequestTimeout = requestTimeout;
@@ -36,6 +42,9 @@ internal sealed record McpClientOptionsSnapshot
         ArgumentException.ThrowIfNullOrWhiteSpace(stdioSandboxProfileId.Value, nameof(stdioSandboxProfileId));
         StdioProcessExecutorKey = stdioProcessExecutorKey;
         StdioSandboxProfileId = stdioSandboxProfileId;
+        HttpStreamTimeout = httpStreamTimeout;
+        MaximumHttpResponseBytes = maximumHttpResponseBytes;
+        HttpDataClassification = httpDataClassification;
     }
 
     internal TimeSpan HandshakeTimeout { get; }
@@ -55,6 +64,12 @@ internal sealed record McpClientOptionsSnapshot
     internal ProcessExecutorKey StdioProcessExecutorKey { get; }
 
     internal SandboxProfileId StdioSandboxProfileId { get; }
+
+    internal TimeSpan HttpStreamTimeout { get; }
+
+    internal long MaximumHttpResponseBytes { get; }
+
+    internal NetworkDataClassification HttpDataClassification { get; }
 
     internal McpEndpointBounds CreateEndpointBounds() => new(
         HandshakeTimeout,

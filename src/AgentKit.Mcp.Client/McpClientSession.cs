@@ -192,7 +192,7 @@ internal sealed class McpClientSession: IMcpClientSession
                 return new McpResponseDenied(request.Request.Id, "MCP request denied.");
             }
 
-            var consumption = await McpClientSecurityOperations.ConsumeGrantAsync(
+            var consumed = await McpClientSecurityOperations.TryConsumeGrantAsync(
                 grant,
                 _grantStore,
                 _audit,
@@ -200,7 +200,7 @@ internal sealed class McpClientSession: IMcpClientSession
                 _intentIds,
                 _timeProvider,
                 cancellationToken).ConfigureAwait(false);
-            return consumption.Status != GrantConsumptionStatus.Consumed
+            return !consumed
                 ? new McpResponseDenied(request.Request.Id, "MCP grant consumption failed.")
                 : await _adapter.InvokeAsync(request.Request, cancellationToken).ConfigureAwait(false);
         }

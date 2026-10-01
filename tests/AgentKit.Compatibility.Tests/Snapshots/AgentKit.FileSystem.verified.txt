@@ -15,6 +15,20 @@ namespace AgentKit.FileSystem
         public long MaximumReadBytes { get; init; }
         public long MaximumWriteBytes { get; init; }
     }
+    public sealed class FileSystemWorkspaceBounds : System.IEquatable<AgentKit.FileSystem.FileSystemWorkspaceBounds>
+    {
+        public FileSystemWorkspaceBounds(int maximumDirectorySnapshotEntries, int maximumSearchDepth, int maximumSearchFiles, long maximumSearchBytes, int maximumSearchMatches, int maximumSearchLineBytes, System.TimeSpan maximumSearchDuration, int maximumPatchEntries, long maximumPatchBytes) { }
+        public int MaximumDirectorySnapshotEntries { get; init; }
+        public long MaximumPatchBytes { get; init; }
+        public int MaximumPatchEntries { get; init; }
+        public long MaximumSearchBytes { get; init; }
+        public int MaximumSearchDepth { get; init; }
+        public System.TimeSpan MaximumSearchDuration { get; init; }
+        public int MaximumSearchFiles { get; init; }
+        public int MaximumSearchLineBytes { get; init; }
+        public int MaximumSearchMatches { get; init; }
+        public static AgentKit.FileSystem.FileSystemWorkspaceBounds Default { get; }
+    }
     public sealed class FileWatchPolicy : System.IEquatable<AgentKit.FileSystem.FileWatchPolicy>
     {
         public FileWatchPolicy(bool enabled = false) { }
@@ -33,52 +47,13 @@ namespace AgentKit.FileSystem
         public AgentKit.FileSystemProfileVersion ProfileVersion { get; set; }
         public System.Collections.Generic.IList<AgentKit.FileSystem.FileRootRegistration> Roots { get; }
         public AgentKit.FileSystem.FileWatchPolicy WatchPolicy { get; set; }
+        public AgentKit.FileSystem.FileSystemWorkspaceBounds WorkspaceBounds { get; set; }
         public AgentKit.FileSystem.FileWritePolicy WritePolicy { get; set; }
-    }
-    [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
-        ".")]
-    public sealed class SandboxedFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.ILegacyDirectoryReader, AgentKit.IWorkspacePatchApplier
-    {
-        public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger = null) { }
-        public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
-        public AgentKit.ComponentId SecurityAudience { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
-            ".")]
-        public System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.LegacyFileReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.FileSnapshotResult> ReadSnapshotAsync(AgentKit.FileSnapshotRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.FileSearchResult> SearchAsync(AgentKit.FileSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
-            ".")]
-        public System.Threading.Tasks.Task<AgentKit.LegacyFileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-    public sealed class SandboxedFileSystemOptions
-    {
-        public SandboxedFileSystemOptions() { }
-        public int MaximumDirectorySnapshotEntries { get; set; }
-        public long MaximumPatchBytes { get; set; }
-        public int MaximumPatchEntries { get; set; }
-        public long MaximumReadBytes { get; set; }
-        public long MaximumSearchBytes { get; set; }
-        public int MaximumSearchDepth { get; set; }
-        public System.TimeSpan MaximumSearchDuration { get; set; }
-        public int MaximumSearchFiles { get; set; }
-        public int MaximumSearchLineBytes { get; set; }
-        public int MaximumSearchMatches { get; set; }
-        public long MaximumWriteBytes { get; set; }
-        public string RootDirectory { get; set; }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            [System.Obsolete("Use narrow host capability contracts selected through IFileSystemSelector instead" +
-                ".")]
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSandboxedFileSystem(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
-            [System.Obsolete("Legacy host surface.")]
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOperatingSystemFileSystem(AgentKit.FileSystemProfileKey key, System.Action<AgentKit.FileSystem.OperatingSystemFileSystemOptions> configure) { }
         }
     }

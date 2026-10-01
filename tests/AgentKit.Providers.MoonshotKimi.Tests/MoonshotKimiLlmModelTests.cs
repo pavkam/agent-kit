@@ -6,6 +6,7 @@ namespace AgentKit.Providers.MoonshotKimi.Tests;
 using System.Net;
 
 using AgentKit.Providers.MoonshotKimi.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies MoonshotKimiLlmModel behavior and contracts.</summary>
 public sealed class MoonshotKimiLlmModelTests
@@ -16,7 +17,7 @@ public sealed class MoonshotKimiLlmModelTests
         var systemMessage = new SystemMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), runId: null, turnId: null, Now, MessageState.Complete, [new TextPart("You are helpful.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), systemMessage.AgentId, systemMessage.SessionId, conversationId: null, systemMessage.BranchId, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [systemMessage, userMessage], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
     private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), MoonshotKimiProviderDefaults.ProviderId, MoonshotKimiProviderDefaults.ApiFamily, new ModelId("kimi-k2-0711-preview"), deploymentId: null, MoonshotKimiProviderDefaults.DefaultCapabilities, MoonshotKimiProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
@@ -29,7 +30,7 @@ public sealed class MoonshotKimiLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -51,7 +52,7 @@ public sealed class MoonshotKimiLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var agentId = new AgentId(Guid.NewGuid());
         var sessionId = new SessionId(Guid.NewGuid());
         var branchId = new BranchId(Guid.NewGuid());
@@ -78,7 +79,7 @@ public sealed class MoonshotKimiLlmModelTests
             ExtensionData.Empty);
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("web_search"), "web_search", "Searches the web.", JsonDocument.Parse("""{"type":"object","properties":{"query":{"type":"string"}}}""").RootElement));
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage, assistantMessage, toolMessage], tools, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
 
         // Act
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
@@ -106,7 +107,7 @@ public sealed class MoonshotKimiLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), new HttpClient(handler), new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

@@ -3,13 +3,18 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.Internal;
+
 /// <summary>Delegates root services while throwing whenever the facade requests a run scope.</summary>
 internal sealed class ThrowingScopeServiceProvider(IServiceProvider inner): IServiceProvider, IServiceScopeFactory
 {
     /// <inheritdoc/>
-    public object? GetService(Type serviceType) => serviceType == typeof(IServiceScopeFactory)
-        ? this
-        : inner.GetService(serviceType);
+    public object? GetService(Type serviceType) =>
+        serviceType == typeof(IServiceScopeFactory)
+            ? this
+            : serviceType == typeof(IAgentRunScopeFactory)
+                ? new AgentRunScopeFactory(this)
+                : inner.GetService(serviceType);
 
     /// <inheritdoc/>
     public IServiceScope CreateScope() => throw new InvalidOperationException("Scope creation failed.");

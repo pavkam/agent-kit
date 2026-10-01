@@ -3,8 +3,10 @@
 
 namespace AgentKit;
 
-/// <summary>Labels observation payload sensitivity for capture, retention, and redaction policy.</summary>
-/// <remarks>This shared classification applies to observation content only; domain-specific classifications remain on their owning contracts until explicitly mapped.</remarks>
+/// <summary>Labels the sensitivity of observed, remembered, or retrieved content for capture, retention, redaction, and exposure policy.</summary>
+/// <remarks>
+/// This is the generic classification shared by observation payloads and the memory, document, and retrieval contracts. Values are ordered from least to most restricted, so a configured ceiling admits every value less than or equal to it. Artifact metadata and references use it directly.
+/// </remarks>
 public enum DataClassification
 {
     /// <summary>Safe for broad operational export when capture is enabled.</summary>

@@ -10,8 +10,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [ArtifactCoordinatorTests](ArtifactCoordinatorTests.cs)
+- [ArtifactCoordinatorTests.Reconciliation](ArtifactCoordinatorTests.Reconciliation.cs)
 - [ArtifactProcessOutputSinkTests](ArtifactProcessOutputSinkTests.cs)
-- [DefaultArtifactCoordinatorTests](DefaultArtifactCoordinatorTests.cs)
+- [DefaultArtifactCoordinatorCatalogTests](DefaultArtifactCoordinatorCatalogTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

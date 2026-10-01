@@ -36,6 +36,7 @@ internal static class TestGrantFactory
             new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
             scope,
             identity,
+            TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity),
             new ComponentId("filesystem"),
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
@@ -54,6 +55,7 @@ internal static class TestGrantFactory
     internal static SecurityEnforcementRequest CreateEnforcement(SecurityGrant grant) => new(
         grant.Scope,
         grant.Identity,
+        grant.Authorization,
         grant.Audience,
         grant.Kind,
         grant.Effect,

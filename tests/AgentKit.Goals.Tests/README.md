@@ -2,14 +2,17 @@
 
 Focused tests for [AgentKit.Goals](../../src/AgentKit.Goals/README.md).
 
-**Component purpose:** coordinate protected task-delegation requests.
+**Component purpose:** coordinate goals, delegation, and joins.
 
 Use this suite when changing that component or investigating a regression. It is
 a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [DefaultTaskDelegationBrokerTests](DefaultTaskDelegationBrokerTests.cs)
+- [DelegationCoordinatorTests](DelegationCoordinatorTests.cs)
+- [JoinStrategyTests](JoinStrategyTests.cs)
+- [DefaultGoalCoordinatorTests](DefaultGoalCoordinatorTests.cs)
+- [SessionBackedGoalStoreConformanceTests](SessionBackedGoalStoreConformanceTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

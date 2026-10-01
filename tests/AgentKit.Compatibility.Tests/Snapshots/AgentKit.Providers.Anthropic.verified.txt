@@ -5,7 +5,7 @@ namespace AgentKit.Providers.Anthropic
 {
     public sealed class AnthropicLlmModel : AgentKit.ILlmModel
     {
-        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }

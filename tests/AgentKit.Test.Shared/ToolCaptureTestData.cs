@@ -83,19 +83,19 @@ public static class ToolCaptureTestData
             new ModelCapabilities(true, true, true, true, false, false, false, ExtensionData.Empty));
     }
 
-    /// <summary>Maps a legacy <see cref="ToolInvocationRequest"/> test shape onto a spec <see cref="ToolInvocationContext"/>.</summary>
-    /// <param name="request">The legacy request whose execution context and arguments are preserved.</param>
+    /// <summary>Maps a <see cref="ToolInvocationRequest"/> test shape onto a spec <see cref="ToolInvocationContext"/>.</summary>
+    /// <param name="request">The request whose execution context and arguments are preserved.</param>
     /// <param name="tool">The resolved descriptor for the invoker under test.</param>
     /// <returns>A structurally valid context whose grant retains authorization evidence.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="tool"/> is null.</exception>
     /// <exception cref="InvalidOperationException">The request correlation is not in-run.</exception>
-    public static ToolInvocationContext FromLegacyRequest(ToolInvocationRequest request, ToolDescriptor tool)
+    public static ToolInvocationContext FromRequest(ToolInvocationRequest request, ToolDescriptor tool)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(tool);
         var execution = request.Context;
         var correlation = execution.Correlation as InRunOperationCorrelation
-            ?? throw new InvalidOperationException("Legacy tool tests require in-run operation correlation.");
+            ?? throw new InvalidOperationException("Tool tests require in-run operation correlation.");
         var turnId = correlation.TurnId ?? new TurnId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
         var invocationCorrelation = correlation.TurnId.HasValue
             ? correlation
@@ -132,7 +132,7 @@ public static class ToolCaptureTestData
             1);
         return new ToolInvocationContext(
             execution.AgentId,
-            execution.SessionId ?? throw new InvalidOperationException("Legacy tool tests require a session id."),
+            execution.SessionId ?? throw new InvalidOperationException("Tool tests require a session id."),
             correlation.RunId,
             turnId,
             correlation.OperationId,

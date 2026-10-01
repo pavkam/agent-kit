@@ -19,24 +19,6 @@ public sealed record CompactionValidated: CompactionValidationResult
         Compaction = compaction;
     }
 
-    /// <summary>Initializes a validated outcome from a candidate using a placeholder stamp.</summary>
-    /// <param name="candidate">The validated candidate.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="candidate"/> is null.</exception>
-    /// <remarks>
-    /// Callers that require an authoritative stamp should use the constructor that accepts
-    /// <see cref="ValidatedCompaction"/> directly.
-    /// </remarks>
-    public CompactionValidated(CompactionCandidate candidate)
-        : this(new ValidatedCompaction(
-            candidate,
-            new CompactionValidationStamp(
-                new CompactionValidatorVersion("0"),
-                new ContentHash("legacy"),
-                DateTimeOffset.MinValue),
-            []))
-    {
-    }
-
     /// <summary>Gets the validated compaction.</summary>
     public ValidatedCompaction Compaction { get; init; }
 

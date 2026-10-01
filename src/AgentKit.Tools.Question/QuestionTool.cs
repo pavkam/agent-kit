@@ -37,6 +37,8 @@ public sealed class QuestionTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(QuestionToolLog.Completed, QuestionToolLog.Cancelled, QuestionToolLog.Faulted);
+    private readonly ILogger<QuestionTool> _logger;
     private readonly IHumanQuestionBroker _broker;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
@@ -59,6 +61,7 @@ public sealed class QuestionTool: IToolInvoker
     /// <param name="questionIds">The replaceable question identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
     /// <param name="options">The captured host ceilings.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured ceiling or default is invalid.</exception>
     public QuestionTool(
@@ -67,7 +70,8 @@ public sealed class QuestionTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<QuestionId> questionIds,
         TimeProvider timeProvider,
-        IOptions<QuestionToolOptions> options)
+        IOptions<QuestionToolOptions> options,
+        ILogger<QuestionTool> logger)
     {
         ArgumentNullException.ThrowIfNull(broker);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -75,6 +79,7 @@ public sealed class QuestionTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(questionIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _broker = broker;
         _authoritySelector = authoritySelector;
@@ -87,6 +92,7 @@ public sealed class QuestionTool: IToolInvoker
         _maximumLabelCharacters = options.Value.MaximumLabelCharacters;
         _maximumDescriptionCharacters = options.Value.MaximumDescriptionCharacters;
         _maximumAnswerCharacters = options.Value.MaximumAnswerCharacters;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -113,16 +119,16 @@ public sealed class QuestionTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("question"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

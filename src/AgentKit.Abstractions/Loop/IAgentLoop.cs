@@ -10,16 +10,15 @@ namespace AgentKit;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller <c>IAgentLoop</c>
-/// described by the agent-runtime architecture, which additionally admits
-/// queued input through a dedicated I/O coordinator, reserves usage
-/// against a budget authority, publishes streamed progress through an
-/// output publisher, and validates terminal output through an output
-/// processor. Until those packages exist and are wired into the reduced
-/// loop, an implementation assumes the caller has already admitted any new
-/// input by appending it to the session before starting a run, and
-/// performs budget enforcement and hook dispatch only to the extent those
-/// seams exist elsewhere in the composition.
+/// The run is request-based: the caller supplies one pinned
+/// <see cref="AgentLoopRunRequest"/> and the per-run <see cref="AgentRunServices"/>
+/// the facade compiled from the definition's keyed selections. The caller has
+/// already durably admitted the run's initial input; an implementation promotes
+/// further queued input through the compiled <see cref="IInputCoordinator"/>
+/// at safe boundaries, reserves usage through the budget authority when the
+/// definition's profile declares limits, publishes progress through the
+/// compiled output publisher, and validates terminal output through the
+/// compiled output processor.
 /// </para>
 /// <para>
 /// An implementation owns control flow only. It never implements session

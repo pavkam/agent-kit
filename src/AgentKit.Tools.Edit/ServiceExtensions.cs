@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddEditTool(Action<EditToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<EditToolOptions>()
                 .Validate(
                     static value => value.DefaultMaximumBytes > 0

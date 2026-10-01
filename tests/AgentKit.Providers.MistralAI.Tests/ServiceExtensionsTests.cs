@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -84,6 +86,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAILlmModel(new ModelAlias("fast"), new ModelId("mistral-small-latest"));
         _ = services.AddMistralAILlmModel(new ModelAlias("smart"), new ModelId("mistral-large-latest"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -98,6 +102,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAI();
         _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
         _ = services.AddMistralAILlmModel(new ModelAlias("chat"), new ModelId("mistral-large-latest"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MistralAILlmModel>();
@@ -114,6 +120,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("mistral-embed"));
         _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("codestral-embed"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -128,6 +136,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAI();
         _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
         _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("mistral-embed"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<MistralAIEmbeddingModel>();
@@ -153,6 +163,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddMistralAILlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MistralAILlmModel>();
@@ -197,6 +209,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
 
         _ = services.AddMistralAIKnownLlmModel(new ModelAlias("known"), new ModelId("codestral-latest"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MistralAILlmModel>();

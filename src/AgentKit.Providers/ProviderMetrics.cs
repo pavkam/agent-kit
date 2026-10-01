@@ -31,6 +31,32 @@ internal static class ProviderMetrics
         unit: "s",
         description: "Duration of terminal provider HTTP requests in seconds.");
 
+    private static readonly Counter<long> _providerEgress = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.ProviderEgressCount,
+        unit: "{request}",
+        description: "Number of terminal provider egress boundary outcomes.");
+
+    private static readonly Histogram<double> _providerEgressDuration = AgentKitDiagnostics.Metrics.CreateHistogram<double>(
+        AgentKitMetricNames.ProviderEgressDuration,
+        unit: "s",
+        description: "Duration of provider egress boundary crossings in seconds, through response headers.");
+
+    /// <summary>Records one provider egress outcome using bounded dimensions only.</summary>
+    /// <param name="operation">The bounded provider operation tag.</param>
+    /// <param name="outcome">The bounded terminal outcome: <c>sent</c> or a lowercase failure kind.</param>
+    /// <param name="duration">The elapsed time through response headers or refusal.</param>
+    internal static void RecordEgress(string operation, string outcome, TimeSpan duration)
+    {
+        _providerEgress.Add(
+            1,
+            new KeyValuePair<string, object?>(AgentKitTagNames.ProviderOperation, operation),
+            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+        _providerEgressDuration.Record(
+            duration.TotalSeconds,
+            new KeyValuePair<string, object?>(AgentKitTagNames.ProviderOperation, operation),
+            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
+
     /// <summary>Records one catalog refresh using a bounded outcome only.</summary>
     /// <param name="outcome">The normalized terminal outcome.</param>
     internal static void RecordCatalogRefresh(string outcome) =>

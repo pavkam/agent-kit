@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools.WebSearch.Tests;
 
+using System.Net.Http;
+
 internal sealed class EnforcingSearchProvider: IWebSearchProvider
 {
     internal List<WebSearchRequest> Requests { get; } = [];
@@ -63,6 +65,7 @@ internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAu
                     request.Id,
                     request.Scope,
                     request.Identity,
+                    request.Authorization,
                     request.Audience,
                     request.Kind,
                     request.Effect,
@@ -121,4 +124,29 @@ internal sealed class InvalidDestinationProvider(IWebSearchProvider inner): IWeb
     public ProtectedResource Destination { get; } = new(ProtectedResourceKind.ApplicationState, "invalid");
     public Task<WebSearchProviderResult> SearchAsync(WebSearchRequest request, CancellationToken cancellationToken = default) =>
         inner.SearchAsync(request, cancellationToken);
+}
+
+internal sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond): HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(respond(request));
+}
+
+internal sealed class UnavailableAuthoritySelector: ISecurityAuthoritySelector
+{
+    internal Exception? Fault { get; init; }
+
+    public ValueTask<SecurityAuthoritySelectionResult> SelectAsync(
+        SecurityAuthorizationContext authorization,
+        CancellationToken cancellationToken = default) =>
+        Fault is { } fault
+            ? throw fault
+            : ValueTask.FromResult<SecurityAuthoritySelectionResult>(
+                new SecurityAuthoritySelectionUnavailable(authorization, "No authority."));
+}
+
+internal sealed class FixedIdentifierGenerator<TId>(TId value): IIdentifierGenerator<TId>
+    where TId : struct
+{
+    public TId Create() => value;
 }

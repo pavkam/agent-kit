@@ -18,7 +18,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly ISecurityRevocationGeneration _revocationGeneration;
     private readonly TimeSpan _maximumGrantLifetime;
     private readonly int _maximumGrantUses;
-    private readonly SecurityPolicySnapshotReference? _boundPolicySnapshot;
+    private readonly SecurityPolicySnapshotReference _boundPolicySnapshot;
     private readonly ISecurityPolicySelector _policySelector;
     private readonly ILogger<SecurityAuthority> _logger;
     private readonly IApprovalBroker _approvalBroker;
@@ -26,18 +26,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly ISecurityAuditDispatcher _auditDispatcher;
     private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
     private readonly IIdentityValidationPolicy? _identityValidation;
-    private readonly DurabilityProfileKey? _durabilityProfile;
-    private readonly IDurableExecutionCoordinator? _durableExecution;
-    private readonly IDurabilityProfileCatalog? _durabilityProfiles;
-    private readonly DurableBoundaryRegistry _durableInvocations;
-
-    /// <summary>The window added to the injected clock for an approval-wait operation's declared deadline.</summary>
-    /// <remarks>
-    /// A deferred approval is answered by a human, so the durable operation's deadline is generous rather than tied
-    /// to the request's own decision deadline: the operation exists to keep evidence of the wait, and expiring it
-    /// early would make a still-pending approval look abandoned.
-    /// </remarks>
-    private static readonly TimeSpan _durableOperationTimeout = TimeSpan.FromHours(24);
 
     /// <summary>Initializes the first-party security authority.</summary>
     /// <param name="policies">The ordered additive policies.</param>
@@ -60,17 +48,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
     /// The optional identity validation policy that revalidates request identity before policy evaluation. When
     /// omitted, the authority does not perform this check.
     /// </param>
-    /// <param name="durableExecution">
-    /// The composed durable execution coordinator, or <see langword="null"/> when durability is not composed. It is
-    /// used only to journal a deferred approval wait and never to reach a security decision.
-    /// </param>
-    /// <param name="durabilityProfiles">
-    /// The composed durability profile catalog, or <see langword="null"/> when durability is not composed.
-    /// </param>
-    /// <param name="durableInvocations">
-    /// The engine-wide live boundary continuation registry, or <see langword="null"/> to use a private instance.
-    /// Supplying the shared singleton is what lets the coordinator reach this authority's waiting boundary.
-    /// </param>
     /// <exception cref="ArgumentNullException">Any required dependency is null.</exception>
     public SecurityAuthority(
         IEnumerable<ISecurityPolicy> policies,
@@ -86,10 +63,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ISecurityAuditDispatcher auditDispatcher,
         IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
         ILogger<SecurityAuthority>? logger = null,
-        IIdentityValidationPolicy? identityValidation = null,
-        IDurableExecutionCoordinator? durableExecution = null,
-        IDurabilityProfileCatalog? durabilityProfiles = null,
-        DurableBoundaryRegistry? durableInvocations = null)
+        IIdentityValidationPolicy? identityValidation = null)
     {
         ArgumentNullException.ThrowIfNull(policies);
         ArgumentNullException.ThrowIfNull(grantStore);
@@ -109,10 +83,9 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.RevocationVersion);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(optionValues.MaximumGrantLifetime, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.MaximumGrantUses);
-        if (optionValues.PolicySnapshot is { } snapshot)
-        {
-            ArgumentException.ThrowIfNotEqual(snapshot.Version.Value, optionValues.PolicyVersion, nameof(options));
-        }
+        var snapshot = optionValues.PolicySnapshot
+            ?? throw new ArgumentException("AgentPermissionOptions.PolicySnapshot must bind the authority to its captured policy snapshot.", nameof(options));
+        ArgumentException.ThrowIfNotEqual(snapshot.Version.Value, optionValues.PolicyVersion, nameof(options));
         _policies = [.. policies];
         _grantStore = grantStore;
         _grantIssuer = grantIssuer;
@@ -122,7 +95,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _policyVersion = optionValues.PolicyVersion;
         _maximumGrantLifetime = optionValues.MaximumGrantLifetime;
         _maximumGrantUses = optionValues.MaximumGrantUses;
-        _boundPolicySnapshot = optionValues.PolicySnapshot;
+        _boundPolicySnapshot = snapshot;
         _policySelector = policySelector;
         _approvalBroker = approvalBroker;
         _approvalRequestIds = approvalRequestIds;
@@ -130,10 +103,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
         _auditRecordIds = auditRecordIds;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAuthority>.Instance;
         _identityValidation = identityValidation;
-        _durabilityProfile = optionValues.DurabilityProfile;
-        _durableExecution = durableExecution;
-        _durabilityProfiles = durabilityProfiles;
-        _durableInvocations = durableInvocations ?? new DurableBoundaryRegistry();
     }
 
     /// <inheritdoc/>
@@ -252,11 +221,10 @@ public sealed class SecurityAuthority: ISecurityAuthority
                 .ConfigureAwait(false);
         }
 
-        if (request.Authorization is { } authorization
-            && (authorization.Scope != request.Scope
-                || authorization.Identity != request.Identity
-                || _boundPolicySnapshot is null
-                || authorization.PolicySnapshot != _boundPolicySnapshot))
+        var authorization = request.Authorization;
+        if (authorization.Scope != request.Scope
+            || authorization.Identity != request.Identity
+            || authorization.PolicySnapshot != _boundPolicySnapshot)
         {
             return await DenyAsync(
                 request,
@@ -373,12 +341,7 @@ public sealed class SecurityAuthority: ISecurityAuthority
                     cancellationToken).ConfigureAwait(false);
         }
 
-        var policyContext = SecurityPolicyEvaluationContexts.Create(
-            request,
-            policyVersion,
-            _boundPolicySnapshot,
-            revocationVersion,
-            now);
+        var policyContext = SecurityPolicyEvaluationContexts.Create(request, revocationVersion, now);
         var allowed = false;
         var approvalRequired = false;
         SecurityPolicyResult? hardDenial = null;
@@ -503,7 +466,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
             var approvalResult = await _approvalBroker.RequestAsync(approval, cancellationToken).ConfigureAwait(false);
             if (approvalResult is ApprovalBrokerDeferred deferred)
             {
-                await RecordApprovalWaitAsync(request, deferred, cancellationToken).ConfigureAwait(false);
                 return await PersistDecisionAsync(
                     request,
                     policyVersion,
@@ -602,88 +564,6 @@ public sealed class SecurityAuthority: ISecurityAuthority
             policyVersion,
             new SecurityAllowed(request.Id, policyVersion, grant),
             cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Journals that this authorization is waiting on a deferred approval, when a profile enables it.</summary>
-    /// <param name="request">The request whose decision deferred.</param>
-    /// <param name="deferred">The broker's deferral, carrying the pending approval request.</param>
-    /// <param name="cancellationToken">Cancels the durable write and the local wait for it.</param>
-    /// <returns>A task that completes once the wait is recorded, or immediately when nothing is journaled.</returns>
-    /// <remarks>
-    /// <para>
-    /// The wait is evidence, not authority. Recording it grants, widens, and consumes nothing, and the caller
-    /// receives the same <see cref="SecurityApprovalRequired"/> decision either way. That is why a durability gap is
-    /// logged rather than turned into a denial: nothing is authorized by a deferral, so the only consequence of
-    /// missing evidence is that a recovering worker will not learn what this process was waiting for.
-    /// </para>
-    /// <para>
-    /// The operation is addressed from the request's own captured authorization, so a request that carries none — or
-    /// whose capture is sessionless or before-run — is not journaled at all rather than being given an invented run
-    /// identity. The recorded certainty is
-    /// <see cref="SideEffectCertainty.DefinitelyNotPerformed"/>, because an approval wait is precisely the state in
-    /// which the protected effect has not been authorized and therefore cannot have happened.
-    /// </para>
-    /// </remarks>
-    private async ValueTask RecordApprovalWaitAsync(
-        SecurityRequest request,
-        ApprovalBrokerDeferred deferred,
-        CancellationToken cancellationToken)
-    {
-        Debug.Assert(request is not null, "A validated security request reaches the approval-wait boundary.");
-        Debug.Assert(deferred is not null, "The broker supplies the deferral this wait describes.");
-        if (_durabilityProfile is null)
-        {
-            return;
-        }
-
-        if (DurableBoundaryScope.TryCreate(
-                _durabilityProfile,
-                _durableExecution,
-                _durabilityProfiles,
-                _durableInvocations,
-                _timeProvider,
-                _durableOperationTimeout,
-                out var durability) is { } durabilityFailure)
-        {
-            SecurityLog.ApprovalWaitNotRecorded(_logger, request.Id, durabilityFailure);
-            return;
-        }
-
-        Debug.Assert(durability is not null, "A selected, resolvable profile always produces a scope.");
-        if (request.Authorization is not { } authorization)
-        {
-            SecurityLog.ApprovalWaitNotRecorded(
-                _logger, request.Id, "the request carries no captured authorization to address the operation from");
-            return;
-        }
-
-        if (!durability.Journals(PermissionsDurableOperations.ApprovalWait, authorization))
-        {
-            return;
-        }
-
-        var manifest = new DurableApprovalWaitManifest(
-            request.Id.Value, deferred.Request.Id.Value, request.Kind.ToString());
-        _ = await durability.ExecuteAsync(
-            PermissionsDurableOperations.ApprovalWait,
-            PermissionsDurableOperations.ApprovalWaitVersion,
-            authorization,
-            DurableBoundaryPayload.Encode(manifest),
-            SecurityEffect.Observe,
-            hooks: null,
-            async (context, token) =>
-            {
-                _ = await context.Checkpoints.RecordWaitingAsync(
-                    new DurableWaitCondition(
-                        SideEffectCertainty.DefinitelyNotPerformed,
-                        new ExternalOperationReference(
-                            context.Binding.ExecutionContext.BackendKey, deferred.Request.Id.Value.ToString()),
-                        notBefore: null),
-                    token).ConfigureAwait(false);
-                return true;
-            },
-            cancellationToken).ConfigureAwait(false);
-        SecurityLog.ApprovalWaitRecorded(_logger, request.Id, deferred.Request.Id);
     }
 
     private static string MapIdentityValidationDenialCode(IdentityFailureKind kind) =>

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers;
 
+using AgentKit.Providers.Egress;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -12,7 +14,8 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// This package contains no vendor protocol. Concrete provider packages
 /// contribute descriptors and LLM model implementations; nothing here
-/// resolves credentials, chooses an endpoint, or performs network access.
+/// resolves credentials or chooses an endpoint. Network access happens only through
+/// <see cref="ProviderEgress"/>, which sends over <see cref="INetworkTransport"/> under provider-egress grants.
 /// </remarks>
 public static class ServiceExtensions
 {
@@ -31,6 +34,22 @@ public static class ServiceExtensions
         /// Every registration uses <c>TryAdd</c> semantics, so calling this
         /// method more than once is idempotent and an application that
         /// registered its own catalog, selector, or validator first keeps it.
+        /// </para>
+        /// <para>
+        /// The selector and executor are also published under
+        /// <see cref="AgentProviderComponentDefaults.ModelSelectorKey"/> and
+        /// <see cref="AgentProviderComponentDefaults.ModelExecutorKey"/> as aliases of the unkeyed registration, so an
+        /// agent definition selects them through its component selection and a replacement of the unkeyed service is
+        /// observed under the key.
+        /// </para>
+        /// <para>
+        /// The registration also publishes <see cref="ProviderEgress"/> and validated <see cref="ProviderEgressOptions"/>,
+        /// plus replaceable default identity sources for security requests, network operations, enforcement intents, and
+        /// audit records. <see cref="ProviderEgress"/> resolves <see cref="ISecurityAuthoritySelector"/>,
+        /// <see cref="ISecurityGrantStore"/>, <see cref="ISecurityAuditDispatcher"/>, <see cref="INetworkNameResolver"/>,
+        /// and <see cref="INetworkTransport"/> from the container when first requested, so a composition that selects
+        /// none of them fails resolution instead of falling back to an unrestricted client. Replace any of those
+        /// services through ordinary dependency injection; the egress boundary observes the replacement.
         /// </para>
         /// <para>
         /// This method registers no descriptor source. A composition with no
@@ -57,9 +76,15 @@ public static class ServiceExtensions
             services.TryAddSingleton<IModelCapabilityValidator, DefaultModelCapabilityValidator>();
             services.TryAddSingleton<IModelCatalog, DefaultModelCatalog>();
             services.TryAddSingleton<IModelSelector, DefaultModelSelector>();
+            services.TryAddKeyedSingleton(
+                AgentProviderComponentDefaults.ModelSelectorKeyValue,
+                static (provider, _) => provider.GetRequiredService<IModelSelector>());
             services.TryAddSingleton<ILlmModelResolver, DefaultLlmModelResolver>();
             services.TryAddSingleton<IEmbeddingModelResolver, DefaultEmbeddingModelResolver>();
             services.TryAddSingleton<IModelRequestExecutor, DefaultModelRequestExecutor>();
+            services.TryAddKeyedSingleton(
+                AgentProviderComponentDefaults.ModelExecutorKeyValue,
+                static (provider, _) => provider.GetRequiredService<IModelRequestExecutor>());
             services.TryAddSingleton<IEmbeddingModelSelector, DefaultEmbeddingModelSelector>();
             services.TryAddSingleton<IEmbeddingRequestExecutor, DefaultEmbeddingRequestExecutor>();
             services.TryAddSingleton<IRerankerSelector, DefaultRerankerSelector>();
@@ -67,6 +92,7 @@ public static class ServiceExtensions
             services.TryAddSingleton<IRerankRequestExecutor, DefaultRerankRequestExecutor>();
             services.TryAddSingleton(CreateProfileRegistry);
             services.TryAddSingleton<IProviderProfileRuntimeSelector, DefaultProviderProfileRuntimeSelector>();
+            AddProviderEgress(services);
 
             return services;
         }
@@ -229,6 +255,37 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             return services.Replace(ServiceDescriptor.Singleton<IProviderProfileRuntimeSelector, TSelector>());
         }
+    }
+
+    private static void AddProviderEgress(IServiceCollection services)
+    {
+        _ = services.AddOptions<ProviderEgressOptions>()
+            .Validate(static value => value.ConnectTimeout > TimeSpan.Zero, "ConnectTimeout must be positive.")
+            .Validate(static value => value.MaximumRequestBytes > 0, "MaximumRequestBytes must be positive.")
+            .Validate(static value => value.MaximumResponseBytes > 0, "MaximumResponseBytes must be positive.")
+            .Validate(static value => Enum.IsDefined(value.Classification), "Classification must be a defined value.")
+            .ValidateOnStart();
+        services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>>(
+            new GuidIdentifierGenerator<SecurityRequestId>(static value => new SecurityRequestId(value)));
+        services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>>(
+            new GuidIdentifierGenerator<NetworkOperationId>(static value => new NetworkOperationId(value)));
+        services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+            new GuidIdentifierGenerator<SecurityEnforcementIntentId>(static value => new SecurityEnforcementIntentId(value)));
+        services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
+            new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
+        services.TryAddSingleton(static provider => new ProviderEgress(
+            provider.GetRequiredService<ISecurityAuthoritySelector>(),
+            provider.GetRequiredService<ISecurityGrantStore>(),
+            provider.GetRequiredService<ISecurityAuditDispatcher>(),
+            provider.GetRequiredService<INetworkNameResolver>(),
+            provider.GetRequiredService<INetworkTransport>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityRequestId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<NetworkOperationId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IOptions<ProviderEgressOptions>>(),
+            provider.GetService<ILogger<ProviderEgress>>()));
     }
 
     private static ProviderProfileRegistry CreateProfileRegistry(IServiceProvider serviceProvider)

@@ -22,9 +22,11 @@ public sealed class RunEventSinkBindingTests
     public void Constructor_WhenArgumentsAreValid_RoundTripsRegistration()
     {
         var registration = new RunEventSinkRegistration("sink", RunEventDelivery.BestEffort, 2);
-        var binding = new RunEventSinkBinding(registration, new FakeRunEventSink());
+        var inner = new FakeRunEventSink();
+        var binding = new RunEventSinkBinding(registration, inner);
 
         binding.Registration.ShouldBeSameAs(registration);
+        binding.Inner.ShouldBeSameAs(inner);
     }
 
     [Fact]

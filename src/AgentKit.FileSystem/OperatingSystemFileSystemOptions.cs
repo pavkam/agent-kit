@@ -18,6 +18,10 @@ public sealed class OperatingSystemFileSystemOptions
     /// <summary>Gets or sets profile-wide byte bounds.</summary>
     public FileSystemBounds Bounds { get; set; } = new(10 * 1024 * 1024, 10 * 1024 * 1024);
 
+    /// <summary>Gets or sets the traversal, search, and patch ceilings enforced on workspace operations.</summary>
+    /// <value>Bounds applied to enumeration, glob, search, snapshot, replace, and patch; defaults to <see cref="FileSystemWorkspaceBounds.Default"/>.</value>
+    public FileSystemWorkspaceBounds WorkspaceBounds { get; set; } = FileSystemWorkspaceBounds.Default;
+
     /// <summary>Gets or sets write policy defaults.</summary>
     public FileWritePolicy WritePolicy { get; set; } = new();
 

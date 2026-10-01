@@ -9,13 +9,13 @@ and that provider failures never leak secrets.
 
 ## What the tests need
 
-| Need                                   | AgentKit part                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------------- |
-| No network                             | Replace the provider's `HttpClient` with one built over your `HttpMessageHandler`     |
-| Scripted model replies                 | A handler that returns canned Chat Completions responses, including tool calls        |
-| A file system you can seed and inspect | `AddInMemoryFileSystem` from `AgentKit.FileSystem.InMemory` plus the read/write tools |
-| Deterministic time                     | `builder.Services.Replace(ServiceDescriptor.Singleton<TimeProvider>(fakeTime))`       |
-| Assertions on behavior                 | `ConversationTurnResult.Events` and the requests your handler captured                |
+| Need                                   | AgentKit part                                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| No network                             | Replace `INetworkNameResolver` and `INetworkTransport` with the scripted leaf from `AgentKit.Network.InMemory` |
+| Scripted model replies                 | Scripted network responses carrying canned Chat Completions bodies, including tool calls                       |
+| A file system you can seed and inspect | keyed `AddInMemoryFileSystem(key)` from `AgentKit.FileSystem.InMemory` plus the read/write tools               |
+| Deterministic time                     | `builder.Services.Replace(ServiceDescriptor.Singleton<TimeProvider>(fakeTime))`                                |
+| Assertions on behavior                 | `ConversationTurnResult.Events` and the request bodies your recording transport captured                       |
 
 ## Compose the engine under test
 
@@ -25,7 +25,7 @@ only the boundaries you need. This is exactly what
 does for the quick start:
 
 ```csharp
-static AgentEngine TestEngine(HttpMessageHandler handler, Action<AgentEngineBuilder>? adjust = null)
+static AgentEngine TestEngine(ScriptedOpenAINetwork network, Action<AgentEngineBuilder>? adjust = null)
 {
     var builder = AgentEngine.CreateBuilder()
         .UseLocalDevelopmentDefaults()
@@ -33,35 +33,67 @@ static AgentEngine TestEngine(HttpMessageHandler handler, Action<AgentEngineBuil
         .WithInstructions("You are a concise assistant.");
 
     // The in-memory file system replaces the sandbox; the tools stay the same.
-    builder.Services.AddInMemoryFileSystem();
-    builder.Services.AddReadTool();
-    builder.Services.AddWriteTool();
+    var volume = new FileSystemProfileKey("workspace");
+    builder.Services.AddInMemoryFileSystem(volume);
+    builder.Services.AddReadTool(o => { o.ProfileKey = volume; o.HostRootPath = "/workspace"; });
+    builder.Services.AddWriteTool(o => { o.ProfileKey = volume; o.HostRootPath = "/workspace"; });
+    builder.WithTools(ReadFileTool.DefaultToolset.Key, WriteFileTool.DefaultToolset.Key);
 
-    // No sockets: every provider request goes to the handler.
-    builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+    // No sockets: the adapter sends through the network boundary, so replace its two halves.
+    network.AddTo(builder.Services);
 
     adjust?.Invoke(builder);
     return builder.Build();
 }
 ```
 
-A stub handler records what it received and answers from a queue. The quick
-start's `StubOpenAIHandler` returns one text reply; a version that can also
-answer with a tool call looks like this:
+The provider adapter obtains a provider-egress grant, a resolution grant, and a
+send grant for every attempt, and the scripted resolver and transport consume
+their own grants from the composition's grant store, so the test exercises the
+real security flow without a socket. A small helper scripts the replies and
+records the request bodies the transport received:
 
 ```csharp
-sealed class ScriptedOpenAIHandler(params string[] responseBodies) : HttpMessageHandler
+sealed class ScriptedOpenAINetwork
 {
-    readonly Queue<string> _responses = new(responseBodies);
+    static readonly NetworkDestination Chat =
+        new("https", new NormalizedHost("api.openai.com"), 443, new NetworkRoute("/v1/chat/completions"));
+
+    readonly IReadOnlyList<NetworkSendResult> _sends;
+
+    ScriptedOpenAINetwork(IReadOnlyList<NetworkSendResult> sends) => _sends = sends;
+
     public List<string> RequestBodies { get; } = [];
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    public static ScriptedOpenAINetwork Replies(params string[] responseBodies) => new(
+        [.. responseBodies.Select(static body => (NetworkSendResult) new NetworkResponseReceived(new ScriptedNetworkResponse(
+            new NetworkResponseMetadata(200, new NetworkHeaderSet([new NetworkHeader("Content-Type", "application/json")]), null),
+            Encoding.UTF8.GetBytes(body))))]);
+
+    public static ScriptedOpenAINetwork Unreachable() =>
+        new([new NetworkRequestFailed(NetworkFailureKind.ConnectionFailed, "The connection failed.", sideEffectCertain: false)]);
+
+    public void AddTo(IServiceCollection services)
     {
-        RequestBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
-        return new HttpResponseMessage(HttpStatusCode.OK)
+        services.RemoveAll<INetworkNameResolver>();
+        services.AddSingleton<INetworkNameResolver>(provider =>
         {
-            Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json"),
-        };
+            var time = provider.GetRequiredService<TimeProvider>();
+            var resolver = new ScriptedNetworkNameResolver(provider.GetRequiredService<ISecurityGrantStore>(), time);
+            var now = time.GetUtcNow();
+            var address = new NetworkResolved([new NetworkAddress(IPAddress.Parse("93.184.216.34"), now, now.AddHours(1))]);
+            resolver.Script(Chat, _sends.Select(_ => (NetworkResolutionResult) address));
+            return resolver;
+        });
+        services.RemoveAll<INetworkTransport>();
+        services.AddSingleton<INetworkTransport>(provider =>
+        {
+            var transport = new ScriptedNetworkTransport(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>());
+            transport.Script(Chat, _sends);
+            return new RecordingTransport(transport, RequestBodies);
+        });
     }
 
     public static string Text(string content) => $$"""
@@ -77,13 +109,28 @@ sealed class ScriptedOpenAIHandler(params string[] responseBodies) : HttpMessage
          "usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}
         """;
 }
+
+sealed class RecordingTransport(INetworkTransport inner, List<string> bodies) : INetworkTransport
+{
+    public ComponentId SecurityAudience => inner.SecurityAudience;
+
+    public ValueTask<NetworkSendResult> SendAsync(NetworkRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.Content is NetworkRequestContent content)
+        {
+            bodies.Add(Encoding.UTF8.GetString(content.Body.Span));
+        }
+
+        return inner.SendAsync(request, cancellationToken);
+    }
+}
 ```
 
 The adapter streams by default, which is why `TestEngine` sets
 `PreferStreaming = false`: the bodies above are plain Chat Completions
 responses. To exercise the streaming path instead, return `text/event-stream`
-frames the way the quick start's `StubOpenAIHandler` does; the adapter's own
-tests cover both paths at arbitrary fragmentation boundaries.
+frames from the scripted response; the adapter's own tests cover both paths at
+arbitrary fragmentation boundaries.
 
 ## Write the tests
 
@@ -93,7 +140,7 @@ The composition builds and validates without a network call:
 [Fact]
 public async Task Build_WhenComposed_ValidatesWithoutTouchingTheNetwork()
 {
-    await using var engine = TestEngine(new ThrowingHandler());
+    await using var engine = TestEngine(ScriptedOpenAINetwork.Replies("unused"));
 
     (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).ShouldHaveSingleItem();
 }
@@ -106,10 +153,10 @@ what the model was told:
 [Fact]
 public async Task SendAsync_WhenTheModelReadsAFile_ReturnsTheContentAndCorrelatesTheCall()
 {
-    var handler = new ScriptedOpenAIHandler(
-        ScriptedOpenAIHandler.ToolCall("call_1", "read_file", """{"path":"notes/todo.md"}"""),
-        ScriptedOpenAIHandler.Text("Your first item is 'write tests'."));
-    await using var engine = TestEngine(handler);
+    var network = ScriptedOpenAINetwork.Replies(
+        ScriptedOpenAINetwork.ToolCall("call_1", "read_file", """{"path":"notes/todo.md"}"""),
+        ScriptedOpenAINetwork.Text("Your first item is 'write tests'."));
+    await using var engine = TestEngine(network);
     engine.Services.GetRequiredService<InMemoryFileSystem>().Seed(new FileSystemPath("notes/todo.md"), "- write tests\n");
 
     var result = await engine.SendAsync("What is first on my list?", TestContext.Current.CancellationToken);
@@ -120,8 +167,8 @@ public async Task SendAsync_WhenTheModelReadsAFile_ReturnsTheContentAndCorrelate
     call.ToolName.ShouldBe("read_file");
     toolResult.CallId.ShouldBe(call.CallId);
     toolResult.Succeeded.ShouldBeTrue();
-    handler.RequestBodies[1].ShouldContain("write tests");          // the tool result reached the model
-    handler.RequestBodies[0].ShouldContain("\"name\":\"read_file\""); // the tool was offered
+    network.RequestBodies[1].ShouldContain("write tests");          // the tool result reached the model
+    network.RequestBodies[0].ShouldContain("\"name\":\"read_file\""); // the tool was offered
 }
 ```
 
@@ -131,15 +178,15 @@ Denial happens before the effect:
 [Fact]
 public async Task SendAsync_WhenPolicyDeniesWrites_LeavesTheFileSystemUntouched()
 {
-    var handler = new ScriptedOpenAIHandler(
-        ScriptedOpenAIHandler.ToolCall("call_1", "write_file", """{"path":"out.txt","content":"x","mode":"create_only"}"""),
-        ScriptedOpenAIHandler.Text("I was not allowed to write that."));
-    await using var engine = TestEngine(handler, b => b.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>());
+    var network = ScriptedOpenAINetwork.Replies(
+        ScriptedOpenAINetwork.ToolCall("call_1", "write_file", """{"path":"out.txt","content":"x","mode":"create_only"}"""),
+        ScriptedOpenAINetwork.Text("I was not allowed to write that."));
+    await using var engine = TestEngine(network, b => b.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>());
 
     var result = await engine.SendAsync("Create out.txt", TestContext.Current.CancellationToken);
 
     result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem().Succeeded.ShouldBeFalse();
-    handler.RequestBodies[1].ShouldContain("may only read");        // the model saw the safe denial message
+    network.RequestBodies[1].ShouldContain("may only read");        // the model saw the safe denial message
 }
 ```
 
@@ -149,7 +196,7 @@ Failures carry no secrets:
 [Fact]
 public async Task AskAsync_WhenTheProviderIsUnreachable_ThrowsWithoutTheKey()
 {
-    await using var engine = TestEngine(new ThrowingHandler());
+    await using var engine = TestEngine(ScriptedOpenAINetwork.Unreachable());
 
     var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hello", TestContext.Current.CancellationToken));
 
@@ -163,8 +210,9 @@ public async Task AskAsync_WhenTheProviderIsUnreachable_ThrowsWithoutTheKey()
 - **Processes.** `AgentKit.Processes.Scripted` (`AddScriptedProcesses`) stands
   in for the operating-system runner with deterministic scenarios, so a test of
   the `command` tool never starts a real process.
-- **Network.** `AgentKit.Network.InMemory` (`AddAgentNetworkInMemory`) provides
-  a scripted resolver and transport for `web_fetch`.
+- **Network.** `AgentKit.Network.InMemory` provides the scripted resolver and
+  transport used above; `AddAgentNetworkInMemory` registers them for `web_fetch`
+  and provider tests that script destinations after the engine is built.
 - **Language services.** `AgentKit.LanguageServices.Scripted` backs the
   `language` tool with canned results.
 - **Sessions.** The in-memory session store from the local defaults is already
@@ -173,9 +221,9 @@ public async Task AskAsync_WhenTheProviderIsUnreachable_ThrowsWithoutTheKey()
 
 ## What the framework guarantees
 
-- **Unit tests never need credentials.** Every provider adapter takes its
-  `HttpClient` from the container; every host boundary has an in-memory or
-  scripted leaf.
+- **Unit tests never need credentials.** Every provider adapter sends through
+  the container's `INetworkTransport` under per-attempt grants; every host
+  boundary has an in-memory or scripted leaf.
 - **Events are the observable contract.** Text, tool calls, tool results, usage,
   and completion arrive as typed events in commit order, so tests assert on
   behavior rather than on internals.

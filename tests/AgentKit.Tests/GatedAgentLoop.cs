@@ -31,6 +31,15 @@ internal sealed class GatedAgentLoop: IAgentLoop
     /// <summary>Gets or sets a factory that replaces the completed outcome, for settlement tests.</summary>
     public Func<AgentLoopRunRequest, AgentRunOutcome>? OutcomeOverride { get; init; }
 
+    /// <summary>Gets or sets a factory that replaces the assistant reply text, or <see langword="null"/> to reply <c>ok</c>.</summary>
+    public Func<AgentLoopRunRequest, string>? ReplyText { get; init; }
+
+    /// <summary>Gets or sets a factory that supplies the run usage, or <see langword="null"/> to report none.</summary>
+    public Func<AgentLoopRunRequest, RunUsage>? UsageFactory { get; init; }
+
+    /// <summary>Gets or sets a callback awaited on entry, before the gate, so a test can count and pace concurrent runs.</summary>
+    public Func<AgentLoopRunRequest, CancellationToken, Task>? OnEntered { get; set; }
+
     /// <summary>
     /// When <see langword="true"/>, polls durable abort through the session coordinator after the gate releases,
     /// mirroring <c>DefaultAgentLoop</c> cancel boundaries for facade tests.
@@ -55,6 +64,11 @@ internal sealed class GatedAgentLoop: IAgentLoop
         _ = Entered.TrySetResult();
         try
         {
+            if (OnEntered is { } onEntered)
+            {
+                await onEntered(request, cancellationToken);
+            }
+
             if (request.Observer is { } observer)
             {
                 await observer.OnEventAsync(
@@ -82,7 +96,7 @@ internal sealed class GatedAgentLoop: IAgentLoop
             var assistant = new AssistantMessage(
                 new MessageId(Guid.NewGuid()), request.AgentId, request.SessionId, null, request.BranchId, request.RunId, null,
                 DateTimeOffset.UnixEpoch, MessageState.Complete,
-                [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+                [new TextPart(ReplyText?.Invoke(request) ?? "ok", TextSemantics.Plain, ExtensionData.Empty)],
                 new AssistantResponseMetadata(
                     new ModelRequestId(Guid.NewGuid()),
                     new ProviderResponseIdentity(new ProviderId("test"), null, new ApiFamilyId("test"), new ModelId("m"), new ModelId("m"), null, null, null),
@@ -96,7 +110,7 @@ internal sealed class GatedAgentLoop: IAgentLoop
             return new AgentLoopResult(
                 request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome,
                 outcome is RunSucceeded ? [assistant] : [], finalVersion, null,
-                new RunUsage(request.RunId, []), new RunSettlementCompleted());
+                UsageFactory?.Invoke(request) ?? new RunUsage(request.RunId, []), new RunSettlementCompleted());
         }
         finally
         {

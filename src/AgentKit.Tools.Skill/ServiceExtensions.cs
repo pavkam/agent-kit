@@ -21,6 +21,7 @@ public static class ServiceExtensions
             ComponentKey<IContextAssembler>? assemblerKey = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             assemblerKey ??= AgentContextComponentDefaults.AssemblerKey;
             var options = services.AddOptions<SkillToolOptions>()
                 .Validate(static value => value.MaximumBytes > 0 && value.MaximumCharacters > 0 && value.MaximumNameCharacters > 0 && value.MaximumDescriptionCharacters > 0, "Skill bounds must be positive.")

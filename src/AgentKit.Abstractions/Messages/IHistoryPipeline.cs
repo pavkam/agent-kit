@@ -5,8 +5,8 @@ namespace AgentKit;
 
 /// <summary>Repairs, validates, and projects conversation history for one model request.</summary>
 /// <remarks>
-/// The first-party implementation performs deterministic in-memory repair and validation. A future overload may
-/// accept session execution capabilities and hook dispatch context for durable reads and lifecycle observation.
+/// The first-party implementation performs deterministic in-memory repair and validation over already-loaded
+/// messages; it performs no durable read and dispatches no hook.
 /// </remarks>
 public interface IHistoryPipeline
 {

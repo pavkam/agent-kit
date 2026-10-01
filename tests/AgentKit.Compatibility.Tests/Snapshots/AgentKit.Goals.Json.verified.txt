@@ -1,0 +1,59 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Goals.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Goals.Json
+{
+    public sealed class JsonGoalStore : AgentKit.IGoalStore, System.IDisposable
+    {
+        public JsonGoalStore(AgentKit.Goals.Json.JsonGoalStoreTarget target, AgentKit.Goals.Json.JsonGoalStoreSettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.Json.JsonGoalStore>? logger = null) { }
+        public AgentKit.GoalStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalCreateResult> CreateAsync(AgentKit.GoalCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalLoadResult> LoadAsync(AgentKit.GoalLoadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadChildrenAsync(AgentKit.GoalChildrenRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadIntentsAsync(AgentKit.GoalIntentScanRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalTransitionResult> TransitionAsync(AgentKit.GoalTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonGoalStoreInstanceId : System.IEquatable<AgentKit.Goals.Json.JsonGoalStoreInstanceId>
+    {
+        public JsonGoalStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonGoalStoreOptions
+    {
+        public JsonGoalStoreOptions() { }
+        public System.Collections.Generic.List<AgentKit.ComponentId> AuthorizedIntentScanners { get; }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; set; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonGoalStoreSettings : System.IEquatable<AgentKit.Goals.Json.JsonGoalStoreSettings>
+    {
+        public JsonGoalStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, System.Collections.Generic.IEnumerable<AgentKit.ComponentId> authorizedIntentScanners, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ComponentId> AuthorizedIntentScanners { get; }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Goals.Json.JsonGoalStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonGoalStoreTarget : System.IEquatable<AgentKit.Goals.Json.JsonGoalStoreTarget>
+    {
+        public JsonGoalStoreTarget(string directoryPath, AgentKit.Goals.Json.JsonGoalStoreInstanceId expectedStoreInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Goals.Json.JsonGoalStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonGoalStore(AgentKit.GoalStoreKey key, AgentKit.Goals.Json.JsonGoalStoreTarget target, System.Action<AgentKit.Goals.Json.JsonGoalStoreOptions>? configure = null) { }
+        }
+    }
+}

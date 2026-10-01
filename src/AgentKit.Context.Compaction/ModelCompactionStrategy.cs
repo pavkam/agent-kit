@@ -9,7 +9,15 @@ using Microsoft.Extensions.Options;
 public sealed class ModelCompactionStrategy: ICompactionStrategy
 {
     /// <summary>The strategy key this implementation records as provenance.</summary>
-    public static readonly CompactionStrategyKey StrategyKey = new("agentkit.model-summary.v1");
+    public static readonly CompactionStrategyKey StrategyKey = CompactionStrategyKeys.ModelSummary;
+
+    /// <summary>The descriptor every instance reports; registration reads it without constructing a strategy.</summary>
+    internal static readonly CompactionStrategyDescriptor DefaultDescriptor = new(
+        StrategyKey,
+        new CompactionStrategyVersion("1"),
+        CompactionStrategyCapabilities.SemanticSummary,
+        deterministic: false,
+        summaryGeneratorKey: ModelBackedSummaryGenerator.GeneratorKey);
 
     /// <summary>Truncation marker shared with the extractive strategy.</summary>
     public const string TruncationMarker = ExtractiveCompactionStrategy.TruncationMarker;
@@ -53,12 +61,7 @@ public sealed class ModelCompactionStrategy: ICompactionStrategy
     }
 
     /// <inheritdoc/>
-    public CompactionStrategyDescriptor Descriptor { get; } = new(
-        StrategyKey,
-        new CompactionStrategyVersion("1"),
-        CompactionStrategyCapabilities.SemanticSummary,
-        deterministic: false,
-        summaryGeneratorKey: ModelBackedSummaryGenerator.GeneratorKey);
+    public CompactionStrategyDescriptor Descriptor => DefaultDescriptor;
 
     /// <inheritdoc/>
     public async Task<CompactionStrategyResult> ProduceAsync(

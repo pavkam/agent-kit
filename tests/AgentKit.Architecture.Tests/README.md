@@ -12,6 +12,19 @@ runtime constructor/factory dependency graph, or XML documentation inside other
 projects. Those boundaries require separate architecture decisions and checks;
 this suite does not turn current provider edges into exceptions.
 
+## No-compatibility guard
+
+`ObsoleteSurfaceTests` enforces the `AGENTS.md` rule that AgentKit keeps no
+backwards-compatibility surface. It scans every `.cs` and `.verified.txt` file
+below `src`, `tests`, and `examples` (excluding its own `ObsoleteSurface*`
+files) for `[Obsolete]` attributes, `Legacy[A-Z]` identifiers,
+`#pragma warning disable` of `CS0612`/`CS0618`, and
+`compatibility-created`/`unpinned` remarks. `ObsoleteSurfaceBaseline.txt` is
+empty and may only shrink; any new occurrence fails the guard.
+`ObsoleteSurfaceAllowList.txt` lists occurrences that describe an external or
+domain fact, each with a written reason, and an entry that no longer matches
+fails too. Neither file may be loosened to make a change pass.
+
 ## Run this project
 
 From the repository root:

@@ -5,8 +5,6 @@ namespace AgentKit.Tools.List;
 
 using AgentKit.Tools;
 
-using Microsoft.Extensions.DependencyInjection;
-
 /// <summary>Lists one deterministic, snapshot-bound page of child paths from an authorized directory.</summary>
 public sealed class ListDirectoryTool: IToolInvoker
 {
@@ -57,8 +55,9 @@ public sealed class ListDirectoryTool: IToolInvoker
         [new ToolsetSourceSelection(ApplicationToolSources.Default)],
         [new ToolAliasAssignment(new ToolAlias("list_directory"), new ToolIdentity(Id, Descriptor.Version))]);
 
+    private static readonly ToolLeafLogEvents _logEvents = new(ListDirectoryToolLog.Completed, ListDirectoryToolLog.Cancelled, ListDirectoryToolLog.Faulted);
+    private readonly ILogger<ListDirectoryTool> _logger;
     private readonly IFileSystemSelector _fileSystemSelector;
-    private readonly IServiceProvider _serviceProvider;
     private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -67,57 +66,59 @@ public sealed class ListDirectoryTool: IToolInvoker
 
     /// <summary>Initializes a directory-listing tool.</summary>
     /// <param name="fileSystemSelector">Selects the keyed directory-enumeration profile.</param>
-    /// <param name="serviceProvider">Resolves keyed legacy paging on the selected profile.</param>
     /// <param name="pathNormalizer">Normalizes model-supplied paths before authorization.</param>
     /// <param name="authoritySelector">The security authority selector.</param>
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated page and profile options.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentException"><see cref="ListDirectoryToolOptions.HostRootPath"/> is not configured.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured page bound is not positive or the default exceeds the maximum.</exception>
     public ListDirectoryTool(
         IFileSystemSelector fileSystemSelector,
-        IServiceProvider serviceProvider,
         IFilePathNormalizer pathNormalizer,
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<ListDirectoryToolOptions> options)
+        IOptions<ListDirectoryToolOptions> options,
+        ILogger<ListDirectoryTool> logger)
     {
         ArgumentNullException.ThrowIfNull(fileSystemSelector);
-        ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(pathNormalizer);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.DefaultPageEntries);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumPageEntries);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             options.Value.DefaultPageEntries, options.Value.MaximumPageEntries);
         _fileSystemSelector = fileSystemSelector;
-        _serviceProvider = serviceProvider;
         _pathNormalizer = pathNormalizer;
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
-            ToolInvocationContext context,
-            CancellationToken cancellationToken = default)
+    public ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolInvocationContext context,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken)
+    {
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
-        var result = await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
@@ -132,7 +133,7 @@ public sealed class ListDirectoryTool: IToolInvoker
         }
 
         var normalized = _pathNormalizer.Normalize(
-            new FilePathInput(_options.RootId, pathText ?? string.Empty),
+            new FilePathInput(_options.RootId, string.IsNullOrWhiteSpace(pathText) ? "." : pathText),
             _options.PathPolicy);
         if (normalized is not FilePathNormalizationSuccess normalizedPath)
         {
@@ -159,16 +160,12 @@ public sealed class ListDirectoryTool: IToolInvoker
                 SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        if (selection is not FileSystemDirectoryReaderSelected)
+        if (selection is not FileSystemDirectoryReaderSelected readerSelected)
         {
             return Failed("The file-system profile could not resolve directory enumeration.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-#pragma warning disable CS0618 // Legacy paging reader until ListDirectoryTool adopts spec IDirectoryReader paging.
-        var directoryReader = _serviceProvider.GetRequiredKeyedService<ILegacyDirectoryReader>(_options.ProfileKey.Value);
-#pragma warning restore CS0618
-
-        FileSystemPath? legacyPath = string.IsNullOrEmpty(normalizedPath.Path.Value)
+        FileSystemPath? directoryPath = normalizedPath.Path.Value is "."
             ? null
             : new FileSystemPath(normalizedPath.Path.Value);
 
@@ -185,11 +182,11 @@ public sealed class ListDirectoryTool: IToolInvoker
                 callId,
                 authorization.Identity,
                 authorization,
-                directoryReader.SecurityAudience,
+                readerSelected.DirectoryReader.SecurityAudience,
                 SecurityOperationKind.DirectoryRead,
                 SecurityEffect.Observe,
-                [DirectorySecurityBinding.Resource(legacyPath)],
-                DirectorySecurityBinding.Fingerprint(legacyPath, maximumEntries, cursor),
+                [DirectorySecurityBinding.Resource(directoryPath)],
+                DirectorySecurityBinding.Fingerprint(directoryPath),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
             hooks: null,
             cancellationToken).ConfigureAwait(false);
@@ -203,29 +200,77 @@ public sealed class ListDirectoryTool: IToolInvoker
             return Failed("The security authority returned an unsupported decision.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        var result = await directoryReader.EnumerateAsync(
-            new DirectoryEnumerationRequest(legacyPath, maximumEntries, cursor, allowed.Grant),
-            cancellationToken).ConfigureAwait(false);
-        if (result.Status != DirectoryEnumerationStatus.Success)
+        var operation = new AuthorizedDirectoryEnumeration(
+            FileHostTargetBinding.Resolve(_options.RootId, normalizedPath.Path, _options.HostRootPath),
+            allowed.Grant);
+        var childPaths = new List<string>();
+        try
         {
-            return Failed(result.SafeMessage!, result.Status.ToString(), result.Status switch { DirectoryEnumerationStatus.Denied => ToolTerminalStatus.Denied, DirectoryEnumerationStatus.Success or DirectoryEnumerationStatus.NotFound or DirectoryEnumerationStatus.LimitExceeded or DirectoryEnumerationStatus.SnapshotChanged or DirectoryEnumerationStatus.Failed => ToolTerminalStatus.InvocationFailed, _ => ToolTerminalStatus.InvocationFailed }, result.Status is DirectoryEnumerationStatus.Denied or DirectoryEnumerationStatus.NotFound ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.Unknown);
+            await foreach (var entry in readerSelected.DirectoryReader.EnumerateAsync(operation, cancellationToken).ConfigureAwait(false))
+            {
+                childPaths.Add(directoryPath is null ? entry.Name.Value : $"{directoryPath.Value.Value}/{entry.Name.Value}");
+            }
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Failed(exception.Message, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+        catch (DirectoryNotFoundException exception)
+        {
+            return Failed(exception.Message, "NotFound", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
+        }
+        catch (IOException exception)
+        {
+            return Failed(exception.Message, "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown);
         }
 
+        // The reader contract orders entries by ordinal name; page identity must not depend on that being honoured.
+        childPaths.Sort(StringComparer.Ordinal);
+        var snapshot = SnapshotFingerprint(childPaths);
+        var start = cursor?.NextIndex ?? 0;
+        if (cursor is not null && (cursor.SnapshotFingerprint != snapshot || start > childPaths.Count))
+        {
+            return Failed(
+                "The directory changed after the supplied continuation was issued.",
+                "SnapshotChanged",
+                ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.Unknown);
+        }
+
+        var page = childPaths.Skip(start).Take(maximumEntries).ToArray();
+        var next = start + page.Length;
         var json = JsonSerializer.Serialize(new
         {
-            entries = result.Entries.Select(static entry => entry.Path.Value),
-            snapshot = result.SnapshotFingerprint?.Value,
-            continuation = result.Continuation is null
-                ? null
-                : new
+            entries = page,
+            snapshot = snapshot.Value,
+            continuation = next < childPaths.Count
+                ? new
                 {
-                    snapshot = result.Continuation.SnapshotFingerprint.Value,
-                    next_index = result.Continuation.NextIndex,
-                },
+                    snapshot = snapshot.Value,
+                    next_index = next,
+                }
+                : null,
         });
         return new ToolInvocationResult(
             new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
             [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
+    }
+
+    /// <summary>Computes the exact fingerprint of one complete ordered listing so a continuation can detect change.</summary>
+    /// <param name="orderedPaths">The complete listing in ordinal order.</param>
+    /// <returns>An algorithm-qualified SHA-256 fingerprint over each length-prefixed UTF-8 path.</returns>
+    private static ContentHash SnapshotFingerprint(IEnumerable<string> orderedPaths)
+    {
+        using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(
+            System.Security.Cryptography.HashAlgorithmName.SHA256);
+        foreach (var path in orderedPaths)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(path);
+            hash.AppendData(BitConverter.GetBytes(bytes.Length));
+            hash.AppendData(bytes);
+        }
+
+        return new ContentHash($"sha256:{Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()}");
     }
 
     private bool TryParse(

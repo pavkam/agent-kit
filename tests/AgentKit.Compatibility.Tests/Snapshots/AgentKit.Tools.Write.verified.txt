@@ -13,7 +13,7 @@ namespace AgentKit.Tools.Write
     public sealed class WriteFileTool : AgentKit.IToolInvoker
     {
         public static readonly AgentKit.ToolId Id;
-        public WriteFileTool(AgentKit.IFileSystemSelector fileSystemSelector, AgentKit.IFilePathNormalizer pathNormalizer, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Write.WriteFileToolOptions> options) { }
+        public WriteFileTool(AgentKit.IFileSystemSelector fileSystemSelector, AgentKit.IFilePathNormalizer pathNormalizer, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Write.WriteFileToolOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.Write.WriteFileTool> logger) { }
         public static AgentKit.ToolsetPublication DefaultToolset { get; }
         public static AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationContext context, System.Threading.CancellationToken cancellationToken = default) { }
@@ -25,8 +25,6 @@ namespace AgentKit.Tools.Write
         public AgentKit.FilePathPolicy PathPolicy { get; set; }
         public AgentKit.FileSystemProfileKey ProfileKey { get; set; }
         public AgentKit.FileRootId RootId { get; set; }
-        [System.Obsolete("Authorization uses IFileWriter.SecurityAudience from the selected profile.")]
-        public AgentKit.ComponentId SecurityAudience { get; set; }
     }
     public sealed class WriteFileToolPresentationFormatter : AgentKit.IToolPresentationFormatter
     {

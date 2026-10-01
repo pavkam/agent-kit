@@ -8,34 +8,31 @@ public sealed record ArtifactStoreDeleteRequest
 {
     /// <summary>Initializes an exact backend deletion request.</summary>
     /// <param name="reference">The exact portable reference.</param>
-    /// <param name="scope">The exact authorization scope.</param>
-    /// <param name="identity">The authenticated identity.</param>
-    /// <param name="grant">The single-use deletion grant.</param>
+    /// <param name="grant">The single-use grant whose captured authorization carries the exact scope and identity of the operation.</param>
     /// <param name="idempotencyKey">The caller-owned replay key.</param>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="idempotencyKey"/> is blank.</exception>
-    public ArtifactStoreDeleteRequest(ArtifactReference reference, SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityGrant grant, IdempotencyKey idempotencyKey)
+    /// <exception cref="ArgumentException"><paramref name="idempotencyKey"/> is blank or <paramref name="grant"/> carries no captured authorization.</exception>
+    public ArtifactStoreDeleteRequest(ArtifactReference reference, SecurityGrant grant, IdempotencyKey idempotencyKey)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        ArgumentNullException.ThrowIfNull(scope);
-        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
-        Reference = reference;
-        Scope = scope;
-        Identity = identity;
-        Grant = grant;
-        IdempotencyKey = idempotencyKey;
+        Reference = reference; Grant = grant; IdempotencyKey = idempotencyKey;
     }
 
     /// <summary>Gets the exact portable reference.</summary>
     public ArtifactReference Reference { get; }
-    /// <summary>Gets the exact authorization scope.</summary>
-    public SecurityAuthorizationScope Scope { get; }
-    /// <summary>Gets the authenticated identity.</summary>
-    public ExecutionIdentity Identity { get; }
+
     /// <summary>Gets the single-use deletion grant.</summary>
     public SecurityGrant Grant { get; }
+
+    /// <summary>Gets the exact security scope bound by the grant.</summary>
+    public SecurityAuthorizationScope Scope => Grant.Scope;
+
+    /// <summary>Gets the authenticated identity bound by the grant.</summary>
+    public ExecutionIdentity Identity => Grant.Identity;
+
     /// <summary>Gets the caller-owned replay key.</summary>
     public IdempotencyKey IdempotencyKey { get; }
 }

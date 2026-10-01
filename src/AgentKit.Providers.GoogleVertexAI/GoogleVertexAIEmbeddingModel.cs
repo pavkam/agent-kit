@@ -5,6 +5,7 @@ namespace AgentKit.Providers.GoogleVertexAI;
 
 using System.Net.Http;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -20,7 +21,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
     private readonly IGoogleVertexAIEmbeddingRequestTranslator _translator;
     private readonly IGoogleVertexAIEmbeddingResponseParser _responseParser;
     private readonly IProviderCredentialSource _credentials;
-    private readonly HttpClient _httpClient;
+    private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GoogleVertexAIEmbeddingModel"/> class.</summary>
@@ -29,7 +30,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
     /// <param name="translator">Translates provider-neutral requests into Vertex AI predict request bodies.</param>
     /// <param name="responseParser">Parses Vertex AI predict responses into normalized results.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public GoogleVertexAIEmbeddingModel(
@@ -38,7 +39,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
         IGoogleVertexAIEmbeddingRequestTranslator translator,
         IGoogleVertexAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -46,7 +47,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         Alias = descriptor.Alias;
@@ -55,7 +56,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
         _translator = translator;
         _responseParser = responseParser;
         _credentials = credentials;
-        _httpClient = httpClient;
+        _egress = egress;
         _timeProvider = timeProvider;
     }
 
@@ -145,42 +146,19 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-        HttpResponseMessage response;
-        try
+        var sent = await _egress
+            .SendAsync(ProviderEgressRequest.ForEmbedding(_descriptor, request, httpRequest), cancellationToken)
+            .ConfigureAwait(false);
+        if (sent is ProviderEgressRefused refused)
         {
-            response = await _httpClient
-                .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return Cancel(_descriptor.ProviderId);
-        }
-        catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Timeout,
-                "The request did not complete before its deadline.",
-                exception);
-        }
-        catch (OperationCanceledException exception)
-        {
-            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
-            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
-            return FailWithKind(
-                ProviderFailureKind.Timeout,
-                "The transport timed out before the provider responded.",
-                exception);
-        }
-        catch (HttpRequestException exception)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Unavailable,
-                "The provider could not be reached.",
-                exception);
+            return refused.Failure.Kind is ProviderFailureKind.Cancellation
+                ? new EmbeddingAttemptCancelled(refused.Failure)
+                : new EmbeddingAttemptFailed(refused.Failure);
         }
 
-        using (response)
+        var response = ((ProviderEgressSent) sent).Response;
+
+        await using (response.ConfigureAwait(false))
         {
             if (!response.IsSuccessStatusCode)
             {
@@ -242,8 +220,8 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
             {
                 // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
                 return FailWithKind(
-                    ProviderFailureKind.Unavailable,
-                    "The connection failed while the response body was being received.",
+                    ProviderEgressBodyFault.Classify(exception, out var safeMessage),
+                    safeMessage,
                     exception);
             }
         }

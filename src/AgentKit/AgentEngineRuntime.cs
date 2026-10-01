@@ -41,10 +41,12 @@ internal sealed class AgentEngineRuntime
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
     private readonly IIdentifierGenerator<InputId> _inputIds;
-    private readonly AgentRunScopeFactory _scopes;
+    private readonly IAgentRunScopeFactory _scopes;
     private readonly IDurableExecutionCoordinator? _durableExecution;
     private readonly IDurabilityProfileCatalog? _durabilityProfiles;
     private readonly DurableBoundaryRegistry _durableInvocations;
+    private readonly IRequiredRunEventSinkCoordinator? _requiredSinks;
+    private readonly AsyncLocal<bool> _disposingOwnedProvider = new();
     private readonly InProcessSessionGate _gate = new();
     private readonly ActiveRunRegistry _activeRuns = new();
     private readonly ILogger<AgentEngine> _logger;
@@ -85,7 +87,7 @@ internal sealed class AgentEngineRuntime
         _turnIds = services.GetRequiredService<IIdentifierGenerator<TurnId>>();
         _admissionIds = services.GetRequiredService<IIdentifierGenerator<AdmissionId>>();
         _inputIds = services.GetRequiredService<IIdentifierGenerator<InputId>>();
-        _scopes = new AgentRunScopeFactory(services.GetRequiredService<IServiceScopeFactory>());
+        _scopes = services.GetRequiredService<IAgentRunScopeFactory>();
 
         // Durability is optional composition: the coordinator and profile catalog are absent unless an application
         // composed a durability runtime, and a registry is always needed so the admission boundary can publish its
@@ -93,6 +95,12 @@ internal sealed class AgentEngineRuntime
         _durableExecution = services.GetService<IDurableExecutionCoordinator>();
         _durabilityProfiles = services.GetService<IDurabilityProfileCatalog>();
         _durableInvocations = services.GetService<DurableBoundaryRegistry>() ?? new DurableBoundaryRegistry();
+
+        // Shutdown drains required sinks, but shutdown can run while the provider is itself being disposed (the
+        // engine is a provider singleton, so disposing a provider disposes the engine). Capture the coordinator
+        // here, while the provider is live, instead of resolving it from a container that may already be tearing
+        // down; construction order also guarantees the engine is disposed before the coordinator it drains.
+        _requiredSinks = services.GetService<IRequiredRunEventSinkCoordinator>();
         ComponentRegistrations = validatedComposition.ComponentRegistrations;
         _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
             static publication => (
@@ -181,8 +189,7 @@ internal sealed class AgentEngineRuntime
         }
 
         await using var scope = Services.CreateAsyncScope();
-        var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-        var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
+        var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, definition.Components.Loop.Value);
 
         SecurityAuthorizationContext authorization;
         try
@@ -259,8 +266,7 @@ internal sealed class AgentEngineRuntime
             var (catalogVersion, publication) = await ValidatePinnedDefinitionAsync(definition, activity: null, cancellationToken)
                 .ConfigureAwait(false);
             await using var scope = Services.CreateAsyncScope();
-            var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-            var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, loopKey.Value);
+            var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(scope.ServiceProvider, definition.Components.Loop.Value);
             var descriptor = await OpenSessionAsync(
                 definition,
                 catalogVersion,
@@ -278,26 +284,42 @@ internal sealed class AgentEngineRuntime
         }
     }
 
-    /// <summary>Releases the standalone provider owned by this runtime. Disposal is idempotent.</summary>
+    /// <summary>Drains required run-event sinks, then releases the standalone provider owned by this runtime. Disposal is idempotent.</summary>
     /// <returns>The shared disposal operation.</returns>
+    /// <remarks>
+    /// The engine is itself a singleton of the provider this runtime may own, so disposing that provider calls back
+    /// into this method while the owned provider's disposal is still awaiting it. That re-entrant call returns
+    /// immediately: waiting for the disposal it is part of would never complete, and the work it would repeat is
+    /// already underway. Every other caller shares the one disposal task.
+    /// </remarks>
     internal ValueTask DisposeAsync()
     {
+        if (_disposingOwnedProvider.Value)
+        {
+            return ValueTask.CompletedTask;
+        }
+
         lock (_disposeLock)
         {
             _disposed = true;
-            _disposeTask ??= DisposeOwnedProviderWithDrainAsync(_ownedProvider);
+            _disposeTask ??= DisposeWithDrainAsync();
             return new ValueTask(_disposeTask);
         }
     }
 
-    private async Task DisposeOwnedProviderWithDrainAsync(IAsyncDisposable? ownedProvider)
+    private async Task DisposeWithDrainAsync()
     {
-        if (Services.GetService<IRequiredRunEventSinkCoordinator>() is { } coordinator)
+        if (_requiredSinks is not null)
         {
-            await coordinator.DrainAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+            var drain = await _requiredSinks.DrainAsync(CancellationToken.None).ConfigureAwait(false);
+            EngineLifecycleLog.RequiredSinkDrainReported(_logger, drain);
         }
 
-        await DisposeOwnedProviderAsync(ownedProvider).ConfigureAwait(false);
+        if (_ownedProvider is not null)
+        {
+            _disposingOwnedProvider.Value = true;
+            await _ownedProvider.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -400,7 +422,7 @@ internal sealed class AgentEngineRuntime
                 new ResolvedAgentDefinition(definition, catalogVersion),
                 async (provider, token) =>
                 {
-                    var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+                    var loopKey = definition.Components.Loop.Value;
                     var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(provider, loopKey);
                     _ = await OpenSessionAsync(
                         definition, catalogVersion, publication.SecurityProfile, publication.SessionProfile,
@@ -478,10 +500,14 @@ internal sealed class AgentEngineRuntime
 
         await using var scope = Services.CreateAsyncScope();
         var provider = scope.ServiceProvider;
-        var compactor = provider.GetService<ICompactor>()
-            ?? throw AdmissionRejected(definition, catalogVersion, "No compactor is composed for this engine.");
+        var compaction = DefaultAgentRunPlanCompiler.ResolveCompaction(provider, definition);
+        if (compaction.Compactor is null && !compaction.Disabled)
+        {
+            throw AdmissionRejected(definition, catalogVersion, "No compactor is composed for this engine.");
+        }
+
         var compactionIds = provider.GetRequiredService<IIdentifierGenerator<CompactionId>>();
-        var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+        var loopKey = definition.Components.Loop.Value;
         var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(provider, loopKey);
         var operationId = _operationIds.Create();
         var correlation = new BeforeRunOperationCorrelation(operationId, admissionId: null);
@@ -490,22 +516,33 @@ internal sealed class AgentEngineRuntime
             .ConfigureAwait(false);
         var sessionContext = new SessionOperationContext(
             definition.Id, sessionId, executionLaneId: null, correlation, identity, authorization);
+        // Only the pinned snapshot's version and upper sequence are needed, so the smallest page suffices; it also
+        // stays within every store's configured maximum page size.
         var page = await sessions.ReadAsync(
-            new SessionReadRequest(sessionContext, branchId, new SessionSequence(0), pageSize: 512),
+            new SessionReadRequest(sessionContext, branchId, new SessionSequence(0), pageSize: 1),
             publication.SessionProfile,
             cancellationToken).ConfigureAwait(false);
-        if (page is not SessionPage branchPage || branchPage.Snapshot is not { } snapshot)
+        if (page is not SessionPage branchPage)
         {
             throw AdmissionRejected(definition, catalogVersion, "The session branch could not be read for compaction maintenance.");
         }
 
+        var snapshot = branchPage.Snapshot;
         var contextEpoch = definition.Revision.Value;
         var now = TimeProvider.GetUtcNow();
         var compactionId = compactionIds.Create();
-        return await compactor.CompactAsync(
+        var compactionContext = new CompactionOperationContext(
+            compactionId, definition.Id, sessionId, correlation, identity, authorization, publication.SessionProfile);
+        return compaction.Compactor is not { } compactor
+            ? new CompactionRejected(
+                compactionContext,
+                new CompactionRejection(
+                    CompactionRejectionKind.Disabled,
+                    "The agent's compaction profile disables compaction.",
+                    ExtensionData.Empty))
+            : await compactor.CompactAsync(
             new CompactionRequest(
-                new CompactionOperationContext(
-                    compactionId, definition.Id, sessionId, correlation, identity, authorization, publication.SessionProfile),
+                compactionContext,
                 branchId,
                 snapshot.Version,
                 snapshot.UpperSequence,
@@ -519,7 +556,10 @@ internal sealed class AgentEngineRuntime
                 minimumRetainedEntries: 1,
                 now,
                 now + definition.RunDefaults.AttemptTimeout,
-                ExtensionData.Empty),
+                ExtensionData.Empty)
+            {
+                Policy = compaction.Policy,
+            },
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -909,7 +949,7 @@ internal sealed class AgentEngineRuntime
                 new ResolvedAgentDefinition(definition, catalogVersion),
                 async (provider, token) =>
                 {
-                    var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+                    var loopKey = definition.Components.Loop.Value;
                     var sessions = DefaultAgentRunPlanCompiler.ResolveKeyedOrShared<ISessionCoordinator>(provider, loopKey);
                     opened = requestedSessionId is { } sessionId
                         ? await OpenSessionAsync(definition, catalogVersion, security, sessionProfile, sessions, sessionId, identity, token).ConfigureAwait(false)
@@ -988,7 +1028,7 @@ internal sealed class AgentEngineRuntime
                             beforeRunContext, tip.Cursor, tip.Version, _entryIds.Create(), capability.Profile.Reference,
                             new RunConfigurationReference(
                                 plan.Authorization.ConfigurationVersion,
-                                RunPolicyVersioning.Compute(maxTurns, attemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey),
+                                RunPolicyVersioning.Compute(maxTurns, attemptTimeout, definition.Components.ContinuationPolicy),
                                 capability.Profile.ConfigurationFingerprint),
                             TimeProvider.GetUtcNow(),
                             new IdempotencyKey($"agentkit.engine:{sessionId}:lane:{laneId}")),
@@ -1010,7 +1050,7 @@ internal sealed class AgentEngineRuntime
             var runId = _runIds.Create();
             gate.AssignRun(runId);
             lease.BindRunIdentity(new RunScopeIdentity(definition.Id, sessionId, descriptor.ConversationId, runId));
-            var runServices = ResolveRunScopedServices(lease, definition, plan.Services);
+            var runServices = BindRunScopedPublisher(lease, definition, plan.Services);
             if (streaming && runServices.Publisher is not ISubscribableOutputPublisher)
             {
                 return FailBeforeAcceptance<TOutput>(
@@ -1022,7 +1062,7 @@ internal sealed class AgentEngineRuntime
             var effectiveInput = capturedInput ?? throw new InvalidOperationException("Admission did not capture input.");
 
             var now = TimeProvider.GetUtcNow();
-            var policyVersion = RunPolicyVersioning.Compute(maxTurns, attemptTimeout, AgentLoopComponentDefaults.ContinuationPolicyKey);
+            var policyVersion = RunPolicyVersioning.Compute(maxTurns, attemptTimeout, definition.Components.ContinuationPolicy);
             var configuration = new RunConfigurationReference(
                 plan.Authorization.ConfigurationVersion, policyVersion, capability.Profile.ConfigurationFingerprint);
             var admissionId = _admissionIds.Create();
@@ -1577,18 +1617,9 @@ internal sealed class AgentEngineRuntime
         SecurityAuthorizationContext authorization,
         int maxTurns,
         TimeSpan attemptTimeout) =>
-        pinnedPublication.Configuration is { } configuration
-            ? new AgentLoopRunRequest(
-                definition, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
-                configuration, maxTurns, attemptTimeout, definition.Extensions)
-            : new AgentLoopRunRequest(
-                definition.Id, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
-                definition.Models, definition.ModelRequirements, definition.Instructions, [],
-                LlmToolChoice.Auto, definition.Settings, maxTurns, attemptTimeout, definition.Extensions)
-            {
-                Output = definition.Output,
-                HookProfile = definition.HookProfile,
-            };
+        new(
+            definition, sessionId, branchId, runId, identity, authorization, pinnedPublication.SessionProfile,
+            pinnedPublication.Configuration, maxTurns, attemptTimeout, definition.Extensions);
 
     private static AgentAdmissionRejectedException AdmissionRejected(
         AgentDefinition definition,
@@ -1617,12 +1648,12 @@ internal sealed class AgentEngineRuntime
                     "A run override may only narrow the definition's attempt timeout of "
                     + $"{definition.RunDefaults.AttemptTimeout}.");
 
-    private static bool IsOutputCompatible<TOutput>(OutputDefinition? output)
+    private static bool IsOutputCompatible<TOutput>(OutputDefinition output)
     {
         return typeof(TOutput) == typeof(string)
             || typeof(TOutput) == typeof(object)
             || typeof(TOutput) == typeof(ValidatedOutput)
-            || (output?.RuntimeType is { } runtimeType && typeof(TOutput).IsAssignableFrom(runtimeType));
+            || (output.RuntimeType is { } runtimeType && typeof(TOutput).IsAssignableFrom(runtimeType));
     }
 
     private static AgentRunFinished<TOutput> Finish<TOutput>(
@@ -1681,7 +1712,13 @@ internal sealed class AgentEngineRuntime
         return builder.ToString();
     }
 
-    private static AgentRunServices ResolveRunScopedServices(
+    /// <summary>Resolves the run-scoped output publisher the definition selects, after the run identity is bound.</summary>
+    /// <param name="lease">The run's scope lease, whose scope now carries its <see cref="RunScopeIdentity"/>.</param>
+    /// <param name="definition">The pinned definition whose <see cref="AgentComponentSelection.Output"/> names the publisher.</param>
+    /// <param name="compiled">The compiled bundle, which deliberately leaves the publisher unset.</param>
+    /// <returns>A bundle identical to <paramref name="compiled"/> except for the resolved publisher.</returns>
+    /// <exception cref="InvalidOperationException">No publisher is registered under the selected key; composition validation normally rejects this earlier.</exception>
+    private static AgentRunServices BindRunScopedPublisher(
         AgentRunScopeLease lease,
         AgentDefinition definition,
         AgentRunServices compiled)
@@ -1689,31 +1726,26 @@ internal sealed class AgentEngineRuntime
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(compiled);
-        var provider = lease.ScopeProvider;
-        var outputKey = (definition.OutputPublisherKey ?? AgentIOComponentDefaults.OutputPublisherKey).Value;
-        var inputKey = (definition.InputCoordinatorKey ?? AgentIOComponentDefaults.InputCoordinatorKey).Value;
-        var publisher = provider.GetKeyedService<IOutputPublisher>(outputKey) ?? compiled.Publisher;
-        var input = provider.GetKeyedService<IInputCoordinator>(inputKey) ?? compiled.Input;
-        return input == compiled.Input && publisher == compiled.Publisher
-            ? compiled
-            : new AgentRunServices(
-                compiled.Session,
-                compiled.SecurityProfileSelector,
-                compiled.Context,
-                compiled.Tools,
-                compiled.ToolCatalogCaptures,
-                compiled.Models,
-                compiled.ModelSelector,
-                compiled.ModelResolver,
-                compiled.ContinuationPolicy,
-                compiled.OutputProcessor,
-                compiled.Compactor,
-                compiled.Budgets,
-                compiled.BudgetProfiles,
-                compiled.RunCoordinator,
-                input,
-                publisher,
-                compiled.ModelExecutor);
+        var publisher = lease.ScopeProvider.GetRequiredKeyedService<IOutputPublisher>(definition.Components.Output.Value);
+        return new AgentRunServices(
+            compiled.Session,
+            compiled.SecurityProfileSelector,
+            compiled.Context,
+            compiled.Tools,
+            compiled.ToolCatalogCaptures,
+            compiled.Models,
+            compiled.ModelSelector,
+            compiled.ModelResolver,
+            compiled.ContinuationPolicy,
+            compiled.OutputProcessor,
+            compiled.Compactor,
+            compiled.Budgets,
+            compiled.BudgetProfiles,
+            compiled.RunCoordinator,
+            compiled.Input,
+            publisher,
+            compiled.ModelExecutor,
+            compiled.CompactionPolicy);
     }
 
     private static AgentRunRejected<TOutput> Reject<TOutput>(
@@ -1746,14 +1778,6 @@ internal sealed class AgentEngineRuntime
                 : reason.Contains("output", StringComparison.OrdinalIgnoreCase)
                     ? AgentErrorCodes.IncompatibleSchema
                     : AgentErrorCodes.InvalidState;
-    }
-
-    private static async Task DisposeOwnedProviderAsync(IAsyncDisposable? ownedProvider)
-    {
-        if (ownedProvider is not null)
-        {
-            await ownedProvider.DisposeAsync().ConfigureAwait(false);
-        }
     }
 
     private sealed class ExecutionOutcome<TOutput>

@@ -18,7 +18,6 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualListResult_RendersOnlyPublicMetadataWithoutFingerprintsOrPaths()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -38,7 +37,6 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualReadResult_RendersMetadataAndLiteralContentWithoutFingerprintOrPath()
     {
         var reader = new RecordingSnapshotReader
@@ -63,7 +61,6 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualFailureOccurs_PreservesOnlySafeFailureReason()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -209,7 +206,6 @@ public sealed class ResourceToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenOutputExceedsMaximumParts_OmitsRemainingPartsAndReportsTruncation()
     {
         var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("body text") };
@@ -313,10 +309,11 @@ public sealed class ResourceToolPresentationFormatterTests
             new FixedSecurityAuthoritySelector(authority),
             new FixedSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(options));
+            Options.Create(options),
+            NullLogger<ResourceTool>.Instance);
     }
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),

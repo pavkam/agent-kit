@@ -64,23 +64,6 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        Enforcements.Add(enforcement);
-        var matches = grant.Scope == enforcement.Scope
-            && grant.Identity == enforcement.Identity
-            && grant.Audience == enforcement.Audience
-            && grant.Kind == enforcement.Kind
-            && grant.Effect == enforcement.Effect
-            && grant.Resources.SequenceEqual(enforcement.Resources)
-            && grant.InputFingerprint == enforcement.InputFingerprint;
-        var status = matches ? Status : GrantConsumptionStatus.Mismatch;
-        return ValueTask.FromResult(new GrantConsumptionResult(status, 0, $"Grant {status}."));
-    }
-
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
         SecurityEnforcementIntent intent,
         CancellationToken cancellationToken = default)
     {
@@ -152,7 +135,7 @@ internal sealed class RecordingSessionCoordinator: ISessionCoordinator
     public ValueTask<SessionPageResult> ReadAsync(SessionReadRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Pages.Count == 0
-            ? new SessionPage([], request.FromSequenceExclusive, false)
+            ? new SessionPage([], request.FromSequenceExclusive, false, TestData.ReadSnapshot(request.FromSequenceExclusive.Value))
             : Pages.Dequeue());
 
     public ValueTask<SessionBranchResult> BranchAsync(SessionBranchRequest request, SessionProfileSnapshot profile,
@@ -236,6 +219,9 @@ internal static class TestData
     internal static WorkPlan Plan(long revision = 1, PlanItemStatus first = PlanItemStatus.Pending) =>
         new(PlanId, new PlanRevision(revision), "Ship it", Items(first), Identity, DateTimeOffset.UnixEpoch);
 
+    internal static SessionReadSnapshot ReadSnapshot(long upperSequence) =>
+        new(Context.ToAddress(), BranchId, new SessionVersion(1), new SessionSequence(upperSequence));
+
     internal static SessionDescriptor Descriptor(SessionVersion version) => new(
         new SessionAddress(AgentId, SessionId),
         null,
@@ -266,7 +252,7 @@ internal static class TestData
         request.Id,
         request.Scope,
         request.Identity,
-        request.Authorization!,
+        request.Authorization,
         request.Audience,
         request.Kind,
         request.Effect,

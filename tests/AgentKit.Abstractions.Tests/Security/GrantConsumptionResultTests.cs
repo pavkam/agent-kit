@@ -27,13 +27,27 @@ public sealed class GrantConsumptionResultTests
         typeof(GrantConsumptionResult).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
     }
 
-    [Fact]
-    public void GrantConsumptionResult_WhenUsingLegacyConstructor_RetainsBinaryCompatibleShapeWithoutReceipt()
+    [Theory]
+    [InlineData(GrantConsumptionStatus.Consumed)]
+    [InlineData(GrantConsumptionStatus.Reconciled)]
+    public void GrantConsumptionResult_WhenConsumedOrReconciledHasNoReceipt_ThrowsArgumentException(GrantConsumptionStatus status)
     {
-        var result = new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
-        result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
-        result.RemainingUses.ShouldBe(0);
-        result.SafeMessage.ShouldBe("Consumed.");
+        var exception = Should.Throw<ArgumentException>(() => new GrantConsumptionResult(status, 0, "No receipt.", null));
+
+        exception.ParamName.ShouldBe("intentReceipt");
+    }
+
+    [Theory]
+    [InlineData(GrantConsumptionStatus.Unknown)]
+    [InlineData(GrantConsumptionStatus.Exhausted)]
+    [InlineData(GrantConsumptionStatus.Mismatch)]
+    public void GrantConsumptionResult_WhenRefusedHasNoReceipt_RetainsItsStatusWithoutEvidence(GrantConsumptionStatus status)
+    {
+        var result = new GrantConsumptionResult(status, 1, "Refused.", null);
+
+        result.Status.ShouldBe(status);
+        result.RemainingUses.ShouldBe(1);
+        result.SafeMessage.ShouldBe("Refused.");
         result.IntentReceipt.ShouldBeNull();
     }
 
@@ -42,13 +56,13 @@ public sealed class GrantConsumptionResultTests
     {
         var scope = new SecurityAuthorizationScope(new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")), new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000002")), new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), null));
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-        return new SecurityEnforcementRequest(scope, identity, new ComponentId("session"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new ProtectedResource(ProtectedResourceKind.ApplicationState, resourceValue)], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
+        return new SecurityEnforcementRequest(scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("session"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new ProtectedResource(ProtectedResourceKind.ApplicationState, resourceValue)], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
     }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
+        var original = new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.", Receipt());
         var copy = original with { };
         copy.ShouldBe(original);
     }

@@ -10,6 +10,7 @@ internal static class McpEnforcementReceipt
         new(
             grant.Scope,
             grant.Identity,
+            grant.Authorization,
             grant.Audience,
             grant.Kind,
             grant.Effect,

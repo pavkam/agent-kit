@@ -110,6 +110,12 @@ If the record cannot be committed, invocation MUST NOT occur. This boundary
 enables recovery to distinguish “never started” from “side effect may have
 occurred.”
 
+The first-party recorder commits that record as a session entry, and each
+terminal record that follows holds terminal evidence without result content. The
+[tools architecture](../architecture/tools.md#recording-retries-and-events)
+describes the shipped order, the fail-closed result, and the recorded
+deviations.
+
 The executor receives invocation-only session and budget capabilities compiled
 into the run plan. Accepted and terminal records use that exact versioned
 session profile/coordinator, while every attempted invocation reserves and

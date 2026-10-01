@@ -5,11 +5,11 @@ namespace AgentKit.Budgets.Sqlite;
 
 using System.Buffers.Binary;
 
-/// <summary>Writes strict bounded version-one security evidence without growing beyond its configured limit.</summary>
+/// <summary>Writes strict bounded security evidence without growing beyond its configured limit.</summary>
 internal sealed class SqliteBudgetSecurityCodecWriter
 {
     private const uint _magic = 0x414B5347;
-    private const byte _version = 1;
+    private const byte _version = 2;
     private readonly byte[] _buffer;
     private int _position;
     private readonly int _maximumBytes;
@@ -156,15 +156,10 @@ internal sealed class SqliteBudgetSecurityCodecWriter
         WriteInt64(identity.Version.Value);
     }
 
-    /// <summary>Writes optional complete captured authorization evidence.</summary><param name="authorization">The immutable context, or null for a legacy unpinned request.</param>
-    internal void WriteAuthorization(SecurityAuthorizationContext? authorization)
+    /// <summary>Writes the complete captured authorization evidence every persisted enforcement carries.</summary><param name="authorization">The non-null immutable context.</param><exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception>
+    internal void WriteAuthorization(SecurityAuthorizationContext authorization)
     {
-        WriteByte(authorization is null ? (byte) 0 : (byte) 1);
-        if (authorization is null)
-        {
-            return;
-        }
-
+        ArgumentNullException.ThrowIfNull(authorization);
         WriteString(authorization.ProfileKey.Value);
         WriteInt64(authorization.ProfileVersion.Value);
         WriteGuid(authorization.PolicySnapshot.Id.Value);

@@ -11,15 +11,14 @@ using AgentKit;
 /// <remarks>
 /// <para>
 /// This is the run-activation boundary. It runs once per run, inside the freshly created run scope, after the
-/// run's keyed loop has been resolved. For every collaborator a host might register under that same loop key, it
-/// prefers the keyed registration and falls back to the engine-wide unkeyed registration. <see cref="IModelCatalog"/>
-/// stays unkeyed because composition requires exactly one engine-wide catalog. The continuation policy is resolved
-/// from <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>, not from the loop key.
+/// run's keyed loop has been resolved. <see cref="IModelCatalog"/> stays unkeyed because composition requires exactly
+/// one engine-wide catalog.
 /// </para>
 /// <para>
-/// The output processor, compactor, budget authority, run coordinator, input coordinator, and output publisher are
-/// optional and resolved unkeyed. A definition that selects an output contract without a processor fails closed
-/// inside the loop. Routing those optional collaborators through the definition's own keys is a known follow-up.
+/// The input coordinator, output processor, context assembler, model selector, model request
+/// executor, and continuation policy resolve under the exact keys the definition's
+/// <see cref="AgentDefinition.Components"/> select. The compactor and run coordinator remain optional and unkeyed;
+/// the budget authority and profile catalog are engine-wide singulars the definition's budget profile resolves through.
 /// </para>
 /// <para>
 /// <see cref="SessionExecutionCapability"/> is installed into <see cref="RunScopeState"/> before the rest of the
@@ -92,9 +91,9 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
                 "The built composition has no pinned run-profile publication for this definition.");
         }
 
-        var loopKey = definition.Definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
-        var loop = _provider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
-        var sessions = ResolveKeyedOrShared<ISessionCoordinator>(_provider, loopKey.Value);
+        var components = definition.Definition.Components;
+        var loop = _provider.GetRequiredKeyedService<IAgentLoop>(components.Loop.Value);
+        var sessions = ResolveKeyedOrShared<ISessionCoordinator>(_provider, components.Loop.Value);
         var runCoordinator = _provider.GetRequiredService<ISessionRunCoordinator>();
         var capability = new SessionExecutionCapability(found.Publication.SessionProfile, sessions, runCoordinator);
         _provider.GetRequiredService<RunScopeState>().Session = capability;
@@ -113,7 +112,7 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
             definition.Definition,
             snapshot.Version,
             loop,
-            CompileServices(_provider, loopKey, definition.Definition.OptionalCapabilities),
+            CompileServices(_provider, definition.Definition),
             capability,
             authorization,
             definition.Definition.OptionalCapabilities));
@@ -216,32 +215,80 @@ internal sealed class DefaultAgentRunPlanCompiler: IAgentRunPlanCompiler
                 "Fresh authorization did not match the pinned security publication."));
     }
 
-    private static AgentRunServices CompileServices(
-        IServiceProvider provider,
-        ComponentKey<IAgentLoop> loopKey,
-        AgentOptionalCapabilitySelection optionalCapabilities)
+    /// <summary>Materializes every keyed collaborator the definition selects into one immutable bundle.</summary>
+    /// <param name="provider">The run's scoped service provider.</param>
+    /// <param name="definition">The pinned definition whose <see cref="AgentDefinition.Components"/> name each collaborator.</param>
+    /// <returns>The bundle the selected loop drives with.</returns>
+    /// <remarks>
+    /// Every collaborator <see cref="AgentComponentSelection"/> names resolves exactly under its selected key; there is
+    /// no unkeyed fallback, so a key the composition never registered fails here (and, earlier, in composition
+    /// validation) rather than silently binding another definition's collaborator. Collaborators the normative
+    /// selection does not name (session coordinator, security selector, model resolver, tool executor) keep the
+    /// loop-key-scoped override with an engine-wide unkeyed fallback. The output publisher is the one selected
+    /// component left out of the compiled bundle: it is scoped to the run's <see cref="RunScopeIdentity"/>, which the
+    /// engine binds only after it mints the <see cref="RunId"/>, so <c>AgentEngineRuntime</c> resolves it under
+    /// <see cref="AgentComponentSelection.Output"/> immediately after that binding.
+    /// </remarks>
+    private static AgentRunServices CompileServices(IServiceProvider provider, AgentDefinition definition)
     {
-        var key = loopKey.Value;
-        var toolExecutorKey = optionalCapabilities.ToolExecutor?.Value ?? key;
+        var components = definition.Components;
+        var sharedKey = components.Loop.Value;
+        var toolExecutorKey = definition.OptionalCapabilities.ToolExecutor?.Value ?? sharedKey;
+        var compaction = ResolveCompaction(provider, definition);
         return new AgentRunServices(
-            ResolveKeyedOrShared<ISessionCoordinator>(provider, key),
-            ResolveKeyedOrShared<ISecurityProfileSelector>(provider, key),
-            ResolveKeyedOrShared<IContextAssembler>(provider, key),
+            ResolveKeyedOrShared<ISessionCoordinator>(provider, sharedKey),
+            ResolveKeyedOrShared<ISecurityProfileSelector>(provider, sharedKey),
+            provider.GetRequiredKeyedService<IContextAssembler>(components.Context.Value),
             ResolveKeyedOrShared<IToolExecutor>(provider, toolExecutorKey),
             provider.GetService<IToolRunCatalogCaptureFactory>(),
             provider.GetRequiredService<IModelCatalog>(),
-            ResolveKeyedOrShared<IModelSelector>(provider, key),
-            ResolveKeyedOrShared<ILlmModelResolver>(provider, key),
-            provider.GetRequiredKeyedService<IRunContinuationPolicy>(
-                AgentLoopComponentDefaults.ContinuationPolicyKey.Value),
-            provider.GetService<IOutputProcessor>(),
-            provider.GetService<ICompactor>(),
-            provider.GetService<IBudgetAuthority>(),
-            provider.GetService<IBudgetProfileCatalog>(),
+            provider.GetRequiredKeyedService<IModelSelector>(components.ModelSelector.Value),
+            ResolveKeyedOrShared<ILlmModelResolver>(provider, sharedKey),
+            provider.GetRequiredKeyedService<IRunContinuationPolicy>(components.ContinuationPolicy.Value),
+            provider.GetRequiredKeyedService<IOutputProcessor>(components.OutputProcessor.Value),
+            compaction.Compactor,
+            provider.GetRequiredService<IBudgetAuthority>(),
+            provider.GetRequiredService<IBudgetProfileCatalog>(),
             provider.GetService<ISessionRunCoordinator>(),
-            provider.GetService<IInputCoordinator>(),
-            provider.GetService<IOutputPublisher>(),
-            provider.GetKeyedService<IModelRequestExecutor>(key) ?? provider.GetService<IModelRequestExecutor>());
+            provider.GetRequiredKeyedService<IInputCoordinator>(components.Input.Value),
+            publisher: null,
+            provider.GetRequiredKeyedService<IModelRequestExecutor>(components.ModelExecutor.Value),
+            compaction.Policy);
+    }
+
+    /// <summary>Resolves the compactor and compiled policy a definition's compaction selection names.</summary>
+    /// <param name="provider">The run's scoped service provider.</param>
+    /// <param name="definition">The pinned definition whose <see cref="AgentOptionalCapabilitySelection.CompactionProfile"/> is read.</param>
+    /// <returns>The resolved selection; see <see cref="CompactionSelection"/> for each shape.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The definition selects a profile that the catalog does not publish, or an enabled profile whose compactor key has
+    /// no registration; composition validation normally rejects both earlier.
+    /// </exception>
+    /// <remarks>
+    /// A definition that selects no profile keeps the engine-wide unkeyed compactor, if any, and carries no policy, so
+    /// the compactor applies its own default strategy order. A definition that selects a profile resolves the compactor
+    /// under exactly the key the profile publishes; there is no unkeyed fallback, so one agent's profile can never bind
+    /// another compactor.
+    /// </remarks>
+    internal static CompactionSelection ResolveCompaction(IServiceProvider provider, AgentDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(definition);
+        if (definition.OptionalCapabilities.CompactionProfile is not { } profile)
+        {
+            return new CompactionSelection(provider.GetService<ICompactor>(), null, Disabled: false);
+        }
+
+        var publication = provider.GetRequiredService<ICompactionProfileCatalog>().TryGet(profile, out var published)
+            ? published
+            : throw new InvalidOperationException(
+                $"Compaction profile '{profile.Value}' selected by agent '{definition.Id}' is not published.");
+        return publication.Enabled
+            ? new CompactionSelection(
+                provider.GetRequiredKeyedService<ICompactor>(publication.CompactorKey.Value),
+                publication.Policy,
+                Disabled: false)
+            : new CompactionSelection(null, null, Disabled: true);
     }
 
     private static InvalidAgentRunPlan Invalid(string code, string safeMessage) =>

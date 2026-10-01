@@ -100,4 +100,127 @@ public sealed class McpClientRegistrationTests
 
         exception.Message.ShouldContain("unique");
     }
+
+    [Fact]
+    public void AddMcpCapabilityProfile_WhenRegistered_PublishesOneCapabilityProfileSourceReportingIt()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMcpClient();
+        _ = services.AddMcpStdioEndpoint(new McpEndpointKey("docs"), options => options.Command = "server");
+        _ = services.AddMcpCapabilityProfile(new CapabilityProfileId("local"), options => options.EndpointKeys.Add(new McpEndpointKey("docs")));
+        _ = services.AddMcpCapabilityProfile(new CapabilityProfileId("other"), options => options.EndpointKeys.Add(new McpEndpointKey("docs")));
+
+        using var provider = services.BuildServiceProvider();
+        var source = provider.GetServices<IAgentCapabilityProfileSource>().ShouldHaveSingleItem();
+
+        source.CapabilityId.ShouldBe(McpCapabilityIds.Client);
+        source.Contains(new CapabilityProfileId("local")).ShouldBeTrue();
+        source.Contains(new CapabilityProfileId("other")).ShouldBeTrue();
+        source.Contains(new CapabilityProfileId("missing")).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(0, 4_194_304L, 1)]
+    [InlineData(1, 4_194_303L, 1)]
+    [InlineData(1, 4_194_304L, 99)]
+    public void AddMcpClient_WhenHttpBoundIsInvalid_ThrowsArgumentOutOfRangeException(
+        int streamTimeoutSeconds,
+        long maximumHttpResponseBytes,
+        int classification)
+    {
+        var services = new ServiceCollection();
+
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => services.AddMcpClient(options =>
+        {
+            options.HttpStreamTimeout = TimeSpan.FromSeconds(streamTimeoutSeconds);
+            options.MaximumHttpResponseBytes = maximumHttpResponseBytes;
+            options.HttpDataClassification = (NetworkDataClassification) classification;
+        }));
+    }
+
+    [Fact]
+    public void AddMcpHttpEndpoint_WhenRegistered_PublishesOnlyTheNetworkBackedTransportFactoryOnce()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMcpClient();
+
+        _ = services.AddMcpHttpEndpoint(new McpEndpointKey("remote"), options => options.Endpoint = new Uri("https://mcp.example/rpc"));
+        _ = services.AddMcpHttpEndpoint(new McpEndpointKey("other"), options => options.Endpoint = new Uri("https://mcp.example/other"));
+
+        services.Where(static descriptor => descriptor.ServiceType == typeof(IMcpTransportFactory))
+            .Select(static descriptor => descriptor.ImplementationType)
+            .ShouldBe([typeof(HttpMcpTransportFactory)]);
+    }
+
+    [Fact]
+    public void AddMcpStdioEndpoint_WhenRegisteredAlongsideHttp_PublishesBothFactoriesWithoutOneShadowingTheOther()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMcpClient();
+
+        _ = services.AddMcpHttpEndpoint(new McpEndpointKey("remote"), options => options.Endpoint = new Uri("https://mcp.example/rpc"));
+        _ = services.AddMcpStdioEndpoint(new McpEndpointKey("local"), options => options.Command = "server");
+
+        services.Where(static descriptor => descriptor.ServiceType == typeof(IMcpTransportFactory))
+            .Select(static descriptor => descriptor.ImplementationType)
+            .ShouldBe([typeof(HttpMcpTransportFactory), typeof(StdioMcpTransportFactory)]);
+    }
+
+    [Fact]
+    public void AddMcpClient_WhenOnlyStdioEndpointIsRegistered_DoesNotRequireNetworkCollaborators()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMcpClient();
+        _ = services.AddMcpStdioEndpoint(new McpEndpointKey("local"), options => options.Command = "server");
+
+        services.Any(static descriptor => descriptor.ImplementationType == typeof(HttpMcpTransportFactory)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AddMcpHttpEndpoint_WhenNetworkTransportIsMissing_FailsClosedWhenFactoriesAreResolved()
+    {
+        var services = ComposeHttpClient();
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<InvalidOperationException>(() => provider.GetServices<IMcpTransportFactory>().ToArray());
+
+        exception.Message.ShouldContain("INetwork");
+    }
+
+    [Fact]
+    public void AddMcpHttpEndpoint_WhenNetworkCollaboratorsAreRegistered_ResolvesTheFactoryOverThem()
+    {
+        var grants = new ConsumingGrantStore();
+        var services = ComposeHttpClient()
+            .AddSingleton<INetworkNameResolver>(new FixedAddressNameResolver(grants, TimeProvider.System))
+            .AddSingleton<INetworkTransport>(new HandlerNetworkTransport(new StubHttpMessageHandler(_ => new HttpResponseMessage()), grants));
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetServices<IMcpTransportFactory>().ShouldHaveSingleItem().ShouldBeOfType<HttpMcpTransportFactory>();
+    }
+
+    private static ServiceCollection ComposeHttpClient()
+    {
+        var grants = new ConsumingGrantStore();
+        var services = new ServiceCollection();
+        _ = services.AddLogging()
+            .AddSingleton<ISecurityAuthoritySelector>(new FixedSecurityAuthoritySelector(new GrantingSecurityAuthority(grants)))
+            .AddSingleton<ISecurityGrantStore>(grants)
+            .AddSingleton<ISecurityAuditDispatcher>(new RecordingAuditDispatcher())
+            .AddSingleton<IIdentifierGenerator<SecurityRequestId>>(new SecurityRequestIdSource())
+            .AddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(new AuditRecordIdSource())
+            .AddMcpClient()
+            .AddMcpHttpEndpoint(new McpEndpointKey("remote"), options => options.Endpoint = new Uri("https://mcp.example/rpc"));
+        return services;
+    }
+
+    private sealed class SecurityRequestIdSource: IIdentifierGenerator<SecurityRequestId>
+    {
+        public SecurityRequestId Create() => new(Guid.NewGuid());
+    }
+
+    private sealed class AuditRecordIdSource: IIdentifierGenerator<SecurityAuditRecordId>
+    {
+        public SecurityAuditRecordId Create() => new(Guid.NewGuid());
+    }
 }

@@ -5,39 +5,32 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-/// <summary>Verifies LegacyFileWriteFailed behavior and contracts.</summary>
-[Obsolete("Legacy IFileSystem write result types.")]
-public sealed class FileWriteFailedTests: Conformance.SingleMessageLeafConformanceTests<LegacyFileWriteFailed>
+/// <summary>Verifies FileWriteFailed behavior and contracts.</summary>
+public sealed class FileWriteFailedTests: Conformance.SingleMessageLeafConformanceTests<FileWriteFailed>
 {
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [Obsolete("Legacy host surface.")]
-
-    public void FileWriteFailed_Constructor_WhenSafeMessageInvalid_Throws(string? safeMessage) => _ = Should.Throw<ArgumentException>(() => new LegacyFileWriteFailed(safeMessage!));
+    public void FileWriteFailed_Constructor_WhenSafeMessageInvalid_Throws(string? safeMessage) => _ = Should.Throw<ArgumentException>(() => new FileWriteFailed(safeMessage!));
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void FileWriteFailed_Constructor_WhenValid_RoundTripsSafeMessage()
     {
-        var failed = new LegacyFileWriteFailed("disk error");
+        var failed = new FileWriteFailed("disk error");
         failed.SafeMessage.ShouldBe("disk error");
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
-
     public void FileWriteFailed_With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new LegacyFileWriteFailed("disk error");
+        var original = new FileWriteFailed("disk error");
         var copy = original with { };
         copy.ShouldBe(original);
     }
 
     /// <inheritdoc/>
-    protected override LegacyFileWriteFailed Create(string message) => new(message);
+    protected override FileWriteFailed Create(string message) => new(message);
 
     /// <inheritdoc/>
-    protected override string GetValue(LegacyFileWriteFailed subject) => subject.SafeMessage;
+    protected override string GetValue(FileWriteFailed subject) => subject.SafeMessage;
 }

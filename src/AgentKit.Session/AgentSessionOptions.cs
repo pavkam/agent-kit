@@ -37,13 +37,6 @@ public sealed class AgentSessionOptions
     public TimeSpan SecurityRequestLifetime { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Gets or sets the legacy process default for busy behavior. Capability-based
-    /// acquisition uses the immutable selected <see cref="SessionProfileSnapshot.BusyBehavior"/>
-    /// instead. The default is <see cref="SessionBusyBehavior.Reject"/>.
-    /// </summary>
-    public SessionBusyBehavior BusyBehavior { get; set; } = SessionBusyBehavior.Reject;
-
-    /// <summary>
     /// Gets or sets how long <see cref="SessionBusyBehavior.Wait"/> waits
     /// for the lane owner to release the lease before giving up. Defaults to 30
     /// seconds, must not be negative, and cannot exceed the platform timer

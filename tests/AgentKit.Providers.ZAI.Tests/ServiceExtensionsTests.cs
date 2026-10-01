@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.ZAI.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -99,6 +101,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAILlmModel(new ModelAlias("fast"), new ModelId("glm-4.6-flash"));
         _ = services.AddZAILlmModel(new ModelAlias("smart"), new ModelId("glm-4.6"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -113,6 +117,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAI();
         _ = services.AddZAIApiKeyCredential("zai-test-key");
         _ = services.AddZAILlmModel(new ModelAlias("chat"), new ModelId("glm-4.6"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();
@@ -138,6 +144,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddZAILlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();
@@ -182,6 +190,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAIApiKeyCredential("zai-test-key");
 
         _ = services.AddZAIKnownLlmModel(new ModelAlias("known"), new ModelId("glm-4.5"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();

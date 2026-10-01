@@ -16,10 +16,10 @@ namespace AgentKit;
 /// <para>
 /// This is a deliberately minimal, provider-neutral tool description
 /// covering what a chat-completion request must send to advertise a tool.
-/// The full tool catalog, resolution, authorization, and invocation
-/// pipeline belongs to the not-yet-implemented AgentKit.Tools package; this
-/// type exists so a chat model adapter has a stable, self-contained shape
-/// to translate without depending on that pipeline.
+/// The tool catalog, resolution, authorization, and invocation pipeline
+/// belongs to AgentKit.Tools, which derives these definitions from captured
+/// descriptors; this type exists so a chat model adapter has a stable,
+/// self-contained shape to translate without depending on that pipeline.
 /// </para>
 /// </remarks>
 public sealed record LlmToolDefinition

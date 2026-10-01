@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddSearchTool(Action<SearchToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<SearchToolOptions>()
                 .Validate(static value => value.DefaultMaximumDepth > 0 && value.DefaultMaximumDepth <= value.MaximumDepth, "Depth bounds are invalid.")
                 .Validate(static value => value.DefaultMaximumFiles > 0 && value.DefaultMaximumFiles <= value.MaximumFiles, "File bounds are invalid.")

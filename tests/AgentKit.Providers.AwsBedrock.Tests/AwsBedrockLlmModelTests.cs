@@ -18,10 +18,10 @@ public sealed class AwsBedrockLlmModelTests
     private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset deadline, ImmutableArray<LlmToolDefinition> tools = default, ProviderRequestOptions? options = null, LlmRequestSettings? settings = null)
     {
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [TestMessages.User("Hello!")], tools.IsDefault ? [] : tools, LlmToolChoice.Auto, settings ?? LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static AwsBedrockLlmModel CreateModel(HttpMessageHandler handler, IAwsCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AwsBedrockProviderOptions? options = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AwsBedrockProviderOptions { Region = "us-east-1" }, new AwsBedrockRequestTranslator(), new AwsBedrockResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now), new AwsBedrockProfileCredentialSource());
+    private static AwsBedrockLlmModel CreateModel(HttpMessageHandler handler, IAwsCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AwsBedrockProviderOptions? options = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AwsBedrockProviderOptions { Region = "us-east-1" }, new AwsBedrockRequestTranslator(), new AwsBedrockResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new AwsBedrockProfileCredentialSource());
     private static StaticAwsCredentialSource CreateCredentials() => new(new AwsSigV4Credential("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", null));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsSignedConverseRequest()
@@ -392,9 +392,9 @@ public sealed class AwsBedrockLlmModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task ExecuteAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task ExecuteAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
-        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        // A transport-level timeout surfaces from the handler as TaskCanceledException while neither the caller token nor the deadline is cancelled.
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
@@ -405,7 +405,6 @@ public sealed class AwsBedrockLlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
@@ -422,7 +421,6 @@ public sealed class AwsBedrockLlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
 

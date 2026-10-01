@@ -82,7 +82,16 @@ Keep lexical normalization separate from protected observation. Atomic
 publication, conditional target-state commit, and crash durability are distinct;
 cooperative locks cannot prove safety against independent writers. Pooled
 network peers satisfy each send's grant, and a full-fingerprint one-pass body is
-staged before egress under separate authority.
+staged before egress under separate authority. First-party provider adapters
+consume this boundary through `ProviderEgress`, which obtains provider-egress,
+resolution, and send grants per attempt; they never hold their own HTTP client.
+The other first-party network consumers follow the same rule directly over
+`INetworkNameResolver`/`INetworkTransport`: `AgentKit.Tools.Web` and
+`NetworkWebSearchProvider` (which also consumes its tool-issued grant with
+required audit), and HTTP MCP, where the official SDK transport is handed an
+`HttpClient` over `NetworkMcpHttpHandler` so every exchange resolves and sends
+under its own grants. None owns a socket, follows a redirect, or falls back to
+an unrestricted client.
 
 Load more than one surface document only when the requested operation truly
 crosses those boundaries, and preserve their independent authorization.

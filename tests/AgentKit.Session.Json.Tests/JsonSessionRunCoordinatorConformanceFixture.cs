@@ -192,7 +192,7 @@ public sealed class JsonSessionRunCoordinatorConformanceFixture:
         var services = new ServiceCollection();
         _ = services.AddLogging();
         _ = services.AddSingleton<TimeProvider>(_clock);
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddAgentSession();
         var storeRoot = Path.Combine(_directory, "sessions");

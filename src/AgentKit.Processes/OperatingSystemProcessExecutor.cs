@@ -89,7 +89,7 @@ internal sealed class OperatingSystemProcessExecutor: IProcessExecutor, IDisposa
                 return new ProcessStartResolutionFailed("The resolved process facts changed before creation.");
             }
 
-            var intent = ProcessLegacyIntentMapping.ToResolvedProcessIntent(fresh, _snapshot);
+            var intent = ProcessIntentMapping.ToResolvedProcessIntent(fresh, _snapshot);
             var sandboxSelection = await _sandboxes.SelectAsync(request.Request.SandboxProfileId, cancellationToken)
                 .ConfigureAwait(false);
             if (sandboxSelection is ProcessSandboxMissing)

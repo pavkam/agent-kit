@@ -29,33 +29,46 @@ composition is the following, and this is the shape a host that owns its own
 and each one is replaceable:
 
 ```csharp
-var services = new ServiceCollection();
+var builder = AgentEngine.CreateBuilder();           // AddAgentKit() is already applied
+var services = builder.Services;
 
-services.AddInMemorySecurityGrantStore();                       // security
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
-    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddInMemorySecurityGrantStore();            // security
+services.AddInMemoryApprovalStore();
+services.AddInMemorySecurityDecisionStore();
 services.AddAllowAllSecurityPolicy();
+services.AddAgentPermissions(o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddSecurityAuthority(authorityKey);
 
-services.AddAgentSession();                                     // session state
+services.AddAgentSession();                          // session state
 services.AddInMemorySessionStore();
 services.AddInMemorySessionDirectory(new ComponentId("app.session"));
 
-services.AddAgentContext();                                     // turn loop
+services.AddAgentContext();                          // turn loop, each under its key
 services.AddAgentOutput();
-services.AddAgentLoop();
+services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+services.AddAgentIO(
+    AgentIOComponentDefaults.InputCoordinatorKey,
+    AgentIOComponentDefaults.OutputPublisherKey);
+services.AddSessionBackedInputQueue();
+services.AddAgentHooks();
 services.AddAgentTools();
+services.AddAgentBudgets();
+services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, _ => { });
+services.AddInMemoryBudgetLedger();
 
-services.AddAgentProviders();                                   // model
+services.AddAgentNetwork();                          // provider egress boundary
+services.AddAgentProviders();                        // model
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
 services.AddOpenAIKnownLlmModel(alias, new ModelId("gpt-4o-mini"));
 
-services.AddConversationSession(options => { /* identities, profile, alias, instructions, limits */ });
+services.AddAgent(definition);                       // catalog and its publications
+services.AddSecurityProfilePublication(securityPublication);
+services.AddAgentRunProfilePublication(runProfilePublication);
+services.AddConversationSession(options => { /* Agent, Configuration, Identity, SessionProfile */ });
 
-await using var provider = services.BuildServiceProvider(
-    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-var conversation = provider.GetRequiredService<IConversationSession>();
+await using var engine = builder.Build();            // validates the whole composition
+var conversation = engine.Services.GetRequiredService<IConversationSession>();
 var result = await conversation.SendAsync("Hello", cancellationToken);
 ```
 
@@ -133,6 +146,49 @@ in
 Registering these packages alone is not proof of a complete composition:
 selected profiles, catalogs, bindings, and declared component dependencies must
 agree.
+
+### Author a definition that selects keyed components
+
+A written-out composition publishes `AgentDefinition` values whose `Components`
+select each required collaborator by key, so two definitions in one engine can
+use different loops, context assemblers, model selectors, or output processors.
+Each first-party package registers its default under a `...ComponentDefaults`
+key; select a key you registered yourself to override one definition without
+touching another.
+
+```csharp
+var definition = new AgentDefinition(
+    agentId, new AgentDefinitionRevision(1), "reviewer",
+    new AgentComponentSelection(
+        AgentLoopComponentDefaults.LoopKey,
+        AgentLoopComponentDefaults.ContinuationPolicyKey,
+        AgentIOComponentDefaults.InputCoordinatorKey,
+        AgentIOComponentDefaults.OutputPublisherKey,
+        AgentOutputComponentDefaults.ProcessorKey,
+        AgentContextComponentDefaults.AssemblerKey,
+        AgentProviderComponentDefaults.ModelSelectorKey,
+        AgentProviderComponentDefaults.ModelExecutorKey,
+        AgentBudgetComponentDefaults.ProfileKey),
+    sessionProfileKey,
+    HookRegistrationDescriptors.DefaultProfileKey,
+    securityProfileKey,
+    AgentOptionalCapabilitySelection.None,                       // tools, artifacts, durability, memory, goals
+    new ModelSelectionPolicy([new ModelAlias("chat")], requirements: ModelRequirements.None),
+    instructions: [],
+    toolsets: [],
+    new RunPolicyDefaults(maxTurns: 8, attemptTimeout: TimeSpan.FromMinutes(1)),
+    OutputDefinition.FreeText,
+    ExtensionData.Empty);
+```
+
+`Build()` checks, per definition, that each selected key resolves to exactly one
+registration under that contract (an unkeyed registration never satisfies a
+keyed selection), that the budget profile, session store, hook profile, and at
+least one compatible conversational model exist, and that every enabled optional
+capability resolves completely. Toolsets and the optional tool-executor key must
+appear together. Free-form output is `OutputDefinition.FreeText`, not a missing
+definition; sampling settings and model requirements live on the
+`ModelSelectionPolicy`.
 
 ## Put configuration at its owner
 

@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddQuestionTool(Action<QuestionToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<QuestionToolOptions>()
                 .Validate(static value => value.DefaultTimeout > TimeSpan.Zero, "DefaultTimeout must be positive.")
                 .Validate(static value => value.MaximumTimeout >= value.DefaultTimeout, "MaximumTimeout must not be less than DefaultTimeout.")

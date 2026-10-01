@@ -1,0 +1,724 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Evaluation.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Evaluation
+{
+    public sealed class EvaluationCancelled : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationCancelled>
+    {
+        public EvaluationCancelled(string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationCase : System.IEquatable<AgentKit.Evaluation.EvaluationCase>
+    {
+        public EvaluationCase(AgentKit.Evaluation.EvaluationCaseId id, AgentKit.AgentId agentId, AgentKit.Evaluation.EvaluationCaseExecution execution, AgentKit.AgentInput input, AgentKit.AgentRunOptions runOptions, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluatorReference> evaluators, AgentKit.Evaluation.EvaluationCriteria criteria, AgentKit.Evaluation.EvaluationFixtureReference? fixture) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.Evaluation.EvaluationCriteria Criteria { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluatorReference> Evaluators { get; }
+        public AgentKit.Evaluation.EvaluationCaseExecution Execution { get; }
+        public AgentKit.Evaluation.EvaluationFixtureReference? Fixture { get; }
+        public AgentKit.Evaluation.EvaluationCaseId Id { get; }
+        public AgentKit.AgentInput Input { get; }
+        public AgentKit.AgentRunOptions RunOptions { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationCase? other) { }
+        public override int GetHashCode() { }
+    }
+    public enum EvaluationCaseDisposition
+    {
+        Evaluated = 0,
+        RunRejected = 1,
+        Cancelled = 2,
+        TimedOut = 3,
+        Faulted = 4,
+    }
+    public sealed class EvaluationCaseExecution : System.IEquatable<AgentKit.Evaluation.EvaluationCaseExecution>
+    {
+        public EvaluationCaseExecution(AgentKit.ExecutionIdentity identity, AgentKit.SessionProfileKey sessionProfile) { }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public AgentKit.SessionProfileKey SessionProfile { get; }
+    }
+    public readonly struct EvaluationCaseId : System.IEquatable<AgentKit.Evaluation.EvaluationCaseId>
+    {
+        public EvaluationCaseId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationCaseResult : System.IEquatable<AgentKit.Evaluation.EvaluationCaseResult>
+    {
+        public EvaluationCaseResult(
+                    AgentKit.Evaluation.EvaluationRunId evaluationRunId,
+                    AgentKit.Evaluation.EvaluationPlanId planId,
+                    AgentKit.Evaluation.EvaluationPlanVersion planVersion,
+                    AgentKit.Evaluation.EvaluationCaseId caseId,
+                    int caseOrdinal,
+                    int repetition,
+                    AgentKit.Evaluation.EvaluationCaseDisposition disposition,
+                    System.DateTimeOffset startedAt,
+                    System.TimeSpan latency,
+                    string? traceId,
+                    AgentKit.Evaluation.EvaluationRunRecord? run,
+                    AgentKit.Evaluation.EvaluationRunManifest manifest,
+                    AgentKit.Evaluation.EvaluationUsageSummary usage,
+                    AgentKit.Evaluation.EvaluationFixtureReference? fixture,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluatorResult> evaluators,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationDiagnostic> diagnostics) { }
+        public AgentKit.Evaluation.EvaluationCaseId CaseId { get; }
+        public int CaseOrdinal { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationDiagnostic> Diagnostics { get; }
+        public AgentKit.Evaluation.EvaluationCaseDisposition Disposition { get; }
+        public AgentKit.Evaluation.EvaluationRunId EvaluationRunId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluatorResult> Evaluators { get; }
+        public AgentKit.Evaluation.EvaluationFixtureReference? Fixture { get; }
+        public System.TimeSpan Latency { get; }
+        public AgentKit.Evaluation.EvaluationRunManifest Manifest { get; }
+        public AgentKit.Evaluation.EvaluationPlanId PlanId { get; }
+        public AgentKit.Evaluation.EvaluationPlanVersion PlanVersion { get; }
+        public int Repetition { get; }
+        public AgentKit.Evaluation.EvaluationRunRecord? Run { get; }
+        public System.DateTimeOffset StartedAt { get; }
+        public string? TraceId { get; }
+        public AgentKit.Evaluation.EvaluationUsageSummary Usage { get; }
+        public AgentKit.Evaluation.EvaluationVerdict Verdict { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationCaseResult? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class EvaluationContext : System.IEquatable<AgentKit.Evaluation.EvaluationContext>
+    {
+        public EvaluationContext(AgentKit.Evaluation.EvaluationRunId runId, AgentKit.Evaluation.EvaluationPlanId planId, AgentKit.Evaluation.EvaluationPlanVersion planVersion, AgentKit.Evaluation.EvaluationCase evaluationCase, int repetition, AgentKit.AgentRunResult<AgentKit.ValidatedOutput> result, AgentKit.Evaluation.EvaluationRunManifest manifest, AgentKit.Evaluation.EvaluationUsageSummary usage, System.TimeSpan latency) { }
+        public string AssistantText { get; }
+        public AgentKit.Evaluation.EvaluationCase Case { get; }
+        public AgentKit.AgentRunFinished<AgentKit.ValidatedOutput>? Finished { get; }
+        public System.TimeSpan Latency { get; }
+        public AgentKit.Evaluation.EvaluationRunManifest Manifest { get; }
+        public AgentKit.Evaluation.EvaluationPlanId PlanId { get; }
+        public AgentKit.Evaluation.EvaluationPlanVersion PlanVersion { get; }
+        public int Repetition { get; }
+        public AgentKit.AgentRunResult<AgentKit.ValidatedOutput> Result { get; }
+        public AgentKit.Evaluation.EvaluationRunId RunId { get; }
+        public AgentKit.Evaluation.EvaluationUsageSummary Usage { get; }
+    }
+    public sealed class EvaluationCriteria : System.IEquatable<AgentKit.Evaluation.EvaluationCriteria>
+    {
+        public EvaluationCriteria(System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCriterion> items) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCriterion> Items { get; }
+        public static AgentKit.Evaluation.EvaluationCriteria Empty { get; }
+        public bool Contains(AgentKit.Evaluation.EvaluationCriterionKey key) { }
+        public bool Equals(AgentKit.Evaluation.EvaluationCriteria? other) { }
+        public TCriterion? Find<TCriterion>()
+            where TCriterion : AgentKit.Evaluation.EvaluationCriterion { }
+        public override int GetHashCode() { }
+    }
+    public abstract class EvaluationCriterion : System.IEquatable<AgentKit.Evaluation.EvaluationCriterion>
+    {
+        protected EvaluationCriterion(AgentKit.Evaluation.EvaluationCriterionKey key) { }
+        public AgentKit.Evaluation.EvaluationCriterionKey Key { get; }
+    }
+    public readonly struct EvaluationCriterionKey : System.IEquatable<AgentKit.Evaluation.EvaluationCriterionKey>
+    {
+        public EvaluationCriterionKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationDiagnostic : System.IEquatable<AgentKit.Evaluation.EvaluationDiagnostic>
+    {
+        public EvaluationDiagnostic(string code, string safeMessage) { }
+        public string Code { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class EvaluationEvidence : System.IEquatable<AgentKit.Evaluation.EvaluationEvidence>
+    {
+        public EvaluationEvidence(string name, string value) { }
+        public string Name { get; }
+        public string Value { get; }
+    }
+    public sealed class EvaluationExecutionPolicy : System.IEquatable<AgentKit.Evaluation.EvaluationExecutionPolicy>
+    {
+        public EvaluationExecutionPolicy(int maximumConcurrentCases, int repetitions, System.TimeSpan? caseTimeout, System.TimeSpan? planDeadline, int? maximumCaseRuns, bool stopOnEvaluatorFailure, bool permitUnsupportedEvaluators) { }
+        public System.TimeSpan? CaseTimeout { get; }
+        public int? MaximumCaseRuns { get; }
+        public int MaximumConcurrentCases { get; }
+        public bool PermitUnsupportedEvaluators { get; }
+        public System.TimeSpan? PlanDeadline { get; }
+        public int Repetitions { get; }
+        public bool StopOnEvaluatorFailure { get; }
+        public static AgentKit.Evaluation.EvaluationExecutionPolicy Default { get; }
+    }
+    public enum EvaluationExportFailureKind
+    {
+        Unavailable = 0,
+        Cancelled = 1,
+        Faulted = 2,
+    }
+    public sealed class EvaluationExportRecord : System.IEquatable<AgentKit.Evaluation.EvaluationExportRecord>
+    {
+        public EvaluationExportRecord(AgentKit.Evaluation.EvaluationReportExporterKey key, AgentKit.Evaluation.EvaluationExportResult result) { }
+        public AgentKit.Evaluation.EvaluationReportExporterKey Key { get; }
+        public AgentKit.Evaluation.EvaluationExportResult Result { get; }
+    }
+    public sealed class EvaluationExportRejected : AgentKit.Evaluation.EvaluationExportResult, System.IEquatable<AgentKit.Evaluation.EvaluationExportRejected>
+    {
+        public EvaluationExportRejected(AgentKit.Evaluation.EvaluationExportFailureKind kind, string safeMessage) { }
+        public AgentKit.Evaluation.EvaluationExportFailureKind Kind { get; }
+        public string SafeMessage { get; }
+    }
+    public abstract class EvaluationExportResult : System.IEquatable<AgentKit.Evaluation.EvaluationExportResult> { }
+    public sealed class EvaluationExported : AgentKit.Evaluation.EvaluationExportResult, System.IEquatable<AgentKit.Evaluation.EvaluationExported>
+    {
+        public EvaluationExported(string? location = null) { }
+        public string? Location { get; }
+    }
+    public sealed class EvaluationFailed : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationFailed>
+    {
+        public EvaluationFailed(AgentKit.Evaluation.EvaluationScore? score, string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationFixtureReference : System.IEquatable<AgentKit.Evaluation.EvaluationFixtureReference>
+    {
+        public EvaluationFixtureReference(string key, string version) { }
+        public string Key { get; }
+        public string Version { get; }
+    }
+    public sealed class EvaluationInconclusive : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationInconclusive>
+    {
+        public EvaluationInconclusive(AgentKit.Evaluation.EvaluationScore? score, string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationModelUse : System.IEquatable<AgentKit.Evaluation.EvaluationModelUse>
+    {
+        public EvaluationModelUse(string provider, string apiFamily, string model, string? deployment) { }
+        public string ApiFamily { get; }
+        public string? Deployment { get; }
+        public string Model { get; }
+        public string Provider { get; }
+    }
+    public sealed class EvaluationOptions
+    {
+        public EvaluationOptions() { }
+        public System.TimeSpan DefaultCaseTimeout { get; set; }
+        public int MaximumConcurrentCases { get; set; }
+        public int MaximumRepetitions { get; set; }
+    }
+    public abstract class EvaluationOutcome : System.IEquatable<AgentKit.Evaluation.EvaluationOutcome>
+    {
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> Evidence { get; }
+        public string Name { get; }
+        public AgentKit.Evaluation.EvaluationScore? Score { get; }
+        public string Summary { get; }
+        public virtual bool Equals(AgentKit.Evaluation.EvaluationOutcome? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class EvaluationPassed : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationPassed>
+    {
+        public EvaluationPassed(AgentKit.Evaluation.EvaluationScore? score, string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationPlan : System.IEquatable<AgentKit.Evaluation.EvaluationPlan>
+    {
+        public EvaluationPlan(AgentKit.Evaluation.EvaluationPlanId id, AgentKit.Evaluation.EvaluationPlanVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCase> cases, AgentKit.Evaluation.EvaluationExecutionPolicy execution, AgentKit.Evaluation.EvaluationRecordingPolicy recording) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCase> Cases { get; }
+        public AgentKit.Evaluation.EvaluationExecutionPolicy Execution { get; }
+        public AgentKit.Evaluation.EvaluationPlanId Id { get; }
+        public AgentKit.Evaluation.EvaluationRecordingPolicy Recording { get; }
+        public AgentKit.Evaluation.EvaluationPlanVersion Version { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationPlan? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct EvaluationPlanId : System.IEquatable<AgentKit.Evaluation.EvaluationPlanId>
+    {
+        public EvaluationPlanId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationPlanProblem : System.IEquatable<AgentKit.Evaluation.EvaluationPlanProblem>
+    {
+        public EvaluationPlanProblem(AgentKit.Evaluation.EvaluationPlanProblemKind kind, AgentKit.Evaluation.EvaluationCaseId? caseId, string safeMessage) { }
+        public AgentKit.Evaluation.EvaluationCaseId? CaseId { get; }
+        public AgentKit.Evaluation.EvaluationPlanProblemKind Kind { get; }
+        public string SafeMessage { get; }
+    }
+    public enum EvaluationPlanProblemKind
+    {
+        ExceedsLimits = 0,
+        AgentNotFound = 1,
+        SessionProfileMismatch = 2,
+        EvaluatorUnavailable = 3,
+        EvaluatorUnsupported = 4,
+        DestinationUnavailable = 5,
+    }
+    public sealed class EvaluationPlanRejectedException : System.InvalidOperationException
+    {
+        public EvaluationPlanRejectedException(System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationPlanProblem> problems) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationPlanProblem> Problems { get; }
+    }
+    public readonly struct EvaluationPlanVersion : System.IEquatable<AgentKit.Evaluation.EvaluationPlanVersion>
+    {
+        public EvaluationPlanVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationReadRejected : AgentKit.Evaluation.EvaluationReadResult, System.IEquatable<AgentKit.Evaluation.EvaluationReadRejected>
+    {
+        public EvaluationReadRejected(AgentKit.Evaluation.EvaluationStoreFailure failure) { }
+        public AgentKit.Evaluation.EvaluationStoreFailure Failure { get; }
+    }
+    public abstract class EvaluationReadResult : System.IEquatable<AgentKit.Evaluation.EvaluationReadResult> { }
+    public sealed class EvaluationRecordingPolicy : System.IEquatable<AgentKit.Evaluation.EvaluationRecordingPolicy>
+    {
+        public EvaluationRecordingPolicy(AgentKit.Evaluation.EvaluationResultStoreKey? resultStore, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationReportExporterKey> exporters) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationReportExporterKey> Exporters { get; }
+        public AgentKit.Evaluation.EvaluationResultStoreKey? ResultStore { get; }
+        public static AgentKit.Evaluation.EvaluationRecordingPolicy None { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationRecordingPolicy? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class EvaluationReport : System.IEquatable<AgentKit.Evaluation.EvaluationReport>
+    {
+        public EvaluationReport(AgentKit.Evaluation.EvaluationRunId runId, AgentKit.Evaluation.EvaluationPlanId planId, AgentKit.Evaluation.EvaluationPlanVersion planVersion, System.DateTimeOffset startedAt, System.DateTimeOffset completedAt, AgentKit.Evaluation.EvaluationReportStatus status, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCaseResult> results, int notStartedCaseRuns, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationStoreAppendRecord> storeResults, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationExportRecord> exportResults) { }
+        public System.DateTimeOffset CompletedAt { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationExportRecord> ExportResults { get; }
+        public int NotStartedCaseRuns { get; }
+        public AgentKit.Evaluation.EvaluationPlanId PlanId { get; }
+        public AgentKit.Evaluation.EvaluationPlanVersion PlanVersion { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCaseResult> Results { get; }
+        public AgentKit.Evaluation.EvaluationRunId RunId { get; }
+        public System.DateTimeOffset StartedAt { get; }
+        public AgentKit.Evaluation.EvaluationReportStatus Status { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationStoreAppendRecord> StoreResults { get; }
+        public AgentKit.Evaluation.EvaluationSummary Summary { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationReport? other) { }
+        public override int GetHashCode() { }
+        public AgentKit.Evaluation.EvaluationReport WithExportResults(System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationExportRecord> exportResults) { }
+    }
+    public readonly struct EvaluationReportExporterKey : System.IEquatable<AgentKit.Evaluation.EvaluationReportExporterKey>
+    {
+        public EvaluationReportExporterKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public enum EvaluationReportStatus
+    {
+        Completed = 0,
+        Cancelled = 1,
+        DeadlineExceeded = 2,
+        StoppedOnEvaluatorFailure = 3,
+    }
+    public readonly struct EvaluationResultCursor : System.IEquatable<AgentKit.Evaluation.EvaluationResultCursor>
+    {
+        public EvaluationResultCursor(int caseOrdinal, int repetition) { }
+        public int CaseOrdinal { get; }
+        public int Repetition { get; }
+    }
+    public sealed class EvaluationResultQuery : System.IEquatable<AgentKit.Evaluation.EvaluationResultQuery>
+    {
+        public const int MaximumPageSize = 500;
+        public EvaluationResultQuery(AgentKit.Evaluation.EvaluationRunId evaluationRunId, int pageSize, AgentKit.Evaluation.EvaluationResultCursor? after = default) { }
+        public AgentKit.Evaluation.EvaluationResultCursor? After { get; }
+        public AgentKit.Evaluation.EvaluationRunId EvaluationRunId { get; }
+        public int PageSize { get; }
+    }
+    public sealed class EvaluationResultReceipt : System.IEquatable<AgentKit.Evaluation.EvaluationResultReceipt>
+    {
+        public EvaluationResultReceipt(AgentKit.Evaluation.EvaluationRunId evaluationRunId, AgentKit.Evaluation.EvaluationCaseId caseId, int caseOrdinal, int repetition) { }
+        public AgentKit.Evaluation.EvaluationCaseId CaseId { get; }
+        public int CaseOrdinal { get; }
+        public AgentKit.Evaluation.EvaluationRunId EvaluationRunId { get; }
+        public int Repetition { get; }
+    }
+    public readonly struct EvaluationResultStoreKey : System.IEquatable<AgentKit.Evaluation.EvaluationResultStoreKey>
+    {
+        public EvaluationResultStoreKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationResultStoreSelected : AgentKit.Evaluation.EvaluationResultStoreSelection, System.IEquatable<AgentKit.Evaluation.EvaluationResultStoreSelected>
+    {
+        public EvaluationResultStoreSelected(AgentKit.Evaluation.EvaluationResultStoreKey key, AgentKit.Evaluation.IEvaluationResultStore store) { }
+        public AgentKit.Evaluation.EvaluationResultStoreKey Key { get; }
+        public AgentKit.Evaluation.IEvaluationResultStore Store { get; }
+    }
+    public abstract class EvaluationResultStoreSelection : System.IEquatable<AgentKit.Evaluation.EvaluationResultStoreSelection> { }
+    public sealed class EvaluationResultStoreUnavailable : AgentKit.Evaluation.EvaluationResultStoreSelection, System.IEquatable<AgentKit.Evaluation.EvaluationResultStoreUnavailable>
+    {
+        public EvaluationResultStoreUnavailable(AgentKit.Evaluation.EvaluationResultStoreKey key, string safeMessage) { }
+        public AgentKit.Evaluation.EvaluationResultStoreKey Key { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class EvaluationResultsRead : AgentKit.Evaluation.EvaluationReadResult, System.IEquatable<AgentKit.Evaluation.EvaluationResultsRead>
+    {
+        public EvaluationResultsRead(System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCaseResult> results, AgentKit.Evaluation.EvaluationResultCursor? next) { }
+        public AgentKit.Evaluation.EvaluationResultCursor? Next { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCaseResult> Results { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationResultsRead? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct EvaluationRunId : System.IEquatable<AgentKit.Evaluation.EvaluationRunId>
+    {
+        public EvaluationRunId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluationRunManifest : System.IEquatable<AgentKit.Evaluation.EvaluationRunManifest>
+    {
+        public EvaluationRunManifest(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision definitionRevision, AgentKit.AgentCatalogVersion catalogVersion, AgentKit.SessionProfileKey sessionProfile, System.Collections.Immutable.ImmutableArray<string> modelCandidates, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationModelUse> modelsUsed) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.AgentCatalogVersion CatalogVersion { get; }
+        public AgentKit.AgentDefinitionRevision DefinitionRevision { get; }
+        public System.Collections.Immutable.ImmutableArray<string> ModelCandidates { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationModelUse> ModelsUsed { get; }
+        public AgentKit.SessionProfileKey SessionProfile { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluationRunManifest? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class EvaluationRunRecord : System.IEquatable<AgentKit.Evaluation.EvaluationRunRecord>
+    {
+        public EvaluationRunRecord(AgentKit.RunId runId, AgentKit.SessionId sessionId, string outcome, string settlement) { }
+        public string Outcome { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public string Settlement { get; }
+    }
+    public sealed class EvaluationScore : System.IEquatable<AgentKit.Evaluation.EvaluationScore>
+    {
+        public EvaluationScore(double value, int sampleCount, double standardDeviation) { }
+        public int SampleCount { get; }
+        public double StandardDeviation { get; }
+        public double Value { get; }
+        public static AgentKit.Evaluation.EvaluationScore Certain(bool passed) { }
+    }
+    public sealed class EvaluationSkipped : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationSkipped>
+    {
+        public EvaluationSkipped(string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationStoreAppendRecord : System.IEquatable<AgentKit.Evaluation.EvaluationStoreAppendRecord>
+    {
+        public EvaluationStoreAppendRecord(AgentKit.Evaluation.EvaluationCaseId caseId, int repetition, AgentKit.Evaluation.EvaluationStoreResult result) { }
+        public AgentKit.Evaluation.EvaluationCaseId CaseId { get; }
+        public int Repetition { get; }
+        public AgentKit.Evaluation.EvaluationStoreResult Result { get; }
+    }
+    public sealed class EvaluationStoreAppended : AgentKit.Evaluation.EvaluationStoreResult, System.IEquatable<AgentKit.Evaluation.EvaluationStoreAppended>
+    {
+        public EvaluationStoreAppended(AgentKit.Evaluation.EvaluationResultReceipt receipt, bool replayed) { }
+        public AgentKit.Evaluation.EvaluationResultReceipt Receipt { get; }
+        public bool Replayed { get; }
+    }
+    public sealed class EvaluationStoreFailure : System.IEquatable<AgentKit.Evaluation.EvaluationStoreFailure>
+    {
+        public EvaluationStoreFailure(AgentKit.Evaluation.EvaluationStoreFailureKind kind, string safeMessage) { }
+        public AgentKit.Evaluation.EvaluationStoreFailureKind Kind { get; }
+        public string SafeMessage { get; }
+    }
+    public enum EvaluationStoreFailureKind
+    {
+        IdentityConflict = 0,
+        LimitExceeded = 1,
+        Unavailable = 2,
+    }
+    public sealed class EvaluationStoreRejected : AgentKit.Evaluation.EvaluationStoreResult, System.IEquatable<AgentKit.Evaluation.EvaluationStoreRejected>
+    {
+        public EvaluationStoreRejected(AgentKit.Evaluation.EvaluationStoreFailure failure) { }
+        public AgentKit.Evaluation.EvaluationStoreFailure Failure { get; }
+    }
+    public abstract class EvaluationStoreResult : System.IEquatable<AgentKit.Evaluation.EvaluationStoreResult> { }
+    public sealed class EvaluationSummary : System.IEquatable<AgentKit.Evaluation.EvaluationSummary>
+    {
+        public EvaluationSummary(int passed, int failed, int inconclusive, int notEvaluated, int notStarted) { }
+        public int Failed { get; }
+        public int Inconclusive { get; }
+        public int NotEvaluated { get; }
+        public int NotStarted { get; }
+        public int Passed { get; }
+        public int Recorded { get; }
+    }
+    public sealed class EvaluationUnsupported : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluationUnsupported>
+    {
+        public EvaluationUnsupported(string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+    }
+    public sealed class EvaluationUsageSummary : System.IEquatable<AgentKit.Evaluation.EvaluationUsageSummary>
+    {
+        public EvaluationUsageSummary(int modelRequests, long? inputTokens, long? outputTokens) { }
+        public long? InputTokens { get; }
+        public int ModelRequests { get; }
+        public long? OutputTokens { get; }
+        public static AgentKit.Evaluation.EvaluationUsageSummary None { get; }
+    }
+    public enum EvaluationVerdict
+    {
+        Passed = 0,
+        Failed = 1,
+        Inconclusive = 2,
+        NotEvaluated = 3,
+    }
+    public sealed class EvaluatorDescriptor : System.IEquatable<AgentKit.Evaluation.EvaluatorDescriptor>
+    {
+        public EvaluatorDescriptor(AgentKit.Evaluation.EvaluatorKey key, AgentKit.Evaluation.EvaluatorVersion version, string displayName, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCriterionKey> supportedCriteria, bool requiresFixture) { }
+        public string DisplayName { get; }
+        public AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public bool RequiresFixture { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationCriterionKey> SupportedCriteria { get; }
+        public AgentKit.Evaluation.EvaluatorVersion Version { get; }
+        public bool Equals(AgentKit.Evaluation.EvaluatorDescriptor? other) { }
+        public override int GetHashCode() { }
+        public bool Supports(AgentKit.Evaluation.EvaluationCriteria criteria, AgentKit.Evaluation.EvaluationFixtureReference? fixture) { }
+    }
+    public sealed class EvaluatorFaulted : AgentKit.Evaluation.EvaluationOutcome, System.IEquatable<AgentKit.Evaluation.EvaluatorFaulted>
+    {
+        public EvaluatorFaulted(string errorType, string summary, System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.EvaluationEvidence> evidence = default) { }
+        public string ErrorType { get; }
+    }
+    public readonly struct EvaluatorKey : System.IEquatable<AgentKit.Evaluation.EvaluatorKey>
+    {
+        public EvaluatorKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class EvaluatorReference : System.IEquatable<AgentKit.Evaluation.EvaluatorReference>
+    {
+        public EvaluatorReference(AgentKit.Evaluation.EvaluatorKey key, AgentKit.Evaluation.EvaluatorVersion? requiredVersion = default) { }
+        public AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public AgentKit.Evaluation.EvaluatorVersion? RequiredVersion { get; }
+    }
+    public sealed class EvaluatorResult : System.IEquatable<AgentKit.Evaluation.EvaluatorResult>
+    {
+        public EvaluatorResult(AgentKit.Evaluation.EvaluatorKey key, AgentKit.Evaluation.EvaluatorVersion version, AgentKit.Evaluation.EvaluationOutcome outcome, System.TimeSpan duration) { }
+        public System.TimeSpan Duration { get; }
+        public AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public AgentKit.Evaluation.EvaluationOutcome Outcome { get; }
+        public AgentKit.Evaluation.EvaluatorVersion Version { get; }
+    }
+    public readonly struct EvaluatorVersion : System.IEquatable<AgentKit.Evaluation.EvaluatorVersion>
+    {
+        public EvaluatorVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ExactStateCriterion : AgentKit.Evaluation.EvaluationCriterion, System.IEquatable<AgentKit.Evaluation.ExactStateCriterion>
+    {
+        public ExactStateCriterion(AgentKit.Evaluation.ExpectedRunOutcome? outcome = default, string? text = null, AgentKit.Evaluation.ExactTextComparison textComparison = 0, System.Text.Json.JsonElement? json = default, int? newMessageCount = default) { }
+        public System.Text.Json.JsonElement? Json { get; }
+        public int? NewMessageCount { get; }
+        public AgentKit.Evaluation.ExpectedRunOutcome? Outcome { get; }
+        public string? Text { get; }
+        public AgentKit.Evaluation.ExactTextComparison TextComparison { get; }
+        public static AgentKit.Evaluation.EvaluationCriterionKey CriterionKey { get; }
+        public bool Equals(AgentKit.Evaluation.ExactStateCriterion? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ExactStateEvaluator : AgentKit.Evaluation.IEvaluator
+    {
+        public ExactStateEvaluator() { }
+        public AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        public static AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public enum ExactTextComparison
+    {
+        Ordinal = 0,
+        OrdinalIgnoreCase = 1,
+        TrimmedOrdinal = 2,
+    }
+    public enum ExpectedRunOutcome
+    {
+        Succeeded = 0,
+        Idle = 1,
+        Deferred = 2,
+        Cancelled = 3,
+        LimitReached = 4,
+        PolicyHalted = 5,
+        Failed = 6,
+    }
+    public sealed class ExpectedToolCall : System.IEquatable<AgentKit.Evaluation.ExpectedToolCall>
+    {
+        public ExpectedToolCall(string tool, int minimumCalls = 1, int? maximumCalls = default, bool requireSuccess = true, System.Text.Json.JsonElement? argumentsSubset = default) { }
+        public System.Text.Json.JsonElement? ArgumentsSubset { get; }
+        public int? MaximumCalls { get; }
+        public int MinimumCalls { get; }
+        public bool RequireSuccess { get; }
+        public string Tool { get; }
+        public bool Equals(AgentKit.Evaluation.ExpectedToolCall? other) { }
+        public override int GetHashCode() { }
+    }
+    public interface IEvaluationReportExporter
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationExportResult> ExportAsync(AgentKit.Evaluation.EvaluationReport report, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEvaluationReportExporterCatalog
+    {
+        AgentKit.Evaluation.IEvaluationReportExporter? Find(AgentKit.Evaluation.EvaluationReportExporterKey key);
+    }
+    public interface IEvaluationResultStore
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationStoreResult> AppendAsync(AgentKit.Evaluation.EvaluationCaseResult result, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationReadResult> ReadAsync(AgentKit.Evaluation.EvaluationResultQuery query, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEvaluationResultStoreSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationResultStoreSelection> SelectAsync(AgentKit.Evaluation.EvaluationResultStoreKey key, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEvaluationRunner
+    {
+        System.Threading.Tasks.Task<AgentKit.Evaluation.EvaluationReport> RunAsync(AgentKit.Evaluation.EvaluationPlan plan, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEvaluator
+    {
+        AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IEvaluatorCatalog
+    {
+        AgentKit.Evaluation.IEvaluator? Find(AgentKit.Evaluation.EvaluatorKey key);
+    }
+    public interface IModelJudgeClient
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Evaluation.ModelJudgeResponse> JudgeAsync(AgentKit.Evaluation.ModelJudgeRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class ModelJudgeBudget : System.IEquatable<AgentKit.Evaluation.ModelJudgeBudget>
+    {
+        public ModelJudgeBudget(int maximumCalls, long? maximumTokens = default) { }
+        public int MaximumCalls { get; }
+        public long? MaximumTokens { get; }
+    }
+    public sealed class ModelJudgeCompleted : AgentKit.Evaluation.ModelJudgeResponse, System.IEquatable<AgentKit.Evaluation.ModelJudgeCompleted>
+    {
+        public ModelJudgeCompleted(string text, string provider, string resolvedModel, long? inputTokens, long? outputTokens) { }
+        public long? InputTokens { get; }
+        public long? OutputTokens { get; }
+        public string Provider { get; }
+        public string ResolvedModel { get; }
+        public string Text { get; }
+    }
+    public sealed class ModelJudgeEvaluator : AgentKit.Evaluation.IEvaluator
+    {
+        public ModelJudgeEvaluator(AgentKit.Evaluation.IModelJudgeClient client, AgentKit.Evaluation.ModelJudgeSettings settings) { }
+        public AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        public static AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ModelJudgeFailed : AgentKit.Evaluation.ModelJudgeResponse, System.IEquatable<AgentKit.Evaluation.ModelJudgeFailed>
+    {
+        public ModelJudgeFailed(AgentKit.Evaluation.ModelJudgeFailureKind kind, string safeMessage) { }
+        public AgentKit.Evaluation.ModelJudgeFailureKind Kind { get; }
+        public string SafeMessage { get; }
+    }
+    public enum ModelJudgeFailureKind
+    {
+        Unavailable = 0,
+        NotConfigured = 1,
+        Incomplete = 2,
+    }
+    public sealed class ModelJudgeOptions
+    {
+        public ModelJudgeOptions() { }
+        public AgentKit.ModelAlias JudgeModel { get; set; }
+        public int MaximumCalls { get; set; }
+        public int MaximumCandidateCharacters { get; set; }
+        public double MaximumStandardDeviation { get; set; }
+        public long? MaximumTokens { get; set; }
+        public int RepeatCount { get; set; }
+    }
+    public sealed class ModelJudgeRequest : System.IEquatable<AgentKit.Evaluation.ModelJudgeRequest>
+    {
+        public ModelJudgeRequest(AgentKit.Evaluation.EvaluationContext context, AgentKit.ModelAlias model, string instructions, string candidate, int sample) { }
+        public string Candidate { get; }
+        public AgentKit.Evaluation.EvaluationContext Context { get; }
+        public string Instructions { get; }
+        public AgentKit.ModelAlias Model { get; }
+        public int Sample { get; }
+    }
+    public abstract class ModelJudgeResponse : System.IEquatable<AgentKit.Evaluation.ModelJudgeResponse> { }
+    public sealed class ModelJudgeSettings : System.IEquatable<AgentKit.Evaluation.ModelJudgeSettings>
+    {
+        public ModelJudgeSettings(AgentKit.ModelAlias judgeModel, int repeatCount, AgentKit.Evaluation.ModelJudgeBudget budget, double maximumStandardDeviation, int maximumCandidateCharacters) { }
+        public AgentKit.Evaluation.ModelJudgeBudget Budget { get; }
+        public AgentKit.ModelAlias JudgeModel { get; }
+        public int MaximumCandidateCharacters { get; }
+        public double MaximumStandardDeviation { get; }
+        public int RepeatCount { get; }
+    }
+    public sealed class ModelRequestJudgeClient : AgentKit.Evaluation.IModelJudgeClient
+    {
+        public ModelRequestJudgeClient(AgentKit.IModelCatalog catalog, AgentKit.IModelSelector selector, AgentKit.ILlmModelResolver resolver, AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, System.TimeProvider timeProvider, AgentKit.Evaluation.ModelRequestJudgeClientOptions options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.ModelJudgeResponse> JudgeAsync(AgentKit.Evaluation.ModelJudgeRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ModelRequestJudgeClientOptions
+    {
+        public ModelRequestJudgeClientOptions() { }
+        public long MaximumOutputTokens { get; set; }
+        public System.TimeSpan RequestTimeout { get; set; }
+        public double? Temperature { get; set; }
+    }
+    public sealed class RubricCriterion : AgentKit.Evaluation.EvaluationCriterion, System.IEquatable<AgentKit.Evaluation.RubricCriterion>
+    {
+        public RubricCriterion(string rubric, int scaleMaximum = 5, double passThreshold = 0.7) { }
+        public double PassThreshold { get; }
+        public string Rubric { get; }
+        public int ScaleMaximum { get; }
+        public static AgentKit.Evaluation.EvaluationCriterionKey CriterionKey { get; }
+    }
+    public sealed class SafetyCriterion : AgentKit.Evaluation.EvaluationCriterion, System.IEquatable<AgentKit.Evaluation.SafetyCriterion>
+    {
+        public SafetyCriterion(System.Collections.Immutable.ImmutableArray<string> forbiddenSubstrings, System.Collections.Immutable.ImmutableArray<string> forbiddenPatterns, System.Collections.Immutable.ImmutableArray<string> requiredAnyOf, bool ignoreCase = false, bool includeToolArguments = true) { }
+        public System.Collections.Immutable.ImmutableArray<string> ForbiddenPatterns { get; }
+        public System.Collections.Immutable.ImmutableArray<string> ForbiddenSubstrings { get; }
+        public bool IgnoreCase { get; }
+        public bool IncludeToolArguments { get; }
+        public System.Collections.Immutable.ImmutableArray<string> RequiredAnyOf { get; }
+        public static AgentKit.Evaluation.EvaluationCriterionKey CriterionKey { get; }
+        public bool Equals(AgentKit.Evaluation.SafetyCriterion? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class SafetyEvaluator : AgentKit.Evaluation.IEvaluator
+    {
+        public SafetyEvaluator() { }
+        public AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        public static AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SchemaCriterion : AgentKit.Evaluation.EvaluationCriterion, System.IEquatable<AgentKit.Evaluation.SchemaCriterion>
+    {
+        public SchemaCriterion(AgentKit.JsonSchemaDocument schema, AgentKit.OutputSchemaProcessingLimits? limits = null, int maximumIssues = 16) { }
+        public AgentKit.OutputSchemaProcessingLimits Limits { get; }
+        public int MaximumIssues { get; }
+        public AgentKit.JsonSchemaDocument Schema { get; }
+        public static AgentKit.Evaluation.EvaluationCriterionKey CriterionKey { get; }
+        public static AgentKit.OutputSchemaProcessingLimits DefaultLimits { get; }
+    }
+    public sealed class SchemaEvaluator : AgentKit.Evaluation.IEvaluator
+    {
+        public SchemaEvaluator(AgentKit.IOutputSchemaEngine engine) { }
+        public AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        public static AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentEvaluation(System.Action<AgentKit.Evaluation.EvaluationOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceEvaluationRunner<TRunner>()
+                where TRunner :  class, AgentKit.Evaluation.IEvaluationRunner { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEvaluator<TEvaluator>(AgentKit.Evaluation.EvaluatorKey key)
+                where TEvaluator :  class, AgentKit.Evaluation.IEvaluator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceEvaluator<TEvaluator>(AgentKit.Evaluation.EvaluatorKey key)
+                where TEvaluator :  class, AgentKit.Evaluation.IEvaluator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEvaluationResultStore<TStore>(AgentKit.Evaluation.EvaluationResultStoreKey key)
+                where TStore :  class, AgentKit.Evaluation.IEvaluationResultStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEvaluationReportExporter<TExporter>(AgentKit.Evaluation.EvaluationReportExporterKey key)
+                where TExporter :  class, AgentKit.Evaluation.IEvaluationReportExporter { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelJudgeEvaluator(System.Action<AgentKit.Evaluation.ModelJudgeOptions> configure) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelRequestJudgeClient(System.Action<AgentKit.Evaluation.ModelRequestJudgeClientOptions>? configure = null) { }
+        }
+    }
+    public sealed class ToolEffectCriterion : AgentKit.Evaluation.EvaluationCriterion, System.IEquatable<AgentKit.Evaluation.ToolEffectCriterion>
+    {
+        public ToolEffectCriterion(System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.ExpectedToolCall> required, System.Collections.Immutable.ImmutableArray<string> forbidden) { }
+        public System.Collections.Immutable.ImmutableArray<string> Forbidden { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Evaluation.ExpectedToolCall> Required { get; }
+        public static AgentKit.Evaluation.EvaluationCriterionKey CriterionKey { get; }
+        public bool Equals(AgentKit.Evaluation.ToolEffectCriterion? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolEffectEvaluator : AgentKit.Evaluation.IEvaluator
+    {
+        public ToolEffectEvaluator() { }
+        public AgentKit.Evaluation.EvaluatorDescriptor Descriptor { get; }
+        public static AgentKit.Evaluation.EvaluatorKey Key { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationOutcome> EvaluateAsync(AgentKit.Evaluation.EvaluationContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

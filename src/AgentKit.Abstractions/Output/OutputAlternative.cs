@@ -6,10 +6,9 @@ namespace AgentKit;
 /// <summary>One named schema alternative within an <see cref="OutputMode.Union"/> output definition.</summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
-/// fields, safe to share across threads without synchronization. See
-/// <see cref="OutputMode.Union"/> for the reduced-scope rationale: the
-/// first-party processor declares this shape but does not yet select among
-/// alternatives.
+/// fields, safe to share across threads without synchronization. The
+/// first-party processor validates a candidate against every alternative and
+/// requires exactly one to pass.
 /// </remarks>
 public sealed record OutputAlternative
 {

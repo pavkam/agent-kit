@@ -16,6 +16,7 @@ internal sealed class AllowAllSecurityAuthority(ISecurityGrantStore grantStore):
             request.Id,
             request.Scope,
             request.Identity,
+            request.Authorization,
             request.Audience,
             request.Kind,
             request.Effect,

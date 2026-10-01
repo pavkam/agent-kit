@@ -8,9 +8,8 @@ namespace AgentKit;
 /// <para>
 /// An agent definition selects behavior already registered in dependency injection through typed component keys;
 /// it never embeds a service instance directly. This is the closed, final shape every one of these selections
-/// belongs in — earlier interim flat properties on <see cref="AgentDefinition"/> (<c>LoopKey</c>,
-/// <c>InputCoordinatorKey</c>, <c>OutputPublisherKey</c>) exist only until a later chunk migrates every
-/// construction site onto this record.
+/// belongs in. <see cref="AgentDefinition.Components"/> carries it; no flat per-component property remains on the
+/// definition. Compaction is optional and is selected through <see cref="AgentOptionalCapabilitySelection"/>.
 /// </para>
 /// <para>
 /// This type is an immutable value object with structural equality over every field. It carries no mutable state

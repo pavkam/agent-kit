@@ -13,7 +13,7 @@ public sealed record ObservationContent
     /// <param name="value">The owned payload bytes.</param>
     /// <param name="fingerprint">The fingerprint matching the payload semantics.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> or <paramref name="classification"/> is undefined.</exception>
-    /// <exception cref="ArgumentException"><paramref name="fingerprint"/> is default.</exception>
+    /// <exception cref="ArgumentException"><paramref name="value"/> or <paramref name="fingerprint"/> is default.</exception>
     public ObservationContent(
         ObservationContentKind kind,
         DataClassification classification,
@@ -22,10 +22,16 @@ public sealed record ObservationContent
     {
         ArgumentOutOfRangeException.ThrowIfUndefined(kind, nameof(kind));
         ArgumentOutOfRangeException.ThrowIfUndefined(classification, nameof(classification));
+        if (value.IsDefault)
+        {
+            throw new ArgumentException("The payload must be provided; use an empty array for empty content.", nameof(value));
+        }
+
         if (fingerprint.Value is null)
         {
             throw new ArgumentException("The fingerprint must be provided.", nameof(fingerprint));
         }
+
         Kind = kind;
         Classification = classification;
         Value = value;

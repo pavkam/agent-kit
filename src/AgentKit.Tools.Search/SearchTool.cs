@@ -38,6 +38,8 @@ public sealed class SearchTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(SearchToolLog.Completed, SearchToolLog.Cancelled, SearchToolLog.Faulted);
+    private readonly ILogger<SearchTool> _logger;
     private readonly IFileContentSearcher _searcher;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -50,6 +52,7 @@ public sealed class SearchTool: IToolInvoker
     /// <param name="requestIds">The security-request identity generator.</param>
     /// <param name="timeProvider">The deterministic clock.</param>
     /// <param name="options">The validated search bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured default or ceiling is invalid.</exception>
     public SearchTool(
@@ -57,19 +60,22 @@ public sealed class SearchTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<SearchToolOptions> options)
+        IOptions<SearchToolOptions> options,
+        ILogger<SearchTool> logger)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _searcher = serviceProvider.GetRequiredKeyedService<IFileContentSearcher>(options.Value.ProfileKey.Value);
         _authoritySelector = authoritySelector;
         _requestIds = requestIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -96,17 +102,19 @@ public sealed class SearchTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("search"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken)
+    {
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
-        var result = await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return await InvokeCoreAsync(authorization, context.CallId, context.Arguments, cancellationToken);
     }
 
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(

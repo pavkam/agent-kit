@@ -187,6 +187,8 @@ public static class ServiceExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionEntryCodec, MessageSessionEntryCodec>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionEntryCodec, InputAdmittedSessionEntryCodec>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionEntryCodec, CompactionSessionEntryCodec>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionEntryCodec, ToolCallAcceptedSessionEntryCodec>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionEntryCodec, ToolCallTerminalSessionEntryCodec>());
         services.TryAddSingleton<SessionEntryCodecCatalog>();
         services.TryAddSingleton<ISessionEntryCodecCatalog>(
             static provider => provider.GetRequiredService<SessionEntryCodecCatalog>());

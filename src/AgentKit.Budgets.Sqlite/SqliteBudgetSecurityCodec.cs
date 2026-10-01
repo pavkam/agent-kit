@@ -3,7 +3,7 @@
 
 namespace AgentKit.Budgets.Sqlite;
 
-/// <summary>Encodes and reconstructs complete enforcement evidence using strict version-one binary envelopes.</summary>
+/// <summary>Encodes and reconstructs complete enforcement evidence using strict binary envelopes.</summary>
 /// <remarks>Strings are stored as exact big-endian UTF-16 code units, preserving unpaired surrogates. Unknown versions, kinds, trailing fields, invalid values, and exceeded bounds fail closed.</remarks>
 internal static class SqliteBudgetSecurityCodec
 {
@@ -12,7 +12,7 @@ internal static class SqliteBudgetSecurityCodec
     /// <summary>Encodes one complete validated concrete enforcement request.</summary>
     /// <param name="enforcement">The non-null evidence to encode.</param>
     /// <param name="settings">The non-null configured evidence bounds.</param>
-    /// <returns>The strict version-one enforcement envelope.</returns>
+    /// <returns>The strict enforcement envelope.</returns>
     /// <exception cref="ArgumentNullException">A parameter is null.</exception>
     /// <exception cref="ArgumentException">Evidence exceeds a configured bound or contains an unsupported correlation leaf.</exception>
     internal static byte[] EncodeEnforcement(
@@ -36,7 +36,7 @@ internal static class SqliteBudgetSecurityCodec
     }
 
     /// <summary>Reconstructs one complete enforcement request from strict persisted evidence.</summary>
-    /// <param name="payload">The nonempty version-one envelope.</param>
+    /// <param name="payload">The nonempty envelope.</param>
     /// <param name="settings">The non-null configured evidence bounds.</param>
     /// <returns>The validated domain evidence with ordered resources and captured authorization intact.</returns>
     /// <exception cref="InvalidDataException">The envelope is corrupt, unsupported, incomplete, excessive, or contains trailing evidence.</exception>
@@ -64,11 +64,8 @@ internal static class SqliteBudgetSecurityCodec
             var inputFingerprint = new InputFingerprint(reader.ReadString());
             var revocationVersion = new SecurityRevocationVersion(reader.ReadInt64());
             reader.EnsureComplete();
-            return authorization is null
-                ? new SecurityEnforcementRequest(scope, identity, audience, kind, effect, resources,
-                    inputFingerprint, revocationVersion)
-                : new SecurityEnforcementRequest(scope, identity, authorization, audience, kind, effect, resources,
-                    inputFingerprint, revocationVersion);
+            return new SecurityEnforcementRequest(scope, identity, authorization, audience, kind, effect, resources,
+                inputFingerprint, revocationVersion);
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {

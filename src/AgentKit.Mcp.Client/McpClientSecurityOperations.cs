@@ -86,7 +86,7 @@ internal static class McpClientSecurityOperations
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal static async ValueTask<GrantConsumptionResult> ConsumeGrantAsync(
+    internal static async ValueTask<bool> TryConsumeGrantAsync(
         SecurityGrant grant,
         ISecurityGrantStore grantStore,
         ISecurityAuditDispatcher auditDispatcher,
@@ -114,9 +114,7 @@ internal static class McpClientSecurityOperations
             McpEnforcementReceipt.IsFreshExact,
             McpEnforcementReceipt.DenialMessage,
             cancellationToken).ConfigureAwait(false);
-        return denial is not null
-            ? new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, denial)
-            : new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
+        return denial is null;
     }
 
     private static async ValueTask<SecurityGrant?> AuthorizeAndRegisterAsync(

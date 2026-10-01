@@ -1,0 +1,46 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Memory.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Memory.InMemory
+{
+    public sealed class InMemoryDocumentStore : AgentKit.IDocumentStore
+    {
+        public InMemoryDocumentStore(AgentKit.DocumentStoreKey key, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.InMemory.InMemoryDocumentStore>? logger = null) { }
+        public AgentKit.DocumentStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentActivateResult> ActivateAsync(AgentKit.DocumentActivateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentDeleteResult> DeleteAsync(AgentKit.DocumentDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentReadResult> ReadAsync(AgentKit.DocumentReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentWriteResult> WriteAsync(AgentKit.DocumentWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemoryMemoryStore : AgentKit.IMemoryStore
+    {
+        public InMemoryMemoryStore(AgentKit.MemoryStoreKey key, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.InMemory.InMemoryMemoryStore>? logger = null) { }
+        public AgentKit.MemoryStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryDeleteResult> DeleteAsync(AgentKit.MemoryDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryListResult> ListAsync(AgentKit.MemoryListRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryReadResult> ReadAsync(AgentKit.MemoryReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryTransitionResult> TransitionAsync(AgentKit.MemoryTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryWriteResult> WriteAsync(AgentKit.MemoryWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemoryVectorIndex : AgentKit.IVectorIndex
+    {
+        public InMemoryVectorIndex(AgentKit.VectorSpaceDescriptor space, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.InMemory.InMemoryVectorIndex>? logger = null) { }
+        public bool ApproximateSearch { get; }
+        public bool IsDurable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public AgentKit.VectorSpaceDescriptor VectorSpace { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorDeleteResult> DeleteAsync(AgentKit.VectorDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorSearchResult> SearchAsync(AgentKit.VectorSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorUpsertResult> UpsertAsync(AgentKit.VectorUpsertRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryMemoryStore(AgentKit.MemoryStoreKey key) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDocumentStore(AgentKit.DocumentStoreKey key) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryVectorIndex(AgentKit.VectorSpaceDescriptor space) { }
+        }
+    }
+}

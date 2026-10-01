@@ -33,6 +33,7 @@
     <Project Path="src/AgentKit.Context/AgentKit.Context.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <Project Path="src/AgentKit.Context.Project/AgentKit.Context.Project.csproj"/>
+    <Project Path="src/AgentKit.Context.Retrieval/AgentKit.Context.Retrieval.csproj"/>
     <Project Path="src/AgentKit.Loop/AgentKit.Loop.csproj"/>
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
     <Project Path="src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
@@ -59,8 +60,23 @@
     <Project Path="src/AgentKit.LanguageServices.Scripted/AgentKit.LanguageServices.Scripted.csproj"/>
     <Project Path="src/AgentKit.IO/AgentKit.IO.csproj"/>
     <Project Path="src/AgentKit.Goals/AgentKit.Goals.csproj"/>
+    <Project Path="src/AgentKit.Goals.Hosting/AgentKit.Goals.Hosting.csproj"/>
+    <Project Path="src/AgentKit.Goals.InMemory/AgentKit.Goals.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Goals.Json/AgentKit.Goals.Json.csproj"/>
+    <Project Path="src/AgentKit.Goals.Sqlite/AgentKit.Goals.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Memory/AgentKit.Memory.csproj"/>
+    <Project Path="src/AgentKit.Memory.InMemory/AgentKit.Memory.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Memory.Json/AgentKit.Memory.Json.csproj"/>
+    <Project Path="src/AgentKit.Memory.Sqlite/AgentKit.Memory.Sqlite.csproj"/>
     <Project Path="src/AgentKit.Artifacts/AgentKit.Artifacts.csproj"/>
+    <Project Path="src/AgentKit.Artifacts.FileSystem/AgentKit.Artifacts.FileSystem.csproj"/>
     <Project Path="src/AgentKit.Artifacts.InMemory/AgentKit.Artifacts.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Artifacts.Json/AgentKit.Artifacts.Json.csproj"/>
+    <Project Path="src/AgentKit.Artifacts.Sqlite/AgentKit.Artifacts.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Evaluation/AgentKit.Evaluation.csproj"/>
+    <Project Path="src/AgentKit.Evaluation.InMemory/AgentKit.Evaluation.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Evaluation.Json/AgentKit.Evaluation.Json.csproj"/>
+    <Project Path="src/AgentKit.Evaluation.Sqlite/AgentKit.Evaluation.Sqlite.csproj"/>
     <Project Path="src/AgentKit.Tools/AgentKit.Tools.csproj"/>
     <Project Path="src/AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
     <Project Path="src/AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
@@ -117,6 +133,7 @@
     <Project Path="tests/AgentKit.Context.Tests/AgentKit.Context.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Project.Tests/AgentKit.Context.Project.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Context.Retrieval.Tests/AgentKit.Context.Retrieval.Tests.csproj"/>
     <Project Path="tests/AgentKit.Loop.Tests/AgentKit.Loop.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.InMemory.Tests/AgentKit.Budgets.InMemory.Tests.csproj"/>
@@ -142,6 +159,10 @@
     <Project Path="tests/AgentKit.Processes.Tests/AgentKit.Processes.Tests.csproj"/>
     <Project Path="tests/AgentKit.Processes.Scripted.Tests/AgentKit.Processes.Scripted.Tests.csproj"/>
     <Project Path="tests/AgentKit.LanguageServices.Scripted.Tests/AgentKit.LanguageServices.Scripted.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Evaluation.Tests/AgentKit.Evaluation.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Evaluation.InMemory.Tests/AgentKit.Evaluation.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Evaluation.Json.Tests/AgentKit.Evaluation.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Evaluation.Sqlite.Tests/AgentKit.Evaluation.Sqlite.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Tests/AgentKit.Tools.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Read.Tests/AgentKit.Tools.Read.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Write.Tests/AgentKit.Tools.Write.Tests.csproj"/>
@@ -161,13 +182,26 @@
     <Project Path="tests/AgentKit.Tools.Skill.Tests/AgentKit.Tools.Skill.Tests.csproj"/>
     <Project Path="tests/AgentKit.IO.Tests/AgentKit.IO.Tests.csproj"/>
     <Project Path="tests/AgentKit.Goals.Tests/AgentKit.Goals.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Goals.Hosting.Tests/AgentKit.Goals.Hosting.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Goals.InMemory.Tests/AgentKit.Goals.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Goals.Json.Tests/AgentKit.Goals.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Goals.Sqlite.Tests/AgentKit.Goals.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Memory.Tests/AgentKit.Memory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Memory.InMemory.Tests/AgentKit.Memory.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Memory.Json.Tests/AgentKit.Memory.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Memory.Sqlite.Tests/AgentKit.Memory.Sqlite.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.Tests/AgentKit.Artifacts.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Artifacts.FileSystem.Tests/AgentKit.Artifacts.FileSystem.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.InMemory.Tests/AgentKit.Artifacts.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Artifacts.Json.Tests/AgentKit.Artifacts.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Artifacts.Sqlite.Tests/AgentKit.Artifacts.Sqlite.Tests.csproj"/>
     <Project Path="tests/CodingAgent.Tests/CodingAgent.Tests.csproj"/>
+    <Project Path="tests/EvaluationExample.Tests/EvaluationExample.Tests.csproj"/>
     <Project Path="tests/QuickStart.Tests/QuickStart.Tests.csproj"/>
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/CodingAgent/CodingAgent.csproj"/>
+    <Project Path="examples/Evaluation/EvaluationExample.csproj"/>
     <Project Path="examples/QuickStart/QuickStart.csproj"/>
   </Folder>
 </Solution>

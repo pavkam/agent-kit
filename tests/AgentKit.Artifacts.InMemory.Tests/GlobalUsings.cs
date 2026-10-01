@@ -5,11 +5,15 @@ global using System.Collections.Immutable;
 
 global using AgentKit;
 global using AgentKit.Artifacts.InMemory;
+global using AgentKit.Artifacts.Storage;
 global using AgentKit.Conformance;
 global using AgentKit.Permissions;
 global using AgentKit.Permissions.InMemory;
 
+global using AgentKit.TestSupport;
+
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
 global using Microsoft.Extensions.Time.Testing;
 
 global using Shouldly;

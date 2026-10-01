@@ -51,4 +51,37 @@ public sealed class RunEventSinkRegistrationTests
 
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void Constructor_WhenNoFlushDeadlineIsSupplied_UsesTheBoundedDefault()
+    {
+        var registration = new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0);
+
+        registration.FlushDeadline.ShouldBe(RunEventSinkRegistration.DefaultFlushDeadline);
+        RunEventSinkRegistration.DefaultFlushDeadline.ShouldBe(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public void Constructor_WhenAFlushDeadlineIsSupplied_RoundTripsIt()
+    {
+        var registration = new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0, TimeSpan.FromMilliseconds(250));
+
+        registration.FlushDeadline.ShouldBe(TimeSpan.FromMilliseconds(250));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-60_000)]
+    public void Constructor_WhenFlushDeadlineIsNegative_ThrowsArgumentOutOfRangeExceptionWithParamName(int milliseconds)
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0, TimeSpan.FromMilliseconds(milliseconds)));
+
+        exception.ParamName.ShouldBe("flushDeadline");
+    }
+
+    [Fact]
+    public void Equals_WhenOnlyTheFlushDeadlineDiffers_AreNotEqual() =>
+        new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0, TimeSpan.FromSeconds(1))
+            .ShouldNotBe(new RunEventSinkRegistration("sink", RunEventDelivery.Required, 0, TimeSpan.FromSeconds(2)));
 }

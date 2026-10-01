@@ -89,6 +89,8 @@ public sealed class RunPolicyVersioningTests
         RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(),
             new AgentLoopOptions { SettlementTimeout = baseline.SettlementTimeout + TimeSpan.FromSeconds(1) }).ShouldNotBe(first);
         RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(),
+            new AgentLoopOptions { HookDispatchTimeout = baseline.HookDispatchTimeout + TimeSpan.FromSeconds(1) }).ShouldNotBe(first);
+        RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(),
             new AgentLoopOptions { ObserverDeliveryTimeout = baseline.ObserverDeliveryTimeout + TimeSpan.FromSeconds(1) }).ShouldNotBe(first);
         RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(),
             new AgentLoopOptions { ContextPressureThreshold = baseline.ContextPressureThreshold / 2 }).ShouldNotBe(first);

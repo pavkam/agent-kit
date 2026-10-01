@@ -46,12 +46,12 @@ await using var engine = QuickStartAgent.CreateBuilder(apiKey).Build();
 Console.WriteLine(await engine.AskAsync(prompt));
 ```
 
-| Call                            | What it contributes                                                                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant store, allow-all policy, every registered tool allowed, best-effort audit, process-user identity |
-| `UseOpenAI(apiKey, modelId)`    | Provider catalog, OpenAI adapter, API-key credential, and a descriptor whose limits and prices come from the bundled known-model catalog                |
-| `WithInstructions(text)`        | One system message                                                                                                                                      |
-| `Build()`                       | Composition validation with `ValidateOnBuild` and `ValidateScopes`, one published `AgentDefinition`, the engine that owns the provider                  |
+| Call                            | What it contributes                                                                                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant, approval, and decision stores, allow-all policy, every registered tool allowed, best-effort audit, process-user identity |
+| `UseOpenAI(apiKey, modelId)`    | Provider catalog, OpenAI adapter, API-key credential, and a descriptor whose limits and prices come from the bundled known-model catalog                                         |
+| `WithInstructions(text)`        | One system message                                                                                                                                                               |
+| `Build()`                       | Composition validation with `ValidateOnBuild` and `ValidateScopes`, one published `AgentDefinition`, the engine that owns the provider                                           |
 
 Nothing is chosen silently. Without the environment variable the program stops
 before composing anything; without `UseLocalDevelopmentDefaults()` or your own
@@ -72,13 +72,14 @@ its `Events`, and `engine.Conversation` exposes the underlying
 
 ## What the tests prove
 
-The test project replaces the `HttpClient` the OpenAI adapter uses with a
-loopback handler, which is the pattern
+The test project replaces the resolver and transport the OpenAI adapter sends
+through with deterministic ones that still consume the composition's grants,
+which is the pattern
 [Testing an agent without a live model](testing-agents-offline.md) builds on:
 
 ```csharp
 var builder = QuickStartAgent.CreateBuilder("sk-test");
-builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+builder.Services.ReplaceNetworkWithHandler(handler); // test helper over INetworkNameResolver and INetworkTransport
 await using var engine = builder.Build();
 ```
 

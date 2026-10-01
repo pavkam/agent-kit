@@ -11,13 +11,13 @@ namespace AgentKit;
 /// <remarks>
 /// <para>
 /// The facade (<c>AgentKit</c>) resolves the keyed <see cref="IAgentLoop"/> selected by an
-/// <see cref="AgentDefinition"/> for each run, substituting this default key when a definition leaves
-/// <see cref="AgentDefinition.LoopKey"/> unset. <c>AgentKit</c> must never reference a concrete loop
+/// <see cref="AgentDefinition"/> through <see cref="AgentComponentSelection.Loop"/> for each run; a definition
+/// that wants the first-party loop selects this default key. <c>AgentKit</c> must never reference a concrete loop
 /// implementation package such as <c>AgentKit.Loop</c> merely to learn this key's text, so the canonical value
 /// lives here in the shared abstractions package instead. A first-party loop registration helper (for example
 /// <c>AgentKit.Loop</c>'s <c>AddAgentLoop</c>) uses the exact same value so that a host calling
 /// <c>services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey)</c> registers precisely the key every
-/// unconfigured definition already resolves to.
+/// definition that selects the default already resolves to.
 /// </para>
 /// <para>
 /// This type carries no service instance and performs no registration itself; it is declarative key metadata
@@ -33,7 +33,7 @@ public static class AgentLoopComponentDefaults
     /// </summary>
     public const string LoopKeyValue = "agentkit-default-loop";
 
-    /// <summary>Gets the canonical default key selecting an agent's <see cref="IAgentLoop"/> when its definition names none explicitly.</summary>
+    /// <summary>Gets the canonical default key selecting an agent's <see cref="IAgentLoop"/> when a definition selects the first-party loop.</summary>
     /// <value>A stable, nonblank key shared by every first-party package that registers or resolves a keyed loop.</value>
     public static ComponentKey<IAgentLoop> LoopKey { get; } = new(LoopKeyValue);
 
@@ -49,6 +49,6 @@ public static class AgentLoopComponentDefaults
     /// </remarks>
     public const string ContinuationPolicyKeyValue = "agentkit-default-continuation";
 
-    /// <summary>Gets the key of the canonical stateless continuation policy every reduced loop consults by default.</summary>
+    /// <summary>Gets the key of the canonical stateless continuation policy every loop consults by default.</summary>
     public static ComponentKey<IRunContinuationPolicy> ContinuationPolicyKey { get; } = new(ContinuationPolicyKeyValue);
 }

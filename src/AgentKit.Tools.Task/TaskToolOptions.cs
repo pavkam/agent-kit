@@ -28,4 +28,10 @@ public sealed class TaskToolOptions
     public int MaximumAllowedTools { get; set; } = 64;
     /// <summary>Gets or sets the maximum child summary characters projected to the parent.</summary>
     public int MaximumSummaryCharacters { get; set; } = 16_000;
+    /// <summary>Gets or sets the goal profile every delegation is captured under.</summary>
+    /// <value><see langword="null"/> by default, which makes every invocation fail closed with a typed result: the tool never invents a profile, store, or dispatcher.</value>
+    public GoalProfileReference? GoalProfile { get; set; }
+    /// <summary>Gets or sets the join strategy recorded on each delegation.</summary>
+    /// <value><see cref="GoalJoinStrategyKeys.All"/> by default; the profile must allow it.</value>
+    public GoalJoinStrategyKey JoinStrategy { get; set; } = GoalJoinStrategyKeys.All;
 }

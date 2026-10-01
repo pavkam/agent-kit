@@ -91,8 +91,8 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"), [appendedEntry]), TestContext.Current.CancellationToken);
         var secondPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
 
-        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot!), TestContext.Current.CancellationToken);
-        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot!), TestContext.Current.CancellationToken);
+        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot), TestContext.Current.CancellationToken);
+        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot), TestContext.Current.CancellationToken);
 
         secondPage.Snapshot.ShouldNotBe(firstPage.Snapshot);
         continued.ShouldBeOfType<SessionReadFailed>().SafeMessage.ShouldBe("The supplied session read snapshot is not available for this branch.");
@@ -108,8 +108,8 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"), [appendedEntry]), TestContext.Current.CancellationToken);
         var secondPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
 
-        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot!), TestContext.Current.CancellationToken);
-        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot!), TestContext.Current.CancellationToken);
+        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot), TestContext.Current.CancellationToken);
+        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot), TestContext.Current.CancellationToken);
 
         secondPage.Snapshot.ShouldNotBe(firstPage.Snapshot);
         var continuedPage = continued.ShouldBeOfType<SessionPage>();
@@ -356,7 +356,7 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
                 cancellation.Cancel();
                 if (!wrongReceipt)
                 {
-                    return new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, result.RemainingUses, "The enforcement evidence differs.");
+                    return new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, result.RemainingUses, "The enforcement evidence differs.", null);
                 }
 
                 var receipt = result.IntentReceipt.ShouldNotBeNull();
@@ -488,7 +488,7 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
     {
         Debug.Assert(receipt is not null, "A fresh grant-store receipt is required.");
         Debug.Assert(!string.IsNullOrWhiteSpace(field), "A selected corruption axis is required.");
-        var enforcement = field == "enforcement" ? new SecurityEnforcementRequest(receipt.Enforcement.Scope, receipt.Enforcement.Identity, receipt.Enforcement.Authorization!, receipt.Enforcement.Audience, receipt.Enforcement.Kind, receipt.Enforcement.Effect, receipt.Enforcement.Resources, new InputFingerprint("sha256:wrong-enforcement"), receipt.Enforcement.RevocationVersion) : receipt.Enforcement;
+        var enforcement = field == "enforcement" ? new SecurityEnforcementRequest(receipt.Enforcement.Scope, receipt.Enforcement.Identity, receipt.Enforcement.Authorization, receipt.Enforcement.Audience, receipt.Enforcement.Kind, receipt.Enforcement.Effect, receipt.Enforcement.Resources, new InputFingerprint("sha256:wrong-enforcement"), receipt.Enforcement.RevocationVersion) : receipt.Enforcement;
         return new SecurityEnforcementIntentReceipt(field == "intent" ? new SecurityEnforcementIntentId(Guid.NewGuid()) : receipt.IntentId, field == "grant" ? new GrantId(Guid.NewGuid()) : receipt.GrantId, field == "request" ? new SecurityRequestId(Guid.NewGuid()) : receipt.RequestId, enforcement, field == "fence" ? new FencingToken(1) : receipt.RequiredFence, field == "fingerprint" ? new ContentHash("sha256:wrong-effect") : receipt.EffectFingerprint, receipt.ConsumedAt);
     }
 
@@ -1645,10 +1645,6 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
 
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
             inner.RegisterAsync(grant, cancellationToken);
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
-            inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent,

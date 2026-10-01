@@ -30,6 +30,7 @@
     <ProjectReference Include="../../src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <ProjectReference Include="../../src/AgentKit.IO/AgentKit.IO.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Network/AgentKit.Network.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers/AgentKit.Providers.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>

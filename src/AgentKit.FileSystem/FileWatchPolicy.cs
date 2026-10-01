@@ -3,7 +3,7 @@
 
 namespace AgentKit.FileSystem;
 
-/// <summary>Placeholder watch policy for profiles that do not expose change observation.</summary>
+/// <summary>Watch policy for a profile; it is disabled by default because no first-party profile exposes change observation.</summary>
 public sealed record FileWatchPolicy
 {
     /// <summary>Initializes a new instance of the <see cref="FileWatchPolicy"/> record.</summary>

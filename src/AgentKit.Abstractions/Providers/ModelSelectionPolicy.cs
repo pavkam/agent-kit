@@ -22,6 +22,8 @@ public sealed record ModelSelectionPolicy
 {
     private readonly ImmutableArray<ModelAlias> _candidates;
     private readonly ExtensionData _extensions;
+    private readonly ModelRequirements _requirements;
+    private readonly LlmRequestSettings _requestSettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModelSelectionPolicy"/>
@@ -41,6 +43,14 @@ public sealed record ModelSelectionPolicy
     /// Additional policy data for custom selectors. Defaults to
     /// <see cref="ExtensionData.Empty"/>.
     /// </param>
+    /// <param name="requirements">
+    /// The portable behaviors every request selected through this policy needs.
+    /// Defaults to <see cref="ModelRequirements.None"/>.
+    /// </param>
+    /// <param name="requestSettings">
+    /// The sampling and output settings applied to every request selected
+    /// through this policy. Defaults to <see cref="LlmRequestSettings.Default"/>.
+    /// </param>
     /// <exception cref="ArgumentException">
     /// <paramref name="candidates"/> is uninitialized, empty, or contains a
     /// duplicate alias.
@@ -50,11 +60,21 @@ public sealed record ModelSelectionPolicy
     /// <paramref name="fallback"/> or <paramref name="downgrade"/> is not a
     /// defined enumeration value.
     /// </exception>
+    /// <remarks>
+    /// <paramref name="requirements"/> and <paramref name="requestSettings"/> are
+    /// a recorded deviation from the normative four-member policy shape: the
+    /// agent definition has no member for either, so the model-choice policy
+    /// that an <see cref="AgentDefinition"/> already carries is the one place
+    /// that states which behaviors the agent's requests need and how they are
+    /// sampled. See the composition-and-configuration architecture page.
+    /// </remarks>
     public ModelSelectionPolicy(
         ImmutableArray<ModelAlias> candidates,
         ModelFallbackPolicy fallback = ModelFallbackPolicy.FirstCandidateOnly,
         CapabilityDowngradePolicy downgrade = CapabilityDowngradePolicy.Reject,
-        ExtensionData? extensions = null)
+        ExtensionData? extensions = null,
+        ModelRequirements? requirements = null,
+        LlmRequestSettings? requestSettings = null)
     {
         ArgumentException.ThrowIfDefaultOrEmpty(candidates);
         ThrowIfDuplicateCandidate(candidates, nameof(candidates));
@@ -65,6 +85,8 @@ public sealed record ModelSelectionPolicy
         Fallback = fallback;
         Downgrade = downgrade;
         _extensions = extensions ?? ExtensionData.Empty;
+        _requirements = requirements ?? ModelRequirements.None;
+        _requestSettings = requestSettings ?? LlmRequestSettings.Default;
     }
 
     /// <summary>Gets the ordered candidate aliases.</summary>
@@ -130,6 +152,36 @@ public sealed record ModelSelectionPolicy
         }
     }
 
+    /// <summary>Gets the portable behaviors every request selected through this policy needs.</summary>
+    /// <value>Used to reject or downgrade an incompatible candidate before any provider request is sent.</value>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer attempts to set <see langword="null"/>.
+    /// </exception>
+    public ModelRequirements Requirements
+    {
+        get => _requirements;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Requirements));
+            _requirements = value;
+        }
+    }
+
+    /// <summary>Gets the sampling and output settings applied to every request selected through this policy.</summary>
+    /// <value><see cref="LlmRequestSettings.Default"/> defers every setting to the provider.</value>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer attempts to set <see langword="null"/>.
+    /// </exception>
+    public LlmRequestSettings RequestSettings
+    {
+        get => _requestSettings;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(RequestSettings));
+            _requestSettings = value;
+        }
+    }
+
     /// <summary>Determines whether this policy has the same ordered declarative content as <paramref name="other"/>.</summary>
     /// <param name="other">The policy to compare, or <see langword="null"/>.</param>
     /// <returns><see langword="true"/> when every policy field, including candidate order, is equal.</returns>
@@ -138,7 +190,9 @@ public sealed record ModelSelectionPolicy
         && Candidates.SequenceEqual(other.Candidates)
         && Fallback == other.Fallback
         && Downgrade == other.Downgrade
-        && Extensions.Equals(other.Extensions);
+        && Extensions.Equals(other.Extensions)
+        && Requirements.Equals(other.Requirements)
+        && RequestSettings.Equals(other.RequestSettings);
 
     /// <summary>Returns a hash code consistent with structural policy equality.</summary>
     /// <returns>A hash code over each ordered candidate and every remaining policy field.</returns>
@@ -153,6 +207,8 @@ public sealed record ModelSelectionPolicy
         hash.Add(Fallback);
         hash.Add(Downgrade);
         hash.Add(Extensions);
+        hash.Add(Requirements);
+        hash.Add(RequestSettings);
         return hash.ToHashCode();
     }
 

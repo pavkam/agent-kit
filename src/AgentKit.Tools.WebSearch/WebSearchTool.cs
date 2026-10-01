@@ -24,6 +24,8 @@ public sealed class WebSearchTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(WebSearchToolLog.Completed, WebSearchToolLog.Cancelled, WebSearchToolLog.Faulted);
+    private readonly ILogger<WebSearchTool> _logger;
     private readonly IWebSearchProvider _provider;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
@@ -48,6 +50,7 @@ public sealed class WebSearchTool: IToolInvoker
     /// <param name="searchRequestIds">The replaceable search-attempt identity source.</param>
     /// <param name="timeProvider">The deterministic deadline clock.</param>
     /// <param name="options">The captured host ceilings.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentException">The provider destination is not a network endpoint.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
@@ -57,7 +60,8 @@ public sealed class WebSearchTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> securityRequestIds,
         IIdentifierGenerator<WebSearchRequestId> searchRequestIds,
         TimeProvider timeProvider,
-        IOptions<WebSearchToolOptions> options)
+        IOptions<WebSearchToolOptions> options,
+        ILogger<WebSearchTool> logger)
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(authoritySelector);
@@ -65,6 +69,7 @@ public sealed class WebSearchTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(searchRequestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentException.ThrowIfNotNetworkEndpointResource(provider.Destination);
         ValidateOptions(options.Value);
         _provider = provider;
@@ -80,6 +85,7 @@ public sealed class WebSearchTool: IToolInvoker
         _maximumTimeout = options.Value.MaximumTimeout;
         _maximumTitleCharacters = options.Value.MaximumTitleCharacters;
         _maximumSnippetCharacters = options.Value.MaximumSnippetCharacters;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and discovery.</summary>
@@ -104,16 +110,16 @@ public sealed class WebSearchTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("web_search"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

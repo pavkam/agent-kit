@@ -382,7 +382,7 @@ public sealed class DefaultNetworkTransportTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility()
+    public void Constructor_WhenLoggerArgumentIsNull_RetainsUnambiguousOverloadResolution()
     {
         using var transport = new DefaultNetworkTransport(
             new TestGrantStore(),

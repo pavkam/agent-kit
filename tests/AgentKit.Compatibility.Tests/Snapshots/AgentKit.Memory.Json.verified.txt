@@ -1,0 +1,83 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Memory.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Memory.Json
+{
+    public sealed class JsonDocumentStore : AgentKit.IDocumentStore, System.IDisposable
+    {
+        public JsonDocumentStore(AgentKit.DocumentStoreKey key, AgentKit.Memory.Json.JsonMemoryTarget target, AgentKit.Memory.Json.JsonMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Json.JsonDocumentStore>? logger = null) { }
+        public AgentKit.DocumentStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentActivateResult> ActivateAsync(AgentKit.DocumentActivateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentDeleteResult> DeleteAsync(AgentKit.DocumentDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentReadResult> ReadAsync(AgentKit.DocumentReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentWriteResult> WriteAsync(AgentKit.DocumentWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonMemoryInstanceId : System.IEquatable<AgentKit.Memory.Json.JsonMemoryInstanceId>
+    {
+        public JsonMemoryInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonMemoryOptions
+    {
+        public JsonMemoryOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; set; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonMemorySettings : System.IEquatable<AgentKit.Memory.Json.JsonMemorySettings>
+    {
+        public JsonMemorySettings(int maximumRecordBytes, int maximumDocumentBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Memory.Json.JsonMemorySettings CreateDefault() { }
+    }
+    public sealed class JsonMemoryStore : AgentKit.IMemoryStore, System.IDisposable
+    {
+        public JsonMemoryStore(AgentKit.MemoryStoreKey key, AgentKit.Memory.Json.JsonMemoryTarget target, AgentKit.Memory.Json.JsonMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Json.JsonMemoryStore>? logger = null) { }
+        public AgentKit.MemoryStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryDeleteResult> DeleteAsync(AgentKit.MemoryDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryListResult> ListAsync(AgentKit.MemoryListRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryReadResult> ReadAsync(AgentKit.MemoryReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryTransitionResult> TransitionAsync(AgentKit.MemoryTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryWriteResult> WriteAsync(AgentKit.MemoryWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class JsonMemoryTarget : System.IEquatable<AgentKit.Memory.Json.JsonMemoryTarget>
+    {
+        public JsonMemoryTarget(string directoryPath, AgentKit.Memory.Json.JsonMemoryInstanceId expectedInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Memory.Json.JsonMemoryInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public sealed class JsonVectorIndex : AgentKit.IVectorIndex, System.IDisposable
+    {
+        public JsonVectorIndex(AgentKit.VectorSpaceDescriptor space, AgentKit.Memory.Json.JsonMemoryTarget target, AgentKit.Memory.Json.JsonMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Json.JsonVectorIndex>? logger = null) { }
+        public bool ApproximateSearch { get; }
+        public bool IsDurable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public AgentKit.VectorSpaceDescriptor VectorSpace { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorDeleteResult> DeleteAsync(AgentKit.VectorDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorSearchResult> SearchAsync(AgentKit.VectorSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorUpsertResult> UpsertAsync(AgentKit.VectorUpsertRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonMemoryStore(AgentKit.MemoryStoreKey key, AgentKit.Memory.Json.JsonMemoryTarget target, System.Action<AgentKit.Memory.Json.JsonMemoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonDocumentStore(AgentKit.DocumentStoreKey key, AgentKit.Memory.Json.JsonMemoryTarget target, System.Action<AgentKit.Memory.Json.JsonMemoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonVectorIndex(AgentKit.VectorSpaceDescriptor space, AgentKit.Memory.Json.JsonMemoryTarget target, System.Action<AgentKit.Memory.Json.JsonMemoryOptions>? configure = null) { }
+        }
+    }
+}

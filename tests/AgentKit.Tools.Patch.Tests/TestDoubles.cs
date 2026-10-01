@@ -111,6 +111,7 @@ internal sealed class SequencedSecurityAuthority(int? denyAt = null): ISecurityA
                 request.Id,
                 request.Scope,
                 request.Identity,
+                request.Authorization,
                 request.Audience,
                 request.Kind,
                 request.Effect,

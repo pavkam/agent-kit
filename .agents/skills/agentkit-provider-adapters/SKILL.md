@@ -58,13 +58,25 @@ official vendor protocol documentation.
    profiles. Resolve credentials only at send time, authorize classified egress,
    and keep secrets out of options display, logs, snapshots, exceptions, and
    records. Shared wire mechanics do not own provider authentication policy.
-9. Map failures to stable AgentKit categories while retaining safe provider
-   status, code, request identity, retry-hint form/provenance, and side-effect
-   certainty. Normalize delay and absolute-date hints with `TimeProvider`; hints
-   remain advisory.
-10. Test serialization, fragmented streaming, cancellation, capability claims,
+9. Send only through `ProviderEgress`; never construct an `HttpClient`, a
+   handler, or an SDK transport in an adapter. Build the request as an in-memory
+   `HttpRequestMessage`, pass it with the descriptor and attempt request
+   (`ProviderEgressRequest.ForConversation`, `ForEmbedding`, `ForReranking`),
+   and handle the typed `ProviderEgressRefused` (fail closed; `Cancellation`
+   becomes the attempt's cancelled outcome) or the owned
+   `ProviderEgressResponse` (dispose asynchronously; classify body faults with
+   `ProviderEgressBodyFault`). Egress binds provider-egress, resolution, and
+   send grants per attempt, never follows redirects, and keeps credentials out
+   of security requests, audit, logs, and refusals. Tests use the deterministic
+   `ProviderEgressHarness` over `HandlerNetworkTransport`, never a real client.
+10. Map failures to stable AgentKit categories while retaining safe provider
+    status, code, request identity, retry-hint form/provenance, and side-effect
+    certainty. Normalize delay and absolute-date hints with `TimeProvider`;
+    hints remain advisory.
+11. Test serialization, fragmented streaming, cancellation, capability claims,
     tool calls, usage, error mapping, credentials, registration, and operation
-    replacement without requiring live services.
+    replacement, denial before I/O, and fail-closed audit without requiring live
+    services.
 
 Vendor SDK types remain in leaf packages. Provider-neutral contracts must not be
 shaped around whichever API was implemented first.

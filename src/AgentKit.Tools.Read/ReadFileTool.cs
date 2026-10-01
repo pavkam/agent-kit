@@ -31,6 +31,8 @@ public sealed class ReadFileTool: IToolInvoker
 
     private static readonly ExtensionData _completeExtensions = CompleteExtensions(true);
     private static readonly ExtensionData _incompleteExtensions = CompleteExtensions(false);
+    private static readonly ToolLeafLogEvents _logEvents = new(ReadFileToolLog.Completed, ReadFileToolLog.Cancelled, ReadFileToolLog.Faulted);
+    private readonly ILogger<ReadFileTool> _logger;
     private readonly IFileSystemSelector _fileSystemSelector;
     private readonly IFilePathNormalizer _pathNormalizer;
     private readonly ISecurityAuthoritySelector _authoritySelector;
@@ -47,6 +49,7 @@ public sealed class ReadFileTool: IToolInvoker
     /// <param name="fileOperationIds">The file-operation identity generator.</param>
     /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
     /// <param name="options">The validated options captured at construction.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
     /// <exception cref="ArgumentException"><see cref="ReadFileToolOptions.HostRootPath"/> is not configured.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured line bound is invalid.</exception>
@@ -57,7 +60,8 @@ public sealed class ReadFileTool: IToolInvoker
         IIdentifierGenerator<SecurityRequestId> requestIds,
         IIdentifierGenerator<FileOperationId> fileOperationIds,
         TimeProvider timeProvider,
-        IOptions<ReadFileToolOptions> options)
+        IOptions<ReadFileToolOptions> options,
+        ILogger<ReadFileTool> logger)
     {
         ArgumentNullException.ThrowIfNull(fileSystemSelector);
         ArgumentNullException.ThrowIfNull(pathNormalizer);
@@ -66,6 +70,7 @@ public sealed class ReadFileTool: IToolInvoker
         ArgumentNullException.ThrowIfNull(fileOperationIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.Value.HostRootPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.DefaultMaximumLines);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumLines);
@@ -79,6 +84,7 @@ public sealed class ReadFileTool: IToolInvoker
         _fileOperationIds = fileOperationIds;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -106,17 +112,19 @@ public sealed class ReadFileTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("read_file"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
+    }
+
+    private async ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken)
+    {
         var authorization = context.InvocationGrant.Authorization
             ?? throw new InvalidOperationException("Tool invocations require grants that retain complete authorization evidence.");
-        var result = await InvokeCoreAsync(authorization, context.AgentId, context.CallId, context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return await InvokeCoreAsync(authorization, context.AgentId, context.CallId, context.Arguments, cancellationToken);
     }
     private async ValueTask<ToolInvocationResult> InvokeCoreAsync(
         SecurityAuthorizationContext authorization,

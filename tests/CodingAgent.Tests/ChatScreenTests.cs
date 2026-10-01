@@ -229,7 +229,6 @@ public sealed class ChatScreenTests
     }
 
     [Fact]
-    [Obsolete("Legacy ChatScreen API under test.")]
     public void Constructor_WhenWorkspaceRootIsBlank_Throws() =>
         Should.Throw<ArgumentException>(() => new ChatScreen(" ")).ParamName.ShouldBe("workspaceRoot");
 
@@ -297,7 +296,6 @@ public sealed class ChatScreenTests
         ChatScreen.IsComposerSubmitKey(Code.Tab, Modifiers.None).ShouldBeFalse();
 
     [Fact]
-    [Obsolete("Legacy ChatScreen API under test.")]
     public void BuildEntryView_WhenAssistantProseCreated_OmitsRoleHeadingAndKeepsBodySelectable()
     {
         var screen = new ChatScreen("/workspace");
@@ -317,7 +315,6 @@ public sealed class ChatScreenTests
     }
 
     [Fact]
-    [Obsolete("Legacy ChatScreen API under test.")]
     public void BuildEntryView_WhenToolPresentationContainsCode_UsesNaturalHeightDocumentBlocks()
     {
         var screen = new ChatScreen("/workspace");

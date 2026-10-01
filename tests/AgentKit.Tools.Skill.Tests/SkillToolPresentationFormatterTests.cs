@@ -18,7 +18,6 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualListResult_RendersInventoryWithoutFingerprintsOrPaths()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -39,7 +38,6 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualActivationResult_RendersLiteralNonAuthoritativeContentWithoutFingerprints()
     {
         var reader = new RecordingSnapshotReader
@@ -64,7 +62,6 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualFailureOccurs_PreservesOnlySafeFailureReason()
     {
         var tool = Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority());
@@ -193,7 +190,6 @@ public sealed class SkillToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActivationHasMoreCodePartsThanBoundAllows_TruncatesAndReportsOmittedTail()
     {
         var reader = new RecordingSnapshotReader
@@ -300,10 +296,11 @@ public sealed class SkillToolPresentationFormatterTests
             new FixedSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
             new ConfiguredSkillCatalog(captured),
-            captured);
+            captured,
+            NullLogger<SkillTool>.Instance);
     }
 
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),

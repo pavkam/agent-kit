@@ -29,6 +29,7 @@ internal static class SecurityAuthorityTestData
             scope,
             null,
             identity,
+            TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity),
             new ComponentId("filesystem"),
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,
@@ -46,25 +47,7 @@ internal static class SecurityAuthorityTestData
     {
         ArgumentNullException.ThrowIfNull(request);
         var at = evaluatedAt ?? new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
-        if (request.Authorization is { } captured)
-        {
-            return new SecurityPolicyContext(captured, new SecurityRevocationVersion(1), at);
-        }
-
-        var snapshot = new SecurityPolicySnapshotReference(
-            new SecurityPolicySnapshotId(Guid.Parse("00000000-0000-0000-0000-000000000001")),
-            new SecurityPolicyVersion(1),
-            new ContentHash("sha256:test"));
-        var authorization = new SecurityAuthorizationContext(
-            new SecurityProfileKey("default"),
-            new SecurityProfileVersion(1),
-            snapshot,
-            new ComponentKey<ISecurityAuthority>("default"),
-            new AgentDefinitionRevision(0),
-            new ConfigurationVersion(1),
-            request.Scope,
-            request.Identity);
-        return new SecurityPolicyContext(authorization, new SecurityRevocationVersion(1), at);
+        return new SecurityPolicyContext(request.Authorization, new SecurityRevocationVersion(1), at);
     }
 
     /// <summary>Creates the default policy selector for one frozen permission-options snapshot.</summary>
@@ -79,7 +62,7 @@ internal static class SecurityAuthorityTestData
         var catalog = new SecurityPolicyCatalog(
             Options.Create(options),
             publications ?? []);
-        return new DefaultSecurityPolicySelector(catalog, Options.Create(options));
+        return new DefaultSecurityPolicySelector(catalog);
     }
 
     /// <summary>Creates a valid, non-expired approval request bound to a request from <see cref="CreateRequest"/>.</summary>

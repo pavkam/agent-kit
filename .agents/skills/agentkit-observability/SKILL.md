@@ -39,6 +39,29 @@ When changing C#, also read the
 - Preserve stable error categories and side-effect certainty without exposing
   raw prompts, credentials, tool arguments, retrieved content, or reasoning.
 
+## Sinks, redaction, and shutdown
+
+- One exporter key owns one immutable options snapshot. Register keyed sinks
+  through the public `AddRunEventSink`/`AddSecurityAuditSink` factory overloads
+  closed over that snapshot; never inject unkeyed options or keep static
+  registry state. Repeating an identical registration is idempotent; reusing a
+  key with different options throws.
+- Content reaches an exporter only as a `RedactedContent` result that still fits
+  the allowed classifications, byte bound, and content kind. A thrown redactor,
+  out-of-policy result, or disallowed classification omits the field and keeps
+  the structural event; only cancellation propagates. The omission-only redactor
+  can never enable capture.
+- A required run-event sink's inline failure becomes recovery-required
+  settlement; a buffering sink implements `IFlushableRunEventSink` and
+  `IRequiredRunEventSinkCoordinator.DrainAsync` bounds shutdown by each sink's
+  `FlushDeadline`, reporting instead of throwing. An audit sink rethrows
+  exporter failure so the permissions dispatcher owns
+  required-versus-best-effort.
+- Built-in tool leaves report through `ToolLeafObservation.RunAsync` with a
+  package-owned `ToolLeafLogEvents` block; wrap observation so a failing
+  listener or logger never changes a result. Allocate event-ID blocks per
+  package and keep `LoggerMessageEventIdTests` green.
+
 Test structured log IDs and fields, activity parentage and terminal status,
 bounded metric dimensions, correlation, redaction, sink capability negotiation,
 delivery failure, required settlement, cancellation, and DI replacement.

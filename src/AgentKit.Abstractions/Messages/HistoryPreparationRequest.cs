@@ -3,10 +3,10 @@
 
 namespace AgentKit;
 
-/// <summary>The immutable evidence one reduced history-preparation pass evaluates.</summary>
+/// <summary>The immutable evidence one history-preparation pass evaluates.</summary>
 /// <remarks>
-/// This reduced request omits session execution capabilities and hook dispatch context until the full
-/// <see cref="IHistoryPipeline"/> overload is available. Callers supply the exact source cursor and loaded messages.
+/// The request carries no session execution capability or hook dispatch context: preparation is a deterministic
+/// in-memory pass. Callers supply the exact source cursor and the already-loaded messages.
 /// </remarks>
 public sealed record HistoryPreparationRequest
 {

@@ -42,7 +42,7 @@ retained metadata, lease ownership, repeated cleanup failure, and closure races.
 `ToolDiscoveryObservationTests` verifies all six bounded diagnostic stages,
 terminal status/severity, safe fields, clock failure, and observer isolation.
 Direct catalog construction rejects reused owners before metadata reads. The
-legacy invoker diagnostic test filters by its own trace and operation so other
+invoker diagnostic test filters by its own trace and operation so other
 concurrent fixtures cannot replace the observed activity.
 
 Canonical schema tests use typed engine construction and compiled handles.
@@ -63,9 +63,8 @@ corresponding implementation types.
   and diagnostics.
 - [ToolInvokerLeaseTests](ToolInvokerLeaseTests.cs) — exact binding lifetime and
   concurrent idempotent release.
-- [AllowListToolAuthorizerTests](AllowListToolAuthorizerTests.cs)
-- [DefaultToolInvokerTests](DefaultToolInvokerTests.cs)
-- [ToolCatalogTests](ToolCatalogTests.cs)
+- [DefaultToolExecutorTests](DefaultToolExecutorTests.cs)
+- [ToolCatalogCoordinatorTests](ToolCatalogCoordinatorTests.cs)
 - [ToolResultProjectionPolicyCatalogTests](ToolResultProjectionPolicyCatalogTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 

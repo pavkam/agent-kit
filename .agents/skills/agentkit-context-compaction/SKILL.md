@@ -38,7 +38,16 @@ read the [modern C# rules](../references/modern-csharp.md).
    validation does not prove semantic entailment of arbitrary summary text.
 5. Generate outside the append lock, then activate with optimistic concurrency.
    A stale source produces a conflict; never silently rebase or lose an append.
-6. Before activation, failure leaves the previous path active. After activation,
+6. Keep the model-backed strategy a preparer of a bounded
+   `CompactionSummaryRequest`; `ICompactionSummaryGenerator`, resolved per
+   compactor key, owns the provider interaction. Registration is keyed per
+   compactor: `AddAgentContextCompaction` plus the additive `Add*` helpers for
+   strategies, summary generators, and event sinks, one `Replace*` per singular
+   collaborator, and `AddCompactionProfile`, whose catalog compiles the
+   `CompactionPolicySnapshot` that engine composition validates and the loop
+   attaches. Duplicate identities fail unless the exact `Replace*` is used;
+   never add an unkeyed collaborator or a `Scoped` strategy, generator, or sink.
+7. Before activation, failure leaves the previous path active. After activation,
    preserve the committed record and report truthful or unknown commit state.
    Bound non-reducing attempts and return typed context-limit outcomes.
 

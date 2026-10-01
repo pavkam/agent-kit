@@ -14,35 +14,31 @@ Owning documents:
 
 ## Progress
 
-- [ ] WS13-C1 identity keys and value types
-- [ ] WS13-C2 `AgentGoal`, `GoalAttempt`, `GoalTransition`, delegation records
-- [ ] WS13-C3 store, coordinator, join, event, policy, dispatch contracts
-- [ ] WS13-C4 goal-store conformance suite
-- [ ] WS13-C5 `AgentKit.Goals.InMemory`
-- [ ] WS13-C6 session-backed projection
-- [ ] WS13-C7 `AgentKit.Goals.Sqlite` and `.Json`
-- [ ] WS13-C8 `AgentKit.Goals` runtime
-- [ ] WS13-C9 join strategies
-- [ ] WS13-C10 local dispatcher and `AgentKit.Goals.Hosting` worker
-- [ ] WS13-C11 `Tools.Task` migration and communication
-- [ ] WS13-C12 definition key, validator, Simple, documentation
+- [x] WS13-C1 identity keys and value types
+- [x] WS13-C2 `AgentGoal`, `GoalAttempt`, `GoalTransition`, delegation records
+- [x] WS13-C3 store, coordinator, join, event, policy, dispatch contracts
+- [x] WS13-C4 goal-store conformance suite
+- [x] WS13-C5 `AgentKit.Goals.InMemory`
+- [x] WS13-C6 session-backed projection
+- [x] WS13-C7 `AgentKit.Goals.Sqlite` and `.Json`
+- [x] WS13-C8 `AgentKit.Goals` runtime
+- [x] WS13-C9 join strategies
+- [x] WS13-C10 local dispatcher and `AgentKit.Goals.Hosting` worker
+- [x] WS13-C11 `Tools.Task` migration and communication
+- [x] WS13-C12 definition key, validator, Simple, documentation
 
 ## Verified current state
 
-| Item                                                                                                                                                                                                                                                   | State           | Evidence                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| every goal contract and value (`AgentGoal`, `GoalAttempt`, `GoalTransition`, canonical `DelegationRequest/Result`, `IGoalStore`, coordinators, target provider/catalog/selector, policy pipeline, dispatcher, join strategy, event sinks, keys, enums) | MISSING         | `src/AgentKit.Abstractions/Goals/` does not exist                                                                                          |
-| `GoalId`, `GoalAttemptId`, `GoalProfileKey`, `DelegationId`, `VersionToken`, `IdempotencyKey`                                                                                                                                                          | EXISTS          | `Abstractions/Identity/`                                                                                                                   |
-| `TaskDelegation*` adapter contracts (10 files)                                                                                                                                                                                                         | EXISTS-AND-USED | `Abstractions/Delegation/`; `Goals/DefaultTaskDelegationBroker.cs`, `Tools.Task/TaskTool.cs:27,141`, `AgentKit/EngineDelegationChannel.cs` |
-| `DefaultTaskDelegationBroker`                                                                                                                                                                                                                          | EXISTS-AND-USED | `Goals/DefaultTaskDelegationBroker.cs:7-141`; `AddAgentDelegation`                                                                         |
-| `EngineDelegationChannel` runs children inline                                                                                                                                                                                                         | CONFIRMED       | lazy engine resolve at `:80`, `target.SendAsync(...)` inside the parent tool call at `:94-96`; violates `goals-and-delegation.md:317-323`  |
-| `AgentKit.Goals.Hosting`, communication envelope, goal session entries                                                                                                                                                                                 | MISSING         | –                                                                                                                                          |
-| observability                                                                                                                                                                                                                                          | minimal         | `task.delegation.dispatch` plus two metrics                                                                                                |
-
-Test doubles: `ITaskDelegationChannel` 1
-(`Goals.Tests/DelegationTestDoubles.cs:69`), `ITaskDelegationBroker` 1
-(`Tools.Task.Tests/TestDoubles.cs:6`); `EngineDelegationChannelTests.cs` (248
-lines); none break if `TaskDelegation*` is retained.
+| Item                                                                                                                                               | State   | Evidence                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Goal contracts and values, keys, enums, stores, coordinators, selectors, policy pipeline, dispatcher, join strategy, events, parking, child runner | LANDED  | `src/AgentKit.Abstractions/Goals/`, `Identity/Goal*Key.cs`                                                                                |
+| Stores: InMemory, Json, Sqlite, session-backed, one shared conformance suite                                                                       | LANDED  | `src/AgentKit.Goals.{InMemory,Json,Sqlite}`, `Goals/SessionBackedGoalStore.cs`, `tests/AgentKit.Conformance/GoalStoreConformanceTests.cs` |
+| Goals runtime (profiles, coordinators, selectors, pipeline, budget manager, events, joins, local dispatcher)                                       | LANDED  | `src/AgentKit.Goals/`                                                                                                                     |
+| `AgentKit.Goals.Hosting` (worker, slots and parking, engine child runner, message channel)                                                         | LANDED  | `src/AgentKit.Goals.Hosting/`                                                                                                             |
+| `TaskDelegation*` contracts, `DefaultTaskDelegationBroker`, `AddAgentDelegation`, `EngineDelegationChannel`, old task-delegation observability     | REMOVED | deleted; `TaskTool` uses `IDelegationCoordinator`                                                                                         |
+| `GoalProfileKey? GoalProfile` on `AgentOptionalCapabilitySelection`                                                                                | EXISTED | `Abstractions/Composition/AgentOptionalCapabilitySelection.cs`                                                                            |
+| Goals composition validator                                                                                                                        | LANDED  | `src/AgentKit/GoalsCompositionValidator.cs`, wired from `AgentCompositionValidator`                                                       |
+| Observability                                                                                                                                      | LANDED  | `goal.*`, `delegation.*`, `agent.message.send` activities and bounded metrics in `AgentKit.Observability`                                 |
 
 ## Hidden prerequisites
 
@@ -82,12 +78,20 @@ lines); none break if `TaskDelegation*` is retained.
   `DelegationScope`, `StructuredGoalResult`, `EvidenceReference`,
   `DelegationRejection`; identity conformance tests. Snapshot: Abstractions.
 
+- Landed: four identity keys, eight enums, and the value types with validating
+  constructors and tests in `Abstractions.Tests`.
+
 ### WS13-C2: Core records
 
 - Depends on: C1. Risk: ADDITIVE (keeps `TaskDelegation*`). Size: M.
 - Deliverables: `AgentGoal`, `GoalAttempt`, `GoalTransition` (with a static
   validity table), `DelegationRequest`, `DelegationResult`,
   `DelegationRejected`, `DelegationChildResult`; transition matrix tests.
+
+- Landed: `AgentGoal` (with `WithState`), `GoalAttempt`, `GoalTransition` with
+  the validity table, `DelegationRequest`, and the result family; full
+  transition-matrix tests. `GoalRecord` additionally carries sequence, child
+  ordinal, settled sequence, and the stored delegation.
 
 ### WS13-C3: Contracts
 
@@ -102,6 +106,14 @@ lines); none break if `TaskDelegation*` is retained.
   `IGoalBudgetManager`, event sink, dispatcher, `GoalEvent`, registration. Store
   requests carry `SecurityGrant`.
 
+- Landed: every listed contract plus `GoalSecurityBinding`,
+  `DelegationSecurityBinding`, `RunRootGoal`, `GoalProfileSnapshot`,
+  `DelegationIntent`, `IDelegationIntentSignal`, `IDelegationWaitParking`,
+  `IDelegationChildRunner`, and the agent-message contracts. Deviations (command
+  versus request types, attempt changes riding on transitions,
+  `ReadChildrenAsync`/`ReadIntentsAsync`) are recorded in
+  [the architecture document](../architecture/goals-and-delegation.md#implementation-notes-and-recorded-deviations).
+
 ### WS13-C4: Goal-store conformance suite
 
 - Depends on: C3. Risk: ADDITIVE. Size: M.
@@ -109,11 +121,19 @@ lines); none break if `TaskDelegation*` is retained.
   children ordinal paging, grant denial before write, cross-agent/session
   rejection.
 
+- Landed: `GoalStoreConformanceTests` with `IGoalStoreConformanceFixture`; run
+  by all four stores. Session-backed conformance accepts scope-mismatch or
+  not-found for a cross-scope read.
+
 ### WS13-C5: `AgentKit.Goals.InMemory`
 
 - Depends on: C4. Risk: ADDITIVE new project. Size: M.
 - Deliverables: `InMemoryGoalStore`, enforcement receipt,
   `AddInMemoryGoalStore(GoalStoreKey)`; suite green.
+
+- Landed: `AgentKit.Goals.InMemory` with `AddInMemoryGoalStore`; intent
+  discovery is refused unless the host names the scanner in
+  `InMemoryGoalStoreOptions.AuthorizedIntentScanners`.
 
 ### WS13-C6: Session-backed projection
 
@@ -123,9 +143,19 @@ lines); none break if `TaskDelegation*` is retained.
   `ISessionEntryCodec`); suite over `InMemorySessionStore`; replay
   reconstruction; codec conformance fixture.
 
+- Landed: `SessionBackedGoalStore`, the two session entries with codecs and
+  codec fixtures, replay reconstruction. It persists no delegation
+  authorization, so it reports no durability and no intent discovery.
+
 ### WS13-C7: `AgentKit.Goals.Sqlite` and `.Json`
 
 - Depends on: C4. Risk: ADDITIVE new projects. Size: L.
+
+- Landed: `AgentKit.Goals.Json` (single-writer, `store.json` manifest plus
+  `goals.jsonl`) and `AgentKit.Goals.Sqlite`, each with READMEs, slnx entries,
+  and conformance plus leaf tests. All three adapters compile one pure reducer
+  and planner from source-only `AgentKit.Goals.Storage.Shared` (and `.Durable`
+  for the durable leaves).
 
 ### WS13-C8: `AgentKit.Goals` runtime
 
@@ -137,12 +167,23 @@ lines); none break if `TaskDelegation*` is retained.
   `DefaultGoalBudgetManager` (WS11), event dispatcher, selectors; `goal.*` and
   `delegation.*` activity names; `AddAgentDelegation` retained.
 
+- Landed: options, profile registry and catalog, registration surface with
+  `Replace*` methods, `DefaultGoalCoordinator`, `DelegationCoordinator`,
+  `LocalAgentDelegationTargetProvider`, target catalog and selector, policy
+  pipeline with ordering and narrowing validation,
+  `DenyUnlessAuthorizedDelegationPolicy`, `DefaultGoalBudgetManager`, event
+  dispatcher, selectors, and the `goal.*`/`delegation.*` observability.
+  `AddAgentDelegation` was removed in C11 rather than retained.
+
 ### WS13-C9: Join strategies
 
 - Depends on: C8. Risk: ADDITIVE. Size: M.
 - Deliverables: all-results, ordinal-first-success, fastest-valid-success
   (recorded winner), quorum, best-effort; matrix tests; no strategy reads task
   completion order.
+
+- Landed: the five strategies, each registered as a keyed singleton, with a
+  matrix test suite including out-of-order settlement and replay determinism.
 
 ### WS13-C10: Local dispatcher and hosting worker
 
@@ -157,6 +198,14 @@ lines); none break if `TaskDelegation*` is retained.
 - Done when: a child never runs inline in the parent call; a one-worker host
   parks the parent.
 
+- Landed: `LocalDelegationDispatcher` (idempotent ready-intent commit, own grant
+  validation), `GoalDelegationWorker` with startup and periodic durable scans,
+  bounded slots with session-keyed parking, claim-before-run settlement,
+  stale-attempt recovery, deadline and stop handling, lazy start for standalone
+  engines, and `EngineDelegationChildRunner`. `EngineDelegationChannel` was
+  deleted from the facade rather than moved, because its contract
+  (`ITaskDelegationChannel`) no longer exists; the runner replaces it.
+
 ### WS13-C11: `Tools.Task` migration and communication
 
 - Depends on: C10. Risk: DENSE-MODIFY `TaskTool.cs:83-150`. Size: M.
@@ -164,6 +213,14 @@ lines); none break if `TaskDelegation*` is retained.
   `IDelegationCoordinator`; agent-to-agent messages are admitted input with
   sender, recipient, goal, attempt, idempotency; retried task messages create no
   duplicate child.
+
+- Landed: `TaskTool` over `IDelegationCoordinator` (idempotency key
+  `task:{toolCallId}`, fails closed without a configured goal profile);
+  `TaskDelegation*`, the broker, `AddAgentDelegation`,
+  `EngineDelegationChannel`, and their logs, metrics, tests, and docs removed;
+  `IAgentMessageChannel` with `EngineAgentMessageChannel` admitting
+  deterministic-identity steering or follow-up input. No model-facing messaging
+  tool was added.
 
 ### WS13-C12: Definition key, validator, Simple, documentation
 
@@ -173,6 +230,13 @@ lines); none break if `TaskDelegation*` is retained.
   selectors, store and dispatcher keys, join strategies, budget manager, limits;
   `WithDelegation` registers the runtime, profile, InMemory store, and worker;
   architecture and use-case updates; skill.
+
+- Landed: `GoalProfileKey? GoalProfile` already existed on the capability
+  selection; `GoalsCompositionValidator` wired into composition validation;
+  `AgentKit.Simple.WithDelegation` registers the runtime, one profile, the
+  in-memory store, the local dispatcher, the hosted worker, the task tool, and
+  the message channel and selects the profile on every definition; README,
+  architecture, use-case, profile, and skill documents updated.
 
 ## Totals
 

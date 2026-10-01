@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddPatchTool(Action<PatchToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<PatchToolOptions>()
                 .Validate(
                     static value => value.MaximumPatchBytes > 0

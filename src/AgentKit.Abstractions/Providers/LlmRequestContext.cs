@@ -15,18 +15,16 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller
-/// <c>ModelRequestContext</c> described by the context-assembly
-/// architecture, which additionally carries agent/session/run/turn
-/// identity, resolved instructions, security authorization, and a context
-/// manifest produced by the not-yet-implemented AgentKit.Context and
-/// AgentKit.Session packages. Once those packages exist, a chat model
-/// adapter will consume their richer context type instead; this type
-/// exists so a chat model implementation has a stable, self-contained
-/// request shape to implement and test against in the meantime. It preserves the
-/// one piece of identity every downstream consumer already depends on —
-/// <see cref="ModelRequestId"/> — so streamed events and the committed
-/// response can still be correlated end to end.
+/// This is the provider-facing request body the context assembler produces:
+/// the model request identity, selected model, ordered messages (instructions
+/// first), tool snapshot, tool choice, settings, extension data, the context
+/// manifest, and the resolved output definition. Agent, session, run, turn,
+/// identity, and security authorization do not travel inside it; the provider
+/// boundary receives them in the <see cref="ProtectedSemanticOperationContext"/>
+/// of the model execution request, so an adapter cannot widen or replace the
+/// authority the loop captured. <see cref="ModelRequestId"/> is the identity
+/// every downstream consumer correlates streamed events and the committed
+/// response by.
 /// </para>
 /// </remarks>
 public sealed record LlmRequestContext

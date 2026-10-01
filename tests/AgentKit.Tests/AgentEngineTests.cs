@@ -5,6 +5,8 @@ namespace AgentKit.Tests;
 
 using AgentKit.TestSupport;
 
+using Microsoft.Extensions.Logging;
+
 public sealed class AgentEngineTests
 {
     [Fact]
@@ -138,20 +140,16 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenTwoDefinitionsSelectDifferentLoopKeys_EachCompilesItsOwnKeyedContextAssembler()
+    public async Task RunAsync_WhenTwoDefinitionsSelectDifferentKeyedCollaborators_EachCompilesItsOwnBundle()
     {
-        // This is the regression the keyed, scoped IAgentLoop fix exists for: before it, every agent definition
-        // in one engine shared whatever single unkeyed IContextAssembler (and every other collaborator) happened
-        // to be registered, because the run-plan compiler builds a distinct
-        // AgentRunServices bundle per run, preferring the collaborator registered under the run's own loop key.
-        var firstLoopKey = new ComponentKey<IAgentLoop>("regression-loop-a");
-        var secondLoopKey = new ComponentKey<IAgentLoop>("regression-loop-b");
-        var firstDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "first") with { LoopKey = firstLoopKey };
-        var secondDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second") with { LoopKey = secondLoopKey };
-        var firstLoop = new RecordingAgentLoop();
-        var secondLoop = new RecordingAgentLoop();
-        var firstContextAssembler = new UnsupportedContextAssembler();
-        var secondContextAssembler = new UnsupportedContextAssembler();
+        // Two keyed loops each select a complete, distinct set of keyed collaborators. The run-plan compiler must
+        // bind every one by the definition's own key; none may leak from the other definition or an unkeyed default.
+        var first = KeyedSet("a");
+        var second = KeyedSet("b");
+        var firstDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "first").WithComponents(
+            first.LoopKey, first.PolicyKey, first.InputKey, first.OutputKey, first.ProcessorKey, first.ContextKey, first.SelectorKey, first.ExecutorKey);
+        var secondDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second").WithComponents(
+            second.LoopKey, second.PolicyKey, second.InputKey, second.OutputKey, second.ProcessorKey, second.ContextKey, second.SelectorKey, second.ExecutorKey);
 
         var builder = AgentEngine.CreateBuilder();
         var sessions = new InMemoryTestSessionCoordinator();
@@ -159,10 +157,8 @@ public sealed class AgentEngineTests
         var secondSession = new SessionId(Guid.NewGuid());
         _ = builder.Services.AddSingleton<ISessionCoordinator>(sessions);
         CompositionTestData.AddRunServicesFakes(builder.Services);
-        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(firstLoopKey.Value, firstLoop);
-        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(secondLoopKey.Value, secondLoop);
-        _ = builder.Services.AddKeyedSingleton<IContextAssembler>(firstLoopKey.Value, firstContextAssembler);
-        _ = builder.Services.AddKeyedSingleton<IContextAssembler>(secondLoopKey.Value, secondContextAssembler);
+        first.Register(builder.Services);
+        second.Register(builder.Services);
         _ = builder.Services.AddAgent(firstDefinition);
         _ = builder.Services.AddAgent(secondDefinition);
         CompositionTestData.AddRunProfiles(builder.Services, firstDefinition, secondDefinition);
@@ -182,9 +178,72 @@ public sealed class AgentEngineTests
             options: CompositionTestData.RunOptions(),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        firstLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(firstContextAssembler);
-        secondLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(secondContextAssembler);
-        firstLoop.ReceivedServices[0].Context.ShouldNotBeSameAs(secondLoop.ReceivedServices[0].Context);
+        first.LoopInstance.ReceivedServices.ShouldHaveSingleItem().ShouldSatisfyAllConditions(
+            services => services.Context.ShouldBeSameAs(first.Context),
+            services => services.ModelSelector.ShouldBeSameAs(first.Selector),
+            services => services.ModelExecutor.ShouldBeSameAs(first.Executor),
+            services => services.Input.ShouldBeSameAs(first.Input),
+            services => services.Publisher.ShouldBeSameAs(first.Output),
+            services => services.OutputProcessor.ShouldBeSameAs(first.Processor),
+            services => services.ContinuationPolicy.ShouldBeSameAs(first.Policy));
+        second.LoopInstance.ReceivedServices.ShouldHaveSingleItem().ShouldSatisfyAllConditions(
+            services => services.Context.ShouldBeSameAs(second.Context),
+            services => services.ModelSelector.ShouldBeSameAs(second.Selector),
+            services => services.ModelExecutor.ShouldBeSameAs(second.Executor),
+            services => services.Input.ShouldBeSameAs(second.Input),
+            services => services.Publisher.ShouldBeSameAs(second.Output),
+            services => services.OutputProcessor.ShouldBeSameAs(second.Processor),
+            services => services.ContinuationPolicy.ShouldBeSameAs(second.Policy));
+    }
+
+    private static KeyedCollaborators KeyedSet(string suffix) => new(suffix);
+
+    /// <summary>One complete set of distinct keyed collaborators a definition can select.</summary>
+    private sealed class KeyedCollaborators(string suffix)
+    {
+        public RecordingAgentLoop LoopInstance { get; } = new();
+
+        public UnsupportedContextAssembler Context { get; } = new();
+
+        public ScriptedModelSelector Selector { get; } = new(new InvalidModelPolicy("unused"));
+
+        public UnsupportedModelRequestExecutor Executor { get; } = new();
+
+        public UnsupportedInputCoordinator Input { get; } = new();
+
+        public UnsupportedOutputPublisher Output { get; } = new();
+
+        public UnsupportedOutputProcessor Processor { get; } = new();
+
+        public UnsupportedRunContinuationPolicy Policy { get; } = new();
+
+        public ComponentKey<IAgentLoop> LoopKey { get; } = new($"loop-{suffix}");
+
+        public ComponentKey<IRunContinuationPolicy> PolicyKey { get; } = new($"policy-{suffix}");
+
+        public ComponentKey<IInputCoordinator> InputKey { get; } = new($"input-{suffix}");
+
+        public ComponentKey<IOutputPublisher> OutputKey { get; } = new($"output-{suffix}");
+
+        public ComponentKey<IOutputProcessor> ProcessorKey { get; } = new($"processor-{suffix}");
+
+        public ComponentKey<IContextAssembler> ContextKey { get; } = new($"context-{suffix}");
+
+        public ComponentKey<IModelSelector> SelectorKey { get; } = new($"selector-{suffix}");
+
+        public ComponentKey<IModelRequestExecutor> ExecutorKey { get; } = new($"executor-{suffix}");
+
+        public void Register(IServiceCollection services)
+        {
+            _ = services.AddKeyedSingleton<IAgentLoop>(LoopKey.Value, LoopInstance);
+            _ = services.AddKeyedSingleton<IRunContinuationPolicy>(PolicyKey.Value, Policy);
+            _ = services.AddKeyedSingleton<IInputCoordinator>(InputKey.Value, Input);
+            _ = services.AddKeyedSingleton<IOutputPublisher>(OutputKey.Value, Output);
+            _ = services.AddKeyedSingleton<IOutputProcessor>(ProcessorKey.Value, Processor);
+            _ = services.AddKeyedSingleton<IContextAssembler>(ContextKey.Value, Context);
+            _ = services.AddKeyedSingleton<IModelSelector>(SelectorKey.Value, Selector);
+            _ = services.AddKeyedSingleton<IModelRequestExecutor>(ExecutorKey.Value, Executor);
+        }
     }
 
     [Fact]
@@ -211,30 +270,19 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenAnOutputProcessorIsRegistered_CompilesItIntoTheRunServices()
+    public async Task RunAsync_WhenAnOutputProcessorIsRegisteredUnderTheSelectedKey_CompilesItIntoTheRunServices()
     {
         var loop = new RecordingAgentLoop();
         var processor = new NullOutputProcessor();
         var builder = CompositionTestData.RunnableBuilder(loop);
-        _ = builder.Services.AddSingleton<IOutputProcessor>(processor);
+        _ = builder.Services.RemoveAllKeyed<IOutputProcessor>(AgentOutputComponentDefaults.ProcessorKeyValue);
+        _ = builder.Services.AddKeyedSingleton<IOutputProcessor>(AgentOutputComponentDefaults.ProcessorKeyValue, processor);
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
         loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeSameAs(processor);
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenNoOutputProcessorIsRegistered_LeavesTheRunServicesOutputNull()
-    {
-        var loop = new RecordingAgentLoop();
-        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
-        var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
-
-        _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
-
-        loop.ReceivedServices.ShouldHaveSingleItem().OutputProcessor.ShouldBeNull();
     }
 
     [Fact]
@@ -260,7 +308,7 @@ public sealed class AgentEngineTests
         var loop = new RecordingAgentLoop();
         var authority = new NullBudgetAuthority();
         var builder = CompositionTestData.RunnableBuilder(loop);
-        _ = builder.Services.AddSingleton<IBudgetAuthority>(authority);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IBudgetAuthority>(authority));
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
@@ -270,19 +318,20 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenTheDefinitionDeclaresBudgetLimits_CarriesThemOnTheRequest()
+    public async Task RunAsync_WhenTheDefinitionSelectsABudgetProfile_CarriesItOnTheRequestWithoutInlineLimits()
     {
         var loop = new RecordingAgentLoop();
-        var limit = new BudgetLimit(BudgetDimensions.Turns, 3m, new BudgetUnit("count"), BudgetLimitKind.Hard);
-        var definition = CompositionTestData.Definition() with { BudgetLimits = [limit] };
+        var profile = new BudgetProfileKey("tight");
+        var definition = CompositionTestData.Definition().WithComponents(budgetProfile: profile);
         var builder = CompositionTestData.RunnableBuilder(loop, definition);
-        _ = builder.Services.AddSingleton<IBudgetAuthority>(new NullBudgetAuthority());
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IBudgetProfileCatalog>(new StaticBudgetProfileCatalog(profile)));
         await using var engine = builder.Build();
         var agent = (await engine.GetAgentAsync(CompositionTestData.AgentId, TestContext.Current.CancellationToken)).RequireResolved();
 
         _ = await agent.RunAsync<string>(CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(), options: CompositionTestData.RunOptions(), cancellationToken: TestContext.Current.CancellationToken);
 
-        loop.ReceivedRequests.ShouldHaveSingleItem().BudgetLimits.ShouldBe([limit]);
+        var request = loop.ReceivedRequests.ShouldHaveSingleItem();
+        request.BudgetProfile.ShouldBe(profile);
     }
 
     [Fact]
@@ -403,10 +452,77 @@ public sealed class AgentEngineTests
         owner.DisposeCount.ShouldBe(1);
     }
 
-    private static ServiceProvider MinimalProvider()
+    [Fact]
+    public async Task DisposeAsync_WhenRequiredSinksExist_DrainsThemBeforeDisposingTheOwnedProvider()
+    {
+        var order = new List<string>();
+        var coordinator = new RecordingDrainCoordinator(order, new RequiredRunEventSinkDrainResult(["audit"], [], []));
+        var owner = new OrderRecordingDisposable(order);
+        var engine = new AgentEngine(new AgentEngineRuntime(MinimalProvider(coordinator), owner, Composition()));
+
+        await engine.DisposeAsync();
+
+        order.ShouldBe(["drain", "dispose"]);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenARequiredSinkTimedOut_LogsItAndStillDisposesWithoutThrowing()
+    {
+        var logger = new RecordingLogger<AgentEngine>();
+        var order = new List<string>();
+        var coordinator = new RecordingDrainCoordinator(order, new RequiredRunEventSinkDrainResult([], ["otel"], ["audit"]));
+        var owner = new OrderRecordingDisposable(order);
+        var engine = new AgentEngine(new AgentEngineRuntime(MinimalProvider(coordinator, logger), owner, Composition()));
+
+        await engine.DisposeAsync();
+
+        order.ShouldBe(["drain", "dispose"]);
+        var entry = logger.Snapshot().Single(static candidate => candidate.EventId.Id == 18201);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain("otel");
+        entry.Message.ShouldContain("audit");
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenTheDrainLoggerThrows_StillDisposesTheOwnedProvider()
+    {
+        var logger = new RecordingLogger<AgentEngine> { ThrowOnWrite = true };
+        var order = new List<string>();
+        var coordinator = new RecordingDrainCoordinator(order, new RequiredRunEventSinkDrainResult([], ["otel"], []));
+        var owner = new OrderRecordingDisposable(order);
+        var engine = new AgentEngine(new AgentEngineRuntime(MinimalProvider(coordinator, logger), owner, Composition()));
+
+        await engine.DisposeAsync();
+
+        order.ShouldBe(["drain", "dispose"]);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenNoCoordinatorIsComposed_DisposesWithoutDraining()
+    {
+        var order = new List<string>();
+        var owner = new OrderRecordingDisposable(order);
+        var engine = new AgentEngine(new AgentEngineRuntime(MinimalProvider(), owner, Composition()));
+
+        await engine.DisposeAsync();
+
+        order.ShouldBe(["dispose"]);
+    }
+
+    private static ServiceProvider MinimalProvider(IRequiredRunEventSinkCoordinator? coordinator = null, ILogger<AgentEngine>? logger = null)
     {
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        if (coordinator is not null)
+        {
+            _ = services.AddSingleton(coordinator);
+        }
+
+        if (logger is not null)
+        {
+            _ = services.AddSingleton(logger);
+        }
+
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         return services.BuildServiceProvider();
     }
@@ -414,6 +530,24 @@ public sealed class AgentEngineTests
     private static AgentCompositionSnapshot Composition() => new(
         new AgentRunProfilePublicationSnapshot([]),
         ComponentRegistrationSnapshot.Capture(new ServiceCollection()));
+
+    private sealed class RecordingDrainCoordinator(List<string> order, RequiredRunEventSinkDrainResult result): IRequiredRunEventSinkCoordinator
+    {
+        public ValueTask<RequiredRunEventSinkDrainResult> DrainAsync(CancellationToken cancellationToken = default)
+        {
+            order.Add("drain");
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class OrderRecordingDisposable(List<string> order): IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            order.Add("dispose");
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private sealed class BlockingAsyncDisposable: IAsyncDisposable
     {

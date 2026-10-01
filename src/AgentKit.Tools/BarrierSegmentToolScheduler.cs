@@ -12,7 +12,10 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// Parallel-safe calls run together subject to <see cref="ToolRuntimeOptions.MaximumParallelInvocations"/> and
 /// concurrency-key sub-barriers. Sequential, global-exclusive, and conservatively classified unspecified calls form
-/// ordering barriers between parallel segments.
+/// ordering barriers between parallel segments. Each entry's attempts follow the <see cref="ToolRetryPolicy"/> its
+/// execution policy planned, and only for the cases <c>ToolRetryDecider</c> proves safe. Every entry reaches exactly one
+/// terminal result, including entries interrupted before or during invocation; the scheduler never throws for caller
+/// cancellation.
 /// </remarks>
 public sealed class BarrierSegmentToolScheduler: IToolScheduler
 {
@@ -21,27 +24,37 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
     private readonly IToolResultNormalizer _resultNormalizer;
     private readonly ToolRuntimeOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly ToolEventDispatcher _events;
+    private readonly IRandomizerFactory _randomizers;
     private readonly ILogger<BarrierSegmentToolScheduler> _logger;
 
     /// <summary>Initializes the default barrier-segment scheduler.</summary>
     /// <param name="resultNormalizer">The normalizer that maps invoker evidence into bounded terminal content.</param>
     /// <param name="options">The configured runtime limits and unknown-scheduling policy.</param>
-    /// <param name="timeProvider">The replaceable clock used for terminal timestamps.</param>
+    /// <param name="timeProvider">The replaceable clock used for terminal timestamps and retry backoff.</param>
+    /// <param name="events">The dispatcher that delivers retry events to registered sinks without influencing outcomes.</param>
+    /// <param name="randomizers">The engine-wide randomizer factory consulted only when the planned retry policy applies jitter.</param>
     /// <param name="logger">The type-specific structured logger.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public BarrierSegmentToolScheduler(
         IToolResultNormalizer resultNormalizer,
         IOptions<ToolRuntimeOptions> options,
         TimeProvider timeProvider,
+        ToolEventDispatcher events,
+        IRandomizerFactory randomizers,
         ILogger<BarrierSegmentToolScheduler> logger)
     {
         ArgumentNullException.ThrowIfNull(resultNormalizer);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(randomizers);
         ArgumentNullException.ThrowIfNull(logger);
         _resultNormalizer = resultNormalizer;
         _options = options.Value;
         _timeProvider = timeProvider;
+        _events = events;
+        _randomizers = randomizers;
         _logger = logger;
     }
 
@@ -75,7 +88,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                     await ExecuteRejectSegmentAsync(segment, results, cancellationToken).ConfigureAwait(false);
                     break;
                 case BarrierSegmentKind.Barrier:
-                    await ExecuteBarrierSegmentAsync(segment, results, cancellationToken).ConfigureAwait(false);
+                    await ExecuteBarrierSegmentAsync(segment, results, batch.Deadline, cancellationToken).ConfigureAwait(false);
                     if (batch.FailureMode == ToolBatchFailureMode.FailFast && SegmentContainsFailure(segment, results))
                     {
                         stopScheduling = true;
@@ -83,7 +96,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
                     break;
                 case BarrierSegmentKind.Parallel:
-                    await ExecuteParallelSegmentAsync(segment, results, batch.FailureMode, cancellationToken)
+                    await ExecuteParallelSegmentAsync(segment, results, batch.FailureMode, batch.Deadline, cancellationToken)
                         .ConfigureAwait(false);
                     if (batch.FailureMode == ToolBatchFailureMode.FailFast && SegmentContainsFailure(segment, results))
                     {
@@ -100,9 +113,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         {
             for (var index = 0; index < results.Length; index++)
             {
-                results[index] ??= ToolCallResultComposer.ScheduledInterrupted(
-                    batch.Entries[index],
-                    _timeProvider.GetUtcNow());
+                results[index] ??= InterruptedBeforeStart(batch.Entries[index]);
             }
         }
 
@@ -116,10 +127,10 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         CancellationToken cancellationToken)
     {
         Debug.Assert(segment.Entries.Length == 1, "Reject segments contain exactly one entry.");
-        cancellationToken.ThrowIfCancellationRequested();
+        _ = cancellationToken;
         var entry = segment.Entries[0];
         var index = segment.EntryIndexes[0];
-        results[index] = ToolCallResultComposer.ScheduledPreInvocation(
+        results[index] = ToolCallResultComposer.AcceptedNotStarted(
             entry,
             ToolTerminalStatus.Denied,
             "The tool call was rejected because its scheduling compatibility is unspecified and host policy refuses unknown modes.",
@@ -130,18 +141,20 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
     private async Task ExecuteBarrierSegmentAsync(
         PlannedSegment segment,
         ToolCallResult?[] results,
+        DateTimeOffset batchDeadline,
         CancellationToken cancellationToken)
     {
         Debug.Assert(segment.Entries.Length == 1, "Barrier segments contain exactly one entry.");
         var entry = segment.Entries[0];
         var index = segment.EntryIndexes[0];
-        results[index] = await InvokeEntryAsync(entry, cancellationToken).ConfigureAwait(false);
+        results[index] = await InvokeEntryAsync(entry, batchDeadline, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ExecuteParallelSegmentAsync(
         PlannedSegment segment,
         ToolCallResult?[] results,
         ToolBatchFailureMode failureMode,
+        DateTimeOffset batchDeadline,
         CancellationToken cancellationToken)
     {
         using var failFastSource = failureMode == ToolBatchFailureMode.FailFast
@@ -167,6 +180,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                     keyLocks,
                     admissionGate,
                     failFastSource,
+                    batchDeadline,
                     segmentToken);
             }
 
@@ -189,6 +203,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         Dictionary<string, SemaphoreSlim> keyLocks,
         SemaphoreSlim admissionGate,
         CancellationTokenSource? failFastSource,
+        DateTimeOffset batchDeadline,
         CancellationToken segmentToken)
     {
         SemaphoreSlim? keyLock = null;
@@ -198,7 +213,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         {
             if (segmentToken.IsCancellationRequested)
             {
-                results[resultIndex] = ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                results[resultIndex] = InterruptedBeforeStart(entry);
                 await ReleaseLeaseWithoutInvokeAsync(entry).ConfigureAwait(false);
                 return;
             }
@@ -224,7 +239,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
             {
                 if (segmentToken.IsCancellationRequested)
                 {
-                    results[resultIndex] = ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                    results[resultIndex] = InterruptedBeforeStart(entry);
                     await ReleaseLeaseWithoutInvokeAsync(entry).ConfigureAwait(false);
                     return;
                 }
@@ -233,7 +248,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 acquiredParallelSlot = true;
                 if (segmentToken.IsCancellationRequested)
                 {
-                    results[resultIndex] = ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                    results[resultIndex] = InterruptedBeforeStart(entry);
                     await ReleaseLeaseWithoutInvokeAsync(entry).ConfigureAwait(false);
                     return;
                 }
@@ -243,7 +258,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 _ = admissionGate.Release();
             }
 
-            var terminal = await InvokeEntryAsync(entry, segmentToken).ConfigureAwait(false);
+            var terminal = await InvokeEntryAsync(entry, batchDeadline, segmentToken).ConfigureAwait(false);
             results[resultIndex] = terminal;
             if (failFastSource is not null
                 && terminal.Status is not ToolTerminalStatus.Succeeded
@@ -262,7 +277,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         {
             if (results[resultIndex] is null)
             {
-                results[resultIndex] = ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                results[resultIndex] = InterruptedBeforeStart(entry);
                 await ReleaseLeaseWithoutInvokeAsync(entry).ConfigureAwait(false);
             }
         }
@@ -280,26 +295,29 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         }
     }
 
-    private async Task<ToolCallResult> InvokeEntryAsync(ToolBatchEntry entry, CancellationToken cancellationToken)
+    private async Task<ToolCallResult> InvokeEntryAsync(
+        ToolBatchEntry entry,
+        DateTimeOffset batchDeadline,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var context = entry.Invocation;
-            ToolInvocationResult invocation = null!;
-            for (var attempt = context.Attempt; attempt <= _options.MaximumRetryAttempts; attempt++)
+            var plan = entry.Prepared.ExecutionPlan;
+            var invoker = entry.InvokerLease.Invoker;
+            IRandomizer? randomizer = null;
+            ToolInvocationResult invocation;
+            var startedAt = _timeProvider.GetUtcNow();
+            for (var attempt = 1; ; attempt++)
             {
-                if (attempt != context.Attempt)
-                {
-                    context = CloneContextForAttempt(context, attempt, _timeProvider.GetUtcNow());
-                }
-
+                startedAt = _timeProvider.GetUtcNow();
+                var context = ReissueForAttempt(entry.Invocation, attempt, startedAt, plan.InvocationTimeout);
                 try
                 {
-                    invocation = await entry.InvokerLease.Invoker.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
+                    invocation = await invoker.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    return ToolCallResultComposer.ScheduledInterrupted(entry, _timeProvider.GetUtcNow());
+                    return ToolCallResultComposer.AcceptedInterrupted(entry, startedAt, _timeProvider.GetUtcNow());
                 }
                 catch (Exception exception)
                 {
@@ -308,31 +326,57 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                         new ToolCallOutcome(
                             ToolCallOutcomeKind.Failed,
                             ToolTerminalStatus.InvocationFailed,
-                            SideEffectCertainty.DefinitelyNotPerformed,
+                            SideEffectCertainty.Unknown,
                             retryable: false,
                             "The tool invoker faulted before producing a result.",
                             ExtensionData.Empty),
                         []);
                 }
 
-                if (invocation.Outcome.Kind == ToolCallOutcomeKind.Success
-                    || !ToolInvocationRetryPolicy.ShouldRetry(
-                        invocation.Outcome,
-                        context.Tool.Effects,
-                        attempt,
-                        _options,
-                        _timeProvider.GetUtcNow()))
+                if (invocation.Outcome.Kind == ToolCallOutcomeKind.Success)
+                {
+                    break;
+                }
+
+                var decline = ToolRetryDecider.Decline(invocation, context, invoker, plan.Retry, attempt);
+                var delay = TimeSpan.Zero;
+                if (decline is null)
+                {
+                    var unit = 0.0;
+                    if (plan.Retry.JitterFraction > 0.0)
+                    {
+                        randomizer ??= _randomizers.Create(new RandomizerCreationRequest(
+                            context.OperationId,
+                            new RandomizerPurpose("agentkit.tool.retry-jitter")));
+                        unit = randomizer.NextUnitDouble();
+                    }
+
+                    delay = plan.Retry.ComputeDelay(attempt, unit);
+                    if (_timeProvider.GetUtcNow() + delay >= batchDeadline)
+                    {
+                        decline = "deadline";
+                    }
+                }
+
+                ObserveRetryDecision(decline ?? ToolRetryDecider.Scheduled);
+                if (decline is not null)
+                {
+                    break;
+                }
+
+                if (!await WaitForRetryAsync(entry, context, attempt, delay, cancellationToken).ConfigureAwait(false))
                 {
                     break;
                 }
             }
 
-            var call = ToValidatedCall(entry);
-            var snapshot = ToolRuntimeNormalizationDefaults.ForResolvedTool(call.ExecutionPolicy);
+            // A settled attempt already carries its evidence; normalization is bounded CPU-only work that must still run
+            // after the caller cancels, because discarding a completed result would misstate whether the effect happened.
             var normalization = await _resultNormalizer
-                .NormalizeAsync(call, invocation, snapshot, cancellationToken)
+                .NormalizeAsync(entry.Prepared.Call, invocation, plan.Normalization, CancellationToken.None)
                 .ConfigureAwait(false);
-            return ToolCallResultComposer.FromScheduledInvocation(entry, invocation, normalization, _timeProvider.GetUtcNow());
+            return ToolCallResultComposer.FromAcceptedInvocation(
+                entry, invocation, normalization, startedAt, _timeProvider.GetUtcNow());
         }
         finally
         {
@@ -340,30 +384,76 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         }
     }
 
-    private static ValidatedToolCall ToValidatedCall(ToolBatchEntry entry)
+    private async Task<bool> WaitForRetryAsync(
+        ToolBatchEntry entry,
+        ToolInvocationContext failedContext,
+        int failedAttempt,
+        TimeSpan delay,
+        CancellationToken cancellationToken)
     {
-        var context = entry.Invocation;
-        var authorization = context.InvocationGrant.Authorization
-            ?? throw new InvalidOperationException("Scheduled invocations require authorization evidence on the grant.");
-        return new ValidatedToolCall(
-            context.AgentId,
-            context.SessionId,
-            context.RunId,
-            context.TurnId,
-            context.OperationId,
-            context.CallId,
-            authorization,
-            new ToolCatalogVersion("agentkit.tools.scheduled"),
-            new ToolAlias(context.Tool.Name),
-            context.Tool,
-            context.ToolVersion,
-            new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("agentkit.tools.scheduled"), new ToolExecutionPolicyVersion(1)),
-            entry.SourceOrdinal,
-            context.Arguments,
-            ToolInvocationSecurityBinding.ValidatedArgumentsFingerprint(context.Arguments),
-            context.RequestedAt,
-            context.InvocationStartedAt);
+        using var scope = AgentKitActivityScope.Start(
+            AgentKitActivityNames.ToolRetryBackoff,
+            ActivityKind.Internal,
+            new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ToolRetryBackoff },
+                { AgentKitTagNames.ToolId, failedContext.Tool.Id.ToString() },
+                { AgentKitTagNames.ToolCallId, failedContext.CallId.ToString() },
+            });
+        try
+        {
+            ToolLog.RetryScheduled(_logger, failedContext.CallId, failedContext.Tool.Id, failedAttempt, delay);
+        }
+        catch
+        {
+            // Instrumentation is observational only and cannot change the retry.
+        }
+
+        try
+        {
+            await _events.PublishAsync(
+                new ToolRetryScheduledEvent(
+                    entry.Accepted.AgentId,
+                    entry.Accepted.SessionId,
+                    entry.Accepted.RunId,
+                    entry.Accepted.TurnId,
+                    entry.Accepted.OperationId,
+                    entry.Accepted.CallId,
+                    _timeProvider.GetUtcNow(),
+                    failedContext.Tool.Id,
+                    failedContext.ToolVersion,
+                    failedAttempt,
+                    delay),
+                cancellationToken).ConfigureAwait(false);
+            await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
+            scope.Activity.SetSuccessful("waited");
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            scope.Activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            return false;
+        }
     }
+
+    private static void ObserveRetryDecision(string outcome)
+    {
+        try
+        {
+            ToolRecordingMetrics.RetryCount.Add(1, new TagList { { AgentKitTagNames.Outcome, outcome } });
+        }
+        catch
+        {
+            // Instrumentation is observational only and cannot change the retry decision.
+        }
+    }
+
+    private ToolCallResult InterruptedBeforeStart(ToolBatchEntry entry) =>
+        ToolCallResultComposer.AcceptedNotStarted(
+            entry,
+            ToolTerminalStatus.Interrupted,
+            "The tool invocation was interrupted before it started.",
+            _timeProvider.GetUtcNow());
 
     private static Task ReleaseLeaseWithoutInvokeAsync(ToolBatchEntry entry) => entry.InvokerLease.DisposeAsync().AsTask();
 
@@ -392,9 +482,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
             for (var offset = 0; offset < segment.Entries.Length; offset++)
             {
                 var resultIndex = segment.EntryIndexes[offset];
-                results[resultIndex] ??= ToolCallResultComposer.ScheduledInterrupted(
-                    entries[resultIndex],
-                    _timeProvider.GetUtcNow());
+                results[resultIndex] ??= InterruptedBeforeStart(entries[resultIndex]);
             }
         }
     }
@@ -486,10 +574,11 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 or _rejectSchedulingMode;
     }
 
-    private static ToolInvocationContext CloneContextForAttempt(
+    private static ToolInvocationContext ReissueForAttempt(
         ToolInvocationContext context,
         int attempt,
-        DateTimeOffset invocationStartedAt) =>
+        DateTimeOffset invocationStartedAt,
+        TimeSpan invocationTimeout) =>
         new(
             context.AgentId,
             context.SessionId,
@@ -504,6 +593,8 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
             attempt,
             context.RequestedAt,
             invocationStartedAt,
-            context.Deadline,
-            context.Progress);
+            invocationStartedAt + invocationTimeout,
+            context.Progress,
+            context.SessionProfile,
+            context.ExternalIdempotencyKey);
 }

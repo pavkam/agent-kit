@@ -3,6 +3,8 @@
 
 namespace QuickStart.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies the documented quick-start composition builds, validates, and completes a turn.</summary>
 public sealed class QuickStartAgentTests
 {
@@ -87,7 +89,7 @@ public sealed class QuickStartAgentTests
     private static AgentEngine Engine(HttpMessageHandler handler, string apiKey = "sk-test")
     {
         var builder = QuickStartAgent.CreateBuilder(apiKey);
-        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        _ = builder.Services.ReplaceNetworkWithHandler(handler);
         return builder.Build();
     }
 

@@ -3,8 +3,6 @@
 
 using CodingAgent;
 
-#pragma warning disable CS0618 // Legacy host surface until the example migrates off ChatScreen.
-
 DotEnvLoader.LoadIfPresent();
 
 if (args is ["--smoke-test", .. var rest])

@@ -5,7 +5,7 @@ namespace AgentKit.Providers.AwsBedrock
 {
     public sealed class AwsBedrockLlmModel : AgentKit.ILlmModel
     {
-        public AwsBedrockLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options, AgentKit.Providers.AwsBedrock.IAwsBedrockRequestTranslator translator, AgentKit.Providers.AwsBedrock.IAwsBedrockResponseParser responseParser, AgentKit.Providers.AwsBedrock.IAwsCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderCredentialSource profileCredentialPlaceholder, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AwsBedrockLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options, AgentKit.Providers.AwsBedrock.IAwsBedrockRequestTranslator translator, AgentKit.Providers.AwsBedrock.IAwsBedrockResponseParser responseParser, AgentKit.Providers.AwsBedrock.IAwsCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderCredentialSource profileCredentialPlaceholder, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }

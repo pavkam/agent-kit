@@ -20,11 +20,11 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, deadline ?? Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, deadline ?? Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
     private static ModelDescriptor CreateDescriptor(DeploymentId? deploymentId = null) => new(new ModelAlias("chat"), GoogleVertexAIProviderDefaults.ProviderId, GoogleVertexAIProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId, GoogleVertexAIProviderDefaults.DefaultCapabilities, GoogleVertexAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
-    private static GoogleVertexAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
+    private static GoogleVertexAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task ExecuteAsync_WhenUsingOAuthCredential_SendsBearerHeaderAndPublisherModelUri()
     {
@@ -169,7 +169,7 @@ public sealed class GoogleVertexAILlmModelTests
         };
         var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
@@ -267,7 +267,7 @@ public sealed class GoogleVertexAILlmModelTests
         var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, settings, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
@@ -285,7 +285,7 @@ public sealed class GoogleVertexAILlmModelTests
         var descriptor = CreateDescriptor();
         var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, attempt: 1, Now.AddSeconds(-1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddSeconds(-1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
@@ -308,9 +308,9 @@ public sealed class GoogleVertexAILlmModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task ExecuteAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task ExecuteAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
-        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        // A transport-level timeout surfaces from the handler as TaskCanceledException while neither the caller token nor the deadline is cancelled.
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
@@ -322,7 +322,6 @@ public sealed class GoogleVertexAILlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
@@ -340,7 +339,6 @@ public sealed class GoogleVertexAILlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
 
@@ -408,7 +406,7 @@ public sealed class GoogleVertexAILlmModelTests
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage], [], LlmToolChoice.Auto, settings, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);

@@ -6,7 +6,6 @@ namespace CodingAgent;
 /// <summary>A headless entry point that exercises <see cref="AgentRuntime"/> without the SharpVision UI.</summary>
 internal static class CodingAgentSmokeTest
 {
-    [Obsolete("Legacy host surface.")]
     public static async Task<int> RunAsync(string[] args)
     {
         var workspaceRoot = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
@@ -18,7 +17,7 @@ internal static class CodingAgentSmokeTest
         Console.WriteLine($"Prompt: {prompt}");
         Console.WriteLine("---");
 
-        using var conversation = AgentRuntime.Create(
+        await using var conversation = AgentRuntime.Create(
             workspaceRoot,
             OpenAiEnvironment.RequireApiKey(),
             configuration,

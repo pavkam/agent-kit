@@ -42,3 +42,24 @@ When changing C#, also read the
 Use `agentkit-conformance-testing` for interchangeable implementation contracts.
 An evaluation score never waives deterministic correctness, security,
 persistence, ordering, or cancellation requirements.
+
+## Repository specifics
+
+- `AgentKit.Evaluation` registers one runner bound to one `AgentEngine`; add
+  evaluators, result stores, and exporters by stable key and select stores and
+  exporters explicitly in `EvaluationRecordingPolicy`. No store is installed by
+  default; the result-store leaves are `AgentKit.Evaluation.InMemory`,
+  `.Sqlite`, and `.Json`, all run by `EvaluationResultStoreConformanceTests`.
+- A plan must fail before effects (`EvaluationPlanRejectedException`) when it
+  names an unhosted agent, a session profile the definition does not select, an
+  unregistered or version-mismatched evaluator, an unsupported criterion, or an
+  unregistered destination.
+- Persisted results are safe projections: never store prompts, model output,
+  tool data, expected values, or matched content in evidence.
+- Built-in keys: `schema`, `exact-state`, `tool-effect`, `safety`,
+  `model-judge`. A judge evaluator must name its model explicitly and keep its
+  own budget.
+- Time, identity generation, and randomness are injected; tests drive the runner
+  over a scripted loop with a `FakeTimeProvider` and scope signal listeners to
+  the evaluation run identity.
+- `examples/Evaluation` is the end-to-end composition; update it with the API.

@@ -15,7 +15,7 @@ not a person.
 | Run inside a .NET worker        | `AgentEngine.CreateBuilder()` in a `BackgroundService`; one engine per job                          |
 | A service identity              | `WithIdentity` with `ExecutionSubjectKind.Service`                                                  |
 | Bounded jobs                    | `WithMaxTurns`, `WithAttemptTimeout`, a per-job `CancellationTokenSource` linked to `stoppingToken` |
-| Write back to the ticket system | A custom `ITool` (see [Order lookup with your own tool](domain-tool-integration.md))                |
+| Write back to the ticket system | A custom `IToolInvoker` (see [Order lookup with your own tool](domain-tool-integration.md))         |
 | Traces and metrics              | OpenTelemetry `AddSource("AgentKit")` and `AddMeter("AgentKit")`                                    |
 | Durable, required audit         | `AddSecurityAuditSink` with `SecurityAuditDelivery.Required`, SQLite grant and session stores       |
 
@@ -86,6 +86,12 @@ sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, AgentEngine en
 
         builder.Services.AddSqliteSecurityGrantStore(new SqliteSecurityGrantStoreTarget(
             "/var/lib/triage/grants.db", GrantStoreInstanceId,
+            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
+        builder.Services.AddSqliteSecurityDecisionStore(new SqliteSecurityDecisionStoreTarget(
+            "/var/lib/triage/decisions.db", DecisionStoreInstanceId,
+            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
+        builder.Services.AddSqliteApprovalStore(new SqliteApprovalStoreTarget(
+            "/var/lib/triage/approvals.db", ApprovalStoreInstanceId,
             SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
         builder.Services.AddSecurityAuditSink(
             new SecurityAuditSinkRegistration(AllAuditEventKinds, SecurityAuditDelivery.Required, providesDurableAcceptance: true),

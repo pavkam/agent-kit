@@ -10,13 +10,11 @@ namespace AgentKit;
 /// fields, safe to share across threads without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller corrective-input
-/// shape described by the structured-output architecture, which composes a
-/// corrective model input that also preserves the original causal response
-/// through session and message contracts. Until the caller (an agent loop)
-/// wires this instruction into a committed message itself, this type
-/// carries only the bounded, safe guidance text; it never widens the
-/// declared output contract or grants any new authority.
+/// This type carries only the bounded, safe guidance text. The caller (the
+/// agent loop) is the one that turns it into a committed corrective message
+/// that preserves the original causal response through session and message
+/// contracts; the instruction never widens the declared output contract or
+/// grants any new authority.
 /// </para>
 /// </remarks>
 public sealed record OutputRepairInstruction

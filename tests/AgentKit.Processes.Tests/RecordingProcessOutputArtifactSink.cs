@@ -18,10 +18,11 @@ internal sealed class RecordingProcessOutputArtifactSink: IProcessOutputArtifact
         "application/octet-stream",
         10,
         new ArtifactIntegrity(new ContentHash("hash"), DateTimeOffset.UnixEpoch),
-        ArtifactDataClassification.Internal,
+        DataClassification.Internal,
         ArtifactOwnershipKind.Session,
         ArtifactMutability.Immutable,
         new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false),
+        null,
         DateTimeOffset.UnixEpoch);
 
     public Task<ProcessOutputArtifactResult> StoreAsync(ProcessOutputArtifactRequest request, CancellationToken cancellationToken = default)

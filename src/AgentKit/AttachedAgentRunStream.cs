@@ -127,7 +127,7 @@ internal sealed class AttachedAgentRunStream<TOutput>: IAgentRunStream<TOutput>
                     sequence: 1,
                     _timeProvider.GetUtcNow(),
                     messageEntry.Message.Id,
-                    loaded.Snapshot!.Version);
+                    loaded.Snapshot.Version);
             }
 
             fromSequence = loaded.ThroughSequence;

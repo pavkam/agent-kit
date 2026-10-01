@@ -11,7 +11,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [SandboxedFileSystemTests](SandboxedFileSystemTests.cs)
+- [OperatingSystemWorkspaceHostTests](OperatingSystemWorkspaceHostTests.cs)
+- [OperatingSystemFileReaderTests](OperatingSystemFileReaderTests.cs)
+- [OperatingSystemFileWriterTests](OperatingSystemFileWriterTests.cs)
+- [PosixFileOperationsTests](PosixFileOperationsTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural

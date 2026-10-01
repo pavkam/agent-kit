@@ -1,0 +1,51 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Evaluation.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Evaluation.Json
+{
+    public sealed class JsonEvaluationResultStore : AgentKit.Evaluation.IEvaluationResultStore, System.IDisposable
+    {
+        public JsonEvaluationResultStore(AgentKit.Evaluation.Json.JsonEvaluationStoreTarget target, AgentKit.Evaluation.Json.JsonEvaluationStoreSettings settings, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Evaluation.Json.JsonEvaluationResultStore>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationStoreResult> AppendAsync(AgentKit.Evaluation.EvaluationCaseResult result, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationReadResult> ReadAsync(AgentKit.Evaluation.EvaluationResultQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct JsonEvaluationStoreInstanceId : System.IEquatable<AgentKit.Evaluation.Json.JsonEvaluationStoreInstanceId>
+    {
+        public JsonEvaluationStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonEvaluationStoreOptions
+    {
+        public JsonEvaluationStoreOptions() { }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; set; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonEvaluationStoreSettings : System.IEquatable<AgentKit.Evaluation.Json.JsonEvaluationStoreSettings>
+    {
+        public JsonEvaluationStoreSettings(int maximumRecordBytes, int maximumDocumentBytes, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Evaluation.Json.JsonEvaluationStoreSettings CreateDefault() { }
+    }
+    public sealed class JsonEvaluationStoreTarget : System.IEquatable<AgentKit.Evaluation.Json.JsonEvaluationStoreTarget>
+    {
+        public JsonEvaluationStoreTarget(string directoryPath, AgentKit.Evaluation.Json.JsonEvaluationStoreInstanceId expectedInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Evaluation.Json.JsonEvaluationStoreInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonEvaluationResultStore(AgentKit.Evaluation.EvaluationResultStoreKey key, AgentKit.Evaluation.Json.JsonEvaluationStoreTarget target, System.Action<AgentKit.Evaluation.Json.JsonEvaluationStoreOptions>? configure = null) { }
+        }
+    }
+}

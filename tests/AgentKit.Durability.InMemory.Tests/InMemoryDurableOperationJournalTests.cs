@@ -908,20 +908,6 @@ public sealed class InMemoryDurableOperationJournalTests
     }
 
     [Fact]
-    public async Task RecordStartAsync_WhenTheGrantStoreOmitsTheIntentReceipt_IsDeniedWithoutCommitting()
-    {
-        var fixture = new DurableJournalFixture();
-        fixture.Harness.OmitIntentReceipt = true;
-
-        var result = await fixture.Journal.RecordStartAsync(
-            fixture.AuthorizedStart(TokenOne), TestContext.Current.CancellationToken);
-
-        result.ShouldBeOfType<DurableRecordFailed>().Committed.ShouldBe(false);
-        fixture.Harness.OmitIntentReceipt = false;
-        await AssertNoRecordAsync(fixture);
-    }
-
-    [Fact]
     public async Task RecordStartAsync_WhenTheGrantStoreReturnsAnUnrelatedIntentReceipt_IsDeniedWithoutCommitting()
     {
         var fixture = new DurableJournalFixture();
@@ -1017,38 +1003,6 @@ public sealed class InMemoryDurableOperationJournalTests
 
         fixture.Harness.ConsumedCount.ShouldBe(1);
         fixture.Harness.Records.Count.ShouldBe(1);
-    }
-
-    [Fact]
-    public void AuthorizedDurableRequest_WhenTheGrantCarriesNoCapturedAuthorization_IsRejectedBeforeItReachesTheJournal()
-    {
-        var fixture = new DurableJournalFixture();
-        var address = DurableJournalTestData.Address();
-        var authorization = DurableJournalTestData.Authorization();
-        var grant = new SecurityGrant(
-            new GrantId(Guid.Parse("90000000-0000-0000-0000-000000000001")),
-            new SecurityRequestId(Guid.Parse("90000000-0000-0000-0000-000000000002")),
-            authorization.Scope,
-            authorization.Identity,
-            fixture.Journal.SecurityAudience,
-            SecurityOperationKind.StateRead,
-            SecurityEffect.Observe,
-            [DurableJournalSecurityBinding.Resource(DurableJournalTestData.JournalKey, address)],
-            DurableJournalSecurityBinding.Fingerprint(address),
-            new SecurityPolicyVersion(1),
-            new SecurityRevocationVersion(1),
-            DateTimeOffset.UnixEpoch,
-            DateTimeOffset.UnixEpoch.AddYears(100),
-            allowedUses: 1);
-
-        Should.Throw<ArgumentNullException>(() => new AuthorizedDurableRequest<DurableOperationAddress>(
-                address,
-                DurableJournalTestData.JournalKey,
-                grant,
-                new SecurityEnforcementIntent(
-                    new SecurityEnforcementIntentId(Guid.Parse("90000000-0000-0000-0000-000000000003")), null)))
-            .ParamName.ShouldBe("grant.Authorization");
-        fixture.Harness.ConsumedCount.ShouldBe(0);
     }
 
     [Fact]

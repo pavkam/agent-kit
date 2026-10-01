@@ -50,15 +50,13 @@ public sealed class DefaultHumanQuestionBrokerTests
     }
 
     [Theory]
-    [InlineData(GrantConsumptionStatus.Reconciled, true, true)]
-    [InlineData(GrantConsumptionStatus.Consumed, false, true)]
-    [InlineData(GrantConsumptionStatus.Consumed, true, false)]
-    public async Task AskAsync_WhenReceiptDoesNotAuthorizeFreshIntent_PerformsNoPublication(GrantConsumptionStatus status, bool includeReceipt, bool exactReceipt)
+    [InlineData(GrantConsumptionStatus.Reconciled, true)]
+    [InlineData(GrantConsumptionStatus.Consumed, false)]
+    public async Task AskAsync_WhenReceiptDoesNotAuthorizeFreshIntent_PerformsNoPublication(GrantConsumptionStatus status, bool exactReceipt)
     {
         var store = new RecordingGrantStore
         {
             Status = status,
-            IncludeReceipt = includeReceipt,
             ReturnExactReceipt = exactReceipt,
         };
         var channel = new RecordingQuestionChannel();
@@ -566,7 +564,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var scope = new SecurityAuthorizationScope(agentId, sessionId, correlation);
         var policyVersion = new SecurityPolicyVersion(1);
         var authorization = captured ? new SecurityAuthorizationContext(new SecurityProfileKey("test"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("90000000-0000-0000-0000-000000000003")), policyVersion, new ContentHash("sha256:test-policy")), new ComponentKey<ISecurityAuthority>("test"), new AgentDefinitionRevision(0), new ConfigurationVersion(1), scope, identity) : null;
-        var grant = authorization is { } context ? new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, context, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1) : new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1);
+        var grant = authorization is { } context ? new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, context, audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1) : new SecurityGrant(new GrantId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new SecurityRequestId(Guid.Parse("80000000-0000-0000-0000-000000000008")), scope, identity, TestSupport.TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), audience, SecurityOperationKind.StateMutation, SecurityEffect.Create, [HumanQuestionSecurityBinding.Resource(id)], fingerprint, policyVersion, new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, deadline, 1);
         return new HumanQuestionRequest(id, agentId, sessionId, toolCallId, correlation, identity, "Choose.", options, false, deadline, grant);
     }
 }

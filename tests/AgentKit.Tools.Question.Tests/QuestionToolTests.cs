@@ -3,6 +3,10 @@
 
 namespace AgentKit.Tools.Question.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+
 using AgentKit.TestSupport;
 
 
@@ -27,7 +31,6 @@ public sealed class QuestionToolTests
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"timeout_seconds\":0}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":123,\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}]}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"allow_free_text\":\"yes\"}")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrPublication(string json)
     {
         var broker = new RecordingQuestionBroker();
@@ -51,7 +54,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorized_BindsAndReenforcesExactQuestionEvidence()
     {
         var broker = new RecordingQuestionBroker();
@@ -70,7 +72,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutPublication()
     {
         var broker = new RecordingQuestionBroker();
@@ -81,7 +82,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenAnswered_ProjectsChoiceAsNonAuthoritativeData()
     {
         var result = await Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
@@ -93,7 +93,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFreeTextAllowed_ProjectsBoundedSupplementaryText()
     {
         var broker = new RecordingQuestionBroker
@@ -107,7 +106,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsDisallowedFreeText_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -121,7 +119,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsUnknownOption_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -134,7 +131,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenBrokerReturnsDifferentQuestion_RejectsBrokerResult()
     {
         var broker = new RecordingQuestionBroker
@@ -146,7 +142,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenQuestionTimesOut_ReturnsTerminalFailure()
     {
         var broker = new RecordingQuestionBroker
@@ -159,7 +154,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenChannelUnavailable_PreservesSafeFailure()
     {
         var broker = new RecordingQuestionBroker
@@ -171,7 +165,6 @@ public sealed class QuestionToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenTimeoutRequested_UsesRequestedBoundAndOneMinuteGrantDeadline()
     {
         var broker = new RecordingQuestionBroker();
@@ -182,7 +175,31 @@ public sealed class QuestionToolTests
         authority.Requests.ShouldHaveSingleItem().Deadline.ShouldBe(DateTimeOffset.UnixEpoch.AddMinutes(1));
     }
 
-    private static QuestionTool Tool(IHumanQuestionBroker broker, ISecurityAuthority authority, FixedQuestionIdGenerator? questionIds = null, QuestionToolOptions? options = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), questionIds ?? new FixedQuestionIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new QuestionToolOptions()));
+    private static QuestionTool Tool(IHumanQuestionBroker broker, ISecurityAuthority authority, FixedQuestionIdGenerator? questionIds = null, QuestionToolOptions? options = null, ILogger<QuestionTool>? logger = null) => new(broker, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), questionIds ?? new FixedQuestionIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? new QuestionToolOptions()), logger ?? NullLogger<QuestionTool>.Instance);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
-    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), QuestionTool.Descriptor);
+    private static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new InRunOperationCorrelation(new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")), new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")), null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), QuestionTool.Descriptor);
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<QuestionTool>();
+        var tool = Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority(), logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), QuestionTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(33700);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

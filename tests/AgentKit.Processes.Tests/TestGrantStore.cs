@@ -6,27 +6,13 @@ namespace AgentKit.Processes.Tests;
 internal sealed class TestGrantStore: ISecurityGrantStore
 {
     internal GrantConsumptionStatus Status { get; set; } = GrantConsumptionStatus.Consumed;
-    internal bool IncludeIntentReceipt { get; set; } = true;
     internal bool ReturnExactIntentReceipt { get; set; } = true;
     internal Action? OnIntentConsumption { get; set; }
-    internal int LegacyConsumptionCalls { get; private set; }
     internal List<SecurityEnforcementRequest> Enforcements { get; } = [];
     internal List<SecurityEnforcementIntent> Intents { get; } = [];
 
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
-
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        LegacyConsumptionCalls++;
-        Enforcements.Add(enforcement);
-        return ValueTask.FromResult(new GrantConsumptionResult(Status, 0, Status == GrantConsumptionStatus.Consumed
-            ? "Consumed."
-            : "Denied."));
-    }
 
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
@@ -38,8 +24,7 @@ internal sealed class TestGrantStore: ISecurityGrantStore
         Enforcements.Add(enforcement);
         Intents.Add(intent);
         OnIntentConsumption?.Invoke();
-        var receipt = IncludeIntentReceipt
-            && Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled
+        var receipt = Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled
             ? new SecurityEnforcementIntentReceipt(
                 ReturnExactIntentReceipt
                     ? intent.Id

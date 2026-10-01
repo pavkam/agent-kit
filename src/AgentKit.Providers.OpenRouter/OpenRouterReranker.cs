@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenRouter;
 using System.Net.Http;
 
 using AgentKit.Providers;
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 
 /// <summary>The OpenRouter rerank <see cref="IReranker"/> implementation.</summary>
@@ -16,7 +17,7 @@ public sealed class OpenRouterReranker: IReranker
     private readonly IOpenRouterRerankRequestTranslator _translator;
     private readonly IOpenRouterRerankResponseParser _responseParser;
     private readonly IProviderCredentialSource _credentials;
-    private readonly HttpClient _httpClient;
+    private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
     private readonly IProviderProfileRuntimeSelector? _profileSelector;
 
@@ -26,7 +27,7 @@ public sealed class OpenRouterReranker: IReranker
     /// <param name="translator">Translates rerank requests into OpenRouter wire bodies.</param>
     /// <param name="responseParser">Parses OpenRouter rerank responses.</param>
     /// <param name="credentials">Resolves credentials for the OpenRouter provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadlines and credential expiry.</param>
     /// <param name="profileSelector">The optional profile runtime selector.</param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
@@ -36,7 +37,7 @@ public sealed class OpenRouterReranker: IReranker
         IOpenRouterRerankRequestTranslator translator,
         IOpenRouterRerankResponseParser responseParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         IProviderProfileRuntimeSelector? profileSelector = null)
     {
@@ -45,7 +46,7 @@ public sealed class OpenRouterReranker: IReranker
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         _descriptor = descriptor;
@@ -53,7 +54,7 @@ public sealed class OpenRouterReranker: IReranker
         _translator = translator;
         _responseParser = responseParser;
         _credentials = credentials;
-        _httpClient = httpClient;
+        _egress = egress;
         _timeProvider = timeProvider;
         _profileSelector = profileSelector;
     }
@@ -151,31 +152,17 @@ public sealed class OpenRouterReranker: IReranker
             using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-            HttpResponseMessage response;
-            try
+            var sent = await _egress
+                .SendAsync(ProviderEgressRequest.ForReranking(_descriptor, request, httpRequest), cancellationToken)
+                .ConfigureAwait(false);
+            if (sent is ProviderEgressRefused refused)
             {
-                response = await _httpClient
-                    .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return Failed(ProviderFailureKind.Cancellation, "The attempt was cancelled.");
-            }
-            catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-            {
-                return Failed(ProviderFailureKind.Timeout, "The request did not complete before its deadline.", exception);
-            }
-            catch (OperationCanceledException exception)
-            {
-                return Failed(ProviderFailureKind.Timeout, "The transport timed out before the provider responded.", exception);
-            }
-            catch (HttpRequestException exception)
-            {
-                return Failed(ProviderFailureKind.Unavailable, "The provider could not be reached.", exception);
+                return new RerankModelFailed(refused.Failure);
             }
 
-            using (response)
+            var response = ((ProviderEgressSent) sent).Response;
+
+            await using (response.ConfigureAwait(false))
             {
                 if (!response.IsSuccessStatusCode)
                 {

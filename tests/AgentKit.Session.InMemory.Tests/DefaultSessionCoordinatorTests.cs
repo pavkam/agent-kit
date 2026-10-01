@@ -20,7 +20,7 @@ public sealed class DefaultSessionCoordinatorTests
         var services = new ServiceCollection();
         _ = services.AddLogging();
         _ = services.AddSingleton<TimeProvider>(timeProvider);
-        _ = services.AddAgentPermissions();
+        _ = services.AddAgentPermissions(static options => options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot);
         _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddAgentSession();
         _ = services.AddInMemorySessionStore();

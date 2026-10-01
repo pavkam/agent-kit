@@ -17,8 +17,9 @@ using AgentKit.Providers.Http;
 /// moderation, classification, OCR, audio, files, libraries, batch, and
 /// fine-tuning are separate contracts not covered by this package. Hosted
 /// tools (web search, code interpreter, image generation, document
-/// library, custom connectors) and the <c>response_format</c>
-/// structured-output control are not yet translated.
+/// library, custom connectors) are not translated, and structured output is
+/// carried by the reserved synthetic tool rather than the <c>response_format</c>
+/// control.
 /// </remarks>
 public static class MistralAIProviderDefaults
 {
@@ -81,10 +82,12 @@ public static class MistralAIProviderDefaults
     /// streaming shape (a content array that alternates with a plain
     /// string mid-stream) is not fully specified without live verification,
     /// so <c>SupportsReasoning</c> is <see langword="false"/> here. Image,
-    /// document, and audio content parts, hosted hosted-tool declarations,
-    /// and <c>response_format</c> structured output are not yet translated
-    /// either, so vision and structured-output support remain
-    /// <see langword="false"/>. A caller registering a model with
+    /// document, and audio content parts and hosted-tool declarations are
+    /// not translated either, so vision support remains
+    /// <see langword="false"/>. Structured output is supported by carrying
+    /// the run's output contract as the reserved synthetic tool under a
+    /// forced tool choice, so <c>SupportsStructuredOutput</c> is
+    /// <see langword="true"/>. A caller registering a model with
     /// materially different capabilities supplies its own
     /// <see cref="ModelCapabilities"/> rather than relying on this shared
     /// default.

@@ -43,8 +43,7 @@ public sealed class SqliteSecurityGrantCodecReaderTests
     [Fact]
     public void ReadBoolean_WhenPersistedByteIsNeitherZeroNorOne_ThrowsInvalidDataException()
     {
-        // ReadAuthorization's leading discriminator byte is read through the same private ReadBoolean helper.
-        var exception = Should.Throw<InvalidDataException>(() => ReadAuthorization([2]));
+        var exception = Should.Throw<InvalidDataException>(() => ReadBoolean([2]));
 
         exception.Message.ShouldContain("boolean");
     }
@@ -63,9 +62,9 @@ public sealed class SqliteSecurityGrantCodecReaderTests
         _ = reader.ReadResources();
     }
 
-    private static void ReadAuthorization(byte[] payload)
+    private static void ReadBoolean(byte[] payload)
     {
         var reader = new SqliteSecurityGrantCodecReader(payload, _settings);
-        _ = reader.ReadAuthorization();
+        _ = reader.ReadBoolean();
     }
 }

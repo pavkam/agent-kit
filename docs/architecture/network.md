@@ -175,7 +175,10 @@ retries.
 Provider, MCP, store, observability, and tool packages depend on
 `INetworkNameResolver` / `INetworkTransport`, never on AgentKit.Network or an
 unrestricted `HttpClient`. Direct implementations remain supported; no transport
-base class is required.
+base class is required. An SDK that insists on an `HttpClient` (the official MCP
+HTTP transport) is handed one whose only handler adapts each request to a
+resolution grant, a send grant, and `INetworkTransport`; the SDK never owns a
+socket, a pool, or a redirect policy.
 
 ## Lifetime, concurrency, and ownership
 

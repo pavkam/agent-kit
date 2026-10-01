@@ -21,11 +21,13 @@ more than one fails when the first-party authority is activated, before any
 ledger operation. Replacing `IBudgetAuthority` removes that ledger requirement.
 
 Captured overrun policy and truthful held outcomes are supported. The agent loop
-consumes the authority: a definition with `BudgetLimits` gets one run scope,
-reservations before each turn, model request, and tool call, and post-response
-accounting of reported tokens and cost, settling as `RunLimitReached` naming the
-dimension when a reservation is refused with full evidence, or `RunFailed` when
-the authority reports a held overrun or an unsupported outcome with no such
+consumes the authority: every definition selects a run budget profile through
+`AgentComponentSelection.BudgetProfile` and gets one run scope whose limits come
+from that profile (a profile with no limits bounds nothing), reservations before
+each turn, model request, and tool call, and post-response accounting of
+reported tokens and cost, settling as `RunLimitReached` naming the dimension
+when a reservation is refused with full evidence, or `RunFailed` when the
+authority reports a held overrun or an unsupported outcome with no such
 evidence. `BudgetUnknownCostBehavior` governs unknown cost reservations on the
 `agentkit.cost` dimension through
 `BudgetReservationRequest.CostEstimateUnknown`. Named profiles resolve through
@@ -58,8 +60,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/budgets.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

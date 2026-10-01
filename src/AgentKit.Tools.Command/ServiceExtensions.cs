@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddCommandTool(Action<CommandToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<CommandToolOptions>()
                 .Validate(
                     static value => !string.IsNullOrWhiteSpace(value.ShellExecutable)

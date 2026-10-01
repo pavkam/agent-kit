@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Groq.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -87,6 +89,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGroqLlmModel(new ModelAlias("primary"), new ModelId("llama-3.3-70b-versatile"));
         _ = services.AddGroqLlmModel(new ModelAlias("secondary"), new ModelId("openai/gpt-oss-120b"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -101,6 +105,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGroq();
         _ = services.AddGroqApiKeyCredential("test-key");
         _ = services.AddGroqLlmModel(new ModelAlias("chat"), new ModelId("llama-3.3-70b-versatile"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GroqLlmModel>();
@@ -126,6 +132,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddGroqLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GroqLlmModel>();
@@ -170,6 +178,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGroqApiKeyCredential("test-key");
 
         _ = services.AddGroqKnownLlmModel(new ModelAlias("known"), new ModelId("groq/compound"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GroqLlmModel>();

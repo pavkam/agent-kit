@@ -667,7 +667,7 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
 
         var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2));
 
-        commit.AccountingRevision.HasValue.ShouldBeTrue();
+        commit.AccountingRevision.Value.ShouldBeGreaterThan(0);
         commit.CreatedOverrunHolds.Select(hold => hold.Policy).ShouldBe([
             BudgetOverrunHoldPolicy.ClearWhenReconciled,
             BudgetOverrunHoldPolicy.RequireAuthorizedResolution]);
@@ -889,6 +889,7 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
         var enforcement = new SecurityEnforcementRequest(
             securityScope,
             identity,
+            TestSupport.TestSecurityEvidence.Authorization(securityScope.AgentId, securityScope.SessionId, securityScope.Correlation, identity),
             new ComponentId("budget-operator"),
             SecurityOperationKind.StateMutation,
             SecurityEffect.Mutate,

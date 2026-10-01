@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using AgentKit.Internal;
+
 /// <summary>
 /// Checks that a built composition can actually run an agent.
 /// </summary>
@@ -10,8 +12,21 @@ namespace AgentKit;
 /// <para>
 /// Microsoft DI's own build validation proves that registered constructors can
 /// be satisfied. It cannot know that AgentKit additionally needs a definition
-/// catalog with at least one published agent, and a loop resolvable from a run
-/// scope. This validator adds those engine-level requirements.
+/// catalog with at least one published agent and every engine-wide singular the
+/// architecture names: definition catalog, run-scope factory, session
+/// directory/store catalog/selector, hook kernel/catalog/profile selector,
+/// security authority selector/policy catalog, approval broker, model catalog,
+/// provider-profile runtime selector, budget authority, <see cref="TimeProvider"/>,
+/// <see cref="IRandomizerFactory"/>, and <see cref="IContentHasher"/>. This validator checks
+/// those singular registrations from the frozen descriptors without invoking a
+/// factory, then delegates every published definition's keyed selections,
+/// profiles, and optional capabilities to <see cref="DefinitionCompositionValidator"/>.
+/// </para>
+/// <para>
+/// The validator is a facade-internal static boundary rather than a registered
+/// service: a replaceable validator would let a composition skip the proof it
+/// exists to make, so the "one composition validator" requirement is satisfied
+/// by construction.
 /// </para>
 /// <para>
 /// Every problem is collected rather than thrown on first failure, so a
@@ -54,7 +69,7 @@ internal static class AgentCompositionValidator
     /// <param name="componentRegistrations">The non-null build-local registration evidence to validate and retain.</param>
     /// <returns>The exact immutable readiness evidence inspected by validation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="provider"/> or <paramref name="componentRegistrations"/> is <see langword="null"/>.</exception>
-    /// <exception cref="AgentCompositionException">Declared graph, DI correspondence, or reduced runnable readiness validation fails.</exception>
+    /// <exception cref="AgentCompositionException">Declared graph, DI correspondence, or runnable readiness validation fails.</exception>
     internal static AgentCompositionSnapshot Validate(
         IServiceProvider provider,
         ComponentRegistrationSnapshot componentRegistrations)
@@ -82,35 +97,26 @@ internal static class AgentCompositionValidator
         // IModelCatalog is always resolved unkeyed by DefaultAgentRunPlanCompiler.CompileServices (per-loop catalog
         // selection is not a supported axis), so one engine-wide check covers every definition.
         _ = Resolve<IModelCatalog>(provider, diagnostics, "agentkit.model-catalog.missing");
+        _ = Resolve<IBudgetAuthority>(provider, diagnostics, "agentkit.budget-authority.missing");
+        _ = Resolve<IRandomizerFactory>(provider, diagnostics, "agentkit.randomizer-factory.missing");
+        _ = Resolve<IContentHasher>(provider, diagnostics, "agentkit.content-hasher.missing");
         HookCompositionValidator.Validate(provider, diagnostics);
-        var budgetAuthority = provider.GetService<IBudgetAuthority>();
-        var budgetProfileCatalog = provider.GetService<IBudgetProfileCatalog>();
-        // The continuation policy is resolved from one fixed, well-known key rather than per loop, so
-        // this is a single engine-wide check rather than one per runnable definition.
-        if (!componentRegistrations.Services.Any(service =>
-            service.IsKeyedService
-            && service.ServiceType == typeof(IRunContinuationPolicy)
-            && AgentLoopComponentDefaults.ContinuationPolicyKey.Value.Equals(service.ServiceKey as string, StringComparison.Ordinal)))
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.continuation-policy.missing",
-                $"No IRunContinuationPolicy is registered under the fixed key '{AgentLoopComponentDefaults.ContinuationPolicyKey.Value}'."));
-        }
-
         AgentRunProfilePublicationSnapshot? validatedRunProfiles = null;
         if (catalog is not null)
         {
-            var modelCatalog = provider.GetService<IModelCatalog>();
-            var capabilityValidator = provider.GetService<IModelCapabilityValidator>();
-            validatedRunProfiles = ValidateCatalog(
+            var services = new DefinitionValidationServices(
+                provider.GetService<IModelCatalog>(),
+                provider.GetService<IModelCapabilityValidator>(),
+                provider.GetService<IBudgetProfileCatalog>(),
+                provider.GetService<ISessionStoreCatalog>(),
+                provider.GetService<ISecurityAuthorityCatalog>(),
+                [.. provider.GetServices<IAgentCapabilityProfileSource>()]);
+            validatedRunProfiles = DefinitionCompositionValidator.Validate(
                 catalog,
                 profileReader,
                 componentRegistrations,
-                diagnostics,
-                modelCatalog,
-                capabilityValidator,
-                budgetAuthority,
-                budgetProfileCatalog);
+                services,
+                diagnostics);
             var hookProfileSelector = provider.GetService<IHookProfileSelector>();
             if (hookProfileSelector is not null)
             {
@@ -123,7 +129,22 @@ internal static class AgentCompositionValidator
                     durabilitySnapshot.Definitions,
                     provider.GetService<IDurabilityProfileCatalog>(),
                     componentRegistrations,
+                    durabilitySnapshot.Definitions.Any(static definition => definition.OptionalCapabilities.DurabilityProfile is not null)
+                        ? [.. provider.GetServices<IDurableOperationHandler>()]
+                        : [],
                     diagnostics);
+                CompactionCompositionValidator.Validate(
+                    durabilitySnapshot.Definitions,
+                    provider,
+                    componentRegistrations,
+                    diagnostics);
+                GoalsCompositionValidator.Validate(
+                    durabilitySnapshot.Definitions,
+                    provider.GetService<IGoalProfileCatalog>(),
+                    componentRegistrations,
+                    diagnostics);
+                ValidateMemory(durabilitySnapshot.Definitions, provider, componentRegistrations, diagnostics);
+                ValidateArtifacts(durabilitySnapshot.Definitions, provider, componentRegistrations, diagnostics);
             }
         }
 
@@ -135,6 +156,52 @@ internal static class AgentCompositionValidator
         Debug.Assert(validatedRunProfiles is not null,
             "A runnable composition must have one validated run-profile snapshot.");
         return new AgentCompositionSnapshot(validatedRunProfiles, componentRegistrations);
+    }
+
+    private static void ValidateArtifacts(
+        ImmutableArray<AgentDefinition> definitions,
+        IServiceProvider provider,
+        ComponentRegistrationSnapshot componentRegistrations,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+    {
+        IArtifactCoordinatorCatalog? catalog = null;
+        string? catalogFailure = null;
+        if (definitions.Any(static definition => definition.OptionalCapabilities.ArtifactCoordinator is not null))
+        {
+            try
+            {
+                catalog = provider.GetService<IArtifactCoordinatorCatalog>();
+            }
+            catch (InvalidOperationException exception)
+            {
+                catalogFailure = exception.Message;
+            }
+        }
+
+        ArtifactCompositionValidator.Validate(definitions, catalog, catalogFailure, componentRegistrations, diagnostics);
+    }
+
+    private static void ValidateMemory(
+        ImmutableArray<AgentDefinition> definitions,
+        IServiceProvider provider,
+        ComponentRegistrationSnapshot componentRegistrations,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+    {
+        IMemoryProfileCatalog? memoryCatalog = null;
+        string? catalogFailure = null;
+        if (definitions.Any(static definition => definition.OptionalCapabilities.MemoryProfile is not null))
+        {
+            try
+            {
+                memoryCatalog = provider.GetService<IMemoryProfileCatalog>();
+            }
+            catch (InvalidOperationException exception)
+            {
+                catalogFailure = exception.Message;
+            }
+        }
+
+        MemoryCompositionValidator.Validate(definitions, memoryCatalog, catalogFailure, componentRegistrations, diagnostics);
     }
 
     /// <summary>Validates the declared closed graph and its actual DI correspondence before application services are resolved.</summary>
@@ -191,6 +258,15 @@ internal static class AgentCompositionValidator
         ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");
         ValidateSingularRegistration<IIdentifierGenerator<OperationId>>(snapshot, diagnostics, "agentkit.operationid");
         ValidateSingularRegistration<IProviderProfileRuntimeSelector>(snapshot, diagnostics, "agentkit.provider-profile-selector");
+        ValidateSingularRegistration<IModelCatalog>(snapshot, diagnostics, "agentkit.model-catalog");
+        ValidateSingularRegistration<IAgentRunScopeFactory>(snapshot, diagnostics, "agentkit.run-scope-factory");
+        ValidateSingularRegistration<ISessionDirectory>(snapshot, diagnostics, "agentkit.session-directory");
+        ValidateSingularRegistration<ISessionStoreCatalog>(snapshot, diagnostics, "agentkit.session-store-catalog");
+        ValidateSingularRegistration<ISessionStoreSelector>(snapshot, diagnostics, "agentkit.session-store-selector");
+        ValidateSingularRegistration<IBudgetAuthority>(snapshot, diagnostics, "agentkit.budget-authority");
+        ValidateSingularRegistration<IBudgetProfileCatalog>(snapshot, diagnostics, "agentkit.budget-profile-catalog");
+        ValidateSingularRegistration<IRandomizerFactory>(snapshot, diagnostics, "agentkit.randomizer-factory");
+        ValidateSingularRegistration<IContentHasher>(snapshot, diagnostics, "agentkit.content-hasher");
         HookCompositionValidator.ValidateRegistrations(snapshot, diagnostics);
         ValidateAgentLoopRegistered(snapshot, diagnostics);
         return diagnostics.ToImmutable();
@@ -203,8 +279,8 @@ internal static class AgentCompositionValidator
     /// <see cref="IAgentLoop"/> is deliberately keyed and scoped rather than singular and unkeyed (see
     /// <see cref="ValidateSingularRegistration{TService}"/>), so every agent definition can select its own loop
     /// and, through it, its own compiled <see cref="AgentRunServices"/> bundle. This check only proves that some
-    /// keyed registration exists; <see cref="ValidateCatalog"/> proves that every published definition's exact
-    /// selected key — or the engine-wide default when it selects none — actually resolves.
+    /// keyed registration exists; <see cref="DefinitionCompositionValidator"/> proves that every published
+    /// definition's exact selected key actually resolves.
     /// </remarks>
     private static void ValidateAgentLoopRegistered(
         ComponentRegistrationSnapshot snapshot,
@@ -261,286 +337,6 @@ internal static class AgentCompositionValidator
             diagnostics.Add(new CompositionDiagnostic(
                 $"{code}.{(count == 0 ? missingSuffix : "ambiguous")}",
                 $"Expected exactly one unkeyed {typeof(TService).Name} registration; found {count}. Select one implementation explicitly."));
-        }
-    }
-
-    private static AgentRunProfilePublicationSnapshot? ValidateCatalog(
-        IAgentDefinitionCatalog catalog,
-        IAgentRunProfilePublicationReader? profileReader,
-        ComponentRegistrationSnapshot componentRegistrations,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics,
-        IModelCatalog? modelCatalog,
-        IModelCapabilityValidator? capabilityValidator,
-        IBudgetAuthority? budgetAuthority,
-        IBudgetProfileCatalog? budgetProfileCatalog)
-    {
-        var snapshot = catalog.CurrentSnapshot;
-        if (snapshot is null)
-        {
-            diagnostics.Add(new CompositionDiagnostic("agentkit.catalog.not-ready", "The agent definition catalog has no materialized bootstrap snapshot."));
-            return null;
-        }
-
-        if (snapshot.Definitions.IsEmpty)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.catalog.empty",
-                "No agent definition is published. Register at least one with AddAgent."));
-            return null;
-        }
-
-        if (profileReader?.CurrentSnapshot is not { } profileSnapshot)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.run-profile.not-ready",
-                "The run-profile publication reader has no materialized bootstrap snapshot."));
-            return null;
-        }
-
-        var publications = new Dictionary<(AgentId, AgentDefinitionRevision), AgentRunProfilePublication>();
-        foreach (var publication in profileSnapshot.Publications)
-        {
-            var key = (publication.SecurityProfile.AgentId, publication.SecurityProfile.AgentDefinitionRevision);
-            if (!publications.TryAdd(key, publication))
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.run-profile.duplicate",
-                    "More than one run-profile publication uses the same agent and definition revision."));
-            }
-        }
-
-        foreach (var definition in snapshot.Definitions)
-        {
-            if (string.IsNullOrWhiteSpace(definition.SecurityProfile.Value)
-                || string.IsNullOrWhiteSpace(definition.SessionProfile.Value))
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.definition.profiles.missing",
-                    $"Agent '{definition.Id}' does not explicitly select security and session profiles."));
-                continue;
-            }
-
-            if (!publications.TryGetValue((definition.Id, definition.Revision), out var publication))
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.run-profile.missing",
-                    $"Agent '{definition.Id}' has no exact run-profile publication for revision {definition.Revision}."));
-                continue;
-            }
-
-            if (publication.SecurityProfile.ProfileKey != definition.SecurityProfile
-                || publication.SessionProfile.Reference.Key != definition.SessionProfile)
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.run-profile.key-mismatch",
-                    $"Agent '{definition.Id}' selects profile keys that differ from its exact publication."));
-            }
-
-            var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
-            var hasSelectedLoop = componentRegistrations.Services.Any(service =>
-                service.IsKeyedService
-                && service.ServiceType == typeof(IAgentLoop)
-                && loopKey.Equals(service.ServiceKey as string, StringComparison.Ordinal));
-            if (!hasSelectedLoop)
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.definition.loop.missing",
-                    $"Agent '{definition.Id}' selects loop key '{loopKey}' but no keyed IAgentLoop is registered for it."));
-            }
-
-            // DefaultAgentRunPlanCompiler.CompileServices resolves every one of these through
-            // ResolveKeyedOrShared: a registration keyed to this exact loop key when one exists,
-            // otherwise the engine-wide unkeyed registration. Composition must fail here, not on the
-            // first RunAsync, when a definition's loop key has neither.
-            RequireKeyedOrUnkeyed<ISessionCoordinator>(componentRegistrations, loopKey, definition.Id, diagnostics);
-            RequireKeyedOrUnkeyed<IContextAssembler>(componentRegistrations, loopKey, definition.Id, diagnostics);
-            RequireKeyedOrUnkeyed<IToolExecutor>(componentRegistrations, loopKey, definition.Id, diagnostics);
-            if (definition.Toolsets.Length > 0 && definition.OptionalCapabilities.ToolExecutor is null)
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.definition.toolsets.executor-missing",
-                    $"Agent '{definition.Id}' selects toolsets but does not name a keyed {nameof(IToolExecutor)} in optional capabilities."));
-            }
-
-            if (definition.OptionalCapabilities.ToolExecutor is { } toolExecutorKey)
-            {
-                RequireKeyedOrUnkeyed<IToolExecutor>(
-                    componentRegistrations,
-                    toolExecutorKey.Value,
-                    definition.Id,
-                    diagnostics);
-            }
-
-            if (definition.OptionalCapabilities.CompactionProfile is { Value: var compactionProfileKey and not "" })
-            {
-                _ = compactionProfileKey;
-                if (!componentRegistrations.Services.Any(static descriptor => descriptor.ServiceType == typeof(ICompactor)))
-                {
-                    diagnostics.Add(new CompositionDiagnostic(
-                        "agentkit.definition.compaction.missing",
-                        $"Agent '{definition.Id}' selects compaction profile '{compactionProfileKey}' but no {nameof(ICompactor)} is registered."));
-                }
-            }
-
-            if (!definition.BudgetLimits.IsEmpty || definition.BudgetProfile is { Value.Length: > 0 })
-            {
-                if (budgetAuthority is null)
-                {
-                    diagnostics.Add(new CompositionDiagnostic(
-                        "agentkit.definition.budget-authority.missing",
-                        $"Agent '{definition.Id}' declares budget limits or a budget profile but no {nameof(IBudgetAuthority)} is registered."));
-                }
-
-                if (definition.BudgetProfile is { Value.Length: > 0 } budgetProfileKey
-                    && (budgetProfileCatalog is null || !budgetProfileCatalog.TryGet(budgetProfileKey, out _)))
-                {
-                    diagnostics.Add(new CompositionDiagnostic(
-                        "agentkit.definition.budget-profile.missing",
-                        $"Agent '{definition.Id}' selects budget profile '{budgetProfileKey.Value}' but it is not registered."));
-                }
-            }
-
-            RequireKeyedOrUnkeyed<IModelSelector>(componentRegistrations, loopKey, definition.Id, diagnostics);
-            RequireKeyedOrUnkeyed<ILlmModelResolver>(componentRegistrations, loopKey, definition.Id, diagnostics);
-            RequireKeyedOrUnkeyed<IModelRequestExecutor>(componentRegistrations, loopKey, definition.Id, diagnostics);
-
-            // IInputCoordinator and IOutputPublisher are optional collaborators: a definition that never sets
-            // these keys may run without either, and no diagnostic is raised. An explicit key, however, states
-            // that this definition depends on a specific keyed selection existing, so an unresolvable one is a
-            // composition mistake rather than a silently absent optional feature.
-            if (definition.InputCoordinatorKey is { } explicitInputKey)
-            {
-                RequireKeyedOrUnkeyedOptional<IInputCoordinator>(
-                    componentRegistrations, explicitInputKey.Value, definition.Id, diagnostics);
-            }
-
-            if (definition.OutputPublisherKey is { } explicitOutputKey)
-            {
-                RequireKeyedOrUnkeyedOptional<IOutputPublisher>(
-                    componentRegistrations, explicitOutputKey.Value, definition.Id, diagnostics);
-            }
-
-            if (modelCatalog is not null && capabilityValidator is not null)
-            {
-                ValidateDefinitionModelCompatibility(definition, modelCatalog, capabilityValidator, diagnostics);
-            }
-        }
-
-        return profileSnapshot;
-    }
-
-    /// <summary>
-    /// Ensures at least one configured candidate satisfies the definition's stated model requirements.
-    /// </summary>
-    private static void ValidateDefinitionModelCompatibility(
-        AgentDefinition definition,
-        IModelCatalog modelCatalog,
-        IModelCapabilityValidator capabilityValidator,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
-    {
-        Debug.Assert(modelCatalog is not null, "Model compatibility validation requires a catalog.");
-        Debug.Assert(capabilityValidator is not null, "Model compatibility validation requires a capability validator.");
-
-        if (definition.ModelRequirements == ModelRequirements.None)
-        {
-            return;
-        }
-
-        ModelCatalogSnapshot catalogSnapshot;
-        try
-        {
-            catalogSnapshot = modelCatalog.GetSnapshotAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.definition.model-catalog-unavailable",
-                $"Agent '{definition.Id}' model requirements could not be checked because the model catalog snapshot is unavailable."));
-            return;
-        }
-
-        var policy = definition.Models;
-        foreach (var alias in policy.Candidates)
-        {
-            var descriptor = catalogSnapshot.FindConversationModel(alias);
-            if (descriptor is null)
-            {
-                continue;
-            }
-
-            CapabilityValidationResult validation;
-            try
-            {
-                validation = capabilityValidator
-                    .ValidateAsync(
-                        descriptor,
-                        definition.ModelRequirements,
-                        policy.Downgrade,
-                        CancellationToken.None)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                diagnostics.Add(new CompositionDiagnostic(
-                    "agentkit.definition.model-catalog-unavailable",
-                    $"Agent '{definition.Id}' model requirements could not be checked for alias '{alias.Value}'."));
-                return;
-            }
-
-            if (validation is not CapabilitiesUnsupported)
-            {
-                return;
-            }
-        }
-
-        diagnostics.Add(new CompositionDiagnostic(
-            "agentkit.definition.model-incompatible",
-            $"Agent '{definition.Id}' requires model capabilities that none of its configured candidates satisfy."));
-    }
-
-    /// <summary>Requires a registration keyed to <paramref name="loopKey"/>, or an unkeyed fallback, for one collaborator contract.</summary>
-    /// <typeparam name="TService">The collaborator contract <see cref="Internal.DefaultAgentRunPlanCompiler"/> resolves through <c>ResolveKeyedOrShared</c>.</typeparam>
-    private static void RequireKeyedOrUnkeyed<TService>(
-        ComponentRegistrationSnapshot componentRegistrations,
-        string loopKey,
-        AgentId agentId,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
-        where TService : class
-    {
-        var hasRegistration = componentRegistrations.Services.Any(service =>
-            service.ServiceType == typeof(TService)
-            && (!service.IsKeyedService || loopKey.Equals(service.ServiceKey as string, StringComparison.Ordinal)));
-        if (!hasRegistration)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.definition.collaborator.missing",
-                $"Agent '{agentId}' selects loop key '{loopKey}' but no keyed or unkeyed {typeof(TService).Name} is registered."));
-        }
-    }
-
-    /// <summary>Requires a registration keyed to an explicitly selected key, or an unkeyed fallback, for one optional collaborator contract.</summary>
-    /// <typeparam name="TService">The optional collaborator contract.</typeparam>
-    /// <remarks>
-    /// Called only when the definition sets the corresponding key explicitly: leaving it unset means the
-    /// definition never depends on this optional collaborator, so an absent registration is not diagnosed.
-    /// </remarks>
-    private static void RequireKeyedOrUnkeyedOptional<TService>(
-        ComponentRegistrationSnapshot componentRegistrations,
-        string explicitKey,
-        AgentId agentId,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
-        where TService : class
-    {
-        var hasRegistration = componentRegistrations.Services.Any(service =>
-            service.ServiceType == typeof(TService)
-            && (!service.IsKeyedService || explicitKey.Equals(service.ServiceKey as string, StringComparison.Ordinal)));
-        if (!hasRegistration)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.definition.optional-collaborator.missing",
-                $"Agent '{agentId}' explicitly selects {typeof(TService).Name} key '{explicitKey}' but no keyed or unkeyed registration exists for it."));
         }
     }
 

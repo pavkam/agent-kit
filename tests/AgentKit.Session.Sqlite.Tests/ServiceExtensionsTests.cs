@@ -29,6 +29,19 @@ public sealed class ServiceExtensionsTests: IDisposable
     }
 
     [Fact]
+    public void AddSqliteSessionStore_WhenComposed_RegistersTheToolCallEntryCodecsInTheCatalog()
+    {
+        var services = WithSecurityBoundaries();
+
+        _ = services.AddSqliteSessionStore(Target());
+
+        using var provider = services.BuildServiceProvider();
+        var codecTypes = provider.GetServices<ISessionEntryCodec>().Select(static codec => codec.GetType()).ToArray();
+        codecTypes.ShouldContain(typeof(ToolCallAcceptedSessionEntryCodec));
+        codecTypes.ShouldContain(typeof(ToolCallTerminalSessionEntryCodec));
+    }
+
+    [Fact]
     public void AddSqliteSessionStore_WhenCalledTwice_RegistersOneSqliteStore()
     {
         // Repeating the SQLite registration is idempotent for the single "agentkit.sqlite" store key.

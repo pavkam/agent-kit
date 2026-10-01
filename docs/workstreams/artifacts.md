@@ -12,30 +12,31 @@ Owning documents: [Artifacts](../architecture/artifacts.md),
 
 ## Progress
 
-- [ ] WS15-C1 missing contracts (additive)
-- [ ] WS15-C2 metadata, reference, request shape migration
-- [ ] WS15-C3 conformance suite extension
-- [ ] WS15-C4 coordinator rewrite
-- [ ] WS15-C5 reference-commit intent and reconciliation
-- [ ] WS15-C6 `AgentKit.Artifacts.Sqlite`
-- [ ] WS15-C7 `AgentKit.Artifacts.Json`
-- [ ] WS15-C8 `AgentKit.Artifacts.FileSystem`
-- [ ] WS15-C9 definition key, validator, consumers, Simple, documentation
+- [x] WS15-C1 missing contracts (additive)
+- [x] WS15-C2 metadata, reference, request shape migration
+- [x] WS15-C3 conformance suite extension
+- [x] WS15-C4 coordinator rewrite
+- [x] WS15-C5 reference-commit intent and reconciliation
+- [x] WS15-C6 `AgentKit.Artifacts.Sqlite`
+- [x] WS15-C7 `AgentKit.Artifacts.Json`
+- [x] WS15-C8 `AgentKit.Artifacts.FileSystem`
+- [x] WS15-C9 definition key, validator, consumers, Simple, documentation
 
 ## Verified current state
 
-| Item                                                                                                                                                                                                                   | State                                               | Evidence                                                                                                               |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| two-phase coordinator                                                                                                                                                                                                  | EXISTS, single un-keyed store, `ISecurityAuthority` | `src/AgentKit.Artifacts/DefaultArtifactCoordinator.cs:25-47,79-93`; `AddAgentArtifacts(Action<AgentArtifactOptions>?)` |
-| `IArtifactStore`                                                                                                                                                                                                       | EXISTS, shape differs                               | `Abstractions/Artifacts/IArtifactStore.cs:7-41` vs `artifacts.md:179-200`                                              |
-| `ArtifactPrepareRequest` carries `AgentId/SessionId?/ToolCallId?/Correlation/Identity`                                                                                                                                 | EXISTS, not `SecurityAuthorizationContext`          | vs doc `:130-138`                                                                                                      |
-| `ArtifactMetadata` with non-null hash, `ArtifactDataClassification`, no external ownership                                                                                                                             | EXISTS                                              | vs doc `:100-109`                                                                                                      |
-| `.InMemory` store and existing suite                                                                                                                                                                                   | EXISTS-AND-USED                                     | `InMemoryArtifactStore.cs` (360 lines); `Conformance/ArtifactStoreConformanceTests.cs` (206 lines)                     |
-| `ArtifactProcessOutputSink`, `IProcessOutputArtifactSink`                                                                                                                                                              | EXISTS-AND-USED by Processes                        | `OperatingSystemProcessRunner.cs:17,40,72,548`                                                                         |
-| `.Sqlite`, `.Json`, `.FileSystem` stores                                                                                                                                                                               | MISSING                                             | –                                                                                                                      |
-| `ArtifactBackendKey`, `IArtifactStoreSelector`, profile snapshot and options, options snapshot, integrity validator, retention policy, events, sink id, external ownership, resource id, commit intent, reconciliation | MISSING                                             | –                                                                                                                      |
-| observability                                                                                                                                                                                                          | NONE                                                | csproj lacks the Observability reference; no `artifact.*` names                                                        |
-| identities                                                                                                                                                                                                             | EXISTS                                              | `Abstractions/Identity/Artifact*.cs`                                                                                   |
+| Item                                                                                                                  | State                                                                      | Evidence                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| two-phase coordinator                                                                                                 | LANDED, keyed, `ISecurityAuthoritySelector`                                | `src/AgentKit.Artifacts/ArtifactCoordinator.cs`; `AddAgentArtifacts(key, profileKey, …)`          |
+| `IArtifactStore`                                                                                                      | LANDED, typed store results                                                | `Abstractions/Artifacts/IArtifactStore.cs`, `ArtifactStore*` result families                      |
+| `ArtifactPrepareRequest` authorization                                                                                | LANDED, `SecurityAuthorizationContext`                                     | `Abstractions/Artifacts/ArtifactPrepareRequest.cs`                                                |
+| `ArtifactMetadata` hash, classification, external ownership                                                           | LANDED, `ContentHash?`, `DataClassification`, `ExternalArtifactOwnership?` | `Abstractions/Artifacts/ArtifactMetadata.cs`                                                      |
+| `.InMemory` store and suite                                                                                           | LANDED on shared planner/backend; suite extended                           | `src/AgentKit.Artifacts.InMemory`; `tests/AgentKit.Conformance/ArtifactStoreConformanceTests.cs`  |
+| `ArtifactProcessOutputSink`                                                                                           | LANDED, bound per coordinator                                              | `src/AgentKit.Artifacts/ArtifactProcessOutputSink.cs`                                             |
+| `.Sqlite`, `.Json`, `.FileSystem` stores                                                                              | LANDED                                                                     | `src/AgentKit.Artifacts.Sqlite`, `.Json`, `.FileSystem` and their test projects                   |
+| backend key, selector, profile and options snapshots, validator, retention, events, ownership, intent, reconciliation | LANDED                                                                     | `Abstractions/Artifacts/*`, `src/AgentKit.Artifacts/*`                                            |
+| observability                                                                                                         | LANDED                                                                     | `artifact.*` activities, metrics, tags, `ArtifactLog` 29000-29005, `ArtifactStoreLog` 29100-29106 |
+| definition key and composition validation                                                                             | LANDED                                                                     | `src/AgentKit/ArtifactCompositionValidator.cs`; `IArtifactCoordinatorCatalog`; `WithArtifacts`    |
+| identities                                                                                                            | EXISTS                                                                     | `Abstractions/Identity/Artifact*.cs`                                                              |
 
 Test doubles: `IArtifactStore` 1 fake plus 1 fixture; `IArtifactCoordinator` 1;
 `IProcessOutputArtifactSink` 1; `ArtifactReference`/`ArtifactMetadata`
@@ -75,6 +76,11 @@ constructed in 23 files.
   `IArtifactIntegrityValidator`, `IArtifactRetentionPolicy`,
   `ArtifactRetentionDecision`, `ArtifactReferenceCommitIntent` and id,
   reconciliation request/result, `ArtifactPin`. Snapshot: Abstractions.
+- Landed: every listed contract plus `ArtifactBackendKey`,
+  `ArtifactReferenceCommitIntentId`,
+  `ArtifactReferenceCommitState/Outcome/Result`, reconciliation disposition and
+  pending-reason types, `ArtifactCoordinatorSnapshot`, and
+  `IArtifactCoordinatorCatalog`. Abstractions tests pass (7496).
 
 ### WS15-C2: Metadata, reference, request shape migration
 
@@ -88,6 +94,11 @@ constructed in 23 files.
   external ownership), requests take `SecurityAuthorizationContext`,
   `IArtifactStore` returns store-level results. Snapshots: Abstractions,
   Artifacts, Artifacts.InMemory, Processes, Tools.Command.
+- Landed: metadata and reference carry `ContentHash?`, the shared
+  `DataClassification`, and `ExternalArtifactOwnership?`; requests carry
+  `SecurityAuthorizationContext`; `IArtifactStore` returns typed results.
+  `ArtifactDataClassification` was deleted. All callers (Processes, memory
+  document, tests) updated in place.
 
 ### WS15-C3: Conformance suite extension
 
@@ -95,6 +106,10 @@ constructed in 23 files.
 - Deliverables: finalize/abort race single winner, equivalent retry same
   reference, tenant isolation, integrity mismatch typed, legal-hold delete
   rejected, external ownership never deletes, tombstone prevents rebind.
+- Landed: `IArtifactStoreConformanceFixture`,
+  `ArtifactStoreConformanceFixtureBase`, and about 35 cases including
+  finalize/abort race, equivalent retry, tenant isolation, integrity mismatch,
+  legal hold, external ownership, tombstone, and read verification.
 
 ### WS15-C4: Coordinator rewrite
 
@@ -110,6 +125,12 @@ constructed in 23 files.
   `AddArtifactStore<T>(ArtifactBackendKey)`, `AddArtifactEventSink<T>`,
   `Replace*`; authorization through `ISecurityAuthoritySelector`; the process
   output sink bound to one key.
+- Landed: internal keyed `ArtifactCoordinator` (the public
+  `DefaultArtifactCoordinator` was replaced), profile snapshots with retained
+  versions, default selector, integrity validator, retention policy, dispatcher,
+  observability, and registration. `tests/AgentKit.Artifacts.Tests` passes
+  (145). Deviation: finalize/abort/reconcile probe each backend because the
+  requests name no directory.
 
 ### WS15-C5: Reference-commit intent and reconciliation
 
@@ -118,22 +139,34 @@ constructed in 23 files.
   `ReconcileAsync` per `artifacts.md:397-427` (fence late commit → terminal
   disposition → collect or retain with pending); `OrphanRetention` option;
   fenced-collection tests.
+- Landed: `ReconcileAsync` (fence-first) and
+  `InMemoryArtifactReferenceCommitIntentStore`. Deviation: SQLite and JSON
+  intent store adapters were not built; the intent store is caller-owned.
 
 ### WS15-C6: `AgentKit.Artifacts.Sqlite`
 
 - Depends on: C3. Risk: ADDITIVE new project. Size: L.
+- Landed: `AgentKit.Artifacts.Sqlite` with exclusive-lock single-writer store;
+  77 tests including the shared conformance suite.
 
 ### WS15-C7: `AgentKit.Artifacts.Json`
 
 - Depends on: C3. Risk: ADDITIVE new project. Size: M.
 - Deliverables: metadata via `JsonRecordLog`, payloads as content-addressed
   files written with `JsonAtomicDocument`.
+- Landed: `AgentKit.Artifacts.Json` with record log metadata and
+  tenant-hash-partitioned content-addressed payloads; 69 tests including
+  conformance.
 
 ### WS15-C8: `AgentKit.Artifacts.FileSystem`
 
 - Depends on: C3, WS5. Risk: ADDITIVE new project. Size: M.
 - Deliverables: store over the protected file-system contracts with explicit
   dispositions; suite over `AgentKit.FileSystem.InMemory`.
+- Landed: `AgentKit.Artifacts.FileSystem` over the protected file-system
+  boundary; 61 tests including conformance over `AgentKit.FileSystem.InMemory`.
+  Deviation: no delete or enumeration exists on the boundary, so released
+  payloads are truncated, not removed, and crash leftovers are not swept.
 
 ### WS15-C9: Definition key, validator, consumers, Simple, documentation
 
@@ -142,6 +175,11 @@ constructed in 23 files.
 - Deliverables: `ComponentKey<IArtifactCoordinator>? ArtifactCoordinator`;
   validator per `artifacts.md:429-440`; session export and memory document
   consumers; `WithArtifacts`; skill.
+- Landed: `ArtifactCompositionValidator` wired from `AgentCompositionValidator`,
+  `IArtifactCoordinatorCatalog` default implementation, `WithArtifacts` with
+  `SimpleArtifactOptions`, memory document consumer update, skill and
+  documentation updates, regenerated API snapshots. Deviation: no session-export
+  code exists in `src/`, so there was no export consumer to migrate.
 
 ## Totals
 

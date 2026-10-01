@@ -51,37 +51,45 @@ The runtime does not admit input, publish output, select history items, select a
 model, translate provider wire formats, authorize tools, or implement storage.
 It sequences the components that do.
 
-The reduced first-party loop selects the model once per run, so every turn talks
-to the same descriptor and catalog version. The selection request's
-`ModelRequestId` is the identity of the first turn's attempt; later turns
-allocate fresh identities. Selection diagnostics therefore always correlate to
-one real attempt instead of a throwaway identity.
+The first-party loop selects the model once per run, so every turn talks to the
+same descriptor and catalog version. The selection request's `ModelRequestId` is
+the identity of the first turn's attempt; later turns allocate fresh identities.
+Selection diagnostics therefore always correlate to one real attempt instead of
+a throwaway identity. The one exception is selection-policy fallback: when the
+model request executor reports `ModelFallbackRequired` under
+`ModelFallbackPolicy.OrderedCandidates`, the loop selects again once, excluding
+the failed alias, and the replacement descriptor returns through context
+assembly before it is invoked.
 
-The reduced first-party loop consults the selected `IRunContinuationPolicy`
-after every committed turn: after a no-tool assistant commit with an empty cause
-set, and after the tool-result commit with a
-`CommittedToolResultsContinuationCause`. `ContinueRun` drives another turn while
-one remains and otherwise settles as the typed turn limit, because a policy
-cannot widen a hard limit; `CompleteRun` and `HaltRun` settle with the proposed
-outcome. The policy is resolved from the keyed registration named by
-`AgentLoopDefaults.ContinuationPolicyKey`, so registering a custom policy under
-that key before `AddAgentLoop` replaces the built-in decision. Until the loop
-carries an explicit lane and policy snapshot, it drives one implicit lane per
-branch (the lane identity is the branch identity), reports the turn number as
-its operation-state revision, and names a single fixed policy version. The
-reduced loop projects each tool batch into one tool-message entry, so a batch of
-any size has exactly one real committed `SessionEntryId`. Because the
-committed-turn boundary requires `CommittedToolResultReference` to carry a
-distinct `SessionEntryId` per call, the loop derives one deterministic,
-policy-facing-only identity per call from that real batch entry identity and the
-call's position, documented on `DefaultAgentLoop.DerivePerCallEntryId`. This
-lets every committed-tool-results turn — one call or many — reach the
-continuation policy uniformly; there is no longer a batch-size bypass. A future
-revision that commits one real session entry per tool result removes this
-derivation and uses each call's own real entry identity instead.
+The first-party loop consults the run's selected `IRunContinuationPolicy` after
+every committed turn: after a no-tool assistant commit with an empty cause set,
+and after the tool-result commit with a `CommittedToolResultsContinuationCause`.
+`ContinueRun` drives another turn while one remains and otherwise settles as the
+typed turn limit, because a policy cannot widen a hard limit; `CompleteRun` and
+`HaltRun` settle with the proposed outcome. The policy is the keyed registration
+named by the definition's `AgentComponentSelection.ContinuationPolicy`;
+`AgentLoopDefaults.ContinuationPolicyKey` is only the key the first-party
+registration conventionally uses, so registering a custom policy under another
+key and selecting it replaces the built-in decision for that definition alone.
+The continuation context presents the live lane and revision: the lane the run's
+admission installed (or the session-derived lane when a run carries no
+admission) and the operation-state revision as last observed by the run. The
+policy version is `RunPolicyVersioning.Compute` over the run's effective turn
+limit, attempt timeout, and selected policy key, with the loop's resolved
+`AgentLoopOptions` folded in, so a live options reload names a different version
+without advancing the definition revision. The loop projects each tool batch
+into one tool-message entry, so a batch of any size has exactly one real
+committed `SessionEntryId`. Because the committed-turn boundary requires
+`CommittedToolResultReference` to carry a distinct `SessionEntryId` per call,
+the loop derives one deterministic, policy-facing-only identity per call from
+that real batch entry identity and the call's position, documented on
+`DefaultAgentLoop.DerivePerCallEntryId`. Every committed-tool-results turn, one
+call or many, therefore reaches the continuation policy uniformly. A session
+that commits one real entry per tool result would remove this derivation and use
+each call's own entry identity instead.
 
-The reduced loop loads the branch under one pinned `SessionReadSnapshot` and
-consumes the newest active compaction checkpoint while doing so. When a
+The loop loads the branch under one pinned `SessionReadSnapshot` and consumes
+the newest active compaction checkpoint while doing so. When a
 `CompactionSessionEntry` whose record is `Active` exists, the history it hands
 to the context assembler is that checkpoint's summary, projected as a single
 `RuntimeMessage`, followed by exactly the entries from the record's
@@ -101,11 +109,11 @@ bounds retention, not read cost. This satisfies the
 reconstruction stops at the newest checkpoint and reproduces exactly its
 summary, retained tail, and later suffix.
 
-Before its first turn, after loading eligible history, the reduced loop is the
-recovery owner for tool calls a previous run left without a terminal result (for
-example, a tool-message commit that failed or a process that crashed after the
-assistant commit). It durably appends one tool message carrying an interrupted
-terminal result with unknown side-effect certainty per dangling call, under an
+Before its first turn, after loading eligible history, the loop is the recovery
+owner for tool calls a previous run left without a terminal result (for example,
+a tool-message commit that failed or a process that crashed after the assistant
+commit). It durably appends one tool message carrying an interrupted terminal
+result with unknown side-effect certainty per dangling call, under an
 idempotency key derived from the dangling assistant message and causally
 parented to that message's entry, then continues with the settlement in the
 history it assembles. Recovery inspects only the history the loop retained, so a
@@ -168,46 +176,52 @@ aliases.
 ```csharp
 namespace AgentKit;
 
-public sealed record AgentRunInvocation(
-    AgentDefinition Definition,
-    AgentCatalogVersion AgentCatalogVersion,
-    SessionId SessionId,
-    ExecutionLaneId ExecutionLaneId,
-    ConversationId? ConversationId,
-    ExecutionIdentity Identity,
-    RunId RunId,
-    AdmissionId? TriggerAdmissionId,
-    SecurityAuthorizationContext Authorization,
-    HookDispatchContext Hooks,
-    AgentRunServices Services,
-    EffectiveConfigurationSnapshot Configuration,
-    RunPolicySnapshot Policies,
-    DateTimeOffset StartedAt);
+public sealed record AgentLoopRunRequest
+{
+    public AgentLoopRunRequest(
+        AgentDefinition agent,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId runId,
+        ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
+        SessionProfileSnapshot sessionProfile,
+        EffectiveConfigurationSnapshot configuration,
+        int maxTurns,
+        TimeSpan attemptTimeout,
+        ExtensionData extensions);
 
-public sealed record AgentRunServices(
-    IInputCoordinator Input,
-    SessionExecutionCapability Session,
-    IModelCatalog Models,
-    IModelSelector ModelSelector,
-    IContextAssembler Context,
-    IModelRequestExecutor ModelExecutor,
-    IToolExecutor? Tools,
-    IOutputProcessor OutputProcessor,
-    IOutputPublisher Output,
-    IHookDispatcher Hooks,
-    BudgetExecutionCapability Budget,
-    IRunContinuationPolicy ContinuationPolicy);
+    public AgentDefinition Agent { get; }
+    public ModelSelectionPolicy ModelPolicy { get; }
+    public ModelRequirements ModelRequirements { get; }
+    public LlmRequestSettings Settings { get; }
+    public OutputDefinition? Output { get; }
+    public BudgetProfileKey BudgetProfile { get; }
+    public HookProfileKey HookProfile { get; }
+    public IAgentRunObserver? Observer { get; init; }
+    public LoopLaneAdmission? LaneAdmission { get; init; }
+}
 
-public sealed record TurnContext(
-    AgentId AgentId,
-    SessionId SessionId,
-    ExecutionLaneId ExecutionLaneId,
-    ConversationId? ConversationId,
-    RunId RunId,
-    TurnId TurnId,
-    long TurnNumber,
-    MessageCursor History,
-    EffectiveConfigurationSnapshot Configuration);
+public sealed class AgentRunServices
+{
+    public ISessionCoordinator Session { get; }
+    public ISecurityProfileSelector SecurityProfileSelector { get; }
+    public IContextAssembler Context { get; }
+    public IToolExecutor Tools { get; }
+    public IModelCatalog Models { get; }
+    public IModelSelector ModelSelector { get; }
+    public ILlmModelResolver ModelResolver { get; }
+    public IRunContinuationPolicy ContinuationPolicy { get; }
+    public IToolRunCatalogCaptureFactory? ToolCatalogCaptures { get; }
+    public IOutputProcessor? OutputProcessor { get; }
+    public ICompactor? Compactor { get; }
+    public IBudgetAuthority? Budgets { get; }
+    public IBudgetProfileCatalog? BudgetProfiles { get; }
+    public ISessionRunCoordinator? RunCoordinator { get; }
+    public IInputCoordinator? Input { get; }
+    public IOutputPublisher? Publisher { get; }
+    public IModelRequestExecutor? ModelExecutor { get; }
+}
 
 public enum AgentRunState
 {
@@ -229,32 +243,23 @@ public enum AgentRunState
     Settled
 }
 
-public sealed record AgentRunProgress(
-    AgentId AgentId,
-    SessionId SessionId,
-    ConversationId? ConversationId,
-    RunId RunId,
-    TurnId? TurnId,
-    AgentRunState State,
-    long EventSequence,
-    RunUsage Usage);
-
 public sealed record AgentLoopResult(
     AgentId AgentId,
     SessionId SessionId,
-    ConversationId? ConversationId,
+    BranchId BranchId,
     RunId RunId,
     AgentRunOutcome Outcome,
-    RunSettlementOutcome Settlement,
-    MessageCursor PreviousCursor,
     ImmutableArray<AgentMessage> NewMessages,
+    SessionVersion? FinalVersion,
     ValidatedOutput? Output,
-    RunUsage Usage);
+    RunUsage Usage,
+    RunSettlementOutcome Settlement);
 
 public interface IAgentLoop
 {
     Task<AgentLoopResult> RunAsync(
-        AgentRunInvocation invocation,
+        AgentLoopRunRequest request,
+        AgentRunServices services,
         CancellationToken cancellationToken = default);
 }
 
@@ -280,11 +285,16 @@ public sealed record HaltRun(AgentRunOutcome Outcome)
 `IAgentLoop.RunAsync` returns `Task` because a run necessarily coordinates
 asynchronous I/O and callers may await its terminal operation through
 settlement. The continuation policy uses `ValueTask` because deterministic
-policies commonly complete synchronously. Progress and results are immutable
-snapshots; mutable state-machine internals stay inside the run scope.
+policies commonly complete synchronously. Results are immutable snapshots;
+mutable state-machine internals stay inside the run scope. Progress is observed
+as typed `RunEvent` values published through the run's output publisher
+([input and output](input-and-output.md)) and, for provisional model and tool
+progress, through the request's best-effort `IAgentRunObserver`; the loop
+exposes no mutable progress object.
 
-The reduced first-party loop implements a narrower, request-based
-`IAgentLoop.RunAsync` signature —
+The implemented `IAgentLoop` is request-based and the normative block above
+names the shapes that carry it. The invocation, per-run collaborator bundle, and
+result are `AgentLoopRunRequest`, `AgentRunServices`, and `AgentLoopResult`:
 
 ```csharp
 Task<AgentLoopResult> RunAsync(
@@ -293,32 +303,37 @@ Task<AgentLoopResult> RunAsync(
     CancellationToken cancellationToken = default);
 ```
 
-— rather than the fuller `AgentRunInvocation`-based signature above, and its
-`AgentRunServices` bundle correspondingly carries the collaborators the reduced
-loop actually drives a run with: `ISessionCoordinator`,
-`ISecurityProfileSelector`, `IContextAssembler`, `IToolInvoker`,
-`IModelCatalog`, `IModelSelector`, `ILlmModelResolver`, and
-`IRunContinuationPolicy` as required members, plus `IOutputProcessor`,
-`ICompactor`, `IBudgetAuthority`, `ISessionRunCoordinator`, `IInputCoordinator`,
-and `IOutputPublisher` as optional members resolved unkeyed from the run scope.
-It does not yet carry `SessionExecutionCapability`, `IModelRequestExecutor`,
-`IToolExecutor`, or `BudgetExecutionCapability`, because those packages are not
-yet wired into the reduced loop; `IHookDispatcher`, `IHookCatalog`,
-`IHookInstanceFactory`, and `IHookProfileSelector` reach the loop through
-constructor injection rather than through this bundle. What the reduced shape
-already delivers, matching this document's normative intent exactly, is that
-every collaborator in its `AgentRunServices` arrives through `RunAsync` rather
-than constructor injection, and is compiled per run by the facade's
-run-activation boundary honoring the run's selected keyed `IAgentLoop`.
+`AgentLoopRunRequest` pins the exact admitted `AgentDefinition` and derives the
+model policy, requirements, settings, output definition, budget profile, and
+hook profile from it, so a request cannot disagree with its definition. It adds
+the branch, the authenticated `ExecutionIdentity`, the captured
+`SecurityAuthorizationContext`, the `EffectiveConfigurationSnapshot`, the
+`SessionProfileSnapshot`, the turn and attempt limits, an optional
+`LoopLaneAdmission`, and an optional observer.
 
-**Hook scope reconciliation.** Normative runtime records such as
-`AgentRunInvocation` still name a `HookDispatchContext` field for the run
-boundary. The implemented loop instead opens one run-scoped
-`HookActivationScope` (captured catalog plus activation lease) and creates a
-fresh per-dispatch `HookDispatchContext` for every emission through
-`HookActivationScope.CreateDispatch`. Treat the run record's hook field as the
-scope holder until those documents are retargeted to `HookActivationScope`; the
-per-dispatch context remains the only value passed to `IHookDispatcher`.
+`AgentRunServices` carries the collaborators the facade compiles for one run
+from the definition's keyed selections: required `ISessionCoordinator`,
+`ISecurityProfileSelector`, `IContextAssembler`, `IToolExecutor`,
+`IModelCatalog`, `IModelSelector`, `ILlmModelResolver`, and
+`IRunContinuationPolicy`, plus optional `IToolRunCatalogCaptureFactory`,
+`IOutputProcessor`, `ICompactor`, `IBudgetAuthority`, `IBudgetProfileCatalog`,
+`ISessionRunCoordinator`, `IInputCoordinator`, `IOutputPublisher`, and
+`IModelRequestExecutor`. The loop owns budget reservation through
+`IBudgetAuthority` and the run's budget profile, and it opens session
+capabilities through `ISessionCoordinator`, so the bundle carries the authority
+and coordinator rather than a pre-bound `BudgetExecutionCapability` or
+`SessionExecutionCapability`. `IHookDispatcher`, `IHookCatalog`,
+`IHookInstanceFactory`, and `IHookProfileSelector` reach the loop through
+constructor injection because they are engine-wide singulars. Every per-agent
+collaborator in `AgentRunServices` arrives through `RunAsync` rather than
+constructor injection and is compiled per run by the facade's run-plan compiler
+honoring the definition's selected keys.
+
+**Hook scope.** The run request names a hook profile, not a dispatch context.
+The loop opens one run-scoped `HookActivationScope` (captured catalog plus
+activation lease) and creates a fresh per-dispatch `HookDispatchContext` for
+every emission through `HookActivationScope.CreateDispatch`; the per-dispatch
+context remains the only value passed to `IHookDispatcher`.
 
 The
 [continuation evaluation contract](../concepts/agent-loop-state-machine.md#continuation-evaluation-boundary)
@@ -372,21 +387,19 @@ collaborator itself.
 
 The selected per-agent collaborators arrive through the immutable
 `AgentRunServices` bundle instead, as an explicit parameter of
-`IAgentLoop.RunAsync` in the reduced request-based contract this package
-implements today (see the signature above). The facade's run activation boundary
-— `AgentEngine.RunAgentAsync`, using the package-internal
-`AgentRunServicesFactory` — compiles one bundle per run, inside the freshly
-created run scope, after resolving the run's keyed `IAgentLoop`. For each
-collaborator that could plausibly be selected per loop key (session
-coordination, authorization capture, context assembly, tool invocation, model
-selection, and model resolution), it prefers a registration keyed to the exact
-same key as the run's selected loop and falls back to the engine-wide unkeyed
-registration when no such keyed variant exists. `IModelCatalog` is always
-resolved unkeyed, because composition requires exactly one engine-wide catalog.
-The continuation policy is resolved from the fixed
-`AgentLoopComponentDefaults.ContinuationPolicyKey` rather than the run's loop
-key, because the reduced loop still consults one replaceable, engine-wide policy
-rather than a policy selected per keyed loop.
+`IAgentLoop.RunAsync` (see the signature above). The facade's run activation
+boundary compiles one bundle per run, inside the freshly created run scope, from
+the definition's `AgentComponentSelection`. The context assembler, model
+selector, continuation policy, output processor, input coordinator, and model
+request executor resolve under the exact key the definition names, and
+`IModelCatalog`, `IBudgetAuthority`, and `IBudgetProfileCatalog` resolve unkeyed
+because composition requires exactly one engine-wide registration of each.
+Session coordination, authorization capture, model resolution, and the tool
+executor keep a loop-key-scoped override with an engine-wide unkeyed fallback;
+the tool executor key comes from `AgentOptionalCapabilitySelection.ToolExecutor`
+when the definition names one. The output publisher is the one selected
+component compiled after the bundle, because it is scoped to the run identity
+the engine binds only once it has minted the `RunId`.
 
 Reserving constructor injection for genuinely key-independent mechanics and
 supplying every per-agent collaborator through `RunAsync`'s explicit
@@ -394,10 +407,10 @@ supplying every per-agent collaborator through `RunAsync`'s explicit
 from silently replacing one definition's selected context assembler, model path,
 tool invoker, or continuation policy with whatever happens to be the engine-wide
 default — the defect this shape closes. An agent definition selects its loop key
-through `AgentDefinition.LoopKey`; leaving it unset resolves to
-`AgentLoopComponentDefaults.LoopKey`, so every definition, configured or not,
-always names an exact keyed `IAgentLoop` selection rather than an ambient
-unkeyed registration.
+through `AgentDefinition.Components.Loop`, so every definition always names an
+exact keyed `IAgentLoop` selection rather than an ambient unkeyed registration.
+`AgentLoopComponentDefaults.LoopKey` is the key the first-party registration
+conventionally uses.
 
 No reusable loop base class is required initially: common state-transition and
 settlement behavior is observable contract behavior and belongs in conformance
@@ -459,8 +472,8 @@ closed on invalid state, and perform no transparent provider or tool retry. An
 agent definition may select a policy key and narrow defaults; run options may
 narrow them again. Managed ceilings cannot be widened by either layer.
 
-The first-party `AgentLoopOptions` currently exposes the history read page size,
-the append-conflict retry limit (rebases after a concurrent writer advanced the
+The first-party `AgentLoopOptions` exposes the history read page size, the
+append-conflict retry limit (rebases after a concurrent writer advanced the
 branch; zero disables rebasing), whether the final permitted turn is requested
 without tools and with an explicit `None` tool choice so the model produces its
 final response (the default; a model that requests calls anyway has them settled
@@ -468,7 +481,10 @@ as rejected and the run reports the typed turn limit), the settlement timeout
 that bounds each required terminal commit made independently of the caller's
 cancellation (the tool message settling a committed assistant request and the
 interrupted message preserving partial output), and the observer-delivery
-timeout that bounds each event delivered outside the caller's token. All are
+timeout that bounds each event delivered outside the caller's token, the default
+tool choice, the hook-dispatch deadline window, the context-pressure fraction
+and characters-per-token estimate that decide when the composed compactor is
+asked to checkpoint, and the per-boundary input promotion bound. All are
 validated at composition and measured with the injected `TimeProvider`. When the
 settlement bound elapses the run settles as a session-operation failure that
 states the commit outcome is unknown; the loop never hangs on settlement and

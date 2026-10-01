@@ -1,0 +1,38 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Observability.OpenTelemetry.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Observability.OpenTelemetry
+{
+    public interface IOpenTelemetryAuditExporter
+    {
+        System.Threading.Tasks.ValueTask WriteAsync(AgentKit.SecurityAuditRecord record, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class OpenTelemetryObservationOptions
+    {
+        public OpenTelemetryObservationOptions() { }
+        public System.Collections.Immutable.ImmutableHashSet<AgentKit.DataClassification> AllowedClassifications { get; set; }
+        public bool AuditExporterProvidesDurableAcceptance { get; set; }
+        public AgentKit.ObservationBounds Bounds { get; set; }
+        public AgentKit.ObservationContentCapturePolicy ContentCapture { get; set; }
+        public AgentKit.DataClassification ContentClassification { get; set; }
+        public AgentKit.ObservationDeliveryPolicy Delivery { get; set; }
+        public long ExporterVersion { get; set; }
+        public AgentKit.Observability.OpenTelemetry.OpenTelemetrySignalSet Signals { get; set; }
+    }
+    [System.Flags]
+    public enum OpenTelemetrySignalSet
+    {
+        None = 0,
+        Activities = 1,
+        Metrics = 2,
+        Logs = 4,
+        Audit = 8,
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenTelemetryObservability(AgentKit.ObservationExporterKey key, System.Action<AgentKit.Observability.OpenTelemetry.OpenTelemetryObservationOptions> configure) { }
+        }
+    }
+}

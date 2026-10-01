@@ -43,7 +43,6 @@ public sealed class EditToolPresentationFormatterTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task FormatAsync_WhenActualEditResultCommitted_RendersReadableBoundedEvidenceWithoutJson()
     {
         var tool = TestEditComposition.CreateTool(
@@ -318,7 +317,7 @@ public sealed class EditToolPresentationFormatterTests
             TestContext.Current.CancellationToken);
     }
 
-    private static ToolInvocationContext InvocationRequest(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    private static ToolInvocationContext InvocationRequest(string json) => ToolCaptureTestData.FromRequest(new(
         TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("51000000-0000-0000-0000-000000000005")),

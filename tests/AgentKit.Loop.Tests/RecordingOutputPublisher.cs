@@ -38,6 +38,9 @@ internal sealed class RecordingOutputPublisher: IOutputPublisher
     {
         if (_failure is { } failure)
         {
+            // The real publisher delivers the event to its hub before a required sink faults, so the event is
+            // still observed and only the settlement outcome records the failure.
+            _events.Add(runEvent);
             _requiredSinkFailure ??= new AgentError(
                 AgentErrorCodes.StoreUnavailable,
                 failure.Message,

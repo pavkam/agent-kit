@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 
+using AgentKit.Providers.Egress;
+
 /// <summary>
 /// The minimal concrete <see cref="OpenAICompatibleEmbeddingModelBase"/>
 /// subclass used to test the shared base pipeline directly, standing in
@@ -16,7 +18,7 @@ internal sealed class TestEmbeddingModel: OpenAICompatibleEmbeddingModelBase
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     public TestEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
@@ -24,9 +26,9 @@ internal sealed class TestEmbeddingModel: OpenAICompatibleEmbeddingModelBase
         IOpenAIEmbeddingRequestTranslator translator,
         IOpenAIEmbeddingResponseParser responseParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider)
-        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider)
+        : base(descriptor, profile, translator, responseParser, credentials, egress, timeProvider)
     {
     }
 }

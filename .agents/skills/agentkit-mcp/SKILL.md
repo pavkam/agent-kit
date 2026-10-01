@@ -48,7 +48,11 @@ verify volatile details against the current official MCP specification.
    untrusted. Preserve mixed typed content and safe unknown extension data.
 7. Route stdio through AgentKit process contracts and HTTP through AgentKit
    network contracts. Connection authentication never grants authority for the
-   effects exposed through that connection.
+   effects exposed through that connection. Keep the official SDK
+   `HttpClientTransport` for protocol behavior but construct it over an
+   `HttpClient` whose only handler is `NetworkMcpHttpHandler`; the SDK never
+   opens a socket or follows a redirect, requests stay on the endpoint's origin,
+   and each endpoint kind registers only its own transport factory.
 8. Give sessions, streams, child processes, reconnects, and in-flight requests
    explicit ownership, bounds, cancellation, and unknown-side-effect behavior.
 9. Test lifecycle and capability rejection, request correlation, reflected

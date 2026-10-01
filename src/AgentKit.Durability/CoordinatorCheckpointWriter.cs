@@ -86,7 +86,7 @@ internal sealed class CoordinatorCheckpointWriter: IDurableCheckpointWriter
             _operation.Address,
             checkpoint,
             DurableJournalSecurityBinding.Fingerprint(checkpoint),
-            SecurityEffect.Mutate,
+            SecurityEffect.Append,
             _lease.FencingToken,
             _journal.RecordCheckpointAsync,
             cancellationToken).ConfigureAwait(false);

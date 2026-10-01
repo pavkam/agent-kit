@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleGemini.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -84,6 +86,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGeminiLlmModel(new ModelAlias("fast"), new ModelId("gemini-2.5-flash"));
         _ = services.AddGoogleGeminiLlmModel(new ModelAlias("smart"), new ModelId("gemini-2.5-pro"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -98,6 +102,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGemini();
         _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
         _ = services.AddGoogleGeminiLlmModel(new ModelAlias("chat"), new ModelId("gemini-2.5-flash"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleGeminiLlmModel>();
@@ -114,6 +120,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-004"));
         _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("gemini-embedding-001"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
 
@@ -128,6 +136,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGemini();
         _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
         _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-004"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<GoogleGeminiEmbeddingModel>();
@@ -153,6 +163,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddGoogleGeminiLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleGeminiLlmModel>();
@@ -197,6 +209,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
 
         _ = services.AddGoogleGeminiKnownLlmModel(new ModelAlias("known"), new ModelId("gemini-2.5-flash"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GoogleGeminiLlmModel>();

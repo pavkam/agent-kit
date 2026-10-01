@@ -20,37 +20,45 @@ Dependencies are on other workstreams as a whole unless a chunk names a specific
 chunk. Sizes count chunks after splitting: S under one hour, M one to three
 hours, L three to six hours.
 
-| #   | Workstream                                                            | Depends on  | Chunks | Done         |
-| --- | --------------------------------------------------------------------- | ----------- | ------ | ------------ |
-| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –           | 14     | C1–C14       |
-| 2   | [Hook kernel](hook-kernel.md)                                         | –           | 13     | C1–C13       |
-| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2           | 15     | C1–C15       |
-| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3        | 13     | C1–C13       |
-| 5   | [Host access](host-access.md)                                         | 3           | 18     | C1–C18       |
-| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13     | C1a–C13      |
-| 7   | [Provider runtime](provider-runtime.md)                               | 2           | 15     | C1–C15       |
-| 8   | [Structured output](structured-output.md)                             | 2, 7        | 12     | C1–C8        |
-| 9   | [Context assembly](context-assembly.md)                               | 2           | 8      | C1–C8        |
-| 10  | [Context compaction](context-compaction.md)                           | 7, 9        | 8      | C1–C8        |
-| 11  | [Budgets](budgets.md)                                                 | 8, 10       | 6      | C1–C6        |
-| 12  | [Durable execution](durable-execution.md)                             | 1, 3        | 13     | C1–C11, C12a |
-| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12       | 12     | –            |
-| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9        | 15     | –            |
-| 15  | [Artifacts](artifacts.md)                                             | 4, 12       | 9      | –            |
-| 16  | [Identity ingress](identity-ingress.md)                               | 1           | 5      | C1–C5        |
-| 17  | [Observability](observability.md)                                     | 1           | 9      | –            |
-| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17        | 11     | –            |
-| 19  | [Evaluation](evaluation.md)                                           | 1, 18       | 8      | –            |
-| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19, 21    | 8      | –            |
-| 21  | [Obsolete and compatibility code removal](obsolete-code-removal.md)   | 3, 4, 5, 18 | 10     | –            |
+| #   | Workstream                                                            | Depends on  | Chunk IDs | Items | Done            |
+| --- | --------------------------------------------------------------------- | ----------- | --------- | ----- | --------------- |
+| 1   | [Run envelope and admission](run-envelope-and-admission.md)           | –           | 14        | 14    | C1–C14 (14/14)  |
+| 2   | [Hook kernel](hook-kernel.md)                                         | –           | 13        | 14    | C1–C13 (14/14)  |
+| 3   | [Permissions, approvals, audit](permissions-approvals-and-audit.md)   | 2           | 15        | 20    | C1–C15 (20/20)  |
+| 4   | [Tool runtime](tool-runtime.md)                                       | 2, 3        | 14        | 20    | C1–C14 (20/20)  |
+| 5   | [Host access](host-access.md)                                         | 3           | 18        | 21    | C1–C18 (21/21)  |
+| 6   | [MCP tool source](mcp-tool-source.md)                                 | 4, 5        | 13        | 15    | C1a–C13 (15/15) |
+| 7   | [Provider runtime](provider-runtime.md)                               | 2, 5        | 11        | 15    | C1–C11 (15/15)  |
+| 8   | [Structured output](structured-output.md)                             | 2, 7        | 8         | 12    | C1–C8 (12/12)   |
+| 9   | [Context assembly](context-assembly.md)                               | 2           | 8         | 8     | C1–C8 (8/8)     |
+| 10  | [Context compaction](context-compaction.md)                           | 7, 9        | 8         | 8     | C1–C8 (8/8)     |
+| 11  | [Budgets](budgets.md)                                                 | 8, 10       | 6         | 6     | C1–C6 (6/6)     |
+| 12  | [Durable execution](durable-execution.md)                             | 1, 3        | 13        | 14    | C1–C13 (14/14)  |
+| 13  | [Goals and delegation](goals-and-delegation.md)                       | 1, 12       | 12        | 12    | C1–C12 (12/12)  |
+| 14  | [Memory and retrieval](memory-and-retrieval.md)                       | 7, 9        | 13        | 15    | C1–C13 (15/15)  |
+| 15  | [Artifacts](artifacts.md)                                             | 4, 12       | 9         | 9     | C1–C9 (9/9)     |
+| 16  | [Identity ingress](identity-ingress.md)                               | 1           | 5         | 5     | C1–C5 (5/5)     |
+| 17  | [Observability](observability.md)                                     | 1           | 8         | 9     | C1–C8 (9/9)     |
+| 18  | [Definition and validation sweep](definition-and-validation-sweep.md) | 1–17        | 11        | 11    | C1–C11 (11/11)  |
+| 19  | [Evaluation](evaluation.md)                                           | 1, 18       | 8         | 8     | C1–C8 (8/8)     |
+| 20  | [Documentation reconciliation](documentation-reconciliation.md)       | 1–19, 21    | 8         | 8     | C1–C8 (8/8)     |
+| 21  | [Obsolete and compatibility code removal](obsolete-code-removal.md)   | 3, 4, 5, 18 | 8         | 10    | C1–C8 (10/10)   |
 
-Approximately 240 chunks in total. WS21 runs before WS20 so that the
-documentation sweep reconciles prose against code with no legacy paths left;
-WS21-C1 (the shrink-only obsolete-surface guard) has no dependencies and can
-land immediately. WS18-C1 to C3 (`AgentComponentSelection` and
-`AgentOptionalCapabilitySelection` as additive records) should be pulled forward
-and landed before WS2 so that later workstreams add keys to the final shape
-rather than to interim flat properties.
+A **chunk ID** (`WS4-C3`) is a stable commit-message reference; an **item** is
+one line of a workstream's Progress list. They differ where a chunk was split
+during execution into lettered sub-chunks that landed separately (`C4a`/`C4b`),
+or where one line records a set (`C10a/b/c`, `C9b/c`). The Done column gives the
+range of chunk IDs landed and the item count. Totals: 222 chunk IDs and 253
+Progress items, plus six WS1 prerequisite commits that predate its chunk list.
+Earlier revisions of this table counted splits inconsistently (WS7 listed 15
+chunks and C1–C15 for 10 IDs; WS8, WS14, WS17, and WS21 listed items in the
+Chunks column but IDs in Done); the columns now mean one thing each.
+
+WS21 ran before WS20 so that the documentation sweep reconciles prose against
+code with no legacy paths left. WS18-C1 to C3 (`AgentComponentSelection` and
+`AgentOptionalCapabilitySelection` as additive records) were pulled forward and
+landed before WS2 so that later workstreams added keys to the final shape rather
+than to interim flat properties.
 
 ## Conventions used in every workstream file
 
@@ -76,17 +84,19 @@ returns zero matches.
 ## Cross-cutting rules
 
 - Every persistent store family ships `.InMemory`, `.Sqlite`, and `.Json`
-  adapters that run one shared conformance suite. Already violated today:
-  approval store (no SQLite), artifacts (InMemory only), durability (InMemory
-  only, no suite), goals (no store). The relevant workstreams contain explicit
-  chunks to close each.
+  adapters that run one shared conformance suite. This held at WS20 for
+  sessions, permissions, budgets, artifacts (plus a `.FileSystem` leaf),
+  durability, goals, memory, and evaluation; the sweep verified each family's
+  three leaves exist.
 - Every workstream that adds a selectable component adds its key to the agent
   definition and the matching `AgentCompositionValidator` check in the same
   chunk. Land WS18-C1–C3 first so the key goes on `Components` or
   `OptionalCapabilities` directly.
-- Every workstream adds the matching `AgentKit.Simple` `With*` sugar. Missing
-  today for already-shipped capabilities: tools, hooks, MCP, artifacts,
-  observability, permissions policy.
+- Every workstream adds the matching `AgentKit.Simple` `With*` sugar. The sugar
+  shipped for tools (`WithTools`), MCP, artifacts, memory, durability,
+  compaction, budgets, delegation, host access, output, and permissions policy.
+  Hooks and observability have none: they are configured on `builder.Services`
+  through their own registrations.
 - AgentKit has no consumers, so there is no backwards compatibility to keep.
   Breaking changes toward the documented shape are always sanctioned. A chunk
   that supersedes a surface replaces it in place and updates every caller; it
@@ -95,9 +105,9 @@ returns zero matches.
   without migrations or readers for earlier layouts. Each break is listed in the
   commit message.
 - A contract that has a `HookDispatchContext? hooks` parameter in the
-  specification ships without that parameter until WS2-C2 lands, and the
-  deviation is recorded in the owning architecture document. WS2 then adds the
-  parameter in one sweep.
+  specification shipped without that parameter until WS2-C2, which added it in
+  one sweep; any remaining deviation is recorded in the owning architecture
+  document.
 - Public API snapshots
   (`bash tests/AgentKit.Compatibility.Tests/update-snapshots.sh`) are
   regenerated in every chunk that touches a public surface. New packable
@@ -123,13 +133,20 @@ architecture document before the chunk that hits them:
   the loop holds `HookActivationScope` per run and mints per-dispatch contexts;
   see `extensions.md` implemented points and the reconciliation note in
   `agent-runtime.md`.
-- `AgentComponentSelection` (`composition-and-configuration.md:148-157`) has no
-  `Compaction` field, but WS10 expects `Components.Compaction`.
-- `composition-and-configuration.md:604-605` requires engine-wide
+- ~~`AgentComponentSelection` (`composition-and-configuration.md:148-157`) has
+  no `Compaction` field, but WS10 expects `Components.Compaction`.~~ Resolved in
+  WS18: compaction is optional and is selected by
+  `AgentOptionalCapabilitySelection.CompactionProfile`.
+- ~~`composition-and-configuration.md:604-605` requires engine-wide
   `IRandomizerFactory` and `IContentHasher`; no workstream or `AGENTS.md` rule
-  owns them.
-- Evaluation result stores: `testing-and-evaluation.md:366-369` names InMemory
-  and SQLite only; the cross-cutting rule requires `.Json` too.
+  owns them.~~ Resolved in WS18-C7: owned by `AgentKit.Abstractions`, installed
+  by `AddAgentKit`, replaceable, and required by composition validation;
+  `AGENTS.md` now lists both.
+- ~~Evaluation result stores: `testing-and-evaluation.md:366-369` names InMemory
+  and SQLite only; the cross-cutting rule requires `.Json` too.~~ Resolved in
+  WS19: the cross-cutting rule wins; `AgentKit.Evaluation.InMemory`, `.Sqlite`,
+  and `.Json` run one result-store conformance suite, and the architecture and
+  concept documents name all three.
 - ~~Loop-level `AgentKit.AgentRunRequest` (Abstractions) collides with the
   facade `AgentRunRequest` in `composition-and-configuration.md:277-284`; one
   must be renamed before WS1-C8.~~ Fixed in WS1-C8: the loop-level type is
@@ -143,3 +160,43 @@ architecture document before the chunk that hits them:
   `RunFailed`. `RunLimitReached`/`RunLimitFailure` stay budget-authority-scoped
   only. See WS1-C7's Landed note in `run-envelope-and-admission.md` for the full
   rationale.
+- ~~`ContextAssemblyRequest` and `ModelRequestContext` in `context.md` described
+  shapes the code never had (`Agent`, `Hooks`, `Budget` fields and a
+  `ModelRequestContext` result), while the implementation carried an
+  evidence-bearing request and an `LlmRequestContext` result.~~ Resolved in
+  WS20: `context.md` documents the shipped request (one constructor over atomic
+  `ContextAssemblyEvidence`, no evidence-less form, `Output` init property) and
+  `LlmRequestContext` as the provider-facing result; the assembler keeps hooks
+  and budget in its keyed services rather than on the request.
+- ~~`ComponentRegistrationSnapshot.RepresentsCompleteRunnableGraph` stays false
+  for first-party compositions (WS18); should first-party registrations publish
+  declarations?~~ Resolved in WS20: no. Declarations cannot observe a later
+  `Replace`/`RemoveAll`, 14 of the 30 required addresses are opaque factories
+  with package-internal graphs, and the storage-owned addresses are registered
+  by leaves the runtime cannot name. `composition-and-configuration.md` records
+  the reasoning and the contract change that would be needed.
+
+No specification conflict is open. WS20 found three implementation gaps while
+reconciling prose with code. None is a conflict, because the owning documents
+now state the shipped surface; all three have since closed:
+
+- ~~Tools: `IToolExecutionPolicy`, `IToolExecutionPolicySelector`,
+  `IToolCallRecorder`, and `IToolEventSink` are specified and were never
+  built.~~ Resolved by
+  [WS4-C14](tool-runtime.md#ws4-c14-recorder-execution-policy-and-event-sink):
+  every contract and registration helper ships, accepted calls are recorded in
+  the session before invocation, and `tools.md` records the deviations.
+- ~~Compaction: the keyed per-collaborator `Add*`/`Replace*` helpers and a
+  registration that consumes `CompactionProfileOptions` are specified and were
+  never built.~~ Resolved by
+  [WS10-C9](context-compaction.md#ws10-c9-keyed-collaborator-registration-and-profile-consumption):
+  every helper ships, profiles compile to a policy the engine validates and the
+  loop attaches, and `context-compaction.md` states the shipped surface.
+- ~~Providers: first-party adapters send through an injected `HttpClient`
+  instead of `INetworkTransport` and a provider-egress grant, which
+  `model-and-embedding-providers.md` specifies for every adapter.~~ Resolved by
+  [WS7-C11](provider-runtime.md#ws7-c11-provider-egress-through-inetworktransport):
+  every first-party adapter sends through `ProviderEgress` under a per-attempt
+  provider-egress grant plus resolution and send grants, and
+  `model-and-embedding-providers.md` records the deviations. The credential-read
+  grant and lease remain unshipped there.

@@ -20,7 +20,7 @@ definitions in one engine can select different keyed loops. `DefaultAgentLoop`'s
 own constructor takes only genuinely key-independent mechanics (identifier
 generators, the clock, its own named options); every per-agent collaborator it
 drives a run with — session coordination, authorization capture, context
-assembly, tool invocation, model selection and resolution, and the continuation
+assembly, tool execution, model selection and resolution, and the continuation
 policy — arrives per run through the `AgentRunServices` parameter of
 `IAgentLoop.RunAsync`, compiled by the facade's run-activation boundary for the
 run's exact selected key.
@@ -31,10 +31,10 @@ described in the [composition guide](../../docs/guides/composition.md).
 
 ## History reconstruction from a compaction checkpoint
 
-`DefaultAgentLoop` owns the history read in the reduced composition, so it is
-also the component that consumes an activated compaction. When it loads a branch
-it looks for the newest `CompactionSessionEntry` whose record is `Active`, and
-the history it hands to the context assembler becomes:
+`DefaultAgentLoop` owns the history read, so it is also the component that
+consumes an activated compaction. When it loads a branch it looks for the newest
+`CompactionSessionEntry` whose record is `Active`, and the history it hands to
+the context assembler becomes:
 
 1. one `RuntimeMessage` projecting the checkpoint summary, then
 2. exactly the entries from the checkpoint's `Manifest.RetainedSuffixStart`
@@ -101,28 +101,43 @@ transition.
 ## Durable boundaries
 
 When a run's agent definition selects a durability profile, `DefaultAgentLoop`
-journals two boundaries through the composed `IDurableExecutionCoordinator`:
-`agentkit.loop.model_request` for a turn's single model attempt, and
-`agentkit.loop.tool_call` for each requested call. A boundary is journaled only
-when the profile's enabled-operation set names it, so durability is additive and
-never changes what the loop computes; a profile that enables neither leaves the
-run exactly as an undurable run. A definition that selects a profile the
-composition cannot resolve fails the run rather than running undurably, because
-the selection is a promise that evidence will exist.
+journals four boundaries through the composed `IDurableExecutionCoordinator` and
+`DurableBoundaryScope`:
+
+| Operation                     | Wraps                                          | Checkpoint               |
+| ----------------------------- | ---------------------------------------------- | ------------------------ |
+| `agentkit.loop.model_request` | a turn's single model attempt                  | `ContextManifestCreated` |
+| `agentkit.loop.tool_call`     | each requested tool call                       | `ToolCallRecorded`       |
+| `agentkit.io.input_promotion` | each `IInputCoordinator.PromoteAsync` attempt  | `InputAdmitted`          |
+| `agentkit.io.run_settlement`  | the run's settlement, after its outcome exists | `RunSettled`             |
+
+A boundary is journaled only when the profile's enabled-operation set names it,
+so durability is additive and never changes what the loop computes; a profile
+that enables none leaves the run exactly as an undurable run. A definition that
+selects a profile the composition cannot resolve fails the run rather than
+running undurably, because the selection is a promise that evidence will exist.
+
+The model attempt and each tool call checkpoint before their effect and treat a
+refused or fenced write as fatal (`DurableRecordResult.ThrowIfNotRecorded`), so
+neither the provider nor a tool is reached without its evidence. Settlement is
+journaled after the outcome is already determined, so a journaling failure is
+logged and never changes the run's own outcome. A promotion checkpoints only
+when the store actually committed input.
 
 Each boundary publishes its live continuation into the engine-wide
 `DurableBoundaryRegistry` under the exact operation identity it is about to
 declare, and the registered handler (`ModelRequestDurableOperationHandler` or
-`ToolCallDurableOperationHandler`) invokes it. A recovering process holds no
-continuation and refuses rather than inventing a terminal record for work it
-never ran; recovery that only needs to commit an already-recorded terminal
-result never reaches a handler at all. Both boundaries declare themselves
-non-idempotent, so an unknown outcome escalates to an operator instead of being
-retried.
+`ToolCallDurableOperationHandler` here; the promotion and settlement handlers
+live in [AgentKit.IO](../AgentKit.IO/README.md)) invokes it. A recovering
+process holds no continuation and refuses rather than inventing a terminal
+record for work it never ran; recovery that only needs to commit an
+already-recorded terminal result never reaches a handler at all. Every boundary
+declares itself non-idempotent, so an unknown outcome escalates to an operator
+instead of being retried.
 
 Durable payloads are manifests: turn, request, and call identities, the model
-alias, and a message count. Prompts, tool arguments, and results are content and
-never enter a durable record.
+alias, counts, and the promotion boundary name. Prompts, tool arguments, and
+results are content and never enter a durable record.
 
 ## Related projects
 
@@ -146,8 +161,8 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/agent-runtime.md) — intended
   ownership and contracts.
-- [Workstreams](../../docs/workstreams/run-envelope-and-admission.md) —
-  remaining run-envelope and admission work and proof.
+- [Workstreams](../../docs/workstreams/run-envelope-and-admission.md) — how the
+  run envelope and admission protocol were built, chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

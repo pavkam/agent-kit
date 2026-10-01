@@ -700,6 +700,7 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
         var enforcement = new SecurityEnforcementRequest(
             securityScope,
             identity,
+            TestSupport.TestSecurityEvidence.Authorization(securityScope.AgentId, securityScope.SessionId, securityScope.Correlation, identity),
             new ComponentId("budget-operator"),
             SecurityOperationKind.StateMutation,
             SecurityEffect.Mutate,
@@ -720,9 +721,9 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
     /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface that
     /// some third-party logging providers use instead of the generic key/value interface.</summary>
     [Fact]
-    public async Task Operations_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    public async Task Operations_WhenLoggerEnumeratesStateViaNonGenericEnumerable_ExercisesGeneratedStateAccessors()
     {
-        var logger = new LegacyEnumeratingLogger();
+        var logger = new EnumeratingStateLogger();
         var ledger = new JsonBudgetLedgerConformanceFixture(logger).CreateLedger();
         var token = TestContext.Current.CancellationToken;
 
@@ -751,9 +752,9 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
         _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.GetSnapshotAsync(
             new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), created.Address), token));
 
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 19_200
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7100
             && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "created")));
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 19_201
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7101
             && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "faulted")));
     }
 
@@ -812,7 +813,7 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
         var metric = measurements.Last(tags => tags.Any(tag => tag.Key == AgentKitTagNames.BudgetOperation && Equals(tag.Value, "get_snapshot")));
         metric.ShouldContain(tag => tag.Key == AgentKitTagNames.Outcome && Equals(tag.Value, "read"));
         metric.ShouldNotContain(tag => tag.Key == AgentKitTagNames.TenantId || tag.Key == AgentKitTagNames.BudgetScopeId);
-        var log = logger.Entries.Last(entry => entry.EventId.Id == 19_200
+        var log = logger.Entries.Last(entry => entry.EventId.Id == 7100
             && entry.State.Any(item => item.Key == "BudgetOperation" && Equals(item.Value, "get_snapshot")));
         log.State.ShouldContain(item => item.Key == "BudgetScopeId" && Equals(item.Value, scope.Id.ToString()));
         log.State.ShouldContain(item => item.Key == "TenantId" && Equals(item.Value, scope.Address.TenantId.ToString()));
@@ -851,9 +852,9 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
         // Unlike an exception-based fault, a typed admission rejection carries no .NET exception; its failure code is
         // therefore the outcome name itself rather than a normalized exception category.
         rejection.GetTagItem(AgentKitTagNames.ErrorType)?.ToString().ShouldBe("rejected");
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 19_201
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7101
             && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "cancelled")));
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 19_201
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7101
             && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "rejected")));
     }
 
@@ -1034,7 +1035,7 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
             throw new InvalidOperationException("logger failure");
     }
 
-    private sealed class LegacyEnumeratingLogger: ILogger<JsonBudgetLedger>
+    private sealed class EnumeratingStateLogger: ILogger<JsonBudgetLedger>
     {
         internal List<int> CompletedCounts { get; } = [];
         internal List<int> FailedCounts { get; } = [];
@@ -1077,11 +1078,11 @@ public sealed class JsonBudgetLedgerTests: BudgetLedgerConformanceTests<JsonBudg
             _ = state?.ToString();
             _ = formatter(state, exception);
 
-            if (eventId.Id == 19_200)
+            if (eventId.Id == 7100)
             {
                 CompletedCounts.Add(count);
             }
-            else if (eventId.Id == 19_201)
+            else if (eventId.Id == 7101)
             {
                 FailedCounts.Add(count);
             }

@@ -1,0 +1,4 @@
+# Remaining superseded-shape evidence per file. The baseline is empty: AgentKit keeps no compatibility surface, so the guard
+# fails whenever an obsolete attribute, Legacy identifier, obsolete-warning suppression, or compatibility remark appears.
+# Occurrences that describe an external or domain fact belong in ObsoleteSurfaceAllowList.txt with a written reason instead.
+# Fields (tab-separated): repository-relative path, category, count.

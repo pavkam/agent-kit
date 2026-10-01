@@ -4,10 +4,12 @@
 namespace AgentKit.FileSystem.InMemory.Tests;
 
 /// <summary>Provides distinguishable replacements for each narrow filesystem capability without performing host effects.</summary>
-[Obsolete("Legacy host surface.")]
-
 internal sealed class ReplacementFileCapabilities:
-    ILegacyDirectoryReader,
+    IFileReader,
+    IFileWriter,
+    IFileMetadataReader,
+    IDirectoryCreator,
+    IDirectoryReader,
     IFileGlobber,
     IFileContentSearcher,
     IFileSnapshotReader,
@@ -18,8 +20,28 @@ internal sealed class ReplacementFileCapabilities:
     public ComponentId SecurityAudience { get; } = new("replacement-file-capability");
 
     /// <inheritdoc/>
-    public ValueTask<DirectoryEnumerationResult> EnumerateAsync(
-        DirectoryEnumerationRequest request,
+    public ValueTask<FileReadOpenResult> OpenReadAsync(AuthorizedFileRead operation, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public ValueTask<FileWriteResult> WriteAsync(
+        AuthorizedFileWrite operation,
+        FileWriteContent content,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public ValueTask<FileMetadataResult> GetMetadataAsync(
+        AuthorizedFileMetadataRead operation,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public ValueTask<DirectoryCreateResult> CreateAsync(
+        AuthorizedDirectoryCreate operation,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     /// <inheritdoc/>

@@ -5,8 +5,8 @@ namespace AgentKit;
 
 /// <summary>Sends one already-resolved network request, enforcing configured response and redirect bounds.</summary>
 /// <remarks>
-/// See <see cref="NetworkDestinationPolicy"/> for the reduced-scope
-/// rationale shared by every implementation of this contract. An
+/// See <see cref="NetworkDestinationPolicy"/> for the structural policy every
+/// implementation re-validates alongside its grant consumption. An
 /// implementation follows same-origin and cross-origin redirects up to the
 /// request's configured <see cref="NetworkBounds.MaximumRedirects"/>,
 /// re-validating the destination policy against every redirect target

@@ -22,6 +22,14 @@ GUID, blank tool identifier, impossible field combination) decodes to
 value the schema cannot represent (for example an uninitialized `JsonElement`)
 returns `SessionEntryEncodeRejected` instead of throwing.
 
+`ToolCallAcceptedSessionEntryCodec` and `ToolCallTerminalSessionEntryCodec` are
+explicit hand-written v1 schemas for the tool runtime's accepted-call and
+terminal-evidence entries. They reuse the strict identity and authorization
+encoding of the accepted-operation codec, carry no arguments or result content,
+and refuse (as `SessionEntryEncodeRejected`) a terminal result that carries
+content, usage, or extension data rather than dropping it silently. The Json and
+Sqlite store leaves register both.
+
 Use this package with an explicitly selected session store. It owns coordination
 through session contracts while the backend determines persistence and
 consistency behavior.
@@ -57,8 +65,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/sessions.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

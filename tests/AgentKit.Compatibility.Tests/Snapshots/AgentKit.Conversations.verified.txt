@@ -80,24 +80,10 @@ namespace AgentKit.Conversations
     {
         public ConversationSessionOptions() { }
         public AgentKit.AgentDefinition? Agent { get; set; }
-        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; set; }
-        public AgentKit.AgentId AgentId { get; set; }
-        public System.TimeSpan AttemptTimeout { get; set; }
-        public System.Collections.Generic.IList<AgentKit.BudgetLimit> BudgetLimits { get; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; set; }
-        public AgentKit.ConfigurationVersion ConfigurationVersion { get; set; }
         public AgentKit.ExecutionIdentity? Identity { get; set; }
-        public System.Collections.Generic.IList<AgentKit.AgentMessage> Instructions { get; }
-        public int MaxTurns { get; set; }
-        public AgentKit.ModelRequirements ModelRequirements { get; set; }
-        public AgentKit.ModelSelectionPolicy? ModelSelectionPolicy { get; set; }
-        public AgentKit.OutputDefinition? Output { get; set; }
-        public AgentKit.LlmRequestSettings RequestSettings { get; set; }
-        public AgentKit.SecurityProfileKey SecurityProfileKey { get; set; }
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; set; }
-        public AgentKit.LlmToolChoice ToolChoice { get; set; }
         public System.Collections.Generic.IList<AgentKit.Conversations.ConversationToolPresentationBinding> ToolPresentationBindings { get; }
-        public System.Collections.Generic.IList<AgentKit.LlmToolDefinition> Tools { get; }
     }
     public sealed class ConversationSessionPage : AgentKit.Conversations.ConversationSessionListResult, System.IEquatable<AgentKit.Conversations.ConversationSessionPage>
     {
@@ -114,7 +100,6 @@ namespace AgentKit.Conversations
     }
     public sealed class ConversationToolCallEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolCallEvent>
     {
-        public ConversationToolCallEvent(string toolName, string argumentsJson) { }
         public ConversationToolCallEvent(AgentKit.ToolCallId callId, string toolName, string argumentsJson) { }
         public ConversationToolCallEvent(AgentKit.ToolCallId callId, string toolName, string argumentsJson, AgentKit.ToolPresentation? presentation) { }
         public string ArgumentsJson { get; init; }
@@ -130,7 +115,6 @@ namespace AgentKit.Conversations
     }
     public sealed class ConversationToolResultEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolResultEvent>
     {
-        public ConversationToolResultEvent(string toolName, bool succeeded, string summary) { }
         public ConversationToolResultEvent(AgentKit.ToolCallId callId, string toolName, bool succeeded, string summary) { }
         public ConversationToolResultEvent(AgentKit.ToolCallId callId, string toolName, bool succeeded, string summary, AgentKit.ToolPresentation? presentation) { }
         public AgentKit.ToolCallId CallId { get; init; }

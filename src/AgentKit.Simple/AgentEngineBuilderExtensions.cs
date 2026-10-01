@@ -111,6 +111,7 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseOpenAI));
+            AddProviderNetwork(builder.Services);
             _ = builder.Services.AddOpenAI(configure);
             _ = builder.Services.AddOpenAIApiKeyCredential(apiKey);
             _ = builder.Services.AddOpenAIKnownLlmModel(DefaultAlias, new ModelId(modelId));
@@ -142,6 +143,7 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseAnthropic));
+            AddProviderNetwork(builder.Services);
             _ = builder.Services.AddAnthropic(configure);
             _ = builder.Services.AddAnthropicApiKeyCredential(apiKey);
             _ = builder.Services.AddAnthropicKnownLlmModel(DefaultAlias, new ModelId(modelId));
@@ -181,6 +183,7 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseOllama));
+            AddProviderNetwork(builder.Services, allowLocalEndpoints: true);
             var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
                 new ModelDescriptor(
                     DefaultAlias,
@@ -229,6 +232,7 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseOpenRouter));
+            AddProviderNetwork(builder.Services);
             var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
                 new ModelDescriptor(
                     DefaultAlias,
@@ -285,6 +289,7 @@ public static class AgentEngineBuilderExtensions
 
             var plan = Plan(builder);
             plan.SelectSugarModel(nameof(UseAzureOpenAI));
+            AddProviderNetwork(builder.Services);
             var typedModelId = new ModelId(modelId);
             var descriptor = ProviderOperationDescriptorBinding.ApplyChatBinding(
                 KnownModelCatalog.Default.TryFind(OpenAIProviderDefaults.ProviderId, typedModelId, out var known)
@@ -387,7 +392,7 @@ public static class AgentEngineBuilderExtensions
         /// and the read, write, edit, glob, search, and list tools over it.
         /// </summary>
         /// <param name="rootDirectory">The absolute directory the agent may see; nothing outside it is reachable.</param>
-        /// <param name="configure">Optional file-system bounds such as maximum read and write sizes.</param>
+        /// <param name="configure">Optional operating-system profile configuration such as read, write, and workspace bounds; it runs after the workspace root is registered.</param>
         /// <returns>The same builder.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="rootDirectory"/> is blank or not an absolute path.</exception>
@@ -397,8 +402,7 @@ public static class AgentEngineBuilderExtensions
         /// that policy allows everything, so the agent can write anywhere under the root; register your own
         /// <see cref="ISecurityPolicy"/> to narrow that, and an approval handler to put a human in the loop.
         /// </remarks>
-        [Obsolete("Prefer keyed AddOperatingSystemFileSystem and tool options HostRootPath.")]
-        public AgentEngineBuilder UseWorkspace(string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
+        public AgentEngineBuilder UseWorkspace(string rootDirectory, Action<OperatingSystemFileSystemOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
             ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
@@ -411,9 +415,11 @@ public static class AgentEngineBuilderExtensions
             var workspaceRoot = Path.GetFullPath(rootDirectory);
             var workspaceProfile = new FileSystemProfileKey("workspace");
             var workspaceFileRoot = new FileRootId("workspace");
-            _ = builder.Services.AddSandboxedFileSystem(workspaceRoot, configure);
             _ = builder.Services.AddOperatingSystemFileSystem(workspaceProfile, o =>
-                o.Roots.Add(new FileRootRegistration(workspaceFileRoot, workspaceRoot)));
+            {
+                o.Roots.Add(new FileRootRegistration(workspaceFileRoot, workspaceRoot));
+                configure?.Invoke(o);
+            });
             _ = builder.Services.AddReadTool(o =>
             {
                 o.ProfileKey = workspaceProfile;
@@ -656,7 +662,7 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
-        /// Bounds every run of the default agent with hard per-run limits enforced by the budget authority: turns,
+        /// Bounds every run of every hosted agent with hard per-run limits enforced by the budget authority: turns,
         /// model requests, and tool calls are refused before the attempt, and reported tokens and cost stop the run
         /// before the next request once a limit is crossed.
         /// </summary>
@@ -666,9 +672,9 @@ public static class AgentEngineBuilderExtensions
         /// <exception cref="ArgumentOutOfRangeException">A configured limit is not positive.</exception>
         /// <exception cref="ArgumentException">No limit was configured.</exception>
         /// <remarks>
-        /// Registers the budget authority and, unless a ledger is already registered, the in-memory ledger, which
-        /// accounts within this process only; register <c>AddSqliteBudgetLedger</c> on
-        /// <see cref="AgentEngineBuilder.Services"/> before this call for durable accounting. An exhausted limit ends
+        /// The limits become the default budget profile every hosted agent selects. The in-memory ledger the first
+        /// sugar call registers accounts within this process only; register <c>AddSqliteBudgetLedger</c> on
+        /// <see cref="AgentEngineBuilder.Services"/> before the first sugar call for durable accounting. An exhausted limit ends
         /// the turn with a failed completion naming the dimension; <c>AskAsync</c> surfaces it as
         /// <see cref="SimpleAgentException"/>.
         /// </remarks>
@@ -693,14 +699,7 @@ public static class AgentEngineBuilderExtensions
                 throw new ArgumentException("WithBudget requires at least one limit.", nameof(configure));
             }
 
-            var plan = Plan(builder);
-            plan.BudgetLimits = limits.ToImmutable();
-            _ = builder.Services.AddAgentBudgets();
-            if (!builder.Services.Any(static descriptor => descriptor.ServiceType == typeof(IBudgetLedger)))
-            {
-                _ = builder.Services.AddInMemoryBudgetLedger();
-            }
-
+            Plan(builder).BudgetLimits = limits.ToImmutable();
             return builder;
 
             void Add(BudgetDimension dimension, decimal? value, BudgetUnit unit, string member)
@@ -720,9 +719,9 @@ public static class AgentEngineBuilderExtensions
         }
 
         /// <summary>
-        /// Lets agents on this engine delegate work to one another: registers the <c>task</c> tool, the delegation
-        /// broker, and the engine-backed channel that runs a delegated task as one turn of the target agent in a new
-        /// session under the delegating identity.
+        /// Lets agents on this engine delegate work to one another: registers the <c>task</c> tool, the goal and delegation
+        /// runtime with one profile over an in-memory goal store, the local dispatcher, and the hosted worker that runs each
+        /// delegated child as one turn of the target agent in its own session under the delegating identity.
         /// </summary>
         /// <param name="configure">Optional ceilings for the <c>task</c> tool's model-facing arguments.</param>
         /// <returns>The same builder.</returns>
@@ -731,18 +730,137 @@ public static class AgentEngineBuilderExtensions
         /// Every agent the tool is advertised to may delegate to any agent published on the engine (the default one
         /// and each <see cref="AddAgent"/>). To keep a specialist from delegating further, give it
         /// <see cref="SimpleAgentOptions.IncludeRegisteredTools"/> <c>false</c> or exclude <c>task</c> through
-        /// toolset membership on the child definition. The child's turn budget is the narrower of the request and the
-        /// target's own limit, and only its final answer, bounded, flows back to the parent.
+        /// toolset membership on the child definition. A child never runs inside the delegating call: the dispatcher commits
+        /// a durable child goal and the worker claims and runs it, so the hosting application must start the registered hosted
+        /// service. The child's turn budget is the narrower of the request and the target's own limit, and only its final
+        /// answer, bounded, flows back to the parent. The in-memory goal store is ephemeral; replace the store registration
+        /// for durable goals.
         /// </remarks>
         public AgentEngineBuilder WithDelegation(Action<TaskToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
-            _ = Plan(builder);
-            _ = builder.Services.AddEngineDelegationChannel();
-            _ = builder.Services.AddAgentDelegation();
-            _ = builder.Services.AddTaskTool(configure);
+            var plan = Plan(builder);
+            plan.Delegation = true;
+            var profile = new GoalProfileReference(plan.GoalProfileKey, plan.GoalProfileVersion);
+            var storeKey = new GoalStoreKey("agentkit.simple.in-memory");
+            var dispatcherKey = new DelegationDispatcherKey("agentkit.simple.local");
+            var worker = new GoalWorkerOptions();
+            _ = builder.Services.AddAgentGoals();
+            _ = builder.Services.AddInMemoryGoalStore(storeKey, options => options.AuthorizedIntentScanners.Add(worker.ScannerId));
+            _ = builder.Services.AddLocalDelegationDispatcher(dispatcherKey);
+            _ = builder.Services.AddGoalProfile(profile.Key, options =>
+            {
+                options.Version = profile.Version;
+                options.StoreKey = storeKey;
+                options.DispatcherKey = dispatcherKey;
+            });
+            _ = builder.Services.AddGoalDelegationWorker(options => options.Profiles.Add(profile));
+            _ = builder.Services.AddAgentMessageChannel();
+            _ = builder.Services.AddTaskTool(options =>
+            {
+                options.GoalProfile = profile;
+                configure?.Invoke(options);
+            });
             RegisterToolsetPublication(builder.Services, TaskTool.DefaultToolset);
             SelectToolset(builder, TaskTool.DefaultToolset.Key);
+            return builder;
+        }
+
+        /// <summary>
+        /// Gives every agent on this engine durable memory and retrieval: registers the memory runtime with one profile over an
+        /// ephemeral in-memory store, keyword retrieval over active memories, and the context contributor that supplies the
+        /// retrieved candidates to each model request as untrusted reference data.
+        /// </summary>
+        /// <param name="configure">Optional ceilings and the acceptance rule for proposed memories.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The configured classification is undefined.</exception>
+        /// <remarks>
+        /// <para>
+        /// Retention stays fail-closed: a proposed memory is kept only when a registered memory policy explicitly allows it, unless
+        /// <see cref="SimpleMemoryOptions.AcceptProposals"/> is set. The memory store is a protected boundary, so pair this call
+        /// with <see cref="UseLocalDevelopmentDefaults"/> or register your own grant store and audit dispatcher. The in-memory
+        /// store is explicitly ephemeral; register a SQLite or JSON store and a hand-written profile for durable memory, and add
+        /// embeddings, documents, and vector indexes the same way.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder WithMemory(Action<SimpleMemoryOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            var options = new SimpleMemoryOptions();
+            configure?.Invoke(options);
+            ArgumentOutOfRangeException.ThrowIfUndefined(options.MaximumClassification, nameof(configure));
+            var plan = Plan(builder);
+            plan.Memory = true;
+            var storeKey = new MemoryStoreKey("agentkit.simple.in-memory");
+            _ = builder.Services.AddAgentBudgets();
+            if (!builder.Services.Any(static descriptor => descriptor.ServiceType == typeof(IBudgetLedger)))
+            {
+                _ = builder.Services.AddInMemoryBudgetLedger();
+            }
+
+            _ = builder.Services.AddAgentMemory(engine =>
+            {
+                if (options.AcceptProposals)
+                {
+                    engine.AcceptanceMode = MemoryAcceptanceMode.AllowUnlessPolicyDenies;
+                }
+            });
+            _ = builder.Services.AddInMemoryMemoryStore(storeKey);
+            _ = builder.Services.AddDurableMemoryRetrievalSource();
+            _ = builder.Services.AddMemoryProfile(plan.MemoryProfileKey, profile =>
+            {
+                profile.EnableDurableMemory = true;
+                profile.EnableRetrieval = true;
+                profile.MemoryStore = storeKey;
+                profile.RetrievalSources = [MemoryRetrievalSourceKeys.DurableMemory];
+                profile.MaximumClassification = options.MaximumClassification;
+            });
+            _ = builder.Services.AddRetrievalContextContributor(
+                AgentContextComponentDefaults.AssemblerKey,
+                contributor => contributor.MaximumClassification = options.MaximumClassification);
+            return builder;
+        }
+
+        /// <summary>
+        /// Gives every agent durable binary content storage: registers the artifact coordinator with one profile, one directory,
+        /// and an ephemeral in-memory store, and selects it in every hosted definition.
+        /// </summary>
+        /// <param name="configure">Optional ceilings for artifact size and process-output classification.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A configured ceiling or classification is invalid.</exception>
+        /// <remarks>
+        /// <para>
+        /// The artifact store is a protected boundary, so pair this call with <see cref="UseLocalDevelopmentDefaults"/> or register
+        /// your own grant store and audit dispatcher. The in-memory store is explicitly ephemeral: nothing survives the process.
+        /// Register a SQLite, JSON, or file-system artifact store and a hand-written profile for durable content; the sugar never
+        /// chooses a persistence target for you.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder WithArtifacts(Action<SimpleArtifactOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            var options = new SimpleArtifactOptions();
+            configure?.Invoke(options);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumArtifactBytes, nameof(configure));
+            ArgumentOutOfRangeException.ThrowIfUndefined(options.ProcessOutputClassification, nameof(configure));
+            var plan = Plan(builder);
+            plan.Artifacts = true;
+            var backend = new ArtifactBackendKey("agentkit.simple.in-memory");
+            var directory = new ArtifactDirectoryId("agentkit.simple");
+            _ = builder.Services.AddInMemoryArtifactStore(backend);
+            _ = builder.Services.AddArtifactProfile(plan.ArtifactProfileKey, profile =>
+            {
+                profile.DefaultDirectory = directory;
+                profile.Routes[directory] = backend;
+            });
+            _ = builder.Services.AddAgentArtifacts(plan.ArtifactCoordinatorKey, plan.ArtifactProfileKey, artifacts =>
+            {
+                artifacts.MaximumArtifactBytes = options.MaximumArtifactBytes;
+                artifacts.ProcessOutputDirectory = directory;
+                artifacts.ProcessOutputClassification = options.ProcessOutputClassification;
+            });
             return builder;
         }
 
@@ -755,17 +873,30 @@ public static class AgentEngineBuilderExtensions
         /// <returns>The same builder.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         /// <remarks>
-        /// Registers the deterministic extractive compactor; no second model is involved. The trigger fraction is
-        /// <c>AgentLoopOptions.ContextPressureThreshold</c> (0.8 by default) on the loop's named options, and the loop
-        /// compacts at most once per run. Models whose descriptor declares no context window are never compacted.
-        /// For model-written summaries register <c>AddModelBackedContextCompaction</c> on
+        /// Registers the deterministic extractive compactor under the default compactor key and one compaction profile
+        /// that orders only the extractive strategy; every definition the sugar publishes selects that profile. No
+        /// second model is involved. The trigger fraction is <c>AgentLoopOptions.ContextPressureThreshold</c> (0.8 by
+        /// default) on the loop's named options, and the loop compacts at most once per run. Models whose descriptor
+        /// declares no context window are never compacted. Calling this more than once keeps the first profile and
+        /// applies each call's <paramref name="configure"/>. For model-written summaries register
+        /// <c>AddModelBackedContextCompaction</c> and your own <c>AddCompactionProfile</c> on
         /// <see cref="AgentEngineBuilder.Services"/> instead of calling this method.
         /// </remarks>
         public AgentEngineBuilder WithCompaction(Action<CompactionOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
-            _ = Plan(builder);
+            var plan = Plan(builder);
+            var first = !plan.Compaction;
+            plan.Compaction = true;
             _ = builder.Services.AddContextCompaction(configure);
+            if (first)
+            {
+                _ = builder.Services.AddCompactionProfile(
+                    plan.CompactionProfileKey,
+                    AgentContextCompactionComponentDefaults.CompactorKey,
+                    static profile => profile.StrategyOrder = [CompactionStrategyKeys.Extractive]);
+            }
+
             return builder;
         }
 
@@ -803,6 +934,20 @@ public static class AgentEngineBuilderExtensions
             var leaseManagerKey = new DurableLeaseManagerKey("agentkit.simple.in-memory");
             var recoveryPolicyKey = new RecoveryPolicyKey("agentkit.simple.default");
             _ = builder.Services.AddAgentDurability(configure);
+
+            // The profile below enables every first-party boundary, and a boundary whose handler is absent cannot
+            // be journaled at all. Run settlement and input promotion are driven by the loop but their handlers
+            // belong to AgentKit.IO, which this composition does not otherwise register, and compaction activation
+            // is owned by a package that is only composed when compaction is. TryAddEnumerable makes each
+            // registration idempotent with the owning package's own, because a second handler for one name is a
+            // composition error.
+            builder.Services.TryAddSingleton<DurableBoundaryRegistry>();
+            builder.Services.TryAddEnumerable(
+            [
+                ServiceDescriptor.Singleton<IDurableOperationHandler, InputPromotionDurableOperationHandler>(),
+                ServiceDescriptor.Singleton<IDurableOperationHandler, RunSettlementDurableOperationHandler>(),
+                ServiceDescriptor.Singleton<IDurableOperationHandler, CompactionActivationDurableOperationHandler>(),
+            ]);
             _ = builder.Services.AddInMemoryDurableExecutionBackend(backendKey, FirstPartyOperations);
             _ = builder.Services.AddInMemoryDurableOperationJournal(journalKey);
             _ = builder.Services.AddInMemoryDurableLeaseManager(leaseManagerKey);
@@ -944,6 +1089,33 @@ public static class AgentEngineBuilderExtensions
     }
 
     /// <summary>
+    /// Registers the network boundary every first-party provider adapter sends through, under the default
+    /// internet-only destination policy unless a local endpoint is requested.
+    /// </summary>
+    /// <param name="services">The builder's service collection.</param>
+    /// <param name="allowLocalEndpoints">
+    /// <see langword="true"/> for a model server on the local machine or a private network (such as Ollama), which
+    /// the default policy would refuse; the policy then also allows <c>http</c> and private addresses.
+    /// </param>
+    /// <remarks>
+    /// Provider egress is authorized and enforced like every other network effect, so a provider-backed builder always
+    /// composes <see cref="AgentNetworkOptions"/>; <c>TryAdd</c> registration keeps any network an application
+    /// registered first. The local-endpoint policy is a single-user convenience: a service that fetches web content
+    /// as well should register its own <c>AddAgentNetwork</c> with a policy naming exactly the hosts it allows.
+    /// </remarks>
+    private static void AddProviderNetwork(IServiceCollection services, bool allowLocalEndpoints = false)
+    {
+        Debug.Assert(services is not null, "Public extension methods validate the builder first.");
+        _ = services.AddAgentNetwork(options =>
+        {
+            if (allowLocalEndpoints)
+            {
+                options.DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], allowedHosts: null, allowPrivateAddresses: true);
+            }
+        });
+    }
+
+    /// <summary>
     /// Returns the builder's plan, registering it and every plan-driven service the first time. Each of those
     /// registrations reads the plan lazily through DI, so later sugar calls still take effect.
     /// </summary>
@@ -967,8 +1139,28 @@ public static class AgentEngineBuilderExtensions
         _ = services.AddAgentContext();
         _ = services.AddAgentOutput();
         _ = services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+        _ = services.AddAgentIO(AgentIOComponentDefaults.InputCoordinatorKey, AgentIOComponentDefaults.OutputPublisherKey);
+        _ = services.AddSessionBackedInputQueue();
         _ = services.AddAgentHooks();
         _ = services.AddAgentTools();
+
+        // Budgets: every definition selects a run budget profile, so the authority, one ledger, and the default
+        // profile are part of the spine. The profile reads the plan's limits lazily, so WithBudget in any order
+        // still takes effect; with no WithBudget the profile has no limits and bounds nothing. The in-memory ledger
+        // is added only when none is registered yet: register a durable ledger before the first sugar call (or use
+        // ReplaceBudgetLedger) to account durably.
+        _ = services.AddAgentBudgets();
+        _ = services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, profile =>
+        {
+            foreach (var limit in plan.BudgetLimits)
+            {
+                profile.Limits.Add(limit);
+            }
+        });
+        if (!services.Any(static descriptor => descriptor.ServiceType == typeof(IBudgetLedger)))
+        {
+            _ = services.AddInMemoryBudgetLedger();
+        }
 
         // Security: the standalone-profile pieces, with the policy snapshot and publication read from the plan so
         // the engine's pinned run profile and the authority's options agree by construction.
@@ -996,7 +1188,6 @@ public static class AgentEngineBuilderExtensions
                 var definitions = descriptors.ToLlmToolDefinitions();
                 for (var index = 0; index < descriptors.Length; index++)
                 {
-                    options.Tools.Add(definitions[index]);
                     options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptors[index], definitions[index]));
                 }
             });

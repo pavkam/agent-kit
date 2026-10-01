@@ -72,7 +72,7 @@ public static class NativeProviderChatSend
     /// </summary>
     /// <param name="descriptor">The model descriptor for the attempt.</param>
     /// <param name="request">The conversational request.</param>
-    /// <param name="fallbackCredentials">The legacy credential source.</param>
+    /// <param name="fallbackCredentials">The credential source used when the descriptor carries no profile binding.</param>
     /// <param name="profileSelector">The optional profile runtime selector.</param>
     /// <param name="timeProvider">The clock used for timing.</param>
     /// <param name="cancellationToken">A token used to cancel resolution.</param>

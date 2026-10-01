@@ -31,15 +31,18 @@ using Microsoft.Extensions.Options;
 public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
 {
     /// <summary>The strategy key this implementation records as provenance.</summary>
-    public static readonly CompactionStrategyKey StrategyKey = new("agentkit.extractive.v1");
+    public static readonly CompactionStrategyKey StrategyKey = CompactionStrategyKeys.Extractive;
 
-    /// <inheritdoc/>
-    public CompactionStrategyDescriptor Descriptor { get; } = new(
+    /// <summary>The descriptor every instance reports; registration reads it without constructing a strategy.</summary>
+    internal static readonly CompactionStrategyDescriptor DefaultDescriptor = new(
         StrategyKey,
         new CompactionStrategyVersion("1"),
         CompactionStrategyCapabilities.Extractive,
         deterministic: true,
         summaryGeneratorKey: null);
+
+    /// <inheritdoc/>
+    public CompactionStrategyDescriptor Descriptor => DefaultDescriptor;
 
     /// <summary>
     /// The marker inserted between the retained head and tail when an extract exceeds

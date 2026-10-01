@@ -1,0 +1,59 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Artifacts.Json.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Artifacts.Json
+{
+    public readonly struct JsonArtifactInstanceId : System.IEquatable<AgentKit.Artifacts.Json.JsonArtifactInstanceId>
+    {
+        public JsonArtifactInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class JsonArtifactOptions
+    {
+        public JsonArtifactOptions() { }
+        public int CompactionRecordThreshold { get; set; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; set; }
+        public int MaximumDocumentBytes { get; set; }
+        public int MaximumPayloadBytes { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class JsonArtifactSettings : System.IEquatable<AgentKit.Artifacts.Json.JsonArtifactSettings>
+    {
+        public JsonArtifactSettings(int maximumRecordBytes, int maximumDocumentBytes, int maximumPayloadBytes, int compactionRecordThreshold, AgentKit.Storage.Json.JsonEncodingSettings encoding) { }
+        public int CompactionRecordThreshold { get; }
+        public AgentKit.Storage.Json.JsonEncodingSettings Encoding { get; }
+        public int MaximumDocumentBytes { get; }
+        public int MaximumPayloadBytes { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Artifacts.Json.JsonArtifactSettings CreateDefault() { }
+    }
+    public sealed class JsonArtifactStore : AgentKit.IArtifactStore, System.IDisposable
+    {
+        public JsonArtifactStore(AgentKit.Artifacts.Json.JsonArtifactTarget target, AgentKit.Artifacts.Json.JsonArtifactSettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Artifacts.Json.JsonArtifactStore>? logger = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreAbortResult> AbortAsync(AgentKit.ArtifactStoreAbortRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreDeleteResult> DeleteAsync(AgentKit.ArtifactStoreDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactStoreFinalizeResult> FinalizeAsync(AgentKit.ArtifactStoreFinalizeRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ArtifactStorePrepareResult> PrepareAsync(AgentKit.ArtifactStorePrepareRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ArtifactStoreReadResult> ReadAsync(AgentKit.ArtifactStoreReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class JsonArtifactTarget : System.IEquatable<AgentKit.Artifacts.Json.JsonArtifactTarget>
+    {
+        public JsonArtifactTarget(string directoryPath, AgentKit.Artifacts.Json.JsonArtifactInstanceId expectedInstanceId, AgentKit.Storage.Json.JsonStoreOpenMode openMode, AgentKit.Storage.Json.JsonStoreRecoveryMode recoveryMode) { }
+        public string DirectoryPath { get; }
+        public AgentKit.Artifacts.Json.JsonArtifactInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Storage.Json.JsonStoreOpenMode OpenMode { get; }
+        public AgentKit.Storage.Json.JsonStoreRecoveryMode RecoveryMode { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddJsonArtifactStore(AgentKit.ArtifactBackendKey key, AgentKit.Artifacts.Json.JsonArtifactTarget target, System.Action<AgentKit.Artifacts.Json.JsonArtifactOptions>? configure = null) { }
+        }
+    }
+}

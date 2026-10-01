@@ -12,6 +12,23 @@ public sealed class SecurityRequestTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
+    public void Constructor_WhenAuthorizationIsNull_ThrowsArgumentNullExceptionForAuthorization(int contract)
+    {
+        var scope = Scope();
+        var identity = Identity();
+        var exception = contract switch
+        {
+            0 => Should.Throw<ArgumentNullException>(() => Request(scope, identity, null!)),
+            1 => Should.Throw<ArgumentNullException>(() => Grant(scope, identity, null!)),
+            _ => Should.Throw<ArgumentNullException>(() => Enforcement(scope, identity, null!)),
+        };
+        exception.ParamName.ShouldBe("authorization");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
     public void Constructor_WhenCapturedScopeDiffers_ThrowsArgumentExceptionForAuthorization(int contract)
     {
         var scope = Scope();

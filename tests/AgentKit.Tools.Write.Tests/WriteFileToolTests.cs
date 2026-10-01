@@ -3,12 +3,16 @@
 
 namespace AgentKit.Tools.Write.Tests;
 
+using System.Diagnostics;
+
+using AgentKit.Observability;
+using AgentKit.TestSupport;
+
 public sealed class WriteFileToolTests
 {
     [Theory]
     [InlineData("")]
     [InlineData(" \n\t")]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -26,7 +30,7 @@ public sealed class WriteFileToolTests
 
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new WriteFileTool(null!, null!, null!, null!, null!, null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new WriteFileTool(null!, null!, null!, null!, null!, null!, null!));
 
         exception.ParamName.ShouldBe("fileSystemSelector");
     }
@@ -51,7 +55,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var tool = TestFactory.Tool();
@@ -63,7 +66,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -77,7 +79,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenContentMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -91,7 +92,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -105,7 +105,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -120,7 +119,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenModeInvalid_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -135,7 +133,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
@@ -150,7 +147,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -167,7 +163,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -186,7 +181,6 @@ public sealed class WriteFileToolTests
     [InlineData("create_only", FileWriteDisposition.CreateOnly)]
     [InlineData("replace_existing", FileWriteDisposition.ReplaceExisting)]
     [InlineData("append", FileWriteDisposition.Append)]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteDisposition expected)
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -199,7 +193,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenWriteSucceeds_ReturnsSuccessWithByteCount()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -215,7 +208,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileAlreadyExists_ReturnsFailed()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteConflict(new ResolvedFileTarget(new FileRootId("w"), new NormalizedRelativePath("a.txt"), "x", FilePathComparisonKind.Ordinal, FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("t"u8)), "exists") };
@@ -231,7 +223,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteFailed("disk error") };
@@ -247,7 +238,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var writer = new FakeFileWriter { OnWrite = static (_, _) => new FileWriteDenied("too large") };
@@ -263,7 +253,6 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotMutateFileSystem()
     {
         var writer = new FakeFileWriter().WithSuccess();
@@ -281,4 +270,28 @@ public sealed class WriteFileToolTests
         writer.ReceivedWrites.ShouldBeEmpty();
     }
 
+
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_ReportsTheOutcomeWithoutArgumentContent()
+    {
+        var logger = new RecordingLogger<WriteFileTool>();
+        var tool = TestFactory.Tool(logger: logger);
+        const string json = /*lang=json,strict*/ """{"classified_argument_9137":"classified-argument-9137"}""";
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ExecuteTool
+                && Equals(observation.GetTagItem(AgentKitTagNames.ToolId), WriteFileTool.Id.ToString()));
+        using var metrics = new MetricCollector(AgentKitMetricNames.ToolLeafOperationCount);
+
+        var result = await tool.InvokeAsync(TestFactory.Request(json), TestContext.Current.CancellationToken);
+
+        var outcome = result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected";
+        activities.Snapshot().ShouldContain(observation =>
+            observation.Status == ActivityStatusCode.Ok && Equals(observation.GetTagItem(AgentKitTagNames.Outcome), outcome));
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(34500);
+        entry.Level.ShouldBe(LogLevel.Debug);
+        metrics.Snapshot().ShouldContain(measurement => Equals(measurement.Tags[AgentKitTagNames.Outcome], outcome));
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), "classified-argument-9137");
+    }
 }

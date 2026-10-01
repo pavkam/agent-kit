@@ -3,6 +3,7 @@
 
 namespace AgentKit.Tests;
 
+using AgentKit.IO;
 using AgentKit.Permissions;
 using AgentKit.Permissions.InMemory;
 using AgentKit.TestSupport;
@@ -36,23 +37,15 @@ internal static class CompositionTestData
         string displayName = "test agent",
         int maxTurns = 8,
         long revision = 1) =>
-        new(
-            id ?? AgentId,
-            new AgentDefinitionRevision(revision),
-            displayName,
-            new ModelSelectionPolicy([new ModelAlias("chat")]),
-            ModelRequirements.None,
-            instructions: [],
-            LlmRequestSettings.Default,
-            new RunPolicyDefaults(maxTurns, TimeSpan.FromMinutes(1)),
-            ExtensionData.Empty,
-            new SecurityProfileKey("security"),
-            new SessionProfileKey("session"));
+        AgentDefinitionFixtures.Create(id ?? AgentId, revision, displayName, maxTurns);
 
     public static AgentRunProfilePublication RunProfile(AgentDefinition definition) =>
         RunProfile(definition, SessionBusyBehavior.Reject);
 
-    public static AgentRunProfilePublication RunProfile(AgentDefinition definition, SessionBusyBehavior busyBehavior) => new(
+    public static AgentRunProfilePublication RunProfile(
+        AgentDefinition definition,
+        SessionBusyBehavior busyBehavior,
+        bool requiresDurableStore = false) => new(
         new SecurityProfilePublication(
             definition.Id,
             definition.Revision,
@@ -70,7 +63,7 @@ internal static class CompositionTestData
             new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
             new SessionStoreKey("store"),
             SessionStoreCapabilities.None,
-            requiresDurableStore: false,
+            requiresDurableStore,
             requiresDistributedFencing: false,
             new SessionRetentionProfileKey("retention"),
             busyBehavior,
@@ -79,6 +72,8 @@ internal static class CompositionTestData
             verifySnapshotHashes: true,
             deleteOnDispose: false,
             new ContentHash("sha256:test-session-profile")),
+        definition.HookProfile,
+        definition.Components.BudgetProfile,
         new EffectiveConfigurationSnapshot(
             new ConfigurationVersion(1),
             new ContentHash("sha256:test-session-profile"),
@@ -150,25 +145,57 @@ internal static class CompositionTestData
     /// </summary>
     public static void AddRunServicesFakes(IServiceCollection services)
     {
-        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
-        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
+        AddEngineWideServiceFakes(services);
         services.TryAddSingleton<ISessionCoordinator, UnsupportedSessionCoordinator>();
         services.TryAddSingleton<ISessionRunCoordinator, UnsupportedSessionRunCoordinator>();
-        services.TryAddSingleton<IContextAssembler, UnsupportedContextAssembler>();
         services.TryAddSingleton<IToolExecutor, CaptureTestToolExecutor>();
-        services.TryAddSingleton<IModelCatalog>(
-            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
-        services.TryAddSingleton<IModelSelector>(
-            new ScriptedModelSelector(new InvalidModelPolicy("This test double never selects a model.")));
         services.TryAddSingleton<ILlmModelResolver>(new AliasLlmModelResolver());
+        services.TryAddKeyedSingleton<IContextAssembler>(
+            AgentContextComponentDefaults.AssemblerKeyValue, new UnsupportedContextAssembler());
+        services.TryAddKeyedSingleton<IModelSelector>(
+            AgentProviderComponentDefaults.ModelSelectorKeyValue,
+            new ScriptedModelSelector(new InvalidModelPolicy("This test double never selects a model.")));
+        services.TryAddKeyedSingleton<IModelRequestExecutor>(
+            AgentProviderComponentDefaults.ModelExecutorKeyValue, new UnsupportedModelRequestExecutor());
         services.TryAddKeyedSingleton<IRunContinuationPolicy>(
             AgentLoopComponentDefaults.ContinuationPolicyKeyValue, new UnsupportedRunContinuationPolicy());
-        HookCompositionTestSupport.TryAddDefaultHookKernel(services);
+        services.TryAddKeyedSingleton<IInputCoordinator>(
+            AgentIOComponentDefaults.InputCoordinatorKeyValue, new UnsupportedInputCoordinator());
+        services.TryAddKeyedSingleton<IOutputPublisher>(
+            AgentIOComponentDefaults.OutputPublisherKeyValue, new UnsupportedOutputPublisher());
+        services.TryAddKeyedSingleton<IOutputProcessor>(
+            AgentOutputComponentDefaults.ProcessorKeyValue, new UnsupportedOutputProcessor());
+    }
+
+    /// <summary>
+    /// Registers placeholder implementations of every engine-wide singular that facade validation requires and a
+    /// run scope never reaches, so a test overrides only the one it exercises.
+    /// </summary>
+    /// <param name="services">The composition under test.</param>
+    /// <param name="includeHookKernel">Whether to also register the first-party hook kernel.</param>
+    public static void AddEngineWideServiceFakes(IServiceCollection services, bool includeHookKernel = true)
+    {
+        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
+        services.TryAddSingleton<IModelCatalog>(new StaticModelCatalog(ModelDescriptorFixtures.Catalog()));
+        services.TryAddSingleton<IBudgetAuthority, UnsupportedBudgetAuthority>();
+        services.TryAddSingleton<IBudgetProfileCatalog>(new StaticBudgetProfileCatalog(AgentBudgetComponentDefaults.ProfileKey));
+        services.TryAddSingleton<ISessionStoreCatalog>(new StaticSessionStoreCatalog(
+            new SessionStoreDescriptor(new SessionStoreKey("store"), SessionStoreCapabilities.None, SessionConsistencyModel.Strong, durable: false, supportsDistributedFencing: false)));
+        services.TryAddSingleton<ISessionStoreSelector, UnsupportedSessionStoreSelector>();
+        services.TryAddSingleton<ISessionDirectory, UnsupportedSessionDirectory>();
+        if (includeHookKernel)
+        {
+            HookCompositionTestSupport.TryAddDefaultHookKernel(services);
+        }
     }
 
     public static void AddRequiredSecurityServices(IServiceCollection services, bool includeGrantStore = true)
     {
-        _ = services.AddAgentPermissions(static options => options.AuditDelivery = SecurityAuditDelivery.BestEffort);
+        _ = services.AddAgentPermissions(static options =>
+        {
+            options.PolicySnapshot = TestSecurityEvidence.PolicySnapshot;
+            options.AuditDelivery = SecurityAuditDelivery.BestEffort;
+        });
         if (includeGrantStore)
         {
             _ = services.AddInMemorySecurityGrantStore();
@@ -187,20 +214,27 @@ internal static class CompositionTestData
     public static void AddFacadeRegistrationRequirements(IServiceCollection services, bool includeGrantStore = true)
     {
         AddRequiredSecurityServices(services, includeGrantStore);
-        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
-        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
+        AddEngineWideServiceFakes(services, includeHookKernel: false);
+    }
+
+    /// <summary>
+    /// Replaces the placeholder input coordinator and output publisher with the first-party pair over a session-backed queue.
+    /// </summary>
+    /// <param name="services">The composition under test.</param>
+    public static void UseFirstPartyIo(IServiceCollection services)
+    {
+        _ = services.RemoveAllKeyed<IInputCoordinator>(AgentIOComponentDefaults.InputCoordinatorKeyValue);
+        _ = services.RemoveAllKeyed<IOutputPublisher>(AgentIOComponentDefaults.OutputPublisherKeyValue);
+        _ = services.AddSessionBackedInputQueue();
+        _ = services.AddAgentIO(AgentIOComponentDefaults.InputCoordinatorKey, AgentIOComponentDefaults.OutputPublisherKey);
     }
 
     public static void AddRequiredSecurityGrantStore(IServiceCollection services) => AddRequiredSecurityServices(services);
 
     /// <summary>Registers the hook kernel so composition validation can reach later readiness checks.</summary>
     /// <param name="services">The composition under test.</param>
-    public static void AddHookKernelForEngineValidation(IServiceCollection services)
-    {
-        services.TryAddSingleton<IProviderProfileRuntimeSelector, UnsupportedProviderProfileRuntimeSelector>();
-        services.TryAddSingleton<IModelRequestExecutor, UnsupportedModelRequestExecutor>();
-        HookCompositionTestSupport.TryAddDefaultHookKernel(services);
-    }
+    public static void AddHookKernelForEngineValidation(IServiceCollection services) =>
+        AddEngineWideServiceFakes(services);
 
     public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions) =>
         AddRunProfiles(services, SessionBusyBehavior.Reject, definitions);

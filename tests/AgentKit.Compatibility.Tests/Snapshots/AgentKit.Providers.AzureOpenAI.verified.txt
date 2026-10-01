@@ -5,13 +5,13 @@ namespace AgentKit.Providers.AzureOpenAI
 {
     public sealed class AzureOpenAIEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
     {
-        public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         protected override AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected override void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.EmbeddingModelRequest request) { }
     }
     public sealed class AzureOpenAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         protected override AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected override void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.LlmModelRequest request) { }
     }

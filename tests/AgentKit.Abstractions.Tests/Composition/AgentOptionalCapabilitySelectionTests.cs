@@ -85,5 +85,20 @@ public sealed class AgentOptionalCapabilitySelectionTests
         new AgentOptionalCapabilitySelection(new ComponentKey<IToolExecutor>("tools"), null, null, null, null, [])
             .ShouldNotBe(AgentOptionalCapabilitySelection.None);
 
+    [Fact]
+    public void CompactionProfile_WhenSetToAValidKey_IsPreservedAndParticipatesInEquality()
+    {
+        var selected = AgentOptionalCapabilitySelection.None with { CompactionProfile = new CompactionProfileKey("compact") };
+
+        selected.CompactionProfile.ShouldBe(new CompactionProfileKey("compact"));
+        selected.ShouldNotBe(AgentOptionalCapabilitySelection.None);
+        selected.GetHashCode().ShouldNotBe(AgentOptionalCapabilitySelection.None.GetHashCode());
+    }
+
+    [Fact]
+    public void CompactionProfile_WhenSetToTheDefaultKey_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => _ = AgentOptionalCapabilitySelection.None with { CompactionProfile = default(CompactionProfileKey) })
+            .ParamName.ShouldBe("CompactionProfile");
+
     private static AgentCapabilityReference Capability() => new(new CapabilityId("cap"), new CapabilityProfileId("profile"));
 }

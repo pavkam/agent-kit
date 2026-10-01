@@ -59,6 +59,7 @@ internal sealed class RecordingSecurityAuthority: ISecurityAuthority
             request.Id,
             request.Scope,
             request.Identity,
+            request.Authorization,
             request.Audience,
             request.Kind,
             request.Effect,

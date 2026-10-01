@@ -13,6 +13,15 @@ public sealed class ModelBackedSummaryGenerator: ICompactionSummaryGenerator
     /// <summary>The generator key for this implementation.</summary>
     public static readonly CompactionSummaryGeneratorKey GeneratorKey = new("agentkit.model-summary.v1");
 
+    /// <summary>The descriptor every instance reports; registration reads it without constructing a generator.</summary>
+    internal static readonly CompactionSummaryGeneratorDescriptor DefaultDescriptor = new(
+        GeneratorKey,
+        new CompactionSummaryGeneratorVersion("1"),
+        modelBacked: true,
+        deterministic: false,
+        maximumInputTokens: int.MaxValue,
+        maximumOutputTokens: int.MaxValue);
+
     private const string _producerKindValue = "model-backed";
 
     private static readonly ModelRequirements _requirements = new() { RequiresSystemInstructions = true };
@@ -56,13 +65,7 @@ public sealed class ModelBackedSummaryGenerator: ICompactionSummaryGenerator
     }
 
     /// <inheritdoc/>
-    public CompactionSummaryGeneratorDescriptor Descriptor { get; } = new(
-        GeneratorKey,
-        new CompactionSummaryGeneratorVersion("1"),
-        modelBacked: true,
-        deterministic: false,
-        maximumInputTokens: int.MaxValue,
-        maximumOutputTokens: int.MaxValue);
+    public CompactionSummaryGeneratorDescriptor Descriptor => DefaultDescriptor;
 
     /// <inheritdoc/>
     public async Task<CompactionSummaryGenerationResult> GenerateAsync(

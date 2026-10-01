@@ -36,7 +36,7 @@ The context assembler MUST run ordered stages:
 9. Validate roles, parts, tools, and output requirements against the selected
    provider capability profile and record any required adapter transformation or
    rejection without producing wire messages.
-10. Return an immutable `ModelRequestContext` plus a manifest of included and
+10. Return an immutable `LlmRequestContext` plus a manifest of included and
     omitted source IDs.
 
 No stage may write durable history as an incidental side effect. Deliberate
@@ -112,7 +112,7 @@ content.
 
 ## Output
 
-`ModelRequestContext` MUST include:
+`LlmRequestContext` MUST include:
 
 - selected provider/model and effective capabilities;
 - ordered provider-neutral messages and instructions with stable source-part

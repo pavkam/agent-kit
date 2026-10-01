@@ -153,16 +153,6 @@ namespace AgentKit
         public AgentKit.SessionCreationFailure Failure { get; init; }
     }
     public abstract class AgentSessionCreationResult : System.IEquatable<AgentKit.AgentSessionCreationResult> { }
-    public sealed class EngineDelegationChannel : AgentKit.ITaskDelegationChannel
-    {
-        public EngineDelegationChannel(System.IServiceProvider services, System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.GoalId> goalIds, Microsoft.Extensions.Options.IOptions<AgentKit.EngineDelegationChannelOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.EngineDelegationChannel>? logger = null) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationPrompt prompt, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-    public sealed class EngineDelegationChannelOptions
-    {
-        public EngineDelegationChannelOptions() { }
-        public int MaximumSummaryCharacters { get; set; }
-    }
     public interface IConversationEngineHost
     {
         System.Threading.Tasks.ValueTask<AgentKit.AgentConversationOpenResult> OpenAsync(AgentKit.AgentConversationOpenRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -178,18 +168,25 @@ namespace AgentKit
         public ResolvedAgent(AgentKit.Agent agent) { }
         public AgentKit.Agent Agent { get; init; }
     }
+    public sealed class RunAdmissionDurableOperationHandler : AgentKit.DurableBoundaryHandler
+    {
+        public RunAdmissionDurableOperationHandler(AgentKit.DurableBoundaryRegistry registry) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKit() { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEngineDelegationChannel(System.Action<AgentKit.EngineDelegationChannelOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgent(AgentKit.AgentDefinition definition, int precedence = 0) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentRunProfilePublication(AgentKit.AgentRunProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSnapshot(AgentKit.AgentDefinitionSourceSnapshot snapshot) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSource<TSource>()
                 where TSource :  class, AgentKit.IAgentDefinitionSource { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceTimeProvider(System.TimeProvider timeProvider) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceRandomizerFactory<TFactory>()
+                where TFactory :  class, AgentKit.IRandomizerFactory { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceContentHasher<THasher>()
+                where THasher :  class, AgentKit.IContentHasher { }
         }
     }
     public sealed class StaticAgentDefinitionSource : AgentKit.IAgentDefinitionSource

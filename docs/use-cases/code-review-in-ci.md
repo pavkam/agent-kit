@@ -66,7 +66,7 @@ network:
 ```csharp
 sealed class ReadOnlyWorkspacePolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default)
     {
         var mutates = request.Kind is SecurityOperationKind.FileWrite
             or SecurityOperationKind.DirectoryCreate
@@ -84,8 +84,8 @@ sealed class ReadOnlyWorkspacePolicy : ISecurityPolicy
 denying them is deliberate: the model may attempt a change, the request is
 denied before the file system is touched, and the tool result tells the model
 so. If you prefer the model never to see them, skip `UseWorkspace` and register
-`AddSandboxedFileSystem(root)` with only `AddReadTool`, `AddGlobTool`,
-`AddSearchTool`, and `AddListTool`.
+a keyed `AddOperatingSystemFileSystem(key, …)` profile with only `AddReadTool`,
+`AddGlobTool`, `AddSearchTool`, and `AddListTool`.
 
 ## Use it
 

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AwsBedrock.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -27,18 +29,12 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddAwsBedrock_WhenRegistered_DisablesTheHttpClientTimeoutInFavorOfThePerRequestDeadline()
+    public void AddAwsBedrock_WhenRegistered_RegistersNoHttpClientOrSocketsHttpHandler()
     {
-        // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered Converse
-        // attempt regardless of the caller's LlmModelRequest.Deadline, since this adapter's own
-        // deadlineSource is layered on top of, not instead of, the transport-level timeout.
         var services = new ServiceCollection();
-        _ = services.AddAwsBedrock(options => options.Region = "us-east-1");
+        _ = services.AddAwsBedrock(_ => { });
 
-        using var provider = services.BuildServiceProvider();
-        var client = provider.GetRequiredService<HttpClient>();
-
-        client.Timeout.ShouldBe(Timeout.InfiniteTimeSpan);
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(HttpClient) || descriptor.ServiceType == typeof(SocketsHttpHandler));
     }
 
     [Fact]
@@ -87,6 +83,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAwsBedrockLlmModel(new ModelAlias("fast"), new ModelId("anthropic.claude-3-haiku-20240307-v1:0"));
         _ = services.AddAwsBedrockLlmModel(new ModelAlias("smart"), new ModelId("anthropic.claude-3-sonnet-20240229-v1:0"));
 
+        _ = services.AddProviderEgressTestServices();
+
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
 
@@ -101,6 +99,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAwsBedrock(options => options.Region = "us-east-1");
         _ = services.AddAwsBedrockStaticCredential("AKIAEXAMPLE", "secret");
         _ = services.AddAwsBedrockLlmModel(new ModelAlias("chat"), new ModelId("anthropic.claude-3-sonnet-20240229-v1:0"));
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AwsBedrockLlmModel>();
@@ -126,6 +126,8 @@ public sealed class ServiceExtensionsTests
             ExtensionData.Empty);
 
         _ = services.AddAwsBedrockLlmModel(descriptor);
+
+        _ = services.AddProviderEgressTestServices();
 
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<AwsBedrockLlmModel>();

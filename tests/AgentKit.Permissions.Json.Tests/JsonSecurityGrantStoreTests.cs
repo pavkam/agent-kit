@@ -42,7 +42,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(async () =>
             await store.ValidateAndConsumeAsync(
-                grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+                grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken));
 
         exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
     }
@@ -373,7 +373,7 @@ public sealed class JsonSecurityGrantStoreTests
         await recovered.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await recovered.ValidateAndConsumeAsync(
-            grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
     }
 
@@ -437,7 +437,9 @@ public sealed class JsonSecurityGrantStoreTests
             await store.InitializeAsync(TestContext.Current.CancellationToken);
         }
 
-        var orphanRecord = JsonSecurityGrantLogRecord.ForConsumption(new GrantId(Guid.NewGuid()), 0, null);
+        var orphanGrant = TestGrantFactory.CreateGrant(_now, grantId: new GrantId(Guid.NewGuid()));
+        var orphanReceipt = TestGrantFactory.CreateReceipt(orphanGrant, TestGrantFactory.CreateEnforcement(orphanGrant), TestGrantFactory.CreateIntent(), _now);
+        var orphanRecord = JsonSecurityGrantLogRecord.ForConsumption(orphanGrant.Id, 0, orphanReceipt);
         root.AppendLogLine("grants", EncodeRecord(orphanRecord, settings));
 
         using var reopened = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting, settings: settings);
@@ -462,7 +464,8 @@ public sealed class JsonSecurityGrantStoreTests
             await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         }
 
-        var impossibleRecord = JsonSecurityGrantLogRecord.ForConsumption(grant.Id, 99, null);
+        var impossibleReceipt = TestGrantFactory.CreateReceipt(grant, TestGrantFactory.CreateEnforcement(grant), TestGrantFactory.CreateIntent(), _now);
+        var impossibleRecord = JsonSecurityGrantLogRecord.ForConsumption(grant.Id, 99, impossibleReceipt);
         root.AppendLogLine("grants", EncodeRecord(impossibleRecord, settings));
 
         using var reopened = CreateStore(root.Path, instanceId: instanceId, openMode: JsonStoreOpenMode.OpenExisting, settings: settings);
@@ -504,7 +507,7 @@ public sealed class JsonSecurityGrantStoreTests
         exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
     }
 
-    /// <summary>Verifies a log whose replayed record count exceeds the compaction threshold is rewritten to its live state without changing projected behavior.</summary>
+    /// <summary>Verifies a log whose replayed record count exceeds the compaction threshold is rewritten to its live form without changing projected behavior.</summary>
     [Fact]
     public async Task InitializeAsync_WhenReplayedRecordCountExceedsThreshold_CompactsLogWithoutChangingProjectedState()
     {
@@ -524,7 +527,7 @@ public sealed class JsonSecurityGrantStoreTests
             receipt = consumed.IntentReceipt.ShouldNotBeNull();
             for (var attempt = 0; attempt < 2; attempt++)
             {
-                _ = await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+                _ = await store.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
             }
         }
 
@@ -535,8 +538,10 @@ public sealed class JsonSecurityGrantStoreTests
         {
             await reopened.InitializeTrustedAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-            root.LogLineCount("grants").ShouldBeLessThan(beforeCompaction);
-            var result = await reopened.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+            // Every consumption now carries a receipt that is retained indefinitely, so the live form is the registration, one
+            // state record, and one receipt record per consumption rather than a shorter log.
+            root.LogLineCount("grants").ShouldBe(5);
+            var result = await reopened.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
             result.Status.ShouldBe(GrantConsumptionStatus.Exhausted);
             result.RemainingUses.ShouldBe(0);
         }
@@ -550,7 +555,7 @@ public sealed class JsonSecurityGrantStoreTests
             grant, enforcement, intent, TestContext.Current.CancellationToken);
         replayedReceipt.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
         replayedReceipt.IntentReceipt.ShouldBe(receipt);
-        var afterReplay = await thirdOpen.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken);
+        var afterReplay = await thirdOpen.ValidateAndConsumeAsync(grant, enforcement, NewIntent(), TestContext.Current.CancellationToken);
         afterReplay.Status.ShouldBe(GrantConsumptionStatus.Exhausted);
     }
 
@@ -741,7 +746,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         await Should.NotThrowAsync(async () => await store.RegisterAsync(grant, TestContext.Current.CancellationToken));
         var result = await store.ValidateAndConsumeAsync(
-            grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
     }
 
@@ -756,7 +761,7 @@ public sealed class JsonSecurityGrantStoreTests
 
         await Should.NotThrowAsync(async () => await store.RegisterAsync(grant, TestContext.Current.CancellationToken));
         var result = await store.ValidateAndConsumeAsync(
-            grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+            grant, TestGrantFactory.CreateEnforcement(grant), NewIntent(), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
     }
 
@@ -856,4 +861,6 @@ public sealed class JsonSecurityGrantStoreTests
             text.ShouldNotContain(storeRootPath);
         }
     }
+
+    private static SecurityEnforcementIntent NewIntent() => new(new SecurityEnforcementIntentId(Guid.NewGuid()), null);
 }

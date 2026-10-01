@@ -3,16 +3,16 @@
 
 namespace AgentKit;
 
-/// <summary>Builds run-bound <see cref="IToolCatalogCapture"/> evidence for the legacy tool adapter.</summary>
+/// <summary>Builds run-bound <see cref="IToolCatalogCapture"/> evidence for one run's tool surface.</summary>
 /// <remarks>
-/// The first-party legacy executor uses this factory until run-bound discovery capture replaces the singleton catalog
-/// (workstream 4, chunks C7b and C10b).
+/// The first-party implementation captures through the configured <see cref="IToolCatalog"/>; the run-plan compiler
+/// and the MCP server's tool dispatch resolve it to obtain the capture they hand to <see cref="IToolExecutor"/>.
 /// </remarks>
 public interface IToolRunCatalogCaptureFactory
 {
     /// <summary>Captures immutable catalog evidence for one run.</summary>
     /// <param name="request">The nonnull run binding and authorization evidence.</param>
-    /// <returns>An owned capture whose snapshot reflects the registered legacy catalog.</returns>
+    /// <returns>An owned capture whose snapshot reflects the configured catalog.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public IToolCatalogCapture Create(RunToolCatalogCaptureRequest request);
 

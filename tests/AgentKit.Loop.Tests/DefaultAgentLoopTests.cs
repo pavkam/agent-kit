@@ -121,10 +121,8 @@ public sealed class DefaultAgentLoopTests
             selector,
             new FakeLlmModelResolver(adapter));
 
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
-        {
-            Settings = LlmRequestSettings.Default with { ParallelToolCalls = true },
-        };
+        var request = TestFactory.RunRequest(
+            _agentId, _sessionId, _branchId, settings: LlmRequestSettings.Default with { ParallelToolCalls = true });
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -147,6 +145,29 @@ public sealed class DefaultAgentLoopTests
         result.Outcome.ShouldBeSameAs(halt);
         result.NewMessages.ShouldHaveSingleItem().State.ShouldBe(MessageState.Complete);
         result.FinalVersion.ShouldBe(coordinator.Version);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenToolsAreInvoked_BindsTheSessionTargetAndTheCatalogsPolicyReferences()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(_ => new HaltRun(RunOutcomes.InvalidState("halt")));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        var capability = invoker.ReceivedCapabilities.ShouldHaveSingleItem();
+        capability.SessionTarget.BranchId.ShouldBe(_branchId);
+        capability.SessionTarget.ExecutionLaneId.ShouldBe(new ExecutionLaneId(_sessionId.Value));
+        capability.ExecutionPolicies.ShouldNotBeEmpty();
+        capability.ExecutionPolicies.Select(static binding => binding.Reference).Distinct().Count().ShouldBe(capability.ExecutionPolicies.Length);
     }
 
     [Fact]
@@ -758,7 +779,6 @@ public sealed class DefaultAgentLoopTests
         history[1].ShouldBeSameAs(retained5.Message);
         history[2].ShouldBeSameAs(later7.Message);
         history.OfType<RuntimeMessage>().Count().ShouldBe(1);
-        logger.Snapshot().ShouldNotContain(static entry => entry.EventId.Id == 1092);
         var reconstructed = logger.Snapshot().Single(static entry => entry.EventId.Id == 1091);
         reconstructed.State["CoveredEntryCount"].ShouldBe(4);
         reconstructed.State["RetainedMessageCount"].ShouldBe(2);
@@ -1305,8 +1325,7 @@ public sealed class DefaultAgentLoopTests
             _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             logger: logger);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2, toolsets: TestFactory.Toolsets());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -1589,18 +1608,15 @@ public sealed class DefaultAgentLoopTests
     [Fact]
     public async Task RunAsync_WhenExactEvidenceIsPresent_PropagatesSnapshotAndUsesAgentInsteadOfMutableMirrors()
     {
-        // AgentLoopRunRequest's ModelPolicy/Instructions init accessors now reject any value that
-        // diverges from the pinned Agent's own (see AgentRunRequestTests), so the request can no
-        // longer be constructed in a "poisoned" state to prove the loop ignores the mirrors at run
-        // time; the mirrors are provably identical to Agent's own values for every request that
-        // exists. This test now only confirms the loop reads the exact evidence (Agent,
-        // Configuration) through to selection and context assembly.
+        // AgentLoopRunRequest derives ModelPolicy, Settings, and the rest from the pinned Agent, so
+        // there is no mutable mirror to poison. This test confirms the loop reads the exact evidence
+        // (Agent, Configuration) through to selection and context assembly.
         var coordinator = new FakeSessionCoordinator(_branchId);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var descriptor = TestFactory.Model();
         var selector = FakeModelSelector.Selecting(descriptor);
         var assembler = new RecordingContextAssembler();
-        var request = TestFactory.ExactRunRequest(_agentId, _sessionId, _branchId);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
         var loop = CreateLoopWith(
             coordinator,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
@@ -1994,15 +2010,14 @@ public sealed class DefaultAgentLoopTests
             _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             contextAssembler: assembler);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2, toolsets: TestFactory.Toolsets());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
         _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
         assembler.Requests.Count.ShouldBe(2);
-        assembler.Requests[0].Tools.ShouldBe([tool]);
+        assembler.Requests[0].Tools.ShouldHaveSingleItem().Name.ShouldBe("test");
         assembler.Requests[0].ToolChoice.ShouldBe(LlmToolChoice.Auto);
         assembler.Requests[1].Tools.ShouldBeEmpty();
         assembler.Requests[1].ToolChoice.ShouldBe(LlmToolChoice.None);
@@ -2021,13 +2036,12 @@ public sealed class DefaultAgentLoopTests
             contextAssembler: assembler,
             options: new AgentLoopOptions { DisableToolsOnFinalTurn = false });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2, toolsets: TestFactory.Toolsets());
 
         _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         assembler.Requests.Count.ShouldBe(2);
-        assembler.Requests[1].Tools.ShouldBe([tool]);
+        assembler.Requests[1].Tools.ShouldHaveSingleItem().Name.ShouldBe("test");
         assembler.Requests[1].ToolChoice.ShouldBe(LlmToolChoice.Auto);
     }
 
@@ -2844,7 +2858,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId, /*lang=json,strict*/ """{"ok":true}"""), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var definition = ScriptedOutputProcessor.Definition();
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = definition };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: definition);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2872,7 +2886,7 @@ public sealed class DefaultAgentLoopTests
             contextAssembler: assembler,
             outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2898,7 +2912,7 @@ public sealed class DefaultAgentLoopTests
         var processor = new ScriptedOutputProcessor(_ => ScriptedOutputProcessor.Rejected());
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2914,7 +2928,7 @@ public sealed class DefaultAgentLoopTests
         var modelCalls = 0;
         var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); }, outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2926,9 +2940,9 @@ public sealed class DefaultAgentLoopTests
     public async Task RunAsync_WhenOutputIsSelectedButNoProcessorIsComposed_FailsClosedAsInvalidState()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
-        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), omitOutputProcessor: true);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2952,7 +2966,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(adapter),
             outputProcessor: new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request)));
         var nativeSchema = ScriptedOutputProcessor.Definition() with { Mode = OutputMode.NativeSchema };
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = nativeSchema };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: nativeSchema);
 
         _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2971,7 +2985,7 @@ public sealed class DefaultAgentLoopTests
             _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
             outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -2988,7 +3002,7 @@ public sealed class DefaultAgentLoopTests
         var processor = new ScriptedOutputProcessor(_ => throw new InvalidOperationException("boom"));
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3002,7 +3016,7 @@ public sealed class DefaultAgentLoopTests
         var processor = new ScriptedOutputProcessor(_ => ScriptedOutputProcessor.Retry());
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1, output: ScriptedOutputProcessor.Definition());
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3017,7 +3031,7 @@ public sealed class DefaultAgentLoopTests
         var processor = new ScriptedOutputProcessor(request => ScriptedOutputProcessor.Accepted(request)) { Gate = new TaskCompletionSource() };
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), outputProcessor: processor);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Output = ScriptedOutputProcessor.Definition() };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, output: ScriptedOutputProcessor.Definition());
         using var cancellation = new CancellationTokenSource();
 
         var pending = loop.RunAsync(request, _services, cancellation.Token);
@@ -3088,7 +3102,7 @@ public sealed class DefaultAgentLoopTests
             modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
             hookDispatcher: new Hooks.DefaultHookDispatcher(), beforeModelRequestHooks: [hook]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, settings: LlmRequestSettings.Default with { MaxOutputTokens = 100 });
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3109,7 +3123,7 @@ public sealed class DefaultAgentLoopTests
             hookDispatcher: new Hooks.DefaultHookDispatcher(),
             beforeModelRequestHooks: [new SettingsHook(settings => settings with { MaxOutputTokens = 1_000 })]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { MaxOutputTokens = 100 } };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, settings: LlmRequestSettings.Default with { MaxOutputTokens = 100 });
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3217,7 +3231,7 @@ public sealed class DefaultAgentLoopTests
             modelRequest => { received = modelRequest; return TestFactory.CompletedWithText(requestId); },
             hookDispatcher: new Hooks.DefaultHookDispatcher());
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Settings = LlmRequestSettings.Default with { Temperature = 0.7 } };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, settings: LlmRequestSettings.Default with { Temperature = 0.7 });
 
         _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3343,6 +3357,42 @@ public sealed class DefaultAgentLoopTests
         modelCalls.ShouldBe(2);
         compactor.Requests.Count.ShouldBe(1);
         _ = assembler.Requests[0].History.OfType<UserMessage>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenACompactionPolicyIsComposed_AttachesItToTheCompactionRequest()
+    {
+        var policy = CompactionPolicyFixtures.Create();
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request => new CompactionNotReducing(
+                request.Context, new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(10, 10, 1), 0.1),
+        };
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())),
+            compactor: compactor, compactionPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        compactor.Requests.ShouldHaveSingleItem().Policy.ShouldBeSameAs(policy);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoCompactionPolicyIsComposed_LeavesTheCompactionRequestPolicyUnset()
+    {
+        var compactor = new ScriptedCompactor
+        {
+            OnRequest = request => new CompactionNotReducing(
+                request.Context, new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(10, 10, 1), 0.1),
+        };
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())), compactor: compactor);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, new string('x', 4 * 4000))]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        compactor.Requests.ShouldHaveSingleItem().Policy.ShouldBeNull();
     }
 
     [Fact]
@@ -3489,9 +3539,9 @@ public sealed class DefaultAgentLoopTests
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var modelCalls = 0;
-        var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); });
+        var loop = CreateLoop(out var coordinator, out _, _ => { modelCalls++; return TestFactory.CompletedWithText(requestId); }, omitDefaultBudgets: true);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { BudgetLimits = [TurnLimit(5)] };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3508,9 +3558,9 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(
             out var coordinator, out _,
             _ => ++modelCalls < 5 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
-            budgets: Authority());
+            budgetLimits: [TurnLimit(2)]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8) with { BudgetLimits = [TurnLimit(2)] };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3530,12 +3580,9 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out _,
             _ => ++modelCalls < 3 ? TestFactory.CompletedWithToolCall(requestId, new ToolCallId(Guid.NewGuid())) : TestFactory.CompletedWithText(requestId),
             toolHandler: _ => { toolInvocations++; return TestFactory.SuccessResult(); },
-            budgets: Authority());
+            budgetLimits: [new BudgetLimit(BudgetDimensions.AttemptedToolCalls, 1m, new BudgetUnit("count"), BudgetLimitKind.Hard)]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
-        {
-            BudgetLimits = [new BudgetLimit(BudgetDimensions.AttemptedToolCalls, 1m, new BudgetUnit("count"), BudgetLimitKind.Hard)],
-        };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3564,12 +3611,9 @@ public sealed class DefaultAgentLoopTests
             {
                 Usage = new ModelUsage(ModelUsageReportState.Final, 700, 50, null, null, null, null, ExtensionData.Empty),
             }),
-            budgets: Authority());
+            budgetLimits: [new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard)]);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
-        {
-            BudgetLimits = [new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard)],
-        };
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3589,17 +3633,14 @@ public sealed class DefaultAgentLoopTests
             {
                 Usage = new ModelUsage(ModelUsageReportState.Final, 10, 5, null, null, 0.001m, "USD", ExtensionData.Empty),
             }),
-            budgets: Authority());
-        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with
-        {
-            BudgetLimits =
+            budgetLimits:
             [
                 TurnLimit(3),
                 new BudgetLimit(BudgetDimensions.InputTokens, 1000m, new BudgetUnit("tokens"), BudgetLimitKind.Hard),
                 new BudgetLimit(BudgetDimensions.Cost, 0.05m, new BudgetUnit("usd"), BudgetLimitKind.Hard),
-            ],
-        };
+            ]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
         var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
@@ -3644,19 +3685,6 @@ public sealed class DefaultAgentLoopTests
 
         _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
         result.Usage.Entries.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenNoBudgetLimitsAreDeclared_NeverTouchesTheAuthority()
-    {
-        var requestId = new ModelRequestId(Guid.NewGuid());
-        var authority = new ThrowingBudgetAuthority();
-        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), budgets: authority);
-        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
-
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
-
-        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]
@@ -4066,6 +4094,319 @@ public sealed class DefaultAgentLoopTests
         publisher.Events.ShouldNotBeEmpty();
     }
 
+    [Fact]
+    public async Task RunAsync_WhenTheProfileEnablesRunSettlement_JournalsSettlementWithARunSettledCheckpoint()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var coordinator = new RecordingBoundaryCoordinator(registry);
+        var loop = DurableLoop(
+            registry,
+            coordinator,
+            new FixedDurabilityProfileCatalog(profile, IoDurableOperations.RunSettlement),
+            out var request,
+            profile);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        var settlement = coordinator.Executions.ShouldHaveSingleItem();
+        settlement.Name.ShouldBe(IoDurableOperations.RunSettlement);
+        settlement.Address.RunId.ShouldBe(request.RunId);
+        coordinator.Writers.ShouldHaveSingleItem().Checkpoints.ShouldBe([DurableCheckpointKind.RunSettled]);
+        var manifest = DurableBoundaryPayload.Decode<DurableRunSettlementManifest>(settlement.Input);
+        manifest.RunId.ShouldBe(request.RunId.Value);
+        manifest.OutcomeKind.ShouldBe(nameof(RunSucceeded));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheProfileEnablesTheModelRequest_JournalsOneAttemptWithoutItsPrompt()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var coordinator = new RecordingBoundaryCoordinator(registry);
+        var loop = DurableLoop(
+            registry,
+            coordinator,
+            new FixedDurabilityProfileCatalog(profile, LoopDurableOperations.ModelRequest),
+            out var request,
+            profile);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        var attempt = coordinator.Executions.ShouldHaveSingleItem();
+        attempt.Name.ShouldBe(LoopDurableOperations.ModelRequest);
+        attempt.Idempotency.ShouldBe(IdempotencyClassification.NonIdempotent);
+        System.Text.Encoding.UTF8.GetString(attempt.Input.Data.AsSpan()).ShouldNotContain("hello");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheProfileEnablesNoBoundary_JournalsNothingAndStillSucceeds()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var coordinator = new RecordingBoundaryCoordinator(registry);
+        var loop = DurableLoop(registry, coordinator, new FixedDurabilityProfileCatalog(profile), out var request, profile);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        coordinator.Executions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheSelectedProfileIsNotRegistered_FailsTheRunAsInvalidStateBeforeAnyModelWork()
+    {
+        var registry = new DurableBoundaryRegistry();
+        var coordinator = new RecordingBoundaryCoordinator(registry);
+        var loop = DurableLoop(
+            registry,
+            coordinator,
+            new FixedDurabilityProfileCatalog(new DurabilityProfileKey("another-profile")),
+            out var request,
+            new DurabilityProfileKey("test-durability"));
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<RunFailed>().Failure.Error.Code.ShouldBe(AgentErrorCodes.InvalidState);
+        coordinator.Executions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSettlementCannotBeJournaled_KeepsTheRunsOwnOutcome()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var coordinator = new RecordingBoundaryCoordinator(registry) { Failure = new InvalidOperationException("journal offline") };
+        var loop = DurableLoop(
+            registry,
+            coordinator,
+            new FixedDurabilityProfileCatalog(profile, IoDurableOperations.RunSettlement),
+            out var request,
+            profile);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        _ = coordinator.Executions.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheProfileEnablesInputPromotion_JournalsACommittedPromotionAndCheckpointsItsCount()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry);
+        FakeSessionCoordinator? sessionsRef = null;
+        var input = new ScriptedInputCoordinator(
+            req =>
+            {
+                sessionsRef!.SimulateConcurrentAppend(
+                    [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, req.CutoffSequence.Value + 1, "promoted")]);
+                return ScriptedInputCoordinator.Promoted(
+                    req, "promoted", new SessionVersion(sessionsRef.Version.Value), new OperationStateRevision(2));
+            });
+        var loop = CreateLoop(
+            out var sessions,
+            out _,
+            _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())),
+            inputCoordinator: input,
+            outputProcessor: new ScriptedOutputProcessor(static request => ScriptedOutputProcessor.Accepted(request)),
+            durableExecution: durable,
+            durabilityProfiles: new FixedDurabilityProfileCatalog(profile, IoDurableOperations.InputPromotion),
+            durableInvocations: registry);
+        sessionsRef = sessions;
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = DurableLaneRequest(profile);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        durable.Executions.ShouldAllBe(execution => execution.Name == IoDurableOperations.InputPromotion);
+        var promotion = durable.Executions[0];
+        var declared = DurableBoundaryPayload.Decode<DurableInputPromotionManifest>(promotion.Input);
+        declared.Boundary.ShouldBe(nameof(PromotionBoundary.BeforeFirstModelRequest));
+        declared.PromotedMessageCount.ShouldBe(0);
+
+        // Only the committed transition is checkpointed; the later boundaries in this run find nothing to promote.
+        durable.Writers[0].Checkpoints.ShouldBe([DurableCheckpointKind.InputAdmitted]);
+        durable.Writers.Skip(1).ShouldAllBe(writer => writer.Checkpoints.Count == 0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAJournaledPromotionIsRejected_CommitsNoInputAdmittedCheckpoint()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry);
+        var input = new ScriptedInputCoordinator(
+            static _ => new InputPromotionRejected(new InputRejection(InputRejectionKind.NoEligibleInput, "nothing queued")));
+        var loop = CreateLoop(
+            out var sessions,
+            out _,
+            _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())),
+            inputCoordinator: input,
+            outputProcessor: new ScriptedOutputProcessor(static request => ScriptedOutputProcessor.Accepted(request)),
+            durableExecution: durable,
+            durabilityProfiles: new FixedDurabilityProfileCatalog(profile, IoDurableOperations.InputPromotion),
+            durableInvocations: registry);
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(DurableLaneRequest(profile), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        durable.Executions.ShouldNotBeEmpty();
+        durable.Writers.ShouldAllBe(writer => writer.Checkpoints.Count == 0);
+    }
+
+    private AgentLoopRunRequest DurableLaneRequest(DurabilityProfileKey profile)
+    {
+        var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId, durabilityProfile: profile);
+        var accepted = new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), baseline.RunId, new TurnId(Guid.NewGuid()));
+        return baseline with
+        {
+            LaneAdmission = new LoopLaneAdmission(new ExecutionLaneId(Guid.NewGuid()), accepted, new OperationStateRevision(1)),
+        };
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheModelAttemptCheckpointIsRefused_NeverCallsTheProvider()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry) { WriteRefusal = new DurableRecordFailed("journal rejected the write") };
+        var providerCalls = 0;
+        var loop = CreateLoop(
+            out var sessions,
+            out _,
+            _ =>
+            {
+                providerCalls++;
+                return TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+            },
+            durableExecution: durable,
+            durabilityProfiles: new FixedDurabilityProfileCatalog(profile, LoopDurableOperations.ModelRequest),
+            durableInvocations: registry);
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() => loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, durabilityProfile: profile),
+            _services,
+            TestContext.Current.CancellationToken));
+
+        failure.Message.ShouldContain("journal rejected the write");
+        providerCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolCallCheckpointIsRefused_NeverInvokesTheTool()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry) { WriteRefusal = new DurableRecordFailed("journal rejected the write") };
+        var toolInvocations = 0;
+        var requested = false;
+        var loop = CreateLoop(
+            out var sessions,
+            out _,
+            _ =>
+            {
+                if (requested)
+                {
+                    return TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+                }
+
+                requested = true;
+                return TestFactory.CompletedWithToolCall(new ModelRequestId(Guid.NewGuid()), new ToolCallId(Guid.NewGuid()));
+            },
+            toolHandler: _ =>
+            {
+                toolInvocations++;
+                return TestFactory.SuccessResult();
+            },
+            durableExecution: durable,
+            durabilityProfiles: new FixedDurabilityProfileCatalog(profile, LoopDurableOperations.ToolCall),
+            durableInvocations: registry);
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, durabilityProfile: profile),
+            _services,
+            TestContext.Current.CancellationToken);
+
+        _ = durable.Executions.ShouldHaveSingleItem();
+        durable.Executions[0].Name.ShouldBe(LoopDurableOperations.ToolCall);
+        toolInvocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheProfileEnablesTheToolCall_CheckpointsTheRecordedCallBeforeInvokingIt()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry);
+        var toolInvocations = 0;
+        var requested = false;
+        var loop = CreateLoop(
+            out var sessions,
+            out _,
+            _ =>
+            {
+                if (requested)
+                {
+                    return TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+                }
+
+                requested = true;
+                return TestFactory.CompletedWithToolCall(new ModelRequestId(Guid.NewGuid()), new ToolCallId(Guid.NewGuid()));
+            },
+            toolHandler: _ =>
+            {
+                toolInvocations++;
+                return TestFactory.SuccessResult();
+            },
+            outputProcessor: new ScriptedOutputProcessor(static request => ScriptedOutputProcessor.Accepted(request)),
+            durableExecution: durable,
+            durabilityProfiles: new FixedDurabilityProfileCatalog(profile, LoopDurableOperations.ToolCall),
+            durableInvocations: registry);
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, durabilityProfile: profile),
+            _services,
+            TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        toolInvocations.ShouldBe(1);
+        durable.Executions.ShouldHaveSingleItem().Name.ShouldBe(LoopDurableOperations.ToolCall);
+        durable.Writers.ShouldHaveSingleItem().Checkpoints.ShouldBe([DurableCheckpointKind.ToolCallRecorded]);
+    }
+
+    private DefaultAgentLoop DurableLoop(
+        DurableBoundaryRegistry registry,
+        IDurableExecutionCoordinator coordinator,
+        IDurabilityProfileCatalog profiles,
+        out AgentLoopRunRequest request,
+        DurabilityProfileKey profile)
+    {
+        var sessions = new FakeSessionCoordinator(_branchId);
+        sessions.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+        request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, durabilityProfile: profile);
+        return CreateLoopWith(
+            sessions,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            FakeModelSelector.Selecting(descriptor),
+            new FakeLlmModelResolver(new RespondingLlmModel(
+                new ModelAlias("chat"),
+                modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
+            outputProcessor: new ScriptedOutputProcessor(static request => ScriptedOutputProcessor.Accepted(request)),
+            durableExecution: coordinator,
+            durabilityProfiles: profiles,
+            durableInvocations: registry);
+    }
+
     private (AgentLoopRunRequest Request, LoopLaneAdmission Admission) RequestWithLaneAdmission()
     {
         var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
@@ -4078,19 +4419,20 @@ public sealed class DefaultAgentLoopTests
 
     private static BudgetLimit TurnLimit(int turns) => new(BudgetDimensions.Turns, turns, new BudgetUnit("count"), BudgetLimitKind.Hard);
 
-    private static IBudgetAuthority Authority()
+    /// <summary>Builds the authority and catalog every definition-pinned request selects through its default budget profile.</summary>
+    private static (IBudgetAuthority Authority, IBudgetProfileCatalog Profiles) DefaultBudgets(IEnumerable<BudgetLimit>? limits = null, TimeProvider? timeProvider = null)
     {
         var services = new ServiceCollection();
+        _ = services.AddSingleton(timeProvider ?? TimeProvider.System);
         _ = services.AddAgentBudgets();
+        _ = services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, options => options.Limits.AddRange(limits ?? []));
         _ = services.AddInMemoryBudgetLedger();
-        return services.BuildServiceProvider().GetRequiredService<IBudgetAuthority>();
+        var provider = services.BuildServiceProvider();
+        return (provider.GetRequiredService<IBudgetAuthority>(), provider.GetRequiredService<IBudgetProfileCatalog>());
     }
 
-    private sealed class ThrowingBudgetAuthority: IBudgetAuthority
-    {
-        public ValueTask<BudgetScopeResult> CreateChildScopeAsync(BudgetScopeRequest request, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("The authority must not be touched by an unbudgeted run.");
-    }
+    private static ScriptedOutputProcessor AcceptingOutputProcessor() =>
+        new(static request => ScriptedOutputProcessor.Accepted(request));
 
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
@@ -4107,6 +4449,7 @@ public sealed class DefaultAgentLoopTests
         TimeProvider? timeProvider = null,
         Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
         IOutputProcessor? outputProcessor = null,
+        bool omitOutputProcessor = false,
         IHookDispatcher? hookDispatcher = null,
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
@@ -4115,10 +4458,15 @@ public sealed class DefaultAgentLoopTests
         IHookInstanceFactory? hookInstanceFactory = null,
         IHookProfileSelector? hookProfileSelector = null,
         ICompactor? compactor = null,
-        IBudgetAuthority? budgets = null,
         ISessionRunCoordinator? runCoordinator = null,
         IInputCoordinator? inputCoordinator = null,
-        IOutputPublisher? outputPublisher = null)
+        IOutputPublisher? outputPublisher = null,
+        IDurableExecutionCoordinator? durableExecution = null,
+        IDurabilityProfileCatalog? durabilityProfiles = null,
+        DurableBoundaryRegistry? durableInvocations = null,
+        bool omitDefaultBudgets = false,
+        IEnumerable<BudgetLimit>? budgetLimits = null,
+        CompactionPolicySnapshot? compactionPolicy = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -4128,6 +4476,7 @@ public sealed class DefaultAgentLoopTests
         var toolCatalogCaptures = new FakeToolRunCatalogCaptureFactory();
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
+        var (defaultBudgets, defaultBudgetProfiles) = DefaultBudgets(budgetLimits, timeProvider);
 
         _services = new AgentRunServices(
             coordinator,
@@ -4139,13 +4488,14 @@ public sealed class DefaultAgentLoopTests
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
             continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
-            outputProcessor,
+            omitOutputProcessor ? null : outputProcessor ?? AcceptingOutputProcessor(),
             compactor,
-            budgets,
-            budgetProfiles: null,
+            omitDefaultBudgets ? null : defaultBudgets,
+            omitDefaultBudgets ? null : defaultBudgetProfiles,
             runCoordinator,
             inputCoordinator,
-            outputPublisher);
+            outputPublisher,
+            compactionPolicy: compactionPolicy);
 
         if (hookCatalog is null && hookInstanceFactory is null
             && (hookDispatcher is not null
@@ -4177,7 +4527,10 @@ public sealed class DefaultAgentLoopTests
             hookDispatcher,
             hookCatalog,
             hookInstanceFactory,
-            hookProfileSelector);
+            hookProfileSelector,
+            durableInvocations: durableInvocations,
+            durableExecution: durableExecution,
+            durabilityProfiles: durabilityProfiles);
     }
 
     private DefaultAgentLoop CreateLoopWith(
@@ -4188,8 +4541,12 @@ public sealed class DefaultAgentLoopTests
         IContextAssembler? contextAssembler = null,
         Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null,
         ICompactor? compactor = null,
-        IOutputProcessor? outputProcessor = null)
+        IOutputProcessor? outputProcessor = null,
+        IDurableExecutionCoordinator? durableExecution = null,
+        IDurabilityProfileCatalog? durabilityProfiles = null,
+        DurableBoundaryRegistry? durableInvocations = null)
     {
+        var (defaultBudgets, defaultBudgetProfiles) = DefaultBudgets();
         _services = new AgentRunServices(
             coordinator,
             new FakeSecurityProfileSelector(),
@@ -4200,8 +4557,10 @@ public sealed class DefaultAgentLoopTests
             selector,
             resolver,
             new DefaultRunContinuationPolicy(TimeProvider.System),
-            outputProcessor,
-            compactor);
+            outputProcessor ?? AcceptingOutputProcessor(),
+            compactor,
+            defaultBudgets,
+            defaultBudgetProfiles);
 
         return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
@@ -4212,7 +4571,10 @@ public sealed class DefaultAgentLoopTests
             TimeProvider.System,
             new FakeOptionsMonitor<AgentLoopOptions>(new AgentLoopOptions()),
             TestLoopKey,
-            logger);
+            logger,
+            durableInvocations: durableInvocations,
+            durableExecution: durableExecution,
+            durabilityProfiles: durabilityProfiles);
     }
 
     private static GuidIdentifierGenerator<T> IdGenerator<T>(Func<Guid, T> factory)

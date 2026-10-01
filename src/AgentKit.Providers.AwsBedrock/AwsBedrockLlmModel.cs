@@ -9,6 +9,7 @@ using System.Net.Http.Headers;
 
 using AgentKit.Providers;
 using AgentKit.Providers.AwsBedrock.Wire;
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -37,7 +38,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     private readonly IAwsBedrockRequestTranslator _translator;
     private readonly IAwsBedrockResponseParser _responseParser;
     private readonly IAwsCredentialSource _credentials;
-    private readonly HttpClient _httpClient;
+    private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
     private readonly IProviderProfileRuntimeSelector? _profileSelector;
     private readonly IProviderCredentialSource _profileCredentialPlaceholder;
@@ -54,7 +55,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     /// <param name="translator">Translates provider-neutral requests into Converse request bodies.</param>
     /// <param name="responseParser">Parses Converse/ConverseStream responses into normalized events.</param>
     /// <param name="credentials">Resolves the current AWS credential to sign a request with.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and request-signing timestamps.</param>
     /// <param name="profileCredentialPlaceholder">
     /// The profile-runtime placeholder credential source; SigV4 signing uses <paramref name="credentials"/> instead.
@@ -67,7 +68,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         IAwsBedrockRequestTranslator translator,
         IAwsBedrockResponseParser responseParser,
         IAwsCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         IProviderCredentialSource profileCredentialPlaceholder,
         IProviderProfileRuntimeSelector? profileSelector = null)
@@ -77,7 +78,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(profileCredentialPlaceholder);
 
@@ -87,7 +88,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         _translator = translator;
         _responseParser = responseParser;
         _credentials = credentials;
-        _httpClient = httpClient;
+        _egress = egress;
         _timeProvider = timeProvider;
         _profileCredentialPlaceholder = profileCredentialPlaceholder;
         _profileSelector = profileSelector;
@@ -216,42 +217,19 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-        HttpResponseMessage response;
-        try
+        var sent = await _egress
+            .SendAsync(ProviderEgressRequest.ForConversation(_descriptor, request, httpRequest, useStreaming), cancellationToken)
+            .ConfigureAwait(false);
+        if (sent is ProviderEgressRefused refused)
         {
-            response = await _httpClient
-                .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return await CancelAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.Timeout,
-                "The request did not complete before its deadline.",
-                exception).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception)
-        {
-            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
-            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
-            return await FailWithKindAsync(
-                ProviderFailureKind.Timeout,
-                "The transport timed out before the provider responded.",
-                exception).ConfigureAwait(false);
-        }
-        catch (HttpRequestException exception)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.Unavailable,
-                "The provider could not be reached.",
-                exception).ConfigureAwait(false);
+            return refused.Failure.Kind is ProviderFailureKind.Cancellation
+                ? await CancelAsync(refused.Failure).ConfigureAwait(false)
+                : await FailAsync(refused.Failure).ConfigureAwait(false);
         }
 
-        using (response)
+        var response = ((ProviderEgressSent) sent).Response;
+
+        await using (response.ConfigureAwait(false))
         {
             if (!response.IsSuccessStatusCode)
             {
@@ -320,8 +298,8 @@ public sealed class AwsBedrockLlmModel: ILlmModel
             {
                 // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
                 return await FailWithKindAsync(
-                    ProviderFailureKind.Unavailable,
-                    "The connection failed while the response body was being received.",
+                    ProviderEgressBodyFault.Classify(exception, out var safeMessage),
+                    safeMessage,
                     exception).ConfigureAwait(false);
             }
         }
@@ -372,7 +350,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         return httpRequest;
     }
 
-    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<ProviderFailure> BuildHttpFailureAsync(ProviderEgressResponse response, CancellationToken cancellationToken)
     {
         string? providerMessage = null;
         Exception? diagnosticCause = null;
@@ -418,7 +396,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
     /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
     /// <returns>A failure retaining the raw HTTP status, Retry-After guidance, Bedrock request identity, and the <c>x-amzn-errortype</c> code when present.</returns>
-    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
+    private ProviderFailure BuildInterruptedHttpFailure(ProviderEgressResponse response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
     {
         Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
         Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");
@@ -436,7 +414,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
             ExtensionData.Empty);
     }
 
-    private static string? TryReadErrorType(HttpResponseMessage response) =>
+    private static string? TryReadErrorType(ProviderEgressResponse response) =>
         response.Headers.TryGetValues("x-amzn-errortype", out var values) && values.FirstOrDefault() is { Length: > 0 } value
             ? value
             : null;

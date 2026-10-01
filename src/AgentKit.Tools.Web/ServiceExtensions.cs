@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddWebFetchTool(Action<WebFetchToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<WebFetchToolOptions>()
                 .Validate(static value => value.DefaultMaximumCharacters > 0
                     && value.DefaultMaximumCharacters <= value.MaximumCharacters, "Character bounds are invalid.")

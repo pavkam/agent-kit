@@ -176,14 +176,14 @@ authenticated host impersonation mechanism; the default deriver does not create
 that transition. Any required impersonation or delegation authorization remains
 a separate security decision.
 
-## Migrating the reduced identity contract
+## Constructing an identity
 
-The former four-argument `ExecutionIdentity` constructor carried tenant,
-principal, subject kind, and opaque extensions without authentication evidence.
-It is intentionally removed. Callers resolve an `IdentityAssertion` through a
-trusted ingress or supply every field of the normative identity shape from
-already verified host authentication. There is no compatibility constructor that
-invents an issuer, evidence, assurance, or version.
+`ExecutionIdentity` has one constructor, and it carries authentication evidence:
+tenant, principal, subject kind, `AuthenticationEvidence` (which names the
+issuer), issuer-provenanced claims, the delegation chain, assurance level, and
+identity version. Callers resolve an `IdentityAssertion` through a trusted
+ingress or supply every field from already verified host authentication. No
+constructor invents an issuer, evidence, assurance, or version.
 
 Opaque extension data does not automatically become authenticated claims.
 Applications retain unrelated metadata separately and map claims only through

@@ -1,0 +1,20 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Evaluation.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Evaluation.InMemory
+{
+    public sealed class InMemoryEvaluationResultStore : AgentKit.Evaluation.IEvaluationResultStore
+    {
+        public InMemoryEvaluationResultStore(System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Evaluation.InMemory.InMemoryEvaluationResultStore>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationStoreResult> AppendAsync(AgentKit.Evaluation.EvaluationCaseResult result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Evaluation.EvaluationReadResult> ReadAsync(AgentKit.Evaluation.EvaluationResultQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryEvaluationResultStore(AgentKit.Evaluation.EvaluationResultStoreKey key) { }
+        }
+    }
+}

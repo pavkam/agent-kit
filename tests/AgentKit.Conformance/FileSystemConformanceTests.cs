@@ -89,4 +89,172 @@ public abstract class FileSystemConformanceTests<TFixture>
 
         _ = result.ShouldBeOfType<DirectoryCreateSuccess>();
     }
+
+    /// <summary>Verifies a file exactly at the authorized bound is exposed completely.</summary>
+    [Fact]
+    public async Task OpenReadAsync_WhenFileIsExactlyAtTheBound_ExposesAllContent()
+    {
+        await using var fixture = CreateFixture();
+        var payload = new byte[64];
+        await fixture.SeedFileAsync("exact.bin", payload, TestContext.Current.CancellationToken);
+
+        var content = await ReadAllAsync(fixture, "exact.bin", maxBytes: 64);
+
+        content.ShouldNotBeNull().Length.ShouldBe(64);
+    }
+
+    /// <summary>Verifies a missing file reports not-found rather than a failure or denial.</summary>
+    [Fact]
+    public async Task OpenReadAsync_WhenFileIsMissing_ReturnsNotFound()
+    {
+        await using var fixture = CreateFixture();
+
+        var result = await fixture.Reader.OpenReadAsync(
+            fixture.CreateAuthorizedRead("absent.txt", maxBytes: 64),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileReadOpenNotFound>();
+    }
+
+    /// <summary>Verifies create-only refuses an existing target and leaves its content untouched.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenCreateOnlyAndTargetExists_ReturnsConflictWithoutMutation()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("exists.txt", "original"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await WriteAsync(fixture, "exists.txt", "attempt", FileWriteDisposition.CreateOnly);
+
+        _ = result.ShouldBeOfType<FileWriteConflict>();
+        (await ReadTextAsync(fixture, "exists.txt")).ShouldBe("original");
+    }
+
+    /// <summary>Verifies append adds to the end of an existing target and reports the final size.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenAppendAndTargetExists_AppendsContent()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("log.txt", "one;"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await WriteAsync(fixture, "log.txt", "two;", FileWriteDisposition.Append);
+
+        var success = result.ShouldBeOfType<FileWriteSuccess>();
+        success.Outcome.ShouldBe(FileWriteOutcomeKind.Appended);
+        success.PreviousBytes.ShouldBe(4);
+        success.FinalBytes.ShouldBe(8);
+        (await ReadTextAsync(fixture, "log.txt")).ShouldBe("one;two;");
+    }
+
+    /// <summary>Verifies append never creates a missing target.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenAppendAndTargetIsMissing_ReturnsNotFoundWithoutCreating()
+    {
+        await using var fixture = CreateFixture();
+
+        var result = await WriteAsync(fixture, "absent.log", "line", FileWriteDisposition.Append);
+
+        _ = result.ShouldBeOfType<FileWriteNotFound>();
+        (await ReadTextAsync(fixture, "absent.log")).ShouldBeNull();
+    }
+
+    /// <summary>Verifies replace-existing replaces exactly the target's content.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenReplaceExistingAndTargetExists_ReplacesContent()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("doc.txt", "old content"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await WriteAsync(fixture, "doc.txt", "new", FileWriteDisposition.ReplaceExisting);
+
+        result.ShouldBeOfType<FileWriteSuccess>().Outcome.ShouldBe(FileWriteOutcomeKind.Replaced);
+        (await ReadTextAsync(fixture, "doc.txt")).ShouldBe("new");
+    }
+
+    /// <summary>Verifies replace-existing never creates a missing target.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenReplaceExistingAndTargetIsMissing_ReturnsNotFoundWithoutCreating()
+    {
+        await using var fixture = CreateFixture();
+
+        var result = await WriteAsync(fixture, "absent.txt", "data", FileWriteDisposition.ReplaceExisting);
+
+        _ = result.ShouldBeOfType<FileWriteNotFound>();
+        (await ReadTextAsync(fixture, "absent.txt")).ShouldBeNull();
+    }
+
+    /// <summary>Verifies create-or-replace replaces an existing target and creates an absent one.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenCreateOrReplace_CreatesAbsentAndReplacesExistingTargets()
+    {
+        await using var fixture = CreateFixture();
+
+        var created = await WriteAsync(fixture, "either.txt", "first", FileWriteDisposition.CreateOrReplace);
+        var replaced = await WriteAsync(fixture, "either.txt", "second", FileWriteDisposition.CreateOrReplace);
+
+        created.ShouldBeOfType<FileWriteSuccess>().Outcome.ShouldBe(FileWriteOutcomeKind.Created);
+        replaced.ShouldBeOfType<FileWriteSuccess>().Outcome.ShouldBe(FileWriteOutcomeKind.Replaced);
+        (await ReadTextAsync(fixture, "either.txt")).ShouldBe("second");
+    }
+
+    /// <summary>Verifies a write whose parent directory is absent neither succeeds nor creates the parent.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenParentDirectoryIsMissing_DoesNotCreateTheTarget()
+    {
+        await using var fixture = CreateFixture();
+
+        var result = await WriteAsync(fixture, "missing/child.txt", "data", FileWriteDisposition.CreateOnly);
+
+        result.ShouldNotBeOfType<FileWriteSuccess>();
+        (await ReadTextAsync(fixture, "missing/child.txt")).ShouldBeNull();
+    }
+
+    /// <summary>Verifies concurrent create-only writers to one path produce exactly one creation.</summary>
+    [Fact]
+    public async Task WriteAsync_WhenCreateOnlyRacesOnTheSamePath_CreatesExactlyOnce()
+    {
+        await using var fixture = CreateFixture();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(
+            _ => Task.Run(
+                async () => await WriteAsync(fixture, "race.txt", "data", FileWriteDisposition.CreateOnly),
+                TestContext.Current.CancellationToken)));
+
+        results.Count(static result => result is FileWriteSuccess).ShouldBe(1);
+        results.Where(static result => result is not FileWriteSuccess).ShouldAllBe(static result => result is FileWriteConflict);
+    }
+
+    private static async ValueTask<FileWriteResult> WriteAsync(
+        TFixture fixture,
+        string path,
+        string text,
+        FileWriteDisposition disposition)
+    {
+        var payload = System.Text.Encoding.UTF8.GetBytes(text);
+        return await fixture.Writer.WriteAsync(
+            fixture.CreateAuthorizedWrite(path, payload, disposition),
+            new FileWriteContent(payload, FileSecurityBinding.ContentFingerprint(payload)),
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async ValueTask<string?> ReadTextAsync(TFixture fixture, string path)
+    {
+        var bytes = await ReadAllAsync(fixture, path, maxBytes: 1024);
+        return bytes is null ? null : System.Text.Encoding.UTF8.GetString(bytes);
+    }
+
+    private static async ValueTask<byte[]?> ReadAllAsync(TFixture fixture, string path, long maxBytes)
+    {
+        var result = await fixture.Reader.OpenReadAsync(
+            fixture.CreateAuthorizedRead(path, maxBytes),
+            TestContext.Current.CancellationToken);
+        if (result is not FileReadHandleOpened opened)
+        {
+            return null;
+        }
+
+        await using var handle = opened.Handle;
+        using var content = new MemoryStream();
+        await handle.Content.CopyToAsync(content, TestContext.Current.CancellationToken);
+        return content.ToArray();
+    }
 }

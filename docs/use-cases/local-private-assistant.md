@@ -59,6 +59,10 @@ var descriptor = new ModelDescriptor(
     pricing: null,
     ExtensionData.Empty);
 
+// Provider requests go through the network boundary, whose default policy refuses
+// loopback and plain http, so a local model server needs an explicit policy.
+builder.Services.AddAgentNetwork(o => o.DestinationPolicy =
+    new NetworkDestinationPolicy(["http"], [new NormalizedHost("127.0.0.1")], allowPrivateAddresses: true));
 builder.Services.AddOllama(o => o.BaseAddress = new Uri("http://127.0.0.1:11434/v1/"));
 builder.Services.AddOllamaApiKeyCredential("ollama");
 builder.Services.AddOllamaLlmModel(descriptor);

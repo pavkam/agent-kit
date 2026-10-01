@@ -6,16 +6,11 @@ namespace AgentKit.Abstractions.Tests.Budgets;
 public sealed class BudgetCommitResultTests
 {
     [Fact]
-    public void BudgetCommitResult_WhenPresentAccountingRevisionIsDefault_ThrowsExactParameterName() => Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, default(BudgetAccountingRevision), [])).ParamName.ShouldBe("accountingRevision");
+    public void BudgetCommitResult_WhenAccountingRevisionIsDefault_ThrowsExactParameterName() => Should.Throw<ArgumentOutOfRangeException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, default, [])).ParamName.ShouldBe("accountingRevision");
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void BudgetCommitResult_WhenHoldArrayIsDefault_ThrowsExactParameterName(bool presentRevision)
-    {
-        BudgetAccountingRevision? revision = presentRevision ? new BudgetAccountingRevision(1) : null;
-        Should.Throw<ArgumentException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, revision, default)).ParamName.ShouldBe("createdOverrunHolds");
-    }
+    [Fact]
+    public void BudgetCommitResult_WhenHoldArrayIsDefault_ThrowsExactParameterName() =>
+        Should.Throw<ArgumentException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, new BudgetAccountingRevision(1), default)).ParamName.ShouldBe("createdOverrunHolds");
 
     private static BudgetReservationId ReservationId() => new(Guid.Parse("00000000-0000-0000-0000-000000000003"));
     [Fact]
@@ -41,15 +36,15 @@ public sealed class BudgetCommitResultTests
     }
 
     [Fact]
-    public void OverrunResultArrays_WhenDefaultOrContainingNull_ThrowExactParameterName() => Should.Throw<ArgumentException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, null, [null!])).ParamName.ShouldBe("createdOverrunHolds");
+    public void OverrunResultArrays_WhenDefaultOrContainingNull_ThrowExactParameterName() => Should.Throw<ArgumentException>(() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, new BudgetAccountingRevision(1), [null!])).ParamName.ShouldBe("createdOverrunHolds");
 
     [Fact]
-    public void OverrunResultArrays_WhenEmptyIsAllowed_PreserveEmptyEvidence() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, null, []).CreatedOverrunHolds.ShouldBeEmpty();
+    public void OverrunResultArrays_WhenEmptyIsAllowed_PreserveEmptyEvidence() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, new BudgetAccountingRevision(1), []).CreatedOverrunHolds.ShouldBeEmpty();
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new BudgetCommitResult(ReservationId(), 1, 1, 0, 0);
+        var original = new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, new BudgetAccountingRevision(1), []);
         var copy = original with { };
         copy.ShouldBe(original);
     }

@@ -23,6 +23,10 @@ described in the [composition guide](../../docs/guides/composition.md).
   deterministic network-resolution and response scenarios with security checks.
 - [AgentKit.Tools.Web](../AgentKit.Tools.Web/README.md) — fetch web content
   through bounded network operations and content projection.
+- [AgentKit.Tools.WebSearch](../AgentKit.Tools.WebSearch/README.md) — send
+  provider-backed web searches through resolution and send grants.
+- [AgentKit.Mcp.Client](../AgentKit.Mcp.Client/README.md) — carry HTTP MCP
+  exchanges through the same resolver and transport.
 - [AgentKit.Permissions](../AgentKit.Permissions/README.md) — evaluate security
   requests and manage bounded grants, profiles, and audit dispatch.
 
@@ -37,8 +41,8 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/network.md) — intended
   ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

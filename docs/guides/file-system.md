@@ -18,8 +18,8 @@ Console.WriteLine(await engine.AskAsync("Which pages link to the pricing page?")
 ```
 
 `UseWorkspace` does two things. It registers a sandboxed file system rooted at
-that directory, and it registers six tools over it that the model sees on its
-next turn:
+that directory, and it registers seven tools over it, published as one toolset
+the agent's definition selects, that the model sees on its next turn:
 
 | Tool             | What the model can do with it                                         |
 | ---------------- | --------------------------------------------------------------------- |
@@ -29,6 +29,7 @@ next turn:
 | `search`         | Find text or a regular expression inside files, with bounded results  |
 | `write_file`     | Create or replace a file with an explicit disposition (see below)     |
 | `edit`           | Replace exact text in a file, once or everywhere, with a change count |
+| `patch`          | Apply a multi-file patch in one atomic, bounded operation             |
 
 Every path the model supplies is relative to the workspace root. The root must
 be absolute.
@@ -85,14 +86,17 @@ Two common steps up, both covered in
 
 ## Test without a disk
 
-`AgentKit.FileSystem.InMemory` implements the same seven file-system contracts
+`AgentKit.FileSystem.InMemory` implements the same keyed file-system contracts
 over an in-memory tree, with the same status codes and precondition ordering.
-Register it in place of the sandbox in tests, seed files, and drive the tools
-without touching the real file system:
+Register it under the profile key the tools select, seed files through the
+volume, and drive the tools without touching the real file system:
 
 ```csharp
-builder.Services.AddInMemoryFileSystem();
-builder.Services.AddReadTool().AddWriteTool();   // any subset of the tools
+var volume = new FileSystemProfileKey("workspace");
+builder.Services.AddInMemoryFileSystem(volume);
+builder.Services.AddReadTool(o => { o.ProfileKey = volume; o.HostRootPath = "/workspace"; });
+builder.Services.AddWriteTool(o => { o.ProfileKey = volume; o.HostRootPath = "/workspace"; });
+builder.WithTools(ReadFileTool.DefaultToolset.Key, WriteFileTool.DefaultToolset.Key);
 ```
 
 ## Under the hood
@@ -101,14 +105,24 @@ builder.Services.AddReadTool().AddWriteTool();   // any subset of the tools
 `IServiceCollection` writes directly:
 
 ```csharp
-services.AddSandboxedFileSystem(root);
-services.AddReadTool();
-services.AddWriteTool();
-services.AddEditTool();
-services.AddGlobTool();
-services.AddSearchTool();
-services.AddListTool();
+var workspace = new FileSystemProfileKey("workspace");
+var workspaceRoot = new FileRootId("workspace");
+services.AddOperatingSystemFileSystem(workspace, o =>
+    o.Roots.Add(new FileRootRegistration(workspaceRoot, root)));
+services.AddReadTool(o => { o.ProfileKey = workspace; o.RootId = workspaceRoot; o.HostRootPath = root; });
+services.AddWriteTool(o => { o.ProfileKey = workspace; o.RootId = workspaceRoot; o.HostRootPath = root; });
+services.AddListTool(o => { o.ProfileKey = workspace; o.RootId = workspaceRoot; o.HostRootPath = root; });
+services.AddGlobTool(o => o.ProfileKey = workspace);
+services.AddSearchTool(o => o.ProfileKey = workspace);
+services.AddEditTool(o => o.ProfileKey = workspace);
+services.AddPatchTool(o => o.ProfileKey = workspace);
 ```
+
+Each `Add*Tool` publishes the tool's own default toolset (for example
+`ReadFileTool.DefaultToolset`). The definition selects toolsets, not individual
+tools, so the sugar also selects the workspace toolset on the definition; a host
+that writes the definition itself lists the toolsets it wants as
+`ToolsetReference` values.
 
 Register only the tools you want the model to have. Processes (running a build
 or a test suite) are a separate boundary with its own sandbox and its own

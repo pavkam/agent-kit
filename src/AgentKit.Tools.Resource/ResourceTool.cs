@@ -21,6 +21,8 @@ public sealed class ResourceTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(ResourceToolLog.Completed, ResourceToolLog.Cancelled, ResourceToolLog.Faulted);
+    private readonly ILogger<ResourceTool> _logger;
     private readonly IFileSnapshotReader _reader;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -39,6 +41,7 @@ public sealed class ResourceTool: IToolInvoker
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The configured catalog and host ceilings.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency or configured resource is null.</exception>
     /// <exception cref="ArgumentException">Resource identities are duplicated.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A bound or description length is invalid.</exception>
@@ -47,13 +50,15 @@ public sealed class ResourceTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<ResourceToolOptions> options)
+        IOptions<ResourceToolOptions> options,
+        ILogger<ResourceTool> logger)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumBytes, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumCharacters, nameof(options));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumDescriptionCharacters, nameof(options));
@@ -76,6 +81,7 @@ public sealed class ResourceTool: IToolInvoker
         _maximumBytes = options.Value.MaximumBytes;
         _maximumCharacters = options.Value.MaximumCharacters;
         _catalogVersion = CatalogVersion(resources);
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -102,16 +108,16 @@ public sealed class ResourceTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("resource"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(Id, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

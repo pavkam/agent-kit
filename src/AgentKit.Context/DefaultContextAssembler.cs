@@ -13,10 +13,10 @@ namespace AgentKit.Context;
 /// <remarks>
 /// <para>
 /// This implementation performs no I/O, retrieval, or compaction of its
-/// own; it operates entirely over the <see cref="ContextAssemblyRequest.History"/>
-/// and <see cref="ContextAssemblyRequest.Instructions"/> the caller
-/// supplies. See <see cref="IContextAssembler"/> for the reduced-scope
-/// rationale shared by every implementation of this contract.
+/// own beyond its keyed contributors and services; it operates over the
+/// <see cref="ContextAssemblyEvidence"/> the loop captured for this model
+/// request: the pinned history, the admitted definition's instruction sources,
+/// the identity, the authorization, and the effective configuration.
 /// </para>
 /// <para>
 /// History repair keeps only messages whose <see cref="AgentMessage.State"/>
@@ -74,19 +74,12 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         cancellationToken.ThrowIfCancellationRequested();
 
         var evidence = request.Evidence;
-        var agentId = evidence?.Agent.Id ?? request.AgentId;
-        var sessionId = evidence?.History.SourceCursor.SessionId ?? request.SessionId;
-        var sourceCursor = evidence?.History.SourceCursor
-            ?? new MessageCursor(
-                request.AgentId,
-                request.SessionId,
-                conversationId: null,
-                request.BranchId,
-                new SessionVersion(0),
-                new SessionSequence(0));
-        var rawHistory = evidence?.History.Messages ?? request.History;
+        var agentId = evidence.Agent.Id;
+        var sessionId = evidence.History.SourceCursor.SessionId;
+        var sourceCursor = evidence.History.SourceCursor;
+        var rawHistory = evidence.History.Messages;
         var toolChoice = request.ToolChoice;
-        var settings = evidence?.Agent.Settings ?? request.Settings;
+        var settings = request.Settings;
         var fallbackTools = request.Tools;
 
         using var activityScope = AgentKitActivityScope.Start(
@@ -146,41 +139,23 @@ internal sealed class DefaultContextAssembler: IContextAssembler
                 excludedInstructionMessages));
         }
 
-        ImmutableArray<AgentMessage> instructions;
-        if (evidence is not null)
+        var resolution = await _services.Instructions.ResolveAsync(
+            new InstructionResolutionRequest(
+                evidence.Agent.Instructions,
+                request.RunId,
+                request.TurnId,
+                request.ModelRequestId),
+            cancellationToken).ConfigureAwait(false);
+        if (resolution is InstructionResolutionFailed instructionFailed)
         {
-            var resolution = await _services.Instructions.ResolveAsync(
-                new InstructionResolutionRequest(
-                    evidence.Agent.InstructionSources,
-                    request.RunId,
-                    request.TurnId,
-                    request.ModelRequestId),
-                cancellationToken).ConfigureAwait(false);
-            if (resolution is InstructionResolutionFailed instructionFailed)
-            {
-                const string outcome = "invalid_instruction_message";
-                SafeSetActivity(() => activity.SetFailed(outcome, instructionFailed.Failure.Kind.ToString()));
-                SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-                SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, instructionFailed.Failure.Kind));
-                return new ContextPreparationFailed(instructionFailed.Failure);
-            }
-
-            instructions = ((InstructionResolutionResolved) resolution).Messages;
+            const string outcome = "invalid_instruction_message";
+            SafeSetActivity(() => activity.SetFailed(outcome, instructionFailed.Failure.Kind.ToString()));
+            SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, instructionFailed.Failure.Kind));
+            return new ContextPreparationFailed(instructionFailed.Failure);
         }
-        else
-        {
-            var instructionFailure = ValidateInstructions(request.Instructions);
-            if (instructionFailure is not null)
-            {
-                const string outcome = "invalid_instruction_message";
-                SafeSetActivity(() => activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.InvalidInstructionMessage)));
-                SafeObserve(() => ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-                SafeLog(() => ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.InvalidInstructionMessage));
-                return new ContextPreparationFailed(instructionFailure);
-            }
 
-            instructions = request.Instructions;
-        }
+        var instructions = ((InstructionResolutionResolved) resolution).Messages;
 
         var messages = instructions.AddRange(preparedHistory.Messages);
 
@@ -219,7 +194,7 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         }
 
         ContextManifest? manifest = null;
-        if (request.Evidence is not null && _services.Contributors.Count > 0)
+        if (_services.Contributors.Count > 0)
         {
             var (Manifest, Failure) = await RunContributorsAsync(request, preparedHistory, cancellationToken).ConfigureAwait(false);
             if (Failure is { } contributorFailure)
@@ -258,7 +233,6 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         HistoryView preparedHistory,
         CancellationToken cancellationToken)
     {
-        Debug.Assert(request.Evidence is not null, "Contributors run only when assembly evidence is present.");
         var evidence = request.Evidence;
         var contributionRequest = new ContextContributionRequest(
             evidence.Agent,
@@ -410,34 +384,5 @@ internal sealed class DefaultContextAssembler: IContextAssembler
         {
             // Instrumentation is observational only; a meter-listener failure must never alter the assembled result.
         }
-    }
-
-    /// <summary>
-    /// Validates that every instruction message is complete and carries system or developer
-    /// authority for the reduced compatibility path that supplies flat instruction messages.
-    /// </summary>
-    private static ContextPreparationFailure? ValidateInstructions(ImmutableArray<AgentMessage> instructions)
-    {
-        Debug.Assert(!instructions.IsDefault, "The request and evidence contracts guarantee an initialized instruction set.");
-        foreach (var message in instructions)
-        {
-            if (message.State != MessageState.Complete)
-            {
-                return new ContextPreparationFailure(
-                    ContextPreparationFailureKind.InvalidInstructionMessage,
-                    $"An instruction message's state is {message.State}, but only complete messages may be sent to a provider.",
-                    ExtensionData.Empty);
-            }
-
-            if (message is not (SystemMessage or DeveloperMessage))
-            {
-                return new ContextPreparationFailure(
-                    ContextPreparationFailureKind.InvalidInstructionMessage,
-                    "An instruction message is not a system or developer message; only those roles may carry instruction authority.",
-                    ExtensionData.Empty);
-            }
-        }
-
-        return null;
     }
 }

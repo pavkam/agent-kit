@@ -43,6 +43,15 @@ changing C#, also read the [modern C# rules](../references/modern-csharp.md).
    collaborator failure, partial attempt, and settlement path with deterministic
    clocks, identities, and scripted collaborators.
 
+The loop is request-based:
+`IAgentLoop.RunAsync(AgentLoopRunRequest, AgentRunServices, CancellationToken)`.
+The request pins the exact admitted `AgentDefinition` and derives model policy,
+settings, output, budget, and hook profiles from it; the services bundle carries
+only per-run collaborators the facade compiled from the definition's keyed
+selections (the continuation policy is the one the definition names, not a fixed
+engine-wide key). Hook activation is a run-scoped `HookActivationScope` that
+mints a fresh dispatch context per emission.
+
 Use
 [cancellation and resilience](../../../docs/concepts/cancellation-timeouts-and-resilience.md)
 for drain and retry semantics. Route message modeling, I/O admission, goals,

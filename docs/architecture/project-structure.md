@@ -356,6 +356,18 @@ enforcement or required audit is unavailable. A tool-level decision is not
 permission to change the path, destination, executable, argument, content, or
 principal at the lower boundary. Keyed host profiles do not weaken this rule.
 
+### Linked storage source
+
+The `AgentKit.<Family>.Storage.Shared` and `AgentKit.<Family>.Storage.Durable`
+directories under `src/` are not projects, packages, or selectable stores. They
+hold source files that the leaves of one storage family compile together: the
+planner, state machine, and observation shared by InMemory, SQLite, and JSON
+leaves (`.Storage.Shared`), and the stored-document shapes shared by the durable
+leaves (`.Storage.Durable`). Linking source keeps the runtime package and each
+leaf free of a shared compiled dependency that would otherwise become a package
+and a public surface. They register nothing, and no project outside the family's
+leaves links them.
+
 ## Optional components
 
 | Project family                                  | Responsibility                                                                                          |
@@ -369,8 +381,13 @@ principal at the lower boundary. Keyed host profiles do not weaken this rule.
 | AgentKit.Mcp.Client and AgentKit.Mcp.Server     | MCP client and server lifecycle, transports, and primitive adapters                                     |
 | AgentKit.Observability.OpenTelemetry            | Activity, metric, log, and event export without runtime control                                         |
 | AgentKit.Evaluation                             | Dataset execution, evaluators, result comparison, and reproducible reports through public AgentKit APIs |
+| AgentKit.Evaluation.BackendName                 | InMemory, Sqlite, or Json evaluation result store adapting `IEvaluationResultStore`                     |
 | AgentKit.Identity                               | Trusted-ingress identity normalization, issuer mapping, validation, and delegation derivation           |
 | AgentKit.Artifacts and backend leaves           | Durable content references, integrity, retention, reconciliation, and explicit storage backends         |
+| AgentKit.Context.Project                        | Bounded workspace instruction discovery through the protected file-system boundary                      |
+| AgentKit.Context.Retrieval                      | Authorized retrieval candidates over the selected memory profile                                        |
+| AgentKit.Conversations                          | One bound session and branch over the engine's admission path, projected as conversation events         |
+| AgentKit.Simple                                 | Fluent builder sugar over the public registrations of the packages above; never a second runtime        |
 
 Optional components do not become hidden facade dependencies. Their service
 registrations validate required collaborators only when the component is added.
@@ -475,12 +492,17 @@ The tests directory mirrors source projects one for one:
 | AgentKit.Artifacts                   | AgentKit.Artifacts.Tests                   |
 | AgentKit.Artifacts.InMemory          | AgentKit.Artifacts.InMemory.Tests          |
 | AgentKit.Artifacts.Sqlite            | AgentKit.Artifacts.Sqlite.Tests            |
+| AgentKit.Artifacts.Json              | AgentKit.Artifacts.Json.Tests              |
+| AgentKit.Artifacts.FileSystem        | AgentKit.Artifacts.FileSystem.Tests        |
 | AgentKit.Mcp                         | AgentKit.Mcp.Tests                         |
 | AgentKit.Mcp.Client                  | AgentKit.Mcp.Client.Tests                  |
 | AgentKit.Mcp.Server                  | AgentKit.Mcp.Server.Tests                  |
 | AgentKit.Observability               | AgentKit.Observability.Tests               |
 | AgentKit.Observability.OpenTelemetry | AgentKit.Observability.OpenTelemetry.Tests |
 | AgentKit.Evaluation                  | AgentKit.Evaluation.Tests                  |
+| AgentKit.Evaluation.InMemory         | AgentKit.Evaluation.InMemory.Tests         |
+| AgentKit.Evaluation.Sqlite           | AgentKit.Evaluation.Sqlite.Tests           |
+| AgentKit.Evaluation.Json             | AgentKit.Evaluation.Json.Tests             |
 | Each remaining source package        | A matching PackageName.Tests project       |
 
 Test projects follow the Sharp Vision setup: .NET 10 executable test projects,

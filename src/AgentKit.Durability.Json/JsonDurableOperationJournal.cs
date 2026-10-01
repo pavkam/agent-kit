@@ -229,9 +229,6 @@ public sealed class JsonDurableOperationJournal: IDurableOperationJournal, IDisp
         {
             cancellationToken.ThrowIfCancellationRequested();
             RequireInitialized();
-            Debug.Assert(
-                address.Grant.Authorization is not null,
-                "AuthorizedDurableRequest rejects a grant with no captured authorization at construction.");
             var (_, denial) = await _enforcement.EnforceAsync(
                 address,
                 operationAddress,

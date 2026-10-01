@@ -1,0 +1,28 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Context.Retrieval.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Context.Retrieval
+{
+    public sealed class RetrievalContextContributor : AgentKit.IContextContributor
+    {
+        public RetrievalContextContributor(AgentKit.IRetrievalPipeline pipeline, AgentKit.IMemoryProfileCatalog profiles, AgentKit.IIdentifierGenerator<AgentKit.RetrievalRequestId> requestIds, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Retrieval.RetrievalContextOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Retrieval.RetrievalContextContributor>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ContextContribution> ContributeAsync(AgentKit.ContextContributionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class RetrievalContextOptions
+    {
+        public RetrievalContextOptions() { }
+        public int MaximumBytes { get; set; }
+        public AgentKit.DataClassification MaximumClassification { get; set; }
+        public int MaximumItems { get; set; }
+        public int MaximumQueryCharacters { get; set; }
+        public int MaximumTokens { get; set; }
+        public int Priority { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRetrievalContextContributor(AgentKit.ComponentKey<AgentKit.IContextAssembler> assemblerKey, System.Action<AgentKit.Context.Retrieval.RetrievalContextOptions>? configure = null) { }
+        }
+    }
+}

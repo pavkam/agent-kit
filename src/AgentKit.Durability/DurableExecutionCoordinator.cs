@@ -241,7 +241,8 @@ internal sealed partial class DurableExecutionCoordinator: IDurableExecutionCoor
             return decision switch
             {
                 RecoveryCommitRecordedResult commit =>
-                    await CommitRecordedAsync(scope, runtime, journal, operation, lease, commit, started, cancellationToken)
+                    await CommitRecordedAsync(
+                        scope, runtime, journal, operation, lease, commit, evidence.State, started, cancellationToken)
                         .ConfigureAwait(false),
                 RecoveryStartOperation or RecoveryRetryOperation =>
                     await ReplayAsync(scope, runtime, journal, operation, lease, hooks, started, cancellationToken)

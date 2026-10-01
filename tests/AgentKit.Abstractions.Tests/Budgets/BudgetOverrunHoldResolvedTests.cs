@@ -55,7 +55,7 @@ public sealed class BudgetOverrunHoldResolvedTests
     {
         var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human);
         var scope = new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("00000000-0000-0000-0000-000000000004")), null));
-        var enforcement = new SecurityEnforcementRequest(scope, identity, new ComponentId("budget-operator"), kind, effect, resources.IsDefault ? [BudgetOverrunSecurityBinding.Resource(hold)] : resources, fingerprint ?? BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
+        var enforcement = new SecurityEnforcementRequest(scope, identity, TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, identity), new ComponentId("budget-operator"), kind, effect, resources.IsDefault ? [BudgetOverrunSecurityBinding.Resource(hold)] : resources, fingerprint ?? BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
         return new SecurityEnforcementIntentReceipt(new SecurityEnforcementIntentId(Guid.Parse("00000000-0000-0000-0000-000000000005")), new GrantId(Guid.Parse("00000000-0000-0000-0000-000000000006")), new SecurityRequestId(Guid.Parse("00000000-0000-0000-0000-000000000007")), enforcement, null, new ContentHash("sha256:receipt"), DateTimeOffset.UnixEpoch);
     }
 }

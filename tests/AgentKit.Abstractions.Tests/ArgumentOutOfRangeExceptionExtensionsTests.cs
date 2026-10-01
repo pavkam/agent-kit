@@ -9,12 +9,12 @@ public sealed class ArgumentOutOfRangeExceptionExtensionsTests
 {
     [Fact]
     public void ThrowIfUndefined_WhenValueIsDefined_DoesNotThrow() =>
-        Should.NotThrow(() => ArgumentOutOfRangeException.ThrowIfUndefined(FileWriteMode.Append));
+        Should.NotThrow(() => ArgumentOutOfRangeException.ThrowIfUndefined(FileWriteDisposition.Append));
 
     [Fact]
     public void ThrowIfUndefined_WhenValueIsUndefined_ThrowsArgumentOutOfRangeException()
     {
-        var value = (FileWriteMode) int.MaxValue;
+        var value = (FileWriteDisposition) int.MaxValue;
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
             () => ArgumentOutOfRangeException.ThrowIfUndefined(value));
@@ -26,7 +26,7 @@ public sealed class ArgumentOutOfRangeExceptionExtensionsTests
     [Fact]
     public void ThrowIfUndefined_WhenParamNameSuppliedExplicitly_UsesSuppliedName()
     {
-        var value = (FileWriteMode) int.MaxValue;
+        var value = (FileWriteDisposition) int.MaxValue;
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
             () => ArgumentOutOfRangeException.ThrowIfUndefined(value, "customParam"));
@@ -71,15 +71,11 @@ public sealed class ArgumentOutOfRangeExceptionExtensionsTests
     }
 
     [Fact]
-    public void ThrowIfUndefined_WhenUsedByFileWriteRequest_CoversProductionCallSite()
+    public void ThrowIfUndefined_WhenUsedByFileSearchPattern_CoversProductionCallSite()
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => new FileWriteRequest(
-                new FileSystemPath("notes.txt"),
-                "content",
-                (FileWriteMode) int.MaxValue,
-                SecurityTestData.Grant()));
+            () => new FileSearchPattern("needle", (FileSearchPatternKind) int.MaxValue));
 
-        exception.ParamName.ShouldBe("mode");
+        exception.ParamName.ShouldBe("kind");
     }
 }

@@ -59,7 +59,7 @@ internal sealed class StdioMcpTransportFactory(
             return new McpTransportOpenDenied("Stdio MCP connect denied by security authority.");
         }
 
-        var connectConsumption = await McpClientSecurityOperations.ConsumeGrantAsync(
+        var connectConsumed = await McpClientSecurityOperations.TryConsumeGrantAsync(
             connectGrant,
             _grantStore,
             _audit,
@@ -67,7 +67,7 @@ internal sealed class StdioMcpTransportFactory(
             _intentIds,
             _timeProvider,
             cancellationToken).ConfigureAwait(false);
-        if (connectConsumption.Status is not GrantConsumptionStatus.Consumed)
+        if (!connectConsumed)
         {
             return new McpTransportOpenDenied("Stdio MCP connect grant consumption failed.");
         }

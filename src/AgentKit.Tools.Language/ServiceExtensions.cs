@@ -17,6 +17,7 @@ public static class ServiceExtensions
         public IServiceCollection AddLanguageTool(Action<LanguageToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<LanguageToolOptions>()
                 .Validate(
                     static value => value.DefaultMaximumResults > 0

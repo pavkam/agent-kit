@@ -9,13 +9,13 @@ directory, a short list of executables, and no network.
 
 ## What the agent needs
 
-| Need                         | AgentKit part                                                                                |
-| ---------------------------- | -------------------------------------------------------------------------------------------- |
-| Read the runbooks            | `AddSandboxedFileSystem(root)` with `AddReadTool`, `AddGlobTool`, `AddListTool`              |
-| Run shell commands, confined | `AddOperatingSystemProcesses(root, …)` with an executable allow-list and `AddCommandTool`    |
-| No network from commands     | `PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile`                                   |
-| Approve each command         | A policy returning `RequireApproval` for `Process`/`Execute` plus the approval collaborators |
-| Ask the engineer to choose   | `AddQuestionTool`, `AddHumanQuestionBroker`, and your `IHumanQuestionChannel`                |
+| Need                         | AgentKit part                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| Read the runbooks            | keyed `AddOperatingSystemFileSystem(key, …)` with `AddReadTool`, `AddGlobTool`, `AddListTool` |
+| Run shell commands, confined | `AddAgentProcesses(key, …)` with an executable allow-list and `AddCommandTool`                |
+| No network from commands     | `PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile`                                    |
+| Approve each command         | A policy returning `RequireApproval` for `Process`/`Execute` plus the approval collaborators  |
+| Ask the engineer to choose   | `AddQuestionTool`, `AddHumanQuestionBroker`, and your `IHumanQuestionChannel`                 |
 
 ## Compose the engine
 
@@ -34,19 +34,23 @@ static AgentEngine CreateRunbookAgent(string opsRoot, ExecutionIdentity engineer
         .WithAttemptTimeout(TimeSpan.FromMinutes(5));
 
     // Read-only view of the runbooks and any scripts they reference.
-    builder.Services.AddSandboxedFileSystem(opsRoot);
-    builder.Services.AddReadTool();
-    builder.Services.AddGlobTool();
-    builder.Services.AddListTool();
+    var runbooks = new FileSystemProfileKey("workspace");
+    var runbookRoot = new FileRootId("workspace");
+    builder.Services.AddOperatingSystemFileSystem(runbooks, o =>
+        o.Roots.Add(new FileRootRegistration(runbookRoot, opsRoot)));
+    builder.Services.AddReadTool(o => { o.ProfileKey = runbooks; o.RootId = runbookRoot; o.HostRootPath = opsRoot; });
+    builder.Services.AddGlobTool(o => o.ProfileKey = runbooks);
+    builder.Services.AddListTool(o => { o.ProfileKey = runbooks; o.RootId = runbookRoot; o.HostRootPath = opsRoot; });
 
     // A shell with a fixed executable list, an explicit PATH, and no network.
-    builder.Services.AddOperatingSystemProcesses(opsRoot, o =>
+    builder.Services.AddAgentProcesses(new ProcessExecutorKey("default"), o =>
     {
-        o.AllowedExecutablePaths.Add("/bin/sh");
-        o.AllowedEnvironmentVariableNames.Add("PATH");
-        o.ReadOnlyToolchainRoots["cli"] = "/opt/acme/bin";
-        o.MaximumTimeout = TimeSpan.FromMinutes(2);
-        o.MaximumConcurrentProcesses = 1;
+        o.OperatingSystem.RootDirectory = opsRoot;
+        o.OperatingSystem.AllowedExecutablePaths.Add("/bin/sh");
+        o.OperatingSystem.AllowedEnvironmentVariableNames.Add("PATH");
+        o.OperatingSystem.ReadOnlyToolchainRoots["cli"] = "/opt/acme/bin";
+        o.OperatingSystem.MaximumTimeout = TimeSpan.FromMinutes(2);
+        o.OperatingSystem.MaximumConcurrentProcesses = 1;
     });
     builder.Services.AddCommandTool(o =>
     {
@@ -68,6 +72,14 @@ static AgentEngine CreateRunbookAgent(string opsRoot, ExecutionIdentity engineer
     builder.Services.AddHumanQuestionBroker();
     builder.Services.AddQuestionTool(o => o.DefaultTimeout = TimeSpan.FromMinutes(2));
 
+    // A tool registration is not exposure: select the toolsets the model may use.
+    builder.WithTools(
+        ReadFileTool.DefaultToolset.Key,
+        GlobTool.DefaultToolset.Key,
+        ListDirectoryTool.DefaultToolset.Key,
+        CommandTool.DefaultToolset.Key,
+        QuestionTool.DefaultToolset.Key);
+
     return builder.Build();
 }
 ```
@@ -75,7 +87,7 @@ static AgentEngine CreateRunbookAgent(string opsRoot, ExecutionIdentity engineer
 ```csharp
 sealed class ApproveCommandsPolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(request.Kind == SecurityOperationKind.Process && request.Effect == SecurityEffect.Execute
             ? new SecurityPolicyResult(SecurityPolicyResultKind.RequireApproval, "ops.approve-command", "Each command needs the on-call engineer's approval.")
             : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));

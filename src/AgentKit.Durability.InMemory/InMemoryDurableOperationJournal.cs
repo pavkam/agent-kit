@@ -185,9 +185,6 @@ public sealed partial class InMemoryDurableOperationJournal: IDurableOperationJo
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Debug.Assert(
-                address.Grant.Authorization is not null,
-                "AuthorizedDurableRequest rejects a grant with no captured authorization at construction.");
             var (_, denial) = await EnforceAsync(
                 address,
                 operationAddress,

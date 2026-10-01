@@ -3,37 +3,22 @@
 
 namespace AgentKit.Permissions;
 
-using Microsoft.Extensions.Options;
-
 /// <summary>Selects the effective policy-snapshot reference that must evaluate one normalized security request.</summary>
 /// <remarks>
-/// Captured requests select the snapshot carried by their authorization evidence. Uncaptured requests select the
-/// composition-bound snapshot when configured, otherwise the synthetic uncaptured reference retained by the catalog.
+/// Every request selects the snapshot carried by its captured authorization evidence; there is no fallback to a
+/// composition-bound or synthetic snapshot.
 /// </remarks>
 public sealed class DefaultSecurityPolicySelector: ISecurityPolicySelector
 {
     private readonly ISecurityPolicyCatalog _catalog;
-    private readonly SecurityPolicySnapshotReference? _boundSnapshot;
-    private readonly SecurityPolicySnapshotReference _uncapturedSnapshot;
 
     /// <summary>Initializes a selector over the composition's frozen policy catalog.</summary>
     /// <param name="catalog">The catalog that retains effective-policy snapshot references.</param>
-    /// <param name="options">The permission options captured when the catalog was constructed.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="catalog"/> or <paramref name="options"/> is null.</exception>
-    public DefaultSecurityPolicySelector(
-        ISecurityPolicyCatalog catalog,
-        IOptions<AgentPermissionOptions> options)
+    /// <exception cref="ArgumentNullException"><paramref name="catalog"/> is null.</exception>
+    public DefaultSecurityPolicySelector(ISecurityPolicyCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        ArgumentNullException.ThrowIfNull(options);
-        var optionValues = options.Value;
-        ArgumentNullException.ThrowIfNull(optionValues);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.PolicyVersion);
-
         _catalog = catalog;
-        _boundSnapshot = optionValues.PolicySnapshot;
-        _uncapturedSnapshot = SecurityPolicyEvaluationContexts.CreateUncapturedReference(
-            new SecurityPolicyVersion(optionValues.PolicyVersion));
     }
 
     /// <inheritdoc/>
@@ -44,9 +29,6 @@ public sealed class DefaultSecurityPolicySelector: ISecurityPolicySelector
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var reference = request.Authorization?.PolicySnapshot
-            ?? _boundSnapshot
-            ?? _uncapturedSnapshot;
-        return _catalog.ResolveAsync(reference, cancellationToken);
+        return _catalog.ResolveAsync(request.Authorization.PolicySnapshot, cancellationToken);
     }
 }

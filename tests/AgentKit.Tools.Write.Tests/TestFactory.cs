@@ -10,13 +10,14 @@ internal static class TestFactory
 {
     private static readonly string _hostRoot = Path.Combine(Path.GetTempPath(), "agentkit-write-tool-tests");
 
-    public static WriteFileTool Tool(IFileWriter? writer = null, ISecurityAuthority? authority = null) => new(
+    public static WriteFileTool Tool(IFileWriter? writer = null, ISecurityAuthority? authority = null, ILogger<WriteFileTool>? logger = null) => new(
         new TestFileSystemSelector(writer ?? new FakeFileWriter().WithSuccess()),
         new TestPathNormalizer(),
         new FixedSecurityAuthoritySelector(authority ?? new AllowingSecurityAuthority()),
         new SecurityRequestIdGenerator(),
         TimeProvider.System,
-        Options.Create(new WriteFileToolOptions { HostRootPath = _hostRoot }));
+        Options.Create(new WriteFileToolOptions { HostRootPath = _hostRoot }),
+        logger ?? NullLogger<WriteFileTool>.Instance);
 
     public static ISecurityGrantStore GrantStore() => new AlwaysConsumeGrantStore();
 
@@ -45,7 +46,7 @@ internal static class TestFactory
             null);
     }
 
-    public static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromLegacyRequest(new(
+    public static ToolInvocationContext Request(string json) => ToolCaptureTestData.FromRequest(new(
         ExecutionContext(), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), WriteFileTool.Descriptor);
     public static string ReadText(ToolInvocationResult result) => ((TextPart) result.Content[0]).Text;
 
@@ -88,6 +89,7 @@ internal static class TestFactory
                     request.Id,
                     request.Scope,
                     request.Identity,
+                    request.Authorization,
                     request.Audience,
                     request.Kind,
                     request.Effect,
@@ -117,12 +119,6 @@ internal static class TestFactory
     private sealed class AlwaysConsumeGrantStore: ISecurityGrantStore
     {
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant,
-            SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed by test store."));
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant,

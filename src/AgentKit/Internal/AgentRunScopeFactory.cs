@@ -63,7 +63,7 @@ internal sealed class AgentRunScopeFactory: IAgentRunScopeFactory
     /// <paramref name="definition"/> or <paramref name="prepareRequest"/> is null.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was signalled.</exception>
-    internal async ValueTask<(AgentRunPlanCompilationResult Result, AgentRunScopeLease? Lease)> PrepareAsync(
+    public async ValueTask<(AgentRunPlanCompilationResult Result, AgentRunScopeLease? Lease)> PrepareAsync(
         ResolvedAgentDefinition definition,
         Func<IServiceProvider, CancellationToken, ValueTask<AgentRunRequest>> prepareRequest,
         CancellationToken cancellationToken)

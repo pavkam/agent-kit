@@ -51,6 +51,7 @@ internal static class TestApprovalFactory
             scope,
             null,
             requester,
+            TestSecurityEvidence.Authorization(scope.AgentId, scope.SessionId, scope.Correlation, requester),
             new ComponentId("test"),
             SecurityOperationKind.FileWrite,
             SecurityEffect.CreateOrReplace,

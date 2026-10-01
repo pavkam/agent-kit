@@ -16,7 +16,14 @@ public sealed class ActivityExtensionsTests
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleAllData,
-            ActivityStopped = activity => stopped = activity,
+            // Scoped to this test's own operation: other tests share the process-wide AgentKit source in parallel.
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == "test.operation")
+                {
+                    stopped = activity;
+                }
+            },
         };
         ActivitySource.AddActivityListener(listener);
         using (var activity = AgentKitDiagnostics.Activities.StartActivity("test.operation"))

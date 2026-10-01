@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.AwsBedrock;
 
 using AgentKit.Providers;
+using AgentKit.Providers.Egress;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -28,9 +29,8 @@ public static class ServiceExtensions
     {
         /// <summary>
         /// Registers the Bedrock region/wire-behavior options, along with
-        /// the request translator, response parser, default
-        /// <see cref="TimeProvider"/>, and a dedicated
-        /// <see cref="HttpClient"/>.
+        /// the request translator, response parser, default <see cref="TimeProvider"/>. Adapters built from
+        /// these registrations send through <see cref="ProviderEgress"/> and own no HTTP client.
         /// </summary>
         /// <param name="configureOptions">
         /// Configures the options, most importantly
@@ -80,24 +80,6 @@ public static class ServiceExtensions
                 AwsBedrockProviderDefaults.DefaultEndpointId);
 
             services.TryAddSingleton(TimeProvider.System);
-            // PooledConnectionLifetime is bounded (not the SocketsHttpHandler default of infinite) so a
-            // long-lived process singleton periodically re-resolves DNS and re-verifies the connection
-            // instead of pinning to one address for the process lifetime - the well-documented
-            // singleton-HttpClient pitfall. Registered as its own replaceable singleton so a caller can
-            // override the transport policy (e.g. a custom DelegatingHandler chain) without also having
-            // to replace the HttpClient registration below.
-            services.TryAddSingleton(_ => new SocketsHttpHandler
-            {
-                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-            });
-            // The BCL default HttpClient.Timeout (100s) would otherwise bound every buffered
-            // (non-streaming) attempt regardless of the caller's LlmModelRequest.Deadline, since
-            // this adapter's own deadlineSource is layered on top of, not instead of, the
-            // transport-level timeout. The per-request deadlineSource already bounds every attempt.
-            services.TryAddSingleton(provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>())
-            {
-                Timeout = Timeout.InfiniteTimeSpan,
-            });
 
             return services;
         }
@@ -280,7 +262,7 @@ public static class ServiceExtensions
                     provider.GetRequiredService<IAwsBedrockRequestTranslator>(),
                     provider.GetRequiredService<IAwsBedrockResponseParser>(),
                     provider.GetRequiredKeyedService<IAwsCredentialSource>(AwsBedrockProviderDefaults.ProviderId),
-                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
                     provider.GetRequiredService<AwsBedrockProfileCredentialSource>(),
                     provider.GetService<IProviderProfileRuntimeSelector>());

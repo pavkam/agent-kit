@@ -1,0 +1,45 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Goals.Hosting.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Goals.Hosting
+{
+    public sealed class EngineAgentMessageChannel : AgentKit.IAgentMessageChannel
+    {
+        public EngineAgentMessageChannel(System.IServiceProvider services, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.Hosting.EngineAgentMessageChannel>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.AgentMessageResult> SendAsync(AgentKit.AgentMessageRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class EngineDelegationChildRunner : AgentKit.IDelegationChildRunner
+    {
+        public EngineDelegationChildRunner(System.IServiceProvider services, Microsoft.Extensions.Options.IOptions<AgentKit.Goals.Hosting.GoalWorkerOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.Hosting.EngineDelegationChildRunner>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionId?> ProvisionSessionAsync(AgentKit.DelegationRequest delegation, AgentKit.GoalId childGoalId, int attemptNumber, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DelegationChildRunResult> RunAsync(AgentKit.DelegationChildRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class GoalDelegationWorker : Microsoft.Extensions.Hosting.BackgroundService, System.IAsyncDisposable
+    {
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        protected override System.Threading.Tasks.Task ExecuteAsync(System.Threading.CancellationToken stoppingToken) { }
+        public override System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class GoalWorkerOptions
+    {
+        public GoalWorkerOptions() { }
+        public int MaximumConcurrentChildren { get; set; }
+        public int MaximumSummaryCharacters { get; set; }
+        public System.Collections.Generic.List<AgentKit.GoalProfileReference> Profiles { get; }
+        public int QueueCapacity { get; set; }
+        public System.TimeSpan ScanInterval { get; set; }
+        public int ScanPageSize { get; set; }
+        public AgentKit.ComponentId ScannerId { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoalDelegationWorker(System.Action<AgentKit.Goals.Hosting.GoalWorkerOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentMessageChannel() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegationChildRunner<TRunner>()
+                where TRunner :  class, AgentKit.IDelegationChildRunner { }
+        }
+    }
+}

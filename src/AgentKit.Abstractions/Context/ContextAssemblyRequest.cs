@@ -14,50 +14,46 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller
-/// <c>ContextAssemblyRequest</c> described by the context architecture,
-/// which additionally carries an <c>AgentDefinition</c>, a durable history
-/// cursor resolved through session contracts, a full
-/// <c>SecurityAuthorizationContext</c>, a hook dispatch context, an
-/// effective-configuration snapshot, and a context budget. Until those
-/// packages exist, the caller (the agent loop) supplies the already-loaded
-/// eligible history directly and the assembler performs only structural
-/// repair and instruction/tool assembly over exactly the fields declared
-/// here.
+/// Every request carries one atomically captured <see cref="ContextAssemblyEvidence"/>:
+/// the exact admitted <see cref="AgentDefinition"/>, the authenticated
+/// <see cref="ExecutionIdentity"/>, the pinned <see cref="HistoryView"/>, the
+/// turn's <see cref="SecurityAuthorizationContext"/>, and the
+/// <see cref="EffectiveConfigurationSnapshot"/>. The outer coordinates
+/// (agent, session, branch, run, and turn) are cross-checked against that
+/// evidence at construction, so they can never describe a different run than
+/// the evidence does. The history and the instruction sources the assembler
+/// resolves are read from the evidence; the request itself adds only the
+/// per-model-request values: model, tools, tool choice, settings, extension
+/// data, and the optional output contract. There is no evidence-less request.
+/// </para>
+/// <para>
+/// Hook dispatch and the context budget are not request fields: the keyed
+/// assembler is composed with its hook dispatcher and budget allocator
+/// (<c>ContextAssemblerServices</c>), and the budget is derived from the
+/// selected <see cref="ModelDescriptor"/>'s limits and the assembler's options.
 /// </para>
 /// </remarks>
 public sealed record ContextAssemblyRequest
 {
-    /// <summary>Initializes a new instance of the <see cref="ContextAssemblyRequest"/> record.</summary>
+    /// <summary>Initializes a request from one atomically captured context-evidence value.</summary>
     /// <param name="agentId">The agent this request is being assembled for.</param>
     /// <param name="sessionId">The session this request's history was loaded from.</param>
     /// <param name="branchId">The branch this request's history was loaded from.</param>
-    /// <param name="runId">The run this request is being assembled within.</param>
-    /// <param name="turnId">The turn this request is being assembled for.</param>
+    /// <param name="runId">The active run correlated by the authorization evidence.</param>
+    /// <param name="turnId">The active turn correlated by the authorization evidence.</param>
     /// <param name="modelRequestId">
     /// The identity allocated by the loop for this model request, flowing
     /// through the resulting <see cref="LlmRequestContext"/> and every
     /// subsequent event and committed message it produces.
     /// </param>
     /// <param name="model">The selected model descriptor.</param>
-    /// <param name="instructions">
-    /// The system and developer instructions to place first in the
-    /// assembled request, in order.
-    /// </param>
-    /// <param name="history">The eligible conversation history, in ascending commit order.</param>
+    /// <param name="evidence">The atomic definition, identity, history, authorization, and configuration evidence.</param>
     /// <param name="tools">The tools available for the model to call.</param>
     /// <param name="toolChoice">The tool-call selection policy.</param>
     /// <param name="settings">The effective sampling and output settings.</param>
     /// <param name="extensions">Caller-specific or forward-compatible request data.</param>
-    /// <exception cref="ArgumentNullException">
-    /// <paramref name="model"/>, <paramref name="toolChoice"/>,
-    /// <paramref name="settings"/>, or <paramref name="extensions"/> is
-    /// null.
-    /// </exception>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="instructions"/>, <paramref name="history"/>, or
-    /// <paramref name="tools"/> is a default, uninitialized array.
-    /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="evidence"/>, <paramref name="model"/>, <paramref name="toolChoice"/>, <paramref name="settings"/>, or <paramref name="extensions"/> is null.</exception>
+    /// <exception cref="ArgumentException">Outer agent, session, branch, run, or turn coordinates differ from the captured evidence, or <paramref name="tools"/> is a default, uninitialized array.</exception>
     public ContextAssemblyRequest(
         AgentId agentId,
         SessionId sessionId,
@@ -66,16 +62,14 @@ public sealed record ContextAssemblyRequest
         TurnId turnId,
         ModelRequestId modelRequestId,
         ModelDescriptor model,
-        ImmutableArray<AgentMessage> instructions,
-        ImmutableArray<AgentMessage> history,
+        ContextAssemblyEvidence evidence,
         ImmutableArray<LlmToolDefinition> tools,
         LlmToolChoice toolChoice,
         LlmRequestSettings settings,
         ExtensionData extensions)
     {
         ArgumentNullException.ThrowIfNull(model);
-        ArgumentException.ThrowIfDefault(instructions);
-        ArgumentException.ThrowIfDefault(history);
+        ValidateEvidence(agentId, sessionId, branchId, runId, turnId, evidence);
         ArgumentException.ThrowIfDefault(tools);
         ArgumentNullException.ThrowIfNull(toolChoice);
         ArgumentNullException.ThrowIfNull(settings);
@@ -88,59 +82,12 @@ public sealed record ContextAssemblyRequest
         TurnId = turnId;
         ModelRequestId = modelRequestId;
         Model = model;
-        Instructions = instructions;
-        History = history;
+        Evidence = evidence;
         Tools = tools;
         ToolChoice = toolChoice;
         Settings = settings;
         Extensions = extensions;
     }
-
-    /// <summary>Initializes a request from one atomically captured context-evidence value.</summary>
-    /// <param name="agentId">The agent this request is being assembled for.</param>
-    /// <param name="sessionId">The session this request's history was loaded from.</param>
-    /// <param name="branchId">The branch this request's history was loaded from.</param>
-    /// <param name="runId">The active run correlated by the authorization evidence.</param>
-    /// <param name="turnId">The active turn correlated by the authorization evidence.</param>
-    /// <param name="modelRequestId">The identity allocated for this model request.</param>
-    /// <param name="model">The selected model descriptor.</param>
-    /// <param name="instructions">The ordered system and developer instructions.</param>
-    /// <param name="evidence">The atomic definition, identity, history, authorization, and configuration evidence.</param>
-    /// <param name="tools">The tools available for the model to call.</param>
-    /// <param name="toolChoice">The tool-call selection policy.</param>
-    /// <param name="settings">The effective sampling and output settings.</param>
-    /// <param name="extensions">Caller-specific or forward-compatible request data.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="evidence"/>, <paramref name="model"/>, <paramref name="toolChoice"/>, <paramref name="settings"/>, or <paramref name="extensions"/> is null.</exception>
-    /// <exception cref="ArgumentException">Outer agent, session, branch, run, or turn coordinates differ from the captured evidence, or an array is uninitialized.</exception>
-    public ContextAssemblyRequest(
-        AgentId agentId,
-        SessionId sessionId,
-        BranchId branchId,
-        RunId runId,
-        TurnId turnId,
-        ModelRequestId modelRequestId,
-        ModelDescriptor model,
-        ImmutableArray<AgentMessage> instructions,
-        ContextAssemblyEvidence evidence,
-        ImmutableArray<LlmToolDefinition> tools,
-        LlmToolChoice toolChoice,
-        LlmRequestSettings settings,
-        ExtensionData extensions)
-        : this(
-            agentId,
-            sessionId,
-            branchId,
-            runId,
-            turnId,
-            modelRequestId,
-            model,
-            instructions,
-            ValidateEvidence(agentId, sessionId, branchId, runId, turnId, evidence),
-            tools,
-            toolChoice,
-            settings,
-            extensions)
-        => Evidence = evidence;
 
     /// <summary>Gets the agent this request is being assembled for.</summary>
     public AgentId AgentId { get; init; }
@@ -165,15 +112,13 @@ public sealed record ContextAssemblyRequest
     /// <summary>Gets the selected model descriptor.</summary>
     public ModelDescriptor Model { get; init; }
 
-    /// <summary>Gets the system and developer instructions to place first in the assembled request.</summary>
-    public ImmutableArray<AgentMessage> Instructions { get; init; }
+    /// <summary>Gets the atomic assembly evidence this request was built from.</summary>
+    /// <value>The captured evidence; never null.</value>
+    public ContextAssemblyEvidence Evidence { get; }
 
     /// <summary>Gets the eligible conversation history, in ascending commit order.</summary>
-    public ImmutableArray<AgentMessage> History { get; init; }
-
-    /// <summary>Gets the atomic assembly evidence when the evidence-aware constructor was used.</summary>
-    /// <value>The captured evidence, or null for requests created through the compatibility constructor.</value>
-    public ContextAssemblyEvidence? Evidence { get; }
+    /// <value>Exactly <see cref="HistoryView.Messages"/> of <see cref="ContextAssemblyEvidence.History"/>.</value>
+    public ImmutableArray<AgentMessage> History => Evidence.History.Messages;
 
     /// <summary>Gets the tools available for the model to call.</summary>
     public ImmutableArray<LlmToolDefinition> Tools { get; init; }
@@ -201,9 +146,7 @@ public sealed record ContextAssemblyRequest
         && TurnId.Equals(other.TurnId)
         && ModelRequestId.Equals(other.ModelRequestId)
         && Model.Equals(other.Model)
-        && Instructions.SequenceEqual(other.Instructions)
-        && History.SequenceEqual(other.History)
-        && Equals(Evidence, other.Evidence)
+        && Evidence.Equals(other.Evidence)
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
@@ -221,16 +164,6 @@ public sealed record ContextAssemblyRequest
         hash.Add(TurnId);
         hash.Add(ModelRequestId);
         hash.Add(Model);
-        foreach (var message in Instructions)
-        {
-            hash.Add(message);
-        }
-
-        foreach (var message in History)
-        {
-            hash.Add(message);
-        }
-
         foreach (var tool in Tools)
         {
             hash.Add(tool);
@@ -244,7 +177,7 @@ public sealed record ContextAssemblyRequest
         return hash.ToHashCode();
     }
 
-    private static ImmutableArray<AgentMessage> ValidateEvidence(
+    private static void ValidateEvidence(
         AgentId agentId,
         SessionId sessionId,
         BranchId branchId,
@@ -261,6 +194,5 @@ public sealed record ContextAssemblyRequest
         var correlation = (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
         ArgumentException.ThrowIfNotEqual(runId, correlation.RunId, nameof(runId));
         ArgumentException.ThrowIfNotEqual(turnId, correlation.TurnId, nameof(turnId));
-        return evidence.History.Messages;
     }
 }

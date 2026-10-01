@@ -63,6 +63,24 @@ enter a terminal `RunDeferred` outcome. These values and `IOutputPublisher`
 define contracts; complete publisher, resolution and settlement implementations
 remain under construction.
 
+## Tool recording, execution policy, and events
+
+`IToolCallRecorder` commits the durable accepted-call and terminal facts of one
+tool call through the run's `SessionExecutionCapability` and
+`ToolCallSessionTarget`, returning `ToolCallRecorded` or a typed
+`ToolCallRecordRejected`. `ToolCallAcceptedSessionEntry` and
+`ToolCallTerminalSessionEntry` are the session entries the first-party recorder
+appends. `IToolExecutionPolicy` plans a group of validated calls into
+`PreparedToolCall` values (`ToolExecutionPlan` with scheduling,
+`ToolRetryPolicy`, deadline, and normalization), and
+`IToolExecutionPolicySelector` selects a policy by exact
+`ToolExecutionPolicyReference`; `ToolExecutionCapability` carries the
+`ToolExecutionPolicyBinding` set the run may use. `IToolEventSink` observes
+content-free `ToolEvent` values and can never change an outcome.
+`IIdempotencyEnforcingToolInvoker` lets an invoker confirm the declared
+idempotency mechanism so a possibly-started mutation may be retried. The runtime
+that implements these lives in `AgentKit.Tools`.
+
 ## Tool discovery evidence
 
 `IToolProvider` supplies a stable source identity and independent owned captures
@@ -139,6 +157,30 @@ Both outcomes preserve the requested reference; cancellation propagates.
 [AgentKit.Tools](../AgentKit.Tools/README.md#retained-projection-policies)
 provides the immutable configuration catalog and replaceable registration.
 
+## Durable boundaries
+
+`IDurableOperationHandler` performs one recoverable operation's effect and
+receives a `DurableInvocationContext`. Its `Checkpoints` member is an
+`IDurableCheckpointWriter`: the coordinator-owned writer through which a handler
+commits `RecordCheckpointAsync` and `RecordWaitingAsync` evidence for that one
+attempt, without ever holding the journal, the lease, or the captured grant.
+Both methods return a typed `DurableRecordResult`; `ThrowIfNotRecorded()` turns
+a refusal into a fatal error for a boundary whose evidence must exist before its
+effect.
+
+`DurableBoundaryScope` is the shared mechanics first-party components use to
+wrap an in-process boundary in a recoverable operation. It resolves the
+definition's profile once, journals a boundary only when the profile enables its
+name, and publishes the live continuation into a `DurableBoundaryRegistry`.
+`DurableBoundaryHandler` is the optional base class that bridges the coordinator
+to that registry, refusing in a process that holds no continuation. The seven
+first-party operation names live in `EngineDurableOperations`,
+`IoDurableOperations`, `CompactionDurableOperations`, and
+`PermissionsDurableOperations`, each with a manifest record that carries
+identities and counts only. `IApprovalWaitRecorder` is the narrow contract for
+recording a deferred approval wait from the component that observes the
+deferral.
+
 ## Generic durable-operation codec
 
 `JsonDurableOperationCodec<TState>` is a first-party
@@ -174,8 +216,8 @@ This project has no source-project dependencies.
   — focused behavior and registration tests.
 - [Component specification](../../docs/architecture/foundation-contracts.md) —
   intended ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

@@ -213,15 +213,6 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public void Constructor_WhenAgentIdIsDefault_ThrowsArgumentOutOfRangeException()
-    {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.AgentId = default));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
@@ -231,19 +222,19 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public void Constructor_WhenSecurityProfileKeyIsDefault_ThrowsArgumentOutOfRangeException()
+    public void Constructor_WhenAgentIsNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.SecurityProfileKey = default));
+        var exception = Should.Throw<ArgumentNullException>(
+            () => CreateSession(configureOptions: options => options.Agent = null));
 
         exception.ParamName.ShouldBe("options");
     }
 
     [Fact]
-    public void Constructor_WhenConfigurationVersionIsDefault_ThrowsArgumentOutOfRangeException()
+    public void Constructor_WhenConfigurationIsNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.ConfigurationVersion = default));
+        var exception = Should.Throw<ArgumentNullException>(
+            () => CreateSession(configureOptions: options => options.Configuration = null));
 
         exception.ParamName.ShouldBe("options");
     }
@@ -258,51 +249,9 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public void Constructor_WhenModelSelectionPolicyIsNull_ThrowsArgumentNullException()
-    {
-        var exception = Should.Throw<ArgumentNullException>(
-            () => CreateSession(configureOptions: options => options.ModelSelectionPolicy = null));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
-    public void Constructor_WhenAgentIdDiffersFromTheOptionsAgentId_ThrowsArgumentException()
-    {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
-        options.AgentId = new AgentId(Guid.NewGuid());
-
-        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
-    public void Constructor_WhenAgentRevisionDiffersFromTheOptionsRevision_ThrowsArgumentException()
-    {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
-        options.AgentDefinitionRevision = new AgentDefinitionRevision(99);
-
-        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
-    public void Constructor_WhenAgentSecurityProfileDiffersFromTheOptionsSecurityProfileKey_ThrowsArgumentException()
-    {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
-        options.SecurityProfileKey = new SecurityProfileKey("a-different-security-profile");
-
-        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
     public void Constructor_WhenAgentSessionProfileDiffersFromTheOptionsSessionProfileKey_ThrowsArgumentException()
     {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        var options = ConversationSessionOptionsFactory.Valid();
         var original = options.SessionProfile!;
         options.SessionProfile = new SessionProfileSnapshot(
             new SessionProfileReference(new SessionProfileKey("a-different-session-profile"), original.Reference.Version),
@@ -326,22 +275,11 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public void Constructor_WhenConfigurationVersionDiffersFromTheOptionsConfigurationVersion_ThrowsArgumentException()
-    {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
-        options.ConfigurationVersion = new ConfigurationVersion(99);
-
-        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
     public void Constructor_WhenConfigurationFingerprintDiffersFromTheSessionProfileFingerprint_ThrowsArgumentException()
     {
-        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        var options = ConversationSessionOptionsFactory.Valid();
         options.Configuration = new EffectiveConfigurationSnapshot(
-            options.ConfigurationVersion, new ContentHash("sha256:a-different-fingerprint"), [], []);
+            options.Configuration!.Version, new ContentHash("sha256:a-different-fingerprint"), [], []);
 
         var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
 
@@ -358,42 +296,13 @@ public sealed class DefaultConversationSessionTests
             coordinator: coordinator,
             loop: loop,
             turnExecutor: executor,
-            options: ConversationSessionOptionsFactory.ValidWithExactEvidence());
+            options: ConversationSessionOptionsFactory.Valid());
 
         var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
 
         result.Succeeded.ShouldBeTrue();
         executor.RunCallCount.ShouldBe(1);
         executor.LastRequest.ShouldNotBeNull().AgentId.ShouldBe(ConversationSessionOptionsFactory.AgentId);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Constructor_WhenMaxTurnsIsNotPositive_ThrowsArgumentOutOfRangeException(int maxTurns)
-    {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.MaxTurns = maxTurns));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
-    public void Constructor_WhenAttemptTimeoutIsZero_ThrowsArgumentOutOfRangeException()
-    {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.AttemptTimeout = TimeSpan.Zero));
-
-        exception.ParamName.ShouldBe("options");
-    }
-
-    [Fact]
-    public void Constructor_WhenAttemptTimeoutIsNegative_ThrowsArgumentOutOfRangeException()
-    {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => CreateSession(configureOptions: options => options.AttemptTimeout = TimeSpan.FromSeconds(-1)));
-
-        exception.ParamName.ShouldBe("options");
     }
 
     [Fact]
@@ -403,24 +312,10 @@ public sealed class DefaultConversationSessionTests
         var descriptor = Descriptor(advertised.Id);
         using var session = CreateSession(configureOptions: options =>
         {
-            options.Tools.Add(advertised);
             options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptor, advertised));
         });
 
         _ = session.ShouldNotBeNull();
-    }
-
-    [Fact]
-    public void Constructor_WhenToolPresentationBindingReferencesAToolNotAdvertised_ThrowsArgumentException()
-    {
-        var advertised = Advertised(new ToolId("read"), "read");
-        var descriptor = Descriptor(advertised.Id);
-
-        var exception = Should.Throw<ArgumentException>(() => CreateSession(configureOptions: options =>
-            // "advertised" itself is never added to options.Tools, so the binding references an unadvertised tool.
-            options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptor, advertised))));
-
-        exception.ParamName.ShouldBe("options");
     }
 
     [Fact]
@@ -433,8 +328,6 @@ public sealed class DefaultConversationSessionTests
 
         var exception = Should.Throw<ArgumentException>(() => CreateSession(configureOptions: options =>
         {
-            options.Tools.Add(firstAdvertised);
-            options.Tools.Add(secondAdvertised);
             options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(firstDescriptor, firstAdvertised));
             options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(secondDescriptor, secondAdvertised));
         }));
@@ -1136,7 +1029,7 @@ public sealed class DefaultConversationSessionTests
                 new RunSettlementCompleted()),
         };
         var observer = new RecordingConversationEventObserver();
-        using var session = CreateSession(loop: loop, configureOptions: o => o.Output = TestOutputDefinition());
+        using var session = CreateSession(loop: loop, configureOptions: o => o.Agent = o.Agent! with { Output = TestOutputDefinition() });
 
         var result = await session.SendAsync("question", observer, TestContext.Current.CancellationToken);
 
@@ -1147,27 +1040,29 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheAgentStatesRunDefaults_DelegatesThemAsTheTurnLimits()
+    {
+        var loop = new FakeAgentLoop();
+        using var session = CreateSession(loop: loop, configureOptions: o =>
+            o.Agent = o.Agent! with { RunDefaults = new RunPolicyDefaults(3, TimeSpan.FromSeconds(7)) });
+
+        _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
+
+        var request = loop.LastRequest.ShouldNotBeNull();
+        request.MaxTurns.ShouldBe(3);
+        request.AttemptTimeout.ShouldBe(TimeSpan.FromSeconds(7));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAnOutputDefinitionIsConfigured_PassesItToTheDelegatedLoopRequest()
     {
         var loop = new FakeAgentLoop();
         var definition = TestOutputDefinition();
-        using var session = CreateSession(loop: loop, configureOptions: o => o.Output = definition);
+        using var session = CreateSession(loop: loop, configureOptions: o => o.Agent = o.Agent! with { Output = definition });
 
         _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
 
         loop.LastRequest.ShouldNotBeNull().Output.ShouldBeSameAs(definition);
-    }
-
-    [Fact]
-    public async Task SendAsync_WhenBudgetLimitsAreConfigured_PassesThemToTheLoop()
-    {
-        var loop = new FakeAgentLoop();
-        var limit = new BudgetLimit(BudgetDimensions.Cost, 0.5m, new BudgetUnit("usd"), BudgetLimitKind.Hard);
-        using var session = CreateSession(loop: loop, configureOptions: o => o.BudgetLimits.Add(limit));
-
-        _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
-
-        loop.LastRequest.ShouldNotBeNull().BudgetLimits.ShouldBe([limit]);
     }
 
     [Fact]
@@ -1193,14 +1088,14 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenNoOutputDefinitionIsConfigured_LeavesTheRequestAndServicesOutputNull()
+    public async Task SendAsync_WhenTheAgentSelectsFreeTextOutput_DelegatesTheFreeTextDefinition()
     {
         var loop = new FakeAgentLoop();
         using var session = CreateSession(loop: loop);
 
         _ = await session.SendAsync("question", TestContext.Current.CancellationToken);
 
-        loop.LastRequest.ShouldNotBeNull().Output.ShouldBeNull();
+        loop.LastRequest.ShouldNotBeNull().Output.ShouldBe(OutputDefinition.FreeText);
         loop.LastServices.ShouldNotBeNull().OutputProcessor.ShouldBeNull();
     }
 
@@ -1412,7 +1307,7 @@ public sealed class DefaultConversationSessionTests
             DateTimeOffset.UnixEpoch,
             new SchemaVersion("1"),
             mismatchedMessage);
-        coordinator.ReadResultFactory = _ => new SessionPage([entry], new SessionSequence(1), hasMore: false);
+        coordinator.ReadResultFactory = request => FakeSessionCoordinator.PageFor(request, [entry], new SessionSequence(1), hasMore: false);
         using var session = CreateSession(coordinator: coordinator);
         _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
 
@@ -1428,7 +1323,7 @@ public sealed class DefaultConversationSessionTests
         var sessionId = new SessionId(Guid.NewGuid());
         var first = HistoryEntry(sessionId, coordinator.BranchId, 1, "first");
         var second = HistoryEntry(sessionId, coordinator.BranchId, 2, "second");
-        coordinator.ReadResultFactory = _ => new SessionPage([first, second], new SessionSequence(2), hasMore: false);
+        coordinator.ReadResultFactory = request => FakeSessionCoordinator.PageFor(request, [first, second], new SessionSequence(2), hasMore: false);
         using var session = CreateSession(coordinator: coordinator);
         _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
 
@@ -1444,7 +1339,7 @@ public sealed class DefaultConversationSessionTests
         var sessionId = new SessionId(Guid.NewGuid());
         // The entry's sequence (0) does not advance past the requested cursor (also 0), which real stores never do.
         var stale = HistoryEntry(sessionId, coordinator.BranchId, 0, "stale");
-        coordinator.ReadResultFactory = _ => new SessionPage([stale], new SessionSequence(1), hasMore: false);
+        coordinator.ReadResultFactory = request => FakeSessionCoordinator.PageFor(request, [stale], new SessionSequence(1), hasMore: false);
         using var session = CreateSession(coordinator: coordinator);
         _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
 
@@ -1480,9 +1375,9 @@ public sealed class DefaultConversationSessionTests
         var secondMessage = HistoryEntry(sessionId, coordinator.BranchId, 2, "second");
         coordinator.ReadResultFactory = request => request.FromSequenceExclusive.Value switch
         {
-            0 => new SessionPage([firstMessage], new SessionSequence(1), hasMore: true),
-            1 => new SessionPage([secondMessage], new SessionSequence(2), hasMore: false),
-            _ => new SessionPage([], request.FromSequenceExclusive, hasMore: false),
+            0 => FakeSessionCoordinator.PageFor(request, [firstMessage], new SessionSequence(1), hasMore: true),
+            1 => FakeSessionCoordinator.PageFor(request, [secondMessage], new SessionSequence(2), hasMore: false),
+            _ => FakeSessionCoordinator.PageFor(request, [], request.FromSequenceExclusive, hasMore: false),
         };
         using var session = CreateSession(coordinator: coordinator);
         _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
@@ -1527,7 +1422,8 @@ public sealed class DefaultConversationSessionTests
             admissionId,
             new SessionSequence(1),
             [admissionId]);
-        coordinator.ReadResultFactory = _ => new SessionPage(
+        coordinator.ReadResultFactory = request => FakeSessionCoordinator.PageFor(
+            request,
             [operationalEntry, message],
             new SessionSequence(2),
             hasMore: false);
@@ -1607,7 +1503,7 @@ public sealed class DefaultConversationSessionTests
     {
         var coordinator = new FakeSessionCoordinator
         {
-            ReadResultFactory = request => new SessionPage([], request.FromSequenceExclusive, hasMore: true),
+            ReadResultFactory = request => FakeSessionCoordinator.PageFor(request, [], request.FromSequenceExclusive, hasMore: true),
         };
         var sessionId = new SessionId(Guid.NewGuid());
         using var session = CreateSession(coordinator: coordinator);
@@ -1627,7 +1523,8 @@ public sealed class DefaultConversationSessionTests
         var coordinator = new FakeSessionCoordinator();
         var sessionId = new SessionId(Guid.NewGuid());
         var retainedMessage = HistoryEntry(sessionId, coordinator.BranchId, 1, "retained after restart");
-        coordinator.ReadResultFactory = _ => new SessionPage(
+        coordinator.ReadResultFactory = request => FakeSessionCoordinator.PageFor(
+            request,
             [retainedMessage],
             new SessionSequence(1),
             hasMore: false);

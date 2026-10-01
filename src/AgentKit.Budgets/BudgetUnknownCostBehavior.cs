@@ -5,13 +5,12 @@ namespace AgentKit.Budgets;
 
 /// <summary>Declares how the authority would react to an unknown-cost commitment.</summary>
 /// <remarks>
-/// This option is declared for parity with the full budgets architecture
-/// but is not yet enforced by the ledger-backed first-party authority:
-/// <see cref="IBudgetReservation.CommitAsync"/> takes a non-nullable
-/// <see cref="decimal"/>, so there is no "unknown amount" input for this
-/// reduced contract to special-case yet. A future revision that admits a
-/// nullable or explicitly-unknown actual amount for the
-/// <see cref="BudgetDimensions.Cost"/> dimension will act on this option.
+/// The ledger-backed first-party authority applies this option to
+/// reservations that declare an unknown cost estimate on the
+/// <see cref="BudgetDimensions.Cost"/> dimension
+/// (<c>BudgetReservationRequest.CostEstimateUnknown</c>). Commitment is not
+/// affected: <see cref="IBudgetReservation.CommitAsync"/> takes a non-nullable
+/// <see cref="decimal"/>, so an unknown actual amount is not a commit input.
 /// </remarks>
 public enum BudgetUnknownCostBehavior
 {

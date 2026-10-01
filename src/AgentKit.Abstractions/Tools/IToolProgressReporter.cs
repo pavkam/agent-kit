@@ -5,10 +5,9 @@ namespace AgentKit;
 
 /// <summary>Reports a bounded, invocation-scoped, live-only progress update from one running <see cref="IToolInvoker"/> attempt.</summary>
 /// <remarks>
-/// This is a deliberately reduced interim shape covering only the live-update surface. It intentionally omits the
-/// durable semantic-checkpoint API described by the tool-call lifecycle contract (bounded complete snapshots with
-/// declared cadence, replacement behavior, and post-outcome fencing); that surface lands with the executor pipeline
-/// that can enforce cadence and staleness. Progress is diagnostic only: it never becomes message content, never
+/// This shape covers only the live-update surface. It intentionally omits the durable semantic-checkpoint API
+/// described by the tool-call lifecycle contract (bounded complete snapshots with declared cadence, replacement
+/// behavior, and post-outcome fencing), which no first-party executor implements. Progress is diagnostic only: it never becomes message content, never
 /// authorizes an effect, and reaching outcome staging fences and ignores any further report.
 /// </remarks>
 public interface IToolProgressReporter

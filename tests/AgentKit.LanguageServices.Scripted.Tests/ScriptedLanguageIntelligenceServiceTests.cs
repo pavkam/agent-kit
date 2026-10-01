@@ -126,15 +126,13 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
     }
 
     [Theory]
-    [InlineData(GrantConsumptionStatus.Reconciled, true, true)]
-    [InlineData(GrantConsumptionStatus.Consumed, false, true)]
-    [InlineData(GrantConsumptionStatus.Consumed, true, false)]
-    public async Task QueryAsync_WhenReceiptDoesNotAuthorizeFreshIntent_DeniesBeforeScriptedResult(GrantConsumptionStatus status, bool includeReceipt, bool exactReceipt)
+    [InlineData(GrantConsumptionStatus.Reconciled, true)]
+    [InlineData(GrantConsumptionStatus.Consumed, false)]
+    public async Task QueryAsync_WhenReceiptDoesNotAuthorizeFreshIntent_DeniesBeforeScriptedResult(GrantConsumptionStatus status, bool exactReceipt)
     {
         var store = new TestGrantStore
         {
             Status = status,
-            IncludeReceipt = includeReceipt,
             ReturnExactReceipt = exactReceipt,
         };
         var service = Service(store, [new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero)]);

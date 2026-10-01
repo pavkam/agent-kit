@@ -8,12 +8,13 @@ gets the specialists' tools, and a specialist cannot start further delegations.
 
 ## What the agent needs
 
-| Need                             | AgentKit part                                                                                  |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| A way for the lead to delegate   | `AddTaskTool` (`task`) from `AgentKit.Tools.Task`                                              |
-| Authorization of each delegation | `AddAgentDelegation` registers the `ITaskDelegationBroker` that obtains and enforces the grant |
-| Something that runs the child    | Your `ITaskDelegationChannel`: builds the specialist's engine, runs it, returns a typed result |
-| Distinct specialists             | One builder per specialist with its own workspace, policy, instructions, and limits            |
+| Need                             | AgentKit part                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| A way for the lead to delegate   | `AddTaskTool` (`task`) from `AgentKit.Tools.Task`                                                 |
+| Authorization of each delegation | `AddAgentGoals` registers the `IDelegationCoordinator` that obtains and enforces the grant        |
+| Durable record of each child     | A goal store (`AddInMemoryGoalStore`, or the JSON/SQLite leaves) selected by a goal profile       |
+| Something that runs the child    | `AddGoalDelegationWorker` from `AgentKit.Goals.Hosting`: claims and runs each child on the engine |
+| Distinct specialists             | One builder per specialist with its own workspace, policy, instructions, and limits               |
 
 ## Compose the engine
 
@@ -49,7 +50,7 @@ static AgentEngine CreateTeam(string repoRoot, string designRoot, string apiKey)
             o.MaxTurns = 15;
         });
 
-    // The task tool, the delegation broker, and the engine-backed channel that runs the child.
+    // The task tool, the goal and delegation runtime, and the hosted worker that runs each child.
     builder.WithDelegation(o =>
     {
         o.DefaultMaximumTurns = 15;
@@ -66,27 +67,34 @@ static AgentEngine CreateTeam(string repoRoot, string designRoot, string apiKey)
 
 The `task` tool exposes `target_agent_id`, `objective`, `acceptance_criteria`,
 `allowed_tools`, `max_turns`, `max_tool_calls`, and `timeout_seconds` to the
-model, clamps them to the configured ceilings, and asks the broker to delegate.
-The broker issues a `SecurityRequest` of kind `Delegation` and forwards the
-prompt with the grant to the channel.
+model, clamps them to the configured ceilings, and asks the delegation
+coordinator to delegate. The coordinator resolves the target, evaluates the goal
+profile's policies, reserves the child's budget inside the parent's, issues a
+`SecurityRequest` of kind `Delegation`, creates a durable child goal, and waits.
 
-## What the channel does
+## What the worker does
 
-`WithDelegation` registers `EngineDelegationChannel`, the first-party
-`ITaskDelegationChannel`. It resolves the target through
-`engine.GetAgentAsync(prompt.TargetAgentId)`, so only agents published on this
-engine can be delegated to; sends the objective and acceptance criteria as one
-turn of that agent in a new session under the parent's identity, bounded by the
-prompt's deadline and the narrower of its turn budget and the target's own
-limit; and returns a `TaskDelegationChildResult` carrying the child's real
-`SessionId` and `RunId`, a status mapped from the run outcome, the child's final
-answer bounded to `MaximumSummaryCharacters`, and a side-effect certainty
-derived from the child's tool results. An unknown target, an expired deadline,
-or a rejected admission is a typed `TaskDelegationRejected`.
+`WithDelegation` registers the goal runtime, one goal profile over an in-memory
+goal store, the local dispatcher, and the hosted `GoalDelegationWorker`. The
+dispatcher only commits a ready child goal; it never runs it. The worker claims
+the child with one atomic transition that records the attempt before anything
+executes, then `EngineDelegationChildRunner` resolves the target through
+`engine.GetAgentAsync`, so only agents published on this engine can be delegated
+to, creates a session for the attempt under the parent's identity, and runs one
+turn of that agent bounded by the delegation deadline and the narrower of the
+request's turn budget and the target's own limit. The settled goal carries the
+child's real session and run, a status mapped from the run outcome, the child's
+final answer bounded to `MaximumSummaryCharacters`, and a side-effect certainty
+derived from the child's tool results.
 
-To write your own channel (for example to run children on another engine or
-through a queue), implement `ITaskDelegationChannel` and register it before
-calling `WithDelegation`; the sugar's `TryAdd` keeps yours.
+Because the claim precedes the run, a duplicated signal or rescan never starts a
+second run, and an attempt left running by a crashed process is settled as
+failed with unknown effects instead of being silently rerun. While a child waits
+on its own delegation it releases its worker slot, so a chain of nested
+delegations needs only one. A standalone engine has no host to start the hosted
+worker, so the first committed child starts it and disposing the engine stops
+it. To run children somewhere else, register your own `IDelegationChildRunner`
+with `ReplaceDelegationChildRunner<T>()`.
 
 The specialists have no `task` tool, so a specialist cannot delegate again, and
 the shared `ReadOnlyWorkspacePolicy` (from
@@ -99,14 +107,14 @@ concurrent delegations from one lead turn in parallel.
 Delegation is a protected operation of kind `SecurityOperationKind.Delegation`
 whose resource is the delegation itself (`delegation:<id>`); the target agent,
 objective, budget, and deadline are bound into the request fingerprint. A policy
-therefore decides _whether this identity may delegate at all_, and the channel
-decides _to whom_, as the `switch` above does. To forbid delegation for some
-callers:
+therefore decides _whether this identity may delegate at all_, and the goal
+profile's delegation policies decide _to whom_ and within what limits. To forbid
+delegation for some callers:
 
 ```csharp
 sealed class NoDelegationForGuestsPolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(request.Kind == SecurityOperationKind.Delegation && request.Identity.TenantId == new TenantId("guest")
             ? new SecurityPolicyResult(SecurityPolicyResultKind.Deny, "lead.no-guest-delegation", "Guest sessions cannot delegate work.")
             : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));
@@ -131,16 +139,16 @@ sessions are visible through the engine's session directory.
 
 ## What the framework guarantees
 
-- **Delegation is a protected operation.** The `task` tool obtains a grant whose
+- **Delegation is a protected operation.** The coordinator obtains a grant whose
   fingerprint binds the exact target, objective, budget, and deadline; the
-  broker consumes that grant once, immediately before your channel runs. A
+  dispatcher consumes that grant once before the child goal is handed off. A
   policy `Deny` or a stale grant ends in a typed rejected result and no child
   run.
 - **Budgets and deadlines are narrowed, never widened.** The `task` tool clamps
   the model's requested turns, tool calls, and timeout to the configured
   ceilings; the child builder applies them as its own limits.
-- **The parent sees a summary, not a transcript.** `TaskDelegationChildResult`
-  carries a bounded `Summary`, a `TaskDelegationStatus`, and a
+- **The parent sees a summary, not a transcript.** `DelegationChildResult`
+  carries a bounded `StructuredGoalResult`, a `DelegationStatus`, and a
   `SideEffectCertainty`; the child's tools, messages, and grants never flow back
   into the parent's context.
 - **Identity is carried, not minted.** The child runs as the same principal that
@@ -148,20 +156,21 @@ sessions are visible through the engine's session directory.
 
 ## Status
 
-The broker, the `task` tool, multi-agent hosting on one engine, and the
-engine-backed channel are implemented. What the architecture describes beyond
-this, durable goal and attempt records, joins over several children, and worker
-hosting for detached child work, is tracked in the
-[goals and delegation workstream](../workstreams/goals-and-delegation.md). Until
-then a child is a synchronous run inside the parent's tool call, bounded by the
-deadline it was given.
+The coordinator, the durable goal stores, the join strategies, the `task` tool,
+multi-agent hosting on one engine, and the hosted worker are implemented. A
+child never runs inside the parent's tool call: it is a durable goal that a
+worker claims and runs, and the parent waits on durable state bounded by the
+deadline it was given. The
+[goals and delegation workstream](../workstreams/goals-and-delegation.md)
+records what is deliberately left out.
 
 ## What lives where
 
 | Concern                    | Package                                                                             |
 | -------------------------- | ----------------------------------------------------------------------------------- |
 | `task` tool                | [AgentKit.Tools.Task](../../src/AgentKit.Tools.Task/README.md)                      |
-| Delegation broker          | [AgentKit.Goals](../../src/AgentKit.Goals/README.md)                                |
+| Delegation coordinator     | [AgentKit.Goals](../../src/AgentKit.Goals/README.md)                                |
+| Child worker and runner    | [AgentKit.Goals.Hosting](../../src/AgentKit.Goals.Hosting/README.md)                |
 | Delegation contracts       | [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md)                  |
 | Normative delegation rules | [Goals and multi-agent delegation](../concepts/goals-and-multi-agent-delegation.md) |
 

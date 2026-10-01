@@ -10,12 +10,13 @@ using AgentKit.Providers.Http;
 /// Chat integration.
 /// </summary>
 /// <remarks>
-/// This package covers only <c>POST /v2/chat</c> (buffered and streaming)
-/// for text, reasoning, and client-executed function tools. Embed, Rerank,
-/// Classify, the legacy v1 dialect, and asynchronous embed jobs are
-/// separate contracts not covered by this package. Grounding documents,
-/// citations, <c>response_format</c> structured output, <c>safety_mode</c>,
-/// and hosted connectors are not yet translated.
+/// The chat operation covers <c>POST /v2/chat</c> (buffered and streaming)
+/// for text, reasoning, and client-executed function tools. Embed and Rerank
+/// are separate operations with their own registrations in this package.
+/// Classify, the v1 dialect, and asynchronous embed jobs are not covered.
+/// Grounding documents, citations, <c>safety_mode</c>, and hosted connectors
+/// are not translated, and structured output is carried by the reserved
+/// synthetic tool rather than <c>response_format</c>.
 /// </remarks>
 public static class CohereProviderDefaults
 {
@@ -92,10 +93,12 @@ public static class CohereProviderDefaults
     /// <c>thinking</c> content blocks through the same event-driven
     /// content-start/content-delta/content-end grammar used for visible
     /// text, so <c>SupportsReasoning</c> is <see langword="true"/>. Image
-    /// and document content parts, grounding documents, citations, hosted
-    /// connectors, and native structured output are not yet translated, so
-    /// vision and structured-output support remain <see langword="false"/>
-    /// here even though some Cohere models support them natively. A caller
+    /// and document content parts, grounding documents, citations, and hosted
+    /// connectors are not translated, so vision support remains
+    /// <see langword="false"/> here even though some Cohere models support it
+    /// natively. Structured output is supported by carrying the run's output
+    /// contract as the reserved synthetic tool under a forced tool choice, so
+    /// <c>SupportsStructuredOutput</c> is <see langword="true"/>. A caller
     /// registering a model with materially different capabilities supplies
     /// its own <see cref="ModelCapabilities"/> rather than relying on this
     /// shared default.

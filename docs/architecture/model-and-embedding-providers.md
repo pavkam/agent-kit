@@ -535,8 +535,15 @@ public sealed record ModelSelectionPolicy(
     ImmutableArray<ModelAlias> Candidates,
     ModelFallbackPolicy Fallback,
     CapabilityDowngradePolicy Downgrade,
-    ExtensionData Extensions);
+    ExtensionData Extensions,
+    ModelRequirements Requirements,
+    LlmRequestSettings RequestSettings);
 
+// Requirements and RequestSettings are a recorded addition to the four-member policy:
+// the agent definition has no member for either, so the policy an AgentDefinition already
+// carries states which behaviors its requests need and how they are sampled. Both default
+// to ModelRequirements.None and LlmRequestSettings.Default. The request's Requirements is
+// still the merged per-request set the loop derives from the policy's base.
 public sealed record ModelSelectionRequest(
     ProtectedSemanticOperationContext Operation,
     TurnId TurnId,
@@ -566,11 +573,10 @@ public sealed record InvalidModelPolicy(string Reason) : ModelSelectionResult;
 
 public abstract record CapabilityValidationResult;
 
-public sealed record CapabilitiesSupported(ModelRequestContext Context)
+public sealed record CapabilitiesSupported
     : CapabilityValidationResult;
 
 public sealed record CapabilitiesDowngraded(
-    ModelRequestContext Context,
     ImmutableArray<CapabilityAdjustment> Adjustments)
     : CapabilityValidationResult;
 
@@ -588,7 +594,8 @@ public interface IModelSelector
 public interface IModelCapabilityValidator
 {
     ValueTask<CapabilityValidationResult> ValidateAsync(
-        ModelRequestContext context,
+        ModelDescriptor model,
+        ModelRequirements requirements,
         CapabilityDowngradePolicy downgradePolicy,
         CancellationToken cancellationToken = default);
 }
@@ -672,11 +679,11 @@ Provider-specific counters that do not fit these portable fields remain in
 namespace AgentKit;
 
 public sealed record LlmModelRequest(
-    ProtectedSemanticOperationContext Operation,
-    ModelRequestContext Context,
+    LlmRequestContext Context,
     int Attempt,
     DateTimeOffset Deadline,
-    ProviderRequestOptions Options);
+    ProviderRequestOptions Options,
+    ProtectedSemanticOperationContext? Operation = null);
 
 public abstract record ModelResponseEvent(
     ModelRequestId RequestId,
@@ -789,10 +796,11 @@ public interface ILlmModel
 public sealed record ModelExecutionRequest(
     ProtectedSemanticOperationContext Operation,
     ModelSelectionDecision Selection,
-    ModelRequestContext Context,
-    BudgetExecutionCapability Budget,
-    HookDispatchContext Hooks,
-    ProviderRetryPolicy RetryPolicy);
+    LlmRequestContext Context,
+    BudgetExecutionCapability? Budget,
+    HookDispatchContext? Hooks,
+    ProviderRetryPolicy RetryPolicy,
+    ModelFallbackPolicy Fallback = ModelFallbackPolicy.FirstCandidateOnly);
 
 public abstract record ModelExecutionResult;
 
@@ -826,10 +834,15 @@ public interface IModelRequestExecutor
 ```
 
 The adapter and executor return `Task` because network execution and ordered
-event delivery are inherently asynchronous. Interim (WS7-C1): the shipped
-`ModelExecutionRequest` uses `LlmRequestContext` rather than
-`ModelRequestContext`, and `Budget` and `Hooks` are nullable until a budget
-scope or hook dispatch exists. `ProviderRetryPolicy` bounds same-model retries:
+event delivery are inherently asynchronous. The conversational request body is
+`LlmRequestContext`: the model request identity, selected model, ordered
+messages, tool snapshot, tool choice, effective settings, extension data, the
+context manifest, and the resolved output definition. Agent, session, run, turn,
+identity, and authorization evidence travel in the
+`ProtectedSemanticOperationContext`, not in the request body. `Budget` and
+`Hooks` on `ModelExecutionRequest` are optional capabilities of the executor:
+the first-party loop reserves budget per turn itself and dispatches hooks around
+the call, so it passes neither. `ProviderRetryPolicy` bounds same-model retries:
 at least one attempt, a non-negative initial delay, and a maximum delay no
 smaller than that initial delay. Jitter stays in the executor. The observer uses
 `ValueTask` to support synchronous bounded fan-out without allocating per event.
@@ -1371,6 +1384,120 @@ supplied grants; the transport never obtains implicit authority for the adapter.
 An adapter never injects an unkeyed authority, reuses a grant for another
 boundary or retry, exposes raw credential material, or treats the
 semantic-operation context as authority.
+
+The egress half of this rule is shipped; the credential-read half is not. See
+[Provider egress: shipped design and deviations](#provider-egress-shipped-design-and-deviations).
+
+## Provider egress: shipped design and deviations
+
+Every first-party conversation, embedding, and reranking adapter sends through
+`ProviderEgress` in `AgentKit.Providers`, never through an `HttpClient`. The
+adapters' `HttpClient` and `SocketsHttpHandler` registrations are removed and no
+fallback exists: `AddAgentProviders` registers `ProviderEgress`, which resolves
+`ISecurityAuthoritySelector`, `ISecurityGrantStore`, `ISecurityAuditDispatcher`,
+`INetworkNameResolver`, `INetworkTransport`, replaceable identity sources, and
+the `TimeProvider` from the container, so a composition without a network and
+security selection fails resolution instead of sending around the boundary.
+Replace any of those through ordinary dependency injection and the egress
+boundary observes the replacement.
+
+For one attempt `ProviderEgress.SendAsync(ProviderEgressRequest)` does the
+following and performs no DNS, connection, or transmission before step 3:
+
+1. Freeze the body into immutable bytes and refuse a request with no
+   `ProtectedSemanticOperationContext`, a non-HTTP(S) or credential-bearing
+   address, or an over-bound body (`Authorization` or `InvalidRequest`).
+2. Select the authority named by the operation's captured authorization context
+   through `ISecurityAuthoritySelector`.
+3. Obtain a provider-egress grant (audience `agentkit.providers.egress`,
+   `SecurityOperationKind.Network`, `SecurityEffect.Egress`) whose resource is
+   the canonical destination with its query replaced by a fingerprint and whose
+   input fingerprint binds the provider, API family, service surface, endpoint
+   and credential profile references (key and version, or none for an unbound
+   operation), model, deployment and descriptor revision, operation kind,
+   attempt, streaming mode, method, payload hash and length, header names,
+   declared classification, deadline, and response bound. Consume it atomically
+   with required audit through `SecurityGrantConsumptionHostOperations`; denial,
+   an unavailable authority, an unavailable grant store, an unauditable
+   consumption, or a mismatched receipt refuses.
+4. Obtain a separate resolution grant for `INetworkNameResolver` and resolve.
+5. Obtain a separate send grant for `INetworkTransport`, whose fingerprint
+   hashes every header value (including credential headers) and the body, and
+   send. The resolver and transport consume their own grants, so the lower
+   boundaries re-enforce authority and the provider-egress grant can never
+   substitute for either.
+
+The response streams: `ProviderEgressResponse.Content` exposes the transport's
+own bounded body stream without buffering, so incremental parsers see bytes at
+whatever fragmentation the transport delivers. A streamed overrun surfaces as
+`NetworkResponseTooLargeException` and an expired body deadline as
+`NetworkResponseTimedOutException`, which `ProviderEgressBodyFault` maps to
+`ProtocolViolation` and `Timeout`; neither is a truncated success. Connection
+pooling, pinned-address connection, and per-peer grant checks stay in the
+network leaf.
+
+Refusals use the stable `ProviderFailure` taxonomy, carry only fixed safe
+messages, and never contain a request body, credential, header value, or
+destination path:
+
+| Condition                                                                                                             | `ProviderFailureKind` |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| No operation context; denial or approval-required at any grant; unavailable authority, grant store, or required audit | `Authorization`       |
+| Caller token cancelled at any stage                                                                                   | `Cancellation`        |
+| Attempt deadline elapsed before or during send (including a lower boundary reporting the deadline token as cancelled) | `Timeout`             |
+| DNS, connect, TLS, or request failure; unsupported result                                                             | `Unavailable`         |
+| Redirect, redirect limit, declared oversize response, protocol violation                                              | `ProtocolViolation`   |
+| Unsupported scheme, malformed endpoint, oversize request body                                                         | `InvalidRequest`      |
+
+Instrumentation is observational: one `provider.egress` activity per attempt
+with provider and bounded operation tags and a truthful terminal status, the
+`agentkit.provider.egress.count` and `.duration` instruments with operation and
+outcome dimensions only, and content-free log events 6120 to 6122.
+
+Recorded deviations from the architecture above:
+
+- **One boundary class.** The shipped constructors take `ProviderEgress` instead
+  of separate authority-selector, grant-store, and network-transport parameters.
+  The composition is identical; the adapters just do not each re-assemble it.
+  Direct `ILlmModel`/`IEmbeddingModel`/`IReranker` implementations remain
+  first-class and may send however they choose, but then do not inherit this
+  enforcement.
+- **In-memory message containers.** Adapters build `HttpRequestMessage` and read
+  `HttpResponseMessage`-shaped values only as in-memory containers for the
+  method, URI, headers, and body. No HTTP client, handler, or SDK sends them,
+  and `ProviderEgress` freezes the body before authorizing.
+- **Redirects are never followed.** Provider egress sets the redirect limit to
+  zero and refuses a redirecting endpoint, so credentials cannot reach another
+  origin; there is no per-hop re-authorization path.
+- **Host-wide classification.** The specification asks for classified payloads;
+  with no per-message classification mapping yet, `ProviderEgressOptions`
+  declares one classification (default `Confidential`) for all provider
+  payloads.
+- **Fresh grants per attempt, retries above.** Each attempt, including a retry
+  or fallback, requests three new grants; nothing is reused. Retries and
+  fallback stay in the executor.
+- **Unbound operations.** A descriptor with no `ProviderOperationBinding`
+  (legacy-shaped registration) still passes the destination, payload, and
+  attempt checks; its fingerprint records no profile references.
+- **Credential read is not yet a protected effect.** The credential-read grant,
+  the `ProviderCredentialResolutionRequest` carrying it, and the disposable
+  `IProviderCredentialLease` described above are not shipped:
+  `IProviderCredentialSource.GetCredentialAsync(ProviderId)` is unchanged, and
+  adapters apply the resulting header themselves. The credential value reaches
+  only the transport request; it is bound into the send grant by hash and never
+  enters a security request, audit record, log, or refusal. Introducing the
+  credential-read effect is a separate change to the credential-source contract.
+- **Web search is separate, and is closed by its own change.**
+  `NetworkWebSearchProvider` in `AgentKit.Tools.WebSearch` is not a
+  `ProviderEgress` caller, because a search endpoint is a tool-leaf destination,
+  not a provider operation binding. It follows the same protocol directly over
+  `INetworkNameResolver` and `INetworkTransport`: it validates the tool-issued
+  search grant, consumes it with required audit under its own enforcement
+  intent, then obtains separate resolution and send grants and sends one
+  bodyless `GET` with zero redirects, a streamed response bound, and a
+  host-configured classification (default `Confidential`). It owns no
+  `HttpClient` and has no fallback transport. See [tools.md](tools.md) and
+  [WS4-C12](../workstreams/tool-runtime.md#ws4-c12-first-party-iwebsearchprovider).
 
 ## DI registration and replacement semantics
 

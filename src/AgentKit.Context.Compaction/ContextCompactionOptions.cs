@@ -3,7 +3,11 @@
 
 namespace AgentKit.Context.Compaction;
 
-/// <summary>Engine-wide compaction ceilings configured at registration time.</summary>
+/// <summary>Engine-wide compaction ceilings configured at registration time for one compactor key.</summary>
+/// <remarks>
+/// Instances are bound as named options under the compactor key's text, so two compactors registered in one engine never
+/// share or overwrite each other's ceilings. Registration validates every bound when the options are first read.
+/// </remarks>
 public sealed class ContextCompactionOptions
 {
     /// <summary>Gets or sets the maximum attempts per logical checkpoint.</summary>
@@ -32,4 +36,12 @@ public sealed class ContextCompactionOptions
 
     /// <summary>Gets or sets a value indicating whether rejected candidates are persisted.</summary>
     public bool PersistRejectedCandidates { get; set; }
+
+    /// <summary>Gets or sets the ordered strategy keys the compactor applies to a request that carries no policy snapshot.</summary>
+    /// <value>
+    /// A non-empty, duplicate-free list of keys registered for the compactor; <see cref="CompactionStrategyKeys.Extractive"/>
+    /// by default. A request that carries a profile's <see cref="CompactionPolicySnapshot"/> uses that snapshot's order
+    /// instead.
+    /// </value>
+    public List<CompactionStrategyKey> DefaultStrategyOrder { get; set; } = [CompactionStrategyKeys.Extractive];
 }

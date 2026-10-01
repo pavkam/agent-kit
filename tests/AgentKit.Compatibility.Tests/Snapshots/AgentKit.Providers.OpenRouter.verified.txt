@@ -13,11 +13,11 @@ namespace AgentKit.Providers.OpenRouter
     }
     public sealed class OpenRouterEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
     {
-        public OpenRouterEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public OpenRouterEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public sealed class OpenRouterLlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
-        public OpenRouterLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public OpenRouterLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
     }
     public static class OpenRouterProviderDefaults
     {
@@ -80,7 +80,7 @@ namespace AgentKit.Providers.OpenRouter
     }
     public sealed class OpenRouterReranker : AgentKit.IReranker
     {
-        public OpenRouterReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options, AgentKit.Providers.OpenRouter.IOpenRouterRerankRequestTranslator translator, AgentKit.Providers.OpenRouter.IOpenRouterRerankResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public OpenRouterReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options, AgentKit.Providers.OpenRouter.IOpenRouterRerankRequestTranslator translator, AgentKit.Providers.OpenRouter.IOpenRouterRerankResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.RerankerAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.RerankModelResult> RerankAsync(AgentKit.RerankModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

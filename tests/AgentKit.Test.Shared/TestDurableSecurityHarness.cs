@@ -21,10 +21,6 @@ public sealed class TestDurableSecurityHarness: ISecurityGrantStore, ISecurityAu
     /// <value>Null to validate normally, or a status such as <see cref="GrantConsumptionStatus.Revoked"/> to force.</value>
     public GrantConsumptionStatus? ForcedConsumptionStatus { get; set; }
 
-    /// <summary>Gets or sets whether consumption omits the required enforcement-intent receipt.</summary>
-    /// <value>True to return a consumed result with no receipt, modeling a store that cannot prove intent.</value>
-    public bool OmitIntentReceipt { get; set; }
-
     /// <summary>Gets or sets whether consumption returns a receipt bound to a different intent.</summary>
     /// <value>True to return a receipt whose identity does not match the presented intent.</value>
     public bool ForgeIntentReceipt { get; set; }
@@ -107,10 +103,12 @@ public sealed class TestDurableSecurityHarness: ISecurityGrantStore, ISecurityAu
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(enforcement);
+        ArgumentNullException.ThrowIfNull(intent);
         cancellationToken.ThrowIfCancellationRequested();
         if (FailGrantStore)
         {
@@ -118,7 +116,7 @@ public sealed class TestDurableSecurityHarness: ISecurityGrantStore, ISecurityAu
         }
         if (ForcedConsumptionStatus is { } forced)
         {
-            return ValueTask.FromResult(new GrantConsumptionResult(forced, 0, "The test grant store forced this status."));
+            return ValueTask.FromResult(Refused(forced, "The test grant store forced this status."));
         }
 
         var matches = grant.Scope == enforcement.Scope
@@ -130,35 +128,23 @@ public sealed class TestDurableSecurityHarness: ISecurityGrantStore, ISecurityAu
             && grant.Resources.SequenceEqual(enforcement.Resources)
             && grant.InputFingerprint == enforcement.InputFingerprint
             && grant.RevocationVersion == enforcement.RevocationVersion;
-        return !matches
-            ? ValueTask.FromResult(new GrantConsumptionResult(
-                GrantConsumptionStatus.Mismatch, 0, "The exact grant binding did not match."))
-            : ValueTask.FromResult(_consumed.Add(grant.Id)
-                ? new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "The exact grant use was consumed.")
-                : new GrantConsumptionResult(GrantConsumptionStatus.Exhausted, 0, "The grant use was already consumed."));
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        SecurityEnforcementIntent intent,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(intent);
-        var consumption = await ValidateAndConsumeAsync(grant, enforcement, cancellationToken).ConfigureAwait(false);
-        if (consumption.Status != GrantConsumptionStatus.Consumed || OmitIntentReceipt)
+        if (!matches)
         {
-            return consumption;
+            return ValueTask.FromResult(Refused(GrantConsumptionStatus.Mismatch, "The exact grant binding did not match."));
+        }
+
+        if (!_consumed.Add(grant.Id))
+        {
+            return ValueTask.FromResult(Refused(GrantConsumptionStatus.Exhausted, "The grant use was already consumed."));
         }
 
         var intentId = ForgeIntentReceipt
             ? new SecurityEnforcementIntentId(NextGuid())
             : intent.Id;
-        return new GrantConsumptionResult(
+        return ValueTask.FromResult(new GrantConsumptionResult(
             GrantConsumptionStatus.Consumed,
-            consumption.RemainingUses,
-            consumption.SafeMessage,
+            0,
+            "The exact grant use was consumed.",
             new SecurityEnforcementIntentReceipt(
                 intentId,
                 grant.Id,
@@ -166,8 +152,11 @@ public sealed class TestDurableSecurityHarness: ISecurityGrantStore, ISecurityAu
                 enforcement,
                 intent.RequiredFence,
                 SecurityEnforcementBinding.Fingerprint(enforcement, intent),
-                DateTimeOffset.UnixEpoch));
+                DateTimeOffset.UnixEpoch)));
     }
+
+    private static GrantConsumptionResult Refused(GrantConsumptionStatus status, string message) =>
+        new(status, 0, message, null);
 
     /// <inheritdoc/>
     public ValueTask<GrantRevocationResult> RevokeAsync(

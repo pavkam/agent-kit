@@ -6,7 +6,7 @@ namespace AgentKit.Tools.Edit
     public sealed class EditTool : AgentKit.IToolInvoker
     {
         public static readonly AgentKit.ToolId Id;
-        public EditTool(System.IServiceProvider serviceProvider, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Edit.EditToolOptions> options) { }
+        public EditTool(System.IServiceProvider serviceProvider, AgentKit.ISecurityAuthoritySelector authoritySelector, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Edit.EditToolOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.Edit.EditTool> logger) { }
         public static AgentKit.ToolsetPublication DefaultToolset { get; }
         public static AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationContext context, System.Threading.CancellationToken cancellationToken = default) { }

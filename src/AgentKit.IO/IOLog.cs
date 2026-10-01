@@ -44,4 +44,13 @@ internal static partial class IOLog
 
     [LoggerMessage(EventId = 22012, Level = LogLevel.Error, Message = "The backpressure policy returned {Decision} for required sink {SinkName}; only Wait is valid for a required sink.")]
     internal static partial void RequiredRunEventSinkBackpressureMisconfigured(ILogger logger, string sinkName, BackpressureDecision decision);
+
+    [LoggerMessage(EventId = 22013, Level = LogLevel.Debug, Message = "Required run-event sink {SinkName} drained during shutdown.")]
+    internal static partial void RequiredRunEventSinkDrained(ILogger logger, string sinkName);
+
+    [LoggerMessage(EventId = 22014, Level = LogLevel.Warning, Message = "Required run-event sink {SinkName} did not drain within its flush deadline of {FlushDeadline}; accepted events may be undelivered.")]
+    internal static partial void RequiredRunEventSinkFlushTimedOut(ILogger logger, string sinkName, TimeSpan flushDeadline);
+
+    [LoggerMessage(EventId = 22015, Level = LogLevel.Error, Message = "Required run-event sink {SinkName} faulted while draining with {ErrorType}; accepted events may be undelivered.")]
+    internal static partial void RequiredRunEventSinkFlushFaulted(ILogger logger, string sinkName, string errorType);
 }

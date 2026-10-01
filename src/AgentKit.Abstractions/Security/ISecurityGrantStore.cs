@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>Owns authoritative grant registration, exact enforcement, use consumption, and revocation state.</summary>
-/// <remarks>Implementations must atomically validate and consume uses so concurrent callers cannot exceed <see cref="SecurityGrant.AllowedUses"/>.</remarks>
+/// <remarks>Implementations must atomically validate and consume uses, and persist the permission-to-start receipt in the same transition, so concurrent callers cannot exceed <see cref="SecurityGrant.AllowedUses"/> and an uncertain acknowledgement can be reconciled by intent identity.</remarks>
 public interface ISecurityGrantStore
 {
     /// <summary>Registers newly issued immutable grant evidence before it can be consumed.</summary>
@@ -15,20 +15,12 @@ public interface ISecurityGrantStore
     /// <exception cref="InvalidOperationException">The identifier is already registered with different evidence.</exception>
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default);
 
-    /// <summary>Validates immutable evidence and atomically consumes one matching use immediately before an effect.</summary>
+    /// <summary>Validates and consumes one exact use while atomically retaining a stable permission-to-start receipt.</summary>
     /// <param name="grant">The presented immutable grant.</param>
     /// <param name="enforcement">Fresh evidence for the concrete effect.</param>
-    /// <param name="cancellationToken">Cancels before a use is consumed.</param>
-    /// <returns>The terminal validation and consumption result.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="grant"/> or <paramref name="enforcement"/> is null.</exception>
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>Validates and consumes one exact use while atomically retaining a stable permission-to-start receipt.</summary>
-    /// <param name="grant">The presented immutable grant.</param><param name="enforcement">Fresh evidence for the concrete effect.</param><param name="intent">The non-null stable attempt identity and required fence.</param><param name="cancellationToken">Cancels before consumption and receipt persistence commit together.</param>
-    /// <returns>The terminal result. <see cref="GrantConsumptionStatus.Consumed"/> carries newly granted permission to start and its authoritative receipt. <see cref="GrantConsumptionStatus.Reconciled"/> carries only historical receipt evidence and never authorizes another effect. An implementation without intent persistence returns an explicit unsuccessful result before consuming a use.</returns>
+    /// <param name="intent">The non-null stable attempt identity and required fence.</param>
+    /// <param name="cancellationToken">Cancels before consumption and receipt persistence commit together.</param>
+    /// <returns>The terminal result. <see cref="GrantConsumptionStatus.Consumed"/> carries newly granted permission to start and its authoritative receipt. <see cref="GrantConsumptionStatus.Reconciled"/> carries only historical receipt evidence and never authorizes another effect. Every other status carries no receipt and consumes nothing.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="grant"/>, <paramref name="enforcement"/>, or <paramref name="intent"/> is null.</exception>
     /// <exception cref="ArgumentException">The grant or enforcement resources are empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Grant or enforcement evidence contains an undefined enum, invalid lifetime, or nonpositive use count.</exception>
@@ -37,17 +29,7 @@ public interface ISecurityGrantStore
         SecurityGrant grant,
         SecurityEnforcementRequest enforcement,
         SecurityEnforcementIntent intent,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(grant);
-        ArgumentNullException.ThrowIfNull(enforcement);
-        ArgumentNullException.ThrowIfNull(intent);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new GrantConsumptionResult(
-            GrantConsumptionStatus.Unknown,
-            0,
-            "The grant store does not support atomic enforcement-intent receipts."));
-    }
+        CancellationToken cancellationToken = default);
 
     /// <summary>Revokes one registered grant with an explicit recorded reason.</summary>
     /// <param name="grantId">The grant to revoke.</param>

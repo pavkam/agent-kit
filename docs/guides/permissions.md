@@ -52,7 +52,7 @@ denies the effects you do not want and abstains on everything else:
 ```csharp
 sealed class ReadOnlyWorkspacePolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default)
     {
         var mutates = request.Kind is SecurityOperationKind.FileWrite
             or SecurityOperationKind.DirectoryCreate
@@ -109,7 +109,7 @@ checks who answered.
 ```csharp
 sealed class ApproveWritesPolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(request.Kind is SecurityOperationKind.FileWrite or SecurityOperationKind.Process
             ? new SecurityPolicyResult(SecurityPolicyResultKind.RequireApproval, "ask", "Changes need your approval.")
             : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));
@@ -188,12 +188,13 @@ claims, assurance, and delegation.
 Security transitions produce redacted audit records: identities, operation
 kinds, resources, decision codes, and timestamps, never prompts, file contents,
 or credentials. The first-party `SecurityAuthority` emits `Request` and
-`Decision` audit for every authorization attempt, `GrantIssued` when a grant
-registers, and the approval broker emits `Approval` transitions. Session-store
-enforcement and file or process boundaries continue to add their own enforcement
-audit kinds; see the
-[permissions workstream](../workstreams/permissions-approvals-and-audit.md) for
-remaining grant-lifecycle and boundary coverage.
+`Decision` audit for every authorization attempt and `GrantIssued` when a grant
+registers, the approval broker emits `Approval` transitions, and grant stores
+emit `GrantLifecycle` records. Each effecting boundary audits its own use of a
+grant: the file-system, network, and process host boundaries and the session,
+durability, and artifact stores consume a grant and deliver a required
+`GrantConsumptionIntent` record before the effect runs, so an effect whose
+required audit cannot be delivered does not happen.
 
 With `UseLocalDevelopmentDefaults` delivery is best-effort because no sink is
 registered. A real host registers a sink and keeps delivery `Required`, which
@@ -212,7 +213,8 @@ builder.Services.Configure<AgentPermissionOptions>(o => o.AuditDelivery = Securi
 | ------------------------------------ | ---------------------------------------------------------------------------------- |
 | Authority, policies, approvals       | [AgentKit.Permissions](../../src/AgentKit.Permissions/README.md)                   |
 | In-memory grant and approval stores  | [AgentKit.Permissions.InMemory](../../src/AgentKit.Permissions.InMemory/README.md) |
-| Durable grant store                  | [AgentKit.Permissions.Sqlite](../../src/AgentKit.Permissions.Sqlite/README.md)     |
+| Durable grant and approval stores    | [AgentKit.Permissions.Sqlite](../../src/AgentKit.Permissions.Sqlite/README.md)     |
+| Inspectable single-writer stores     | [AgentKit.Permissions.Json](../../src/AgentKit.Permissions.Json/README.md)         |
 | Identity contracts and normalization | [AgentKit.Identity](../../src/AgentKit.Identity/README.md)                         |
 
 The normative rules, including the policy algebra and grant semantics, are in

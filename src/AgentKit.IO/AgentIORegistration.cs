@@ -126,6 +126,40 @@ internal static class AgentIORegistration
         return services;
     }
 
+    /// <summary>Additively registers one <see cref="IRunEventSink"/> built by a caller-supplied factory under its declared stable name.</summary>
+    /// <typeparam name="TSink">The sink implementation type; it identifies the implementation for duplicate-conflict validation.</typeparam>
+    /// <param name="services">The service collection to register into.</param>
+    /// <param name="registration">The sink's stable identity, delivery requirement, and fan-out order.</param>
+    /// <param name="factory">Creates the singleton sink instance from the provider; it may close over registration-time evidence such as an immutable options snapshot.</param>
+    /// <returns>The same service collection, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="registration"/>, or <paramref name="factory"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">A different sink registration or implementation type already uses <see cref="RunEventSinkRegistration.SinkName"/>.</exception>
+    internal static IServiceCollection AddRunEventSink<TSink>(
+        IServiceCollection services,
+        RunEventSinkRegistration registration,
+        Func<IServiceProvider, TSink> factory)
+        where TSink : class, IRunEventSink
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(registration);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        var existing = services
+            .Select(static descriptor => descriptor.ImplementationInstance as RunEventSinkDeclaration)
+            .FirstOrDefault(declaration => declaration is not null && declaration.Registration.SinkName == registration.SinkName);
+        if (existing is not null)
+        {
+            return existing.Registration.Equals(registration) && existing.SinkType == typeof(TSink)
+                ? services
+                : throw new InvalidOperationException(
+                    $"A different run-event sink registration already uses the name '{registration.SinkName}'.");
+        }
+
+        _ = services.AddSingleton(new RunEventSinkDeclaration(registration, typeof(TSink)));
+        _ = services.AddSingleton<IRunEventSink>(provider => new RunEventSinkBinding(registration, factory(provider)));
+        return services;
+    }
+
     /// <summary>Binds and validates <see cref="AgentIOOptions"/>, applying <paramref name="configure"/> when supplied.</summary>
     private static void BindOptions(IServiceCollection services, Action<AgentIOOptions>? configure)
     {
@@ -145,7 +179,10 @@ internal static class AgentIORegistration
     private static void RegisterSharedInfrastructure(IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IRequiredRunEventSinkCoordinator, RequiredRunEventSinkCoordinator>();
+        services.TryAddSingleton<IRequiredRunEventSinkCoordinator>(static provider => new RequiredRunEventSinkCoordinator(
+            provider.GetServices<IRunEventSink>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ILogger<RequiredRunEventSinkCoordinator>>()));
         services.TryAddSingleton<IOutputBackpressurePolicy>(static provider =>
             new DefaultOutputBackpressurePolicy(provider.GetRequiredService<IOptions<AgentIOOptions>>().Value.MaximumBestEffortSinkWait));
         services.TryAddScoped(static provider =>

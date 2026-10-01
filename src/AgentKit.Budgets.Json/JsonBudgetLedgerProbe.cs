@@ -91,9 +91,22 @@ internal static class JsonBudgetLedgerProbe
             [],
             IdentityAssuranceLevel.Strong,
             new IdentityVersion(1));
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("probe-profile"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(new Guid("99999999-9999-9999-9999-999999999999")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:probe-policy")),
+            new ComponentKey<ISecurityAuthority>("probe-authority"),
+            new AgentDefinitionRevision(1),
+            new ConfigurationVersion(1),
+            securityScope,
+            identity);
         var enforcement = new SecurityEnforcementRequest(
             securityScope,
             identity,
+            authorization,
             new ComponentId("budget-operator"),
             SecurityOperationKind.StateMutation,
             SecurityEffect.Mutate,

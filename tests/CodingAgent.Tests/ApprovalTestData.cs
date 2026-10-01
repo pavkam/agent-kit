@@ -39,6 +39,18 @@ internal static class ApprovalTestData
             scope,
             new ToolCallId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             identity,
+            new SecurityAuthorizationContext(
+                new SecurityProfileKey("approval-tests"),
+                new SecurityProfileVersion(1),
+                new SecurityPolicySnapshotReference(
+                    new SecurityPolicySnapshotId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
+                    new SecurityPolicyVersion(1),
+                    new ContentHash("sha256:approval-tests-policy")),
+                new ComponentKey<ISecurityAuthority>("approval-tests"),
+                new AgentDefinitionRevision(1),
+                new ConfigurationVersion(1),
+                scope,
+                identity),
             new ComponentId("filesystem"),
             SecurityOperationKind.FileWrite,
             SecurityEffect.Replace,

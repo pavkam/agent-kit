@@ -108,11 +108,16 @@ public sealed class PlanReplaceRequestTests
     private static ExecutionIdentity Identity() => TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
     private static SessionOperationContext Context() => new(AgentId(), SessionId(), null, Correlation(), Identity(), TestSecurityEvidence.Authorization(AgentId(), SessionId(), Correlation(), Identity()));
     private static ImmutableArray<WorkPlanItem> Items() => [new(new PlanItemId("one"), "First.", PlanItemStatus.Pending)];
-    private static SecurityGrant Grant() => new(
+    private static SecurityGrant Grant()
+    {
+        var __scope = new SecurityAuthorizationScope(AgentId(), SessionId(), Correlation());
+        var __identity = Identity();
+        return new(
         new GrantId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
         new SecurityRequestId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
-        new SecurityAuthorizationScope(AgentId(), SessionId(), Correlation()),
-        Identity(),
+        __scope,
+        __identity,
+        TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
         new ComponentId("plan-store"),
         SecurityOperationKind.StateMutation,
         SecurityEffect.CreateOrReplace,
@@ -123,4 +128,5 @@ public sealed class PlanReplaceRequestTests
         DateTimeOffset.UnixEpoch,
         DateTimeOffset.UnixEpoch.AddMinutes(1),
         1);
+    }
 }

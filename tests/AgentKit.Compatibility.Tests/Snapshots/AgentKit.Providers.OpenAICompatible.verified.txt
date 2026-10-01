@@ -52,7 +52,7 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel
     {
-        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.EmbeddingModelDescriptor Descriptor { get; }
@@ -66,7 +66,7 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleLlmModelBase : AgentKit.ILlmModel
     {
-        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
         public AgentKit.ModelAlias Alias { get; }
         protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.ModelDescriptor Descriptor { get; }

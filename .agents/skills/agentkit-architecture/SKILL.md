@@ -57,6 +57,21 @@ Start with
 and
 [configuration and overrides](../../../docs/concepts/configuration-and-overrides.md).
 
+An `AgentDefinition` selects every required collaborator through
+`AgentComponentSelection` keys and every optional one through
+`AgentOptionalCapabilitySelection`; a new selectable component adds its key
+there (never a flat definition property) and its per-definition check to
+`DefinitionCompositionValidator` in the same change. Keyed selections resolve
+under their exact key with no unkeyed fallback.
+
+Component declarations (`DeclareAgentKitComponent`) are opt-in evidence for
+hosts that want an opaque-factory graph proven. First-party registrations
+publish none, so `RepresentsCompleteRunnableGraph` is false for them by design:
+a declaration cannot observe a later `Replace`/`RemoveAll`, so publishing them
+would turn every standard replacement of a replaceable default into a
+composition error. Do not add first-party declarations without first changing
+that contract.
+
 Synchronous build consumes a materialized initial catalog without network or
 secret access. Validate publication, admission, and effects at their separate
 boundaries. Revalidate pinned handles for new work; retained versions support

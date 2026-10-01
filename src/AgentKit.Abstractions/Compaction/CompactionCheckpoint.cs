@@ -14,12 +14,11 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller checkpoint shape
-/// described by the context-compaction architecture, which additionally
-/// carries typed references to durable extracted state (open goals,
-/// decisions, pending tool effects) alongside the prose summary. Until a
-/// dedicated state-extraction contract exists, that structured state is
-/// represented, if at all, inside <see cref="Extensions"/>.
+/// The checkpoint carries the prose summary only. The context-compaction
+/// architecture also describes typed references to durable extracted state
+/// (open goals, decisions, pending tool effects); no state-extraction
+/// contract exists, so any structured state is represented inside
+/// <see cref="Extensions"/>.
 /// </para>
 /// </remarks>
 public sealed record CompactionCheckpoint

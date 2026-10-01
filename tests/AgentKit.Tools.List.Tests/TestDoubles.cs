@@ -3,21 +3,38 @@
 
 namespace AgentKit.Tools.List.Tests;
 
-[Obsolete("Legacy host surface.")]
-
-internal sealed class FakeDirectoryReader: ILegacyDirectoryReader
+/// <summary>A scripted <see cref="IDirectoryReader"/> that serves one fixed listing, or fails with a configured exception.</summary>
+internal sealed class FakeDirectoryReader: IDirectoryReader
 {
+    /// <inheritdoc/>
     public ComponentId SecurityAudience { get; } = new("test.directory");
-    public List<DirectoryEnumerationRequest> Requests { get; } = [];
-    public DirectoryEnumerationResult Result { get; set; } = new(
-        DirectoryEnumerationStatus.Success, [], new ContentHash("sha256:empty"), null, null);
 
-    public ValueTask<DirectoryEnumerationResult> EnumerateAsync(
-        DirectoryEnumerationRequest request,
-        CancellationToken cancellationToken = default)
+    /// <summary>Gets every authorized enumeration this reader was asked to perform, in order.</summary>
+    public List<AuthorizedDirectoryEnumeration> Operations { get; } = [];
+
+    /// <summary>Gets or sets the entry names served, in the order served.</summary>
+    public List<(string Name, bool IsDirectory)> Entries { get; set; } = [];
+
+    /// <summary>Gets or sets an exception thrown from the enumerator instead of serving entries.</summary>
+    public Exception? Failure { get; set; }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
+        AuthorizedDirectoryEnumeration operation,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        Requests.Add(request);
-        return ValueTask.FromResult(Result);
+        Operations.Add(operation);
+        await Task.Yield();
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+
+        foreach (var (name, isDirectory) in Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new FileSystemEntry(new NormalizedRelativePath(name), isDirectory);
+        }
     }
 }
 
@@ -45,6 +62,7 @@ internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAu
                 request.Id,
                 request.Scope,
                 request.Identity,
+                request.Authorization,
                 request.Audience,
                 request.Kind,
                 request.Effect,

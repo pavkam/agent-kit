@@ -8,6 +8,7 @@ using System.Net.Http;
 
 using AgentKit.Observability;
 using AgentKit.Providers;
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
@@ -35,12 +36,12 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// it is serialized (for example, to address a model by deployment name).
 /// </para>
 /// <para>
-/// This implementation performs its own HTTP transport through an injected
-/// <see cref="HttpClient"/> rather than the broader AgentKit network and
-/// security-authority abstractions described by the wider provider
-/// architecture, because those packages do not yet exist in this
-/// repository. A future revision can route through them without changing
-/// this class's public contract.
+/// Every attempt sends through <see cref="ProviderEgress"/>, which obtains a per-attempt provider-egress grant bound
+/// to the descriptor's exact endpoint and credential profile binding and then sends over
+/// <see cref="INetworkTransport"/>. The adapter owns no HTTP client: a denied, unauthorizable, or unauditable
+/// attempt fails closed with the stable <see cref="ProviderFailure"/> taxonomy before any DNS, connection, or
+/// transmission, and an attempt without a <see cref="LlmModelRequest.Operation"/> is refused with
+/// <see cref="ProviderFailureKind.Authorization"/>.
 /// </para>
 /// </remarks>
 public abstract class OpenAICompatibleLlmModelBase: ILlmModel
@@ -62,7 +63,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     private readonly IOpenAIStreamParser _streamParser;
     private readonly IProviderCredentialSource _credentials;
     private readonly IProviderProfileRuntimeSelector? _profileSelector;
-    private readonly HttpClient _httpClient;
+    private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="OpenAICompatibleLlmModelBase"/> class.</summary>
@@ -74,7 +75,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <param name="profileSelector">
     /// The optional profile runtime selector used when <see cref="ModelDescriptor.Binding"/> is configured.
@@ -86,7 +87,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         IProviderProfileRuntimeSelector? profileSelector = null)
     {
@@ -95,7 +96,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(streamParser);
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         Alias = descriptor.Alias;
@@ -105,7 +106,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         _streamParser = streamParser;
         _credentials = credentials;
         _profileSelector = profileSelector;
-        _httpClient = httpClient;
+        _egress = egress;
         _timeProvider = timeProvider;
     }
 
@@ -342,44 +343,20 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
             remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
-        HttpResponseMessage response;
         try
         {
-            response = await _httpClient
-                .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
+            var sent = await _egress
+                .SendAsync(ProviderEgressRequest.ForConversation(Descriptor, request, httpRequest, useStreaming), cancellationToken)
                 .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return await CancelAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.Timeout,
-                "The request did not complete before its deadline.",
-                exception).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception)
-        {
-            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
-            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
-            return await FailWithKindAsync(
-                ProviderFailureKind.Timeout,
-                "The transport timed out before the provider responded.",
-                exception).ConfigureAwait(false);
-        }
-        catch (HttpRequestException exception)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.Unavailable,
-                "The provider could not be reached.",
-                exception).ConfigureAwait(false);
-        }
+            if (sent is ProviderEgressRefused refused)
+            {
+                return refused.Failure.Kind is ProviderFailureKind.Cancellation
+                    ? await CancelAsync(refused.Failure).ConfigureAwait(false)
+                    : await FailAsync(refused.Failure).ConfigureAwait(false);
+            }
 
-        try
-        {
-            using (response)
+            var response = ((ProviderEgressSent) sent).Response;
+            await using (response.ConfigureAwait(false))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -446,10 +423,11 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 }
                 catch (IOException exception)
                 {
-                    // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
+                    // A connection reset or truncated body mid-stream is a transport failure, not a caller fault; an
+                    // expired body deadline or streamed overrun keeps its own typed classification.
                     return await FailWithKindAsync(
-                        ProviderFailureKind.Unavailable,
-                        "The connection failed while the response body was being received.",
+                        ProviderEgressBodyFault.Classify(exception, out var safeMessage),
+                        safeMessage,
                         exception).ConfigureAwait(false);
                 }
             }
@@ -486,7 +464,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         return httpRequest;
     }
 
-    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<ProviderFailure> BuildHttpFailureAsync(ProviderEgressResponse response, CancellationToken cancellationToken)
     {
         string? providerMessage = null;
         string? providerCode = null;
@@ -531,7 +509,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
     /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
     /// <returns>A failure retaining the raw HTTP status, Retry-After guidance, and provider request identity.</returns>
-    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
+    private ProviderFailure BuildInterruptedHttpFailure(ProviderEgressResponse response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
     {
         Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
         Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");

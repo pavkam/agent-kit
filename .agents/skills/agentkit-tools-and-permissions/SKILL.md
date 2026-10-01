@@ -49,7 +49,12 @@ grants to final bytes, destinations, process intents, or target inventories.
 8. Preserve tool-call and operation correlation across authorization, durable
    acceptance when invocation is admitted, effect, audit, exactly one terminal
    result for every identified request, and its bounded projection. Mutation
-   after a decision requires reevaluation.
+   after a decision requires reevaluation. The executor commits the
+   `AcceptedToolCall` through `IToolCallRecorder` after the grant is issued and
+   before the invoker starts; if the record cannot be made durable the issued
+   grant is retained in the typed `Unsupported` result's `GrantId` and no effect
+   occurs. Execution-policy selection precedes authorization and never grants
+   authority.
 9. Bind file grants to the explicit write disposition, expected target state,
    exact encoded-content fingerprint, and atomicity requirements. Directory
    creation is a separate resource/effect and grant; create-or-replace authority

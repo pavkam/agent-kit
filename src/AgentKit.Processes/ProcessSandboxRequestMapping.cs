@@ -3,11 +3,11 @@
 
 namespace AgentKit.Processes;
 
-/// <summary>Maps legacy resolved intents onto spec sandbox construction requests.</summary>
+/// <summary>Maps resolved intents onto spec sandbox construction requests.</summary>
 internal static class ProcessSandboxRequestMapping
 {
-    /// <summary>Builds a sandbox request from one legacy resolved intent.</summary>
-    /// <param name="intent">The legacy resolved intent.</param>
+    /// <summary>Builds a sandbox request from one resolved intent.</summary>
+    /// <param name="intent">The resolved intent.</param>
     /// <returns>The equivalent sandbox construction request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="intent"/> is null.</exception>
     internal static ProcessSandboxRequest FromResolvedProcessIntent(ResolvedProcessIntent intent)

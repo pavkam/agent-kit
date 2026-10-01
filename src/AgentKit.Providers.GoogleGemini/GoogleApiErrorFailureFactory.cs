@@ -4,8 +4,8 @@
 namespace AgentKit.Providers.GoogleGemini;
 
 using System.Globalization;
-using System.Net.Http;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.GoogleGemini.Wire;
 using AgentKit.Providers.Http;
 
@@ -66,7 +66,7 @@ public static class GoogleApiErrorFailureFactory
     /// <exception cref="ArgumentNullException"><paramref name="response"/> or <paramref name="timeProvider"/> is null.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled while the body was being read.</exception>
     public static async Task<ProviderFailure> CreateAsync(
-        HttpResponseMessage response,
+        ProviderEgressResponse response,
         ProviderId providerId,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -192,7 +192,7 @@ public static class GoogleApiErrorFailureFactory
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is not a defined <see cref="ProviderFailureKind"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="safeMessage"/> is null, empty, or whitespace.</exception>
     public static ProviderFailure CreateInterrupted(
-        HttpResponseMessage response,
+        ProviderEgressResponse response,
         ProviderId providerId,
         ProviderFailureKind kind,
         string safeMessage,

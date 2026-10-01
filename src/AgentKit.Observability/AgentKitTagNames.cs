@@ -193,6 +193,10 @@ public static class AgentKitTagNames
     /// <summary>Gets the bounded MCP lifecycle operation attribute.</summary>
     public const string McpOperation = "agentkit.mcp.operation";
 
+    /// <summary>Gets the configured MCP server key attribute.</summary>
+    /// <remarks>The key comes from host configuration and is bounded; it is a span and log attribute, never a metric dimension.</remarks>
+    public const string McpServerKey = "agentkit.mcp.server.key";
+
     /// <summary>Gets the immutable model-catalog generation attribute.</summary>
     public const string ModelCatalogVersion = "agentkit.model.catalog.version";
 
@@ -258,4 +262,137 @@ public static class AgentKitTagNames
 
     /// <summary>Gets the bounded artifact operation attribute.</summary>
     public const string ArtifactOperation = "agentkit.artifact.operation";
+
+    /// <summary>Gets the artifact coordinator key attribute for traces and structured logs.</summary>
+    public const string ArtifactCoordinatorKey = "agentkit.artifact.coordinator.key";
+
+    /// <summary>Gets the bounded artifact store adapter attribute, such as <c>in_memory</c>, <c>sqlite</c>, <c>json</c>, or <c>file_system</c>.</summary>
+    public const string ArtifactStoreAdapter = "agentkit.artifact.store.adapter";
+
+    /// <summary>Gets the bounded artifact store operation attribute.</summary>
+    public const string ArtifactStoreOperation = "agentkit.artifact.store.operation";
+
+    /// <summary>Gets the tag naming the goal a goal or delegation operation concerns.</summary>
+    public const string GoalId = "agentkit.goal.id";
+
+    /// <summary>Gets the tag naming the goal attempt an operation concerns.</summary>
+    public const string GoalAttemptId = "agentkit.goal.attempt.id";
+
+    /// <summary>Gets the tag naming a goal's resulting status.</summary>
+    /// <remarks>The value comes from the bounded status vocabulary.</remarks>
+    public const string GoalStatus = "agentkit.goal.status";
+
+    /// <summary>Gets the tag naming the bounded goal-store operation.</summary>
+    public const string GoalStoreOperation = "agentkit.goal.store.operation";
+
+    /// <summary>Gets the tag naming the join strategy key a join evaluated.</summary>
+    public const string GoalJoinStrategy = "agentkit.goal.join.strategy";
+
+    /// <summary>Gets the tag naming the bounded goal-store adapter that served an operation.</summary>
+    public const string GoalStoreAdapter = "agentkit.goal.store.adapter";
+
+    /// <summary>Gets the tag naming a goal's prior status on a transition.</summary>
+    /// <remarks>The value comes from the bounded status vocabulary.</remarks>
+    public const string GoalFromStatus = "agentkit.goal.from_status";
+
+    /// <summary>Gets the tag naming the bounded memory-store adapter that served an operation.</summary>
+    public const string MemoryStoreAdapter = "agentkit.memory.store.adapter";
+
+    /// <summary>Gets the tag naming the bounded state family (memory, document, or vector) a store operation concerns.</summary>
+    public const string MemoryStoreFamily = "agentkit.memory.store.family";
+
+    /// <summary>Gets the tag naming the bounded memory-store operation.</summary>
+    public const string MemoryStoreOperation = "agentkit.memory.store.operation";
+
+    /// <summary>Gets the tag naming the durable memory an operation concerns.</summary>
+    public const string MemoryId = "agentkit.memory.id";
+
+    /// <summary>Gets the tag naming the document an operation concerns.</summary>
+    public const string MemoryDocumentId = "agentkit.memory.document.id";
+
+    /// <summary>Gets the tag naming the memory profile key an operation ran under.</summary>
+    public const string MemoryProfileKey = "agentkit.memory.profile.key";
+
+    /// <summary>Gets the tag naming the memory profile version an operation ran under.</summary>
+    public const string MemoryProfileVersion = "agentkit.memory.profile.version";
+
+    /// <summary>Gets the tag naming the retrieval request an operation concerns.</summary>
+    public const string RetrievalRequestId = "agentkit.retrieval.request.id";
+
+    /// <summary>Gets the tag naming the retrieval source key a source search concerns.</summary>
+    public const string RetrievalSourceKey = "agentkit.retrieval.source.key";
+
+    /// <summary>Gets the tag naming the bounded reason candidates were omitted from a retrieval.</summary>
+    public const string RetrievalOmissionReason = "agentkit.retrieval.omission.reason";
+
+    /// <summary>Gets the tag naming the number of candidates a retrieval exposed.</summary>
+    public const string RetrievalCandidateCount = "agentkit.retrieval.candidate.count";
+
+    /// <summary>Gets the tag naming the exporter key an observation sink delivers under.</summary>
+    /// <remarks>The key comes from host configuration and is bounded.</remarks>
+    public const string ObservationExporterKey = "agentkit.observation.exporter.key";
+
+    /// <summary>Gets the tag naming the exporter options generation an observation was delivered under.</summary>
+    public const string ObservationExporterVersion = "agentkit.observation.exporter.version";
+
+    /// <summary>Gets the tag naming the bounded run-event kind an observation concerns.</summary>
+    public const string ObservationEventKind = "agentkit.observation.event.kind";
+
+    /// <summary>Gets the tag carrying the run event's per-run sequence.</summary>
+    /// <remarks>The sequence is correlation evidence on spans and logs only, never a metric dimension.</remarks>
+    public const string ObservationEventSequence = "agentkit.observation.event.sequence";
+
+    /// <summary>Gets the tag naming the kind of captured observation content.</summary>
+    public const string ObservationContentKind = "agentkit.observation.content.kind";
+
+    /// <summary>Gets the tag naming the declared classification of captured observation content.</summary>
+    public const string ObservationContentClassification = "agentkit.observation.content.classification";
+
+    /// <summary>Gets the tag carrying the fingerprint of captured observation content.</summary>
+    public const string ObservationContentFingerprint = "agentkit.observation.content.fingerprint";
+
+    /// <summary>Gets the tag carrying redacted observation content that survived policy.</summary>
+    /// <remarks>Present only when content capture is explicitly enabled and a redactor returned the content.</remarks>
+    public const string ObservationContentValue = "agentkit.observation.content.value";
+
+    /// <summary>Gets the tag naming the bounded reason captured content was omitted.</summary>
+    public const string ObservationContentOmittedReason = "agentkit.observation.content.omitted.reason";
+
+    /// <summary>Gets the tag naming the evaluation run an operation concerns.</summary>
+    /// <remarks>The run identity is correlation evidence on spans and logs only, never a metric dimension.</remarks>
+    public const string EvaluationRunId = "agentkit.evaluation.run.id";
+
+    /// <summary>Gets the tag naming the evaluation plan an operation concerns.</summary>
+    public const string EvaluationPlanId = "agentkit.evaluation.plan.id";
+
+    /// <summary>Gets the tag naming the evaluation plan version an operation concerns.</summary>
+    public const string EvaluationPlanVersion = "agentkit.evaluation.plan.version";
+
+    /// <summary>Gets the tag naming the evaluation case an operation concerns.</summary>
+    public const string EvaluationCaseId = "agentkit.evaluation.case.id";
+
+    /// <summary>Gets the tag carrying the one-based repetition of an evaluation case.</summary>
+    /// <remarks>The repetition is correlation evidence on spans and logs only, never a metric dimension.</remarks>
+    public const string EvaluationCaseRepetition = "agentkit.evaluation.case.repetition";
+
+    /// <summary>Gets the tag naming the bounded disposition of an evaluation case repetition.</summary>
+    public const string EvaluationCaseDisposition = "agentkit.evaluation.case.disposition";
+
+    /// <summary>Gets the tag naming the configured evaluator key an evaluator invocation ran under.</summary>
+    /// <remarks>The key comes from host configuration and is bounded.</remarks>
+    public const string EvaluationEvaluatorKey = "agentkit.evaluation.evaluator.key";
+
+    /// <summary>Gets the tag naming the configured report exporter key a delivery used.</summary>
+    /// <remarks>The key comes from host configuration and is bounded.</remarks>
+    public const string EvaluationExporterKey = "agentkit.evaluation.exporter.key";
+
+    /// <summary>Gets the tag naming the configured result-store key a plan selected.</summary>
+    /// <remarks>The key comes from host configuration and is bounded.</remarks>
+    public const string EvaluationResultStoreKey = "agentkit.evaluation.result_store.key";
+
+    /// <summary>Gets the tag naming the bounded evaluation result-store adapter that served an operation.</summary>
+    public const string EvaluationStoreAdapter = "agentkit.evaluation.store.adapter";
+
+    /// <summary>Gets the tag naming the bounded evaluation result-store operation.</summary>
+    public const string EvaluationStoreOperation = "agentkit.evaluation.store.operation";
 }

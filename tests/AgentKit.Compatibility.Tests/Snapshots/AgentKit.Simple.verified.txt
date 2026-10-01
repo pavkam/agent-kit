@@ -14,8 +14,7 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder UseOpenRouter(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenRouter.OpenRouterProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseAzureOpenAI(System.Uri resourceEndpoint, string apiKey, string deploymentId, string modelId, System.Action<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
-            [System.Obsolete("Prefer keyed AddOperatingSystemFileSystem and tool options HostRootPath.")]
-            public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.OperatingSystemFileSystemOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithPolicy<TPolicy>()
                 where TPolicy :  class, AgentKit.ISecurityPolicy { }
             public AgentKit.AgentEngineBuilder WithHostAccess(string? processWorkspaceRoot = null) { }
@@ -31,7 +30,10 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder AddAgent(AgentKit.AgentId agentId, System.Action<AgentKit.Simple.SimpleAgentOptions> configure) { }
             public AgentKit.AgentEngineBuilder WithBudget(System.Action<AgentKit.Simple.SimpleBudgetOptions> configure) { }
             public AgentKit.AgentEngineBuilder WithDelegation(System.Action<AgentKit.Tools.Task.TaskToolOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithMemory(System.Action<AgentKit.Simple.SimpleMemoryOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithArtifacts(System.Action<AgentKit.Simple.SimpleArtifactOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithDurability(System.Action<AgentKit.Durability.AgentDurabilityOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
             public AgentKit.AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2, AgentKit.OutputMode mode = 3) { }
         }
@@ -67,6 +69,12 @@ namespace AgentKit.Simple
         public AgentKit.OutputDefinition? Output { get; set; }
         public AgentKit.LlmRequestSettings RequestSettings { get; set; }
     }
+    public sealed class SimpleArtifactOptions
+    {
+        public SimpleArtifactOptions() { }
+        public long MaximumArtifactBytes { get; set; }
+        public AgentKit.DataClassification ProcessOutputClassification { get; set; }
+    }
     public sealed class SimpleBudgetOptions
     {
         public SimpleBudgetOptions() { }
@@ -76,6 +84,12 @@ namespace AgentKit.Simple
         public long? MaxOutputTokens { get; set; }
         public int? MaxToolCalls { get; set; }
         public int? MaxTurns { get; set; }
+    }
+    public sealed class SimpleMemoryOptions
+    {
+        public SimpleMemoryOptions() { }
+        public bool AcceptProposals { get; set; }
+        public AgentKit.DataClassification MaximumClassification { get; set; }
     }
     public static class SimpleWorkspaceToolsets
     {

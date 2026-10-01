@@ -22,6 +22,7 @@ public static class ServiceExtensions
         public IServiceCollection AddWriteTool(Action<WriteFileToolOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             var options = services.AddOptions<WriteFileToolOptions>()
                 .Validate(
                     static value => !string.IsNullOrWhiteSpace(value.HostRootPath),

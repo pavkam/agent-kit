@@ -38,6 +38,8 @@ public sealed class PlanTool: IToolInvoker
         }
         """).RootElement;
 
+    private static readonly ToolLeafLogEvents _logEvents = new(PlanToolLog.Completed, PlanToolLog.Cancelled, PlanToolLog.Faulted);
+    private readonly ILogger<PlanTool> _logger;
     private readonly IPlanStateStore _store;
     private readonly ISecurityAuthoritySelector _authoritySelector;
     private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
@@ -56,6 +58,7 @@ public sealed class PlanTool: IToolInvoker
     /// <param name="requestIds">The replaceable security-request identity source.</param>
     /// <param name="timeProvider">The deterministic authorization clock.</param>
     /// <param name="options">The captured model-facing bounds.</param>
+    /// <param name="logger">The content-free logger the invocation observation reports through.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
     public PlanTool(
@@ -63,13 +66,15 @@ public sealed class PlanTool: IToolInvoker
         ISecurityAuthoritySelector authoritySelector,
         IIdentifierGenerator<SecurityRequestId> requestIds,
         TimeProvider timeProvider,
-        IOptions<PlanToolOptions> options)
+        IOptions<PlanToolOptions> options,
+        ILogger<PlanTool> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(authoritySelector);
         ArgumentNullException.ThrowIfNull(requestIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
         ValidateOptions(options.Value);
         _store = store;
         _authoritySelector = authoritySelector;
@@ -79,6 +84,7 @@ public sealed class PlanTool: IToolInvoker
         _maximumItemCharacters = options.Value.MaximumItemCharacters;
         _maximumItemIdCharacters = options.Value.MaximumItemIdCharacters;
         _maximumItems = options.Value.MaximumItems;
+        _logger = logger;
     }
 
     /// <summary>Gets the immutable descriptor shared with registration and presentation formatting.</summary>
@@ -105,16 +111,29 @@ public sealed class PlanTool: IToolInvoker
         [new ToolAliasAssignment(new ToolAlias("plan"), new ToolIdentity(Id, Descriptor.Version))]);
 
     /// <inheritdoc/>
-    public async ValueTask<ToolInvocationResult> InvokeAsync(
+    public ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        InvokeAsync(Id, context, cancellationToken);
+
+    /// <summary>Runs the plan invocation while reporting every signal under the caller's stable tool identity.</summary>
+    /// <param name="reportedId">The identity the observation reports, so the <c>todo</c> alias is not labelled <c>plan</c>.</param>
+    /// <param name="context">The accepted invocation.</param>
+    /// <param name="cancellationToken">Cancels the invocation.</param>
+    /// <returns>The terminal invocation result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="reportedId"/> is default.</exception>
+    internal ValueTask<ToolInvocationResult> InvokeAsync(
+        ToolId reportedId,
+        ToolInvocationContext context,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        using var observation = ToolLeafObservation.Start(Id);
-        var result = await InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
-        observation.Complete(result.Outcome.Kind == ToolCallOutcomeKind.Success ? "succeeded" : "rejected");
-        return result;
+        return ToolLeafObservation.RunAsync(reportedId, context.CallId, _logger, _logEvents, () => InvokeObservedAsync(context, cancellationToken));
     }
+
+    private ValueTask<ToolInvocationResult> InvokeObservedAsync(ToolInvocationContext context, CancellationToken cancellationToken) =>
+        InvokeCoreAsync(ToExecutionContext(context), context.Arguments, cancellationToken);
 
     private static ToolExecutionContext ToExecutionContext(ToolInvocationContext context)
     {

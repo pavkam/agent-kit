@@ -10,21 +10,11 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
     internal List<SecurityEnforcementRequest> Enforcements { get; } = [];
     internal List<SecurityEnforcementIntent> Intents { get; } = [];
     internal GrantConsumptionStatus Status { get; set; } = GrantConsumptionStatus.Consumed;
-    internal bool IncludeReceipt { get; set; } = true;
     internal bool ReturnExactReceipt { get; set; } = true;
     internal Action? OnConsume { get; set; }
 
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
-
-    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-        SecurityGrant grant,
-        SecurityEnforcementRequest enforcement,
-        CancellationToken cancellationToken = default)
-    {
-        Enforcements.Add(enforcement);
-        return ValueTask.FromResult(new GrantConsumptionResult(Status, 0, $"Grant {Status}."));
-    }
 
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
         SecurityGrant grant,
@@ -36,7 +26,7 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
         Intents.Add(intent);
         OnConsume?.Invoke();
         var status = Matches(grant, enforcement) ? Status : GrantConsumptionStatus.Mismatch;
-        var receipt = IncludeReceipt && (status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
+        var receipt = (status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
             ? new SecurityEnforcementIntentReceipt(
                 ReturnExactReceipt
                     ? intent.Id

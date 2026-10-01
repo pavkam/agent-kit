@@ -26,13 +26,9 @@ internal static class LanguageEnforcementReceipt
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         var resources = ImmutableArray.Create(LanguageSecurityBinding.Resource(kind, path));
-        return grant.Authorization is { } authorization
-            ? new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, authorization, audience, SecurityOperationKind.FileRead,
-                SecurityEffect.Observe, resources, fingerprint, grant.RevocationVersion)
-            : new SecurityEnforcementRequest(
-                grant.Scope, grant.Identity, audience, SecurityOperationKind.FileRead, SecurityEffect.Observe,
-                resources, fingerprint, grant.RevocationVersion);
+        return new SecurityEnforcementRequest(
+            grant.Scope, grant.Identity, grant.Authorization, audience, SecurityOperationKind.FileRead,
+            SecurityEffect.Observe, resources, fingerprint, grant.RevocationVersion);
     }
 
     /// <summary>Determines whether a result permits this fresh exact language query.</summary>

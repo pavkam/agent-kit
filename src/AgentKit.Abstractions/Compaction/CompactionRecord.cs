@@ -15,12 +15,10 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller record shape
-/// described by the context-compaction architecture, which additionally
-/// distinguishes a superseded historical candidate from a currently active
-/// one and records commit-state detail on failure. This shape keeps only
-/// the two states a first-party compactor without a background candidate
-/// pipeline actually produces: <see cref="CompactionRecordStatus.Active"/>
+/// The record keeps only the two states a first-party compactor without a
+/// background candidate pipeline produces. The architecture additionally
+/// describes a superseded historical candidate and commit-state detail on
+/// failure, which this shape does not carry: <see cref="CompactionRecordStatus.Active"/>
 /// for a successfully activated compaction, and
 /// <see cref="CompactionRecordStatus.Rejected"/> for one that was decided
 /// against and never activated.

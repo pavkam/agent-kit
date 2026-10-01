@@ -56,6 +56,26 @@ composition (a demo, an example, or a developer's own machine) that already
 trusts every operation its own agent can request — see its own remarks before
 reaching for it in anything else.
 
+## Durable approval waits
+
+`DurableApprovalWaitRecorder` is the first-party `IApprovalWaitRecorder`. A
+component that observes a `SecurityApprovalRequired` decision (the tool executor
+does) calls it, and when `AgentPermissionOptions.DurabilityProfile` selects a
+profile enabling `agentkit.permissions.approval_wait`, it journals a waiting
+record through the coordinator-owned checkpoint writer. The record states
+`DefinitelyNotPerformed` certainty and names the pending approval as its
+external reference, so a process lost while a human decides leaves evidence of
+what would let the work resume. The manifest carries identities only, never the
+approval prompt or the requested resources.
+
+The wait is evidence, not authority: it grants, widens, and consumes nothing,
+and a durability gap is logged (event 5029) rather than surfaced. The recorder
+is deliberately separate from `SecurityAuthority`. The durability coordinator
+authorizes each of its own journal writes through the authority, so an authority
+that called the coordinator would form a construction cycle and could journal a
+wait for its own write. `ApprovalWaitDurableOperationHandler` owns the operation
+name for the coordinator.
+
 ## Related projects
 
 - [AgentKit.Permissions.InMemory](../AgentKit.Permissions.InMemory/README.md) —
@@ -81,8 +101,8 @@ projects above are composition collaborators, not necessarily dependencies.
   — focused behavior and registration tests.
 - [Component specification](../../docs/architecture/permissions-and-human-control.md)
   — intended ownership and contracts.
-- [Implementation status](../../docs/implementation-progress.md#component-coverage)
-  — remaining architecture work and proof.
+- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
+  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

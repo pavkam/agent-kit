@@ -9,18 +9,13 @@ public sealed class AgentPermissionOptions
     /// <summary>Gets or sets the published effective policy version.</summary>
     public long PolicyVersion { get; set; } = 1;
     /// <summary>Gets or sets the exact immutable policy snapshot evaluated by this authority.</summary>
-    /// <value>The captured snapshot binding accepted for snapshot-bound protected work, or null when this authority supports only legacy uncaptured requests.</value>
+    /// <value>The snapshot binding every captured authorization context must carry for this authority to evaluate it. It is an external fact of the composition, so there is no default, and composition validation rejects a null value and a version that differs from <see cref="PolicyVersion"/>.</value>
     /// <remarks>
-    /// Leaving this <see langword="null"/> is not a neutral "unconfigured" default: any request that carries a
-    /// captured <c>SecurityAuthorizationContext</c> — which is every request produced by the standard
-    /// <c>ISessionCoordinator</c>/<c>IAgentLoop</c> flow through <c>ISecurityProfileSelector</c> — is
-    /// unconditionally denied with code <c>"security.captured_context_mismatch"</c> when this is
-    /// <see langword="null"/>, regardless of any registered <see cref="ISecurityPolicy"/>. A composition that
-    /// captures authorization contexts (essentially every composition using session/run coordination) must set
-    /// this to the same <see cref="SecurityPolicySnapshotReference"/> published in the corresponding
-    /// <c>SecurityProfilePublication</c>. Prefer
-    /// <c>AgentKit.Permissions.ServiceExtensions.AddStandaloneSecurityProfile</c>, which derives and wires a
-    /// matching snapshot and publication together so this trap cannot occur.
+    /// Every request carries the captured <c>SecurityAuthorizationContext</c> it was selected under, and the authority
+    /// denies with code <c>"security.captured_context_mismatch"</c> any request whose captured snapshot is not this one.
+    /// Set it to the same <see cref="SecurityPolicySnapshotReference"/> published in the corresponding
+    /// <c>SecurityProfilePublication</c>. Prefer <c>AgentKit.Permissions.ServiceExtensions.AddStandaloneSecurityProfile</c>,
+    /// which derives and wires a matching snapshot and publication together.
     /// </remarks>
     public SecurityPolicySnapshotReference? PolicySnapshot { get; set; }
     /// <summary>Gets or sets the current revocation epoch.</summary>
@@ -34,23 +29,24 @@ public sealed class AgentPermissionOptions
     /// <value><see cref="HeadlessApprovalBehavior.Deny"/> unless the host explicitly opts into durable deferral.</value>
     public HeadlessApprovalBehavior HeadlessApprovalBehavior { get; set; } = HeadlessApprovalBehavior.Deny;
 
-    /// <summary>Gets or sets the durability profile this authority journals deferred approval waits under.</summary>
+    /// <summary>Gets or sets the durability profile the approval-wait recorder journals deferred approval waits under.</summary>
     /// <value>
     /// A nondefault profile key, or <see langword="null"/> — the default — when a deferred approval leaves no durable
     /// operation record.
     /// </value>
     /// <remarks>
     /// <para>
-    /// The profile is configured here rather than read from an agent definition because this authority is an
-    /// engine-wide singleton: it authorizes work for every hosted agent and holds no per-agent selection. A host
-    /// whose agents need different durability profiles for approval waits registers one keyed authority per profile
-    /// instead of expecting this single value to vary.
+    /// The profile is configured here rather than read from an agent definition because the
+    /// <see cref="DurableApprovalWaitRecorder"/> is an engine-wide singleton: it records waits for every hosted agent
+    /// and holds no per-agent selection. A host whose agents need different durability profiles for approval waits
+    /// replaces the recorder with its own <see cref="IApprovalWaitRecorder"/> instead of expecting this single value
+    /// to vary.
     /// </para>
     /// <para>
-    /// Setting this key promises evidence will exist, so a request whose decision defers is journaled only when the
-    /// composed durability runtime resolves the profile and that profile enables
+    /// Setting this key promises evidence will exist, so a wait is journaled only when the composed durability
+    /// runtime resolves the profile and that profile enables
     /// <see cref="PermissionsDurableOperations.ApprovalWait"/>. When durability is not composed, the profile is
-    /// unknown, or the name is not enabled, the authority behaves exactly as it does undurably: the wait is still
+    /// unknown, or the name is not enabled, the recorder behaves exactly as it does undurably: the decision is still
     /// reported to the caller, and no security decision changes.
     /// </para>
     /// </remarks>

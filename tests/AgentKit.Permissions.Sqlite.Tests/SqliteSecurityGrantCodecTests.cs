@@ -47,6 +47,20 @@ public sealed class SqliteSecurityGrantCodecTests
         _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeGrant(payload, _settings));
     }
 
+    /// <summary>Verifies an envelope from an earlier layout is rejected rather than read, because no reader for it exists.</summary>
+    /// <param name="earlierVersion">An envelope version below the current one.</param>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void DecodeGrant_WhenEnvelopeVersionPredatesTheCurrentLayout_FailsClosed(byte earlierVersion)
+    {
+        var payload = SqliteSecurityGrantCodec.EncodeGrant(
+            TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), _settings);
+        payload[4] = earlierVersion;
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeGrant(payload, _settings));
+    }
+
     /// <summary>Verifies decoding rejects an empty or over-bound envelope before any parsing begins.</summary>
     [Fact]
     public void DecodeGrant_WhenPayloadIsEmptyOrExceedsTheBoundedLength_ThrowsInvalidDataException()
@@ -67,7 +81,7 @@ public sealed class SqliteSecurityGrantCodecTests
         _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeEnforcement(tooLarge, _settings));
     }
 
-    /// <summary>Verifies optional approval identity round-trips through version-two grant envelopes.</summary>
+    /// <summary>Verifies optional approval identity round-trips through the current grant envelope.</summary>
     [Fact]
     public void EncodeGrant_WhenApprovalIsPresent_RoundTripsApprovalResponseId()
     {
@@ -76,17 +90,17 @@ public sealed class SqliteSecurityGrantCodecTests
             Approval = new ApprovalResponseId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
         };
         var payload = SqliteSecurityGrantCodec.EncodeGrant(grant, _settings);
-        payload[4].ShouldBe((byte) 2);
+        payload[4].ShouldBe(SqliteSecurityGrantCodecWriter.EnvelopeVersion);
         SqliteSecurityGrantCodec.DecodeGrant(payload, _settings).ShouldBe(grant);
     }
 
-    /// <summary>Verifies version-two grant envelopes without approval decode with a null binding.</summary>
+    /// <summary>Verifies current grant envelopes without approval decode with a null binding.</summary>
     [Fact]
-    public void EncodeGrant_WhenApprovalIsAbsent_EncodesVersionTwoWithoutApproval()
+    public void EncodeGrant_WhenApprovalIsAbsent_EncodesTheCurrentEnvelopeWithoutApproval()
     {
         var grant = TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch);
         var payload = SqliteSecurityGrantCodec.EncodeGrant(grant, _settings);
-        payload[4].ShouldBe((byte) 2);
+        payload[4].ShouldBe(SqliteSecurityGrantCodecWriter.EnvelopeVersion);
         SqliteSecurityGrantCodec.DecodeGrant(payload, _settings).Approval.ShouldBeNull();
     }
 

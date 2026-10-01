@@ -10,15 +10,32 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Verifies DefaultCompactor behavior and contracts.</summary>
-public sealed class DefaultCompactorTests
+public sealed class DefaultCompactorTests: IDisposable
 {
+    private readonly List<ServiceProvider> _providers = [];
     private readonly AgentId _agentId = new(Guid.NewGuid());
     private readonly SessionId _sessionId = new(Guid.NewGuid());
     private readonly BranchId _branchId = new(Guid.NewGuid());
     [Fact]
     public void Constructor_WhenCoordinatorNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultCompactor(null!, new StructuralCompactionCutSelector(Options.Create(new CompactionOptions())), CreateStrategy(), CreateValidator(), CreateEstimator(), IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), TimeProvider.System, Options.Create(new CompactionOptions())));
+        var provider = BuildProvider(new FakeSessionCoordinator(_branchId));
+        var key = AgentContextCompactionComponentDefaults.CompactorKey;
+
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultCompactor(
+            null!,
+            provider.GetRequiredKeyedService<ICompactionCutSelector>(CompactionServiceKeys.CutSelector(key)),
+            provider.GetRequiredKeyedService<ICompactionStrategyResolver>(CompactionServiceKeys.StrategyResolver(key)),
+            provider.GetRequiredKeyedService<ICompactionValidator>(CompactionServiceKeys.Validator(key)),
+            provider.GetRequiredKeyedService<ICompactionActivationCoordinator>(CompactionServiceKeys.ActivationCoordinator(key)),
+            provider.GetRequiredKeyedService<ICompactionEventDispatcher>(CompactionServiceKeys.EventDispatcher(key)),
+            provider.GetRequiredService<ICompactionSizeEstimator>(),
+            provider.GetRequiredService<IIdentifierGenerator<CompactionManifestId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SessionEntryId>>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IOptions<CompactionOptions>>(),
+            provider.GetRequiredKeyedService<ContextCompactionOptionsSnapshot>(key.Value)));
+
         exception.ParamName.ShouldBe("coordinator");
     }
 
@@ -294,23 +311,6 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
-    public async Task CompactAsync_WhenPageCarriesNoSnapshotEvidence_ReturnsNonRetryableFailure()
-    {
-        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
-        var address = Address();
-        var entries = Enumerable.Range(1, 4).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('p', 200))).ToArray();
-        coordinator.ReadOverride = _ => new SessionPage([.. entries], entries[^1].Sequence, hasMore: false);
-        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(4), new SessionSequence(4), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
-
-        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
-
-        var failed = result.ShouldBeOfType<CompactionFailed>();
-        failed.Failure.Kind.ShouldBe(CompactionFailureKind.SourceUnavailable);
-        failed.Failure.Retryable.ShouldBeFalse();
-        coordinator.ReceivedAppends.ShouldBeEmpty();
-    }
-
-    [Fact]
     public async Task CompactAsync_WhenReductionInsufficient_ReturnsCompactionNotReducing()
     {
         var (compactor, coordinator) = CreateCompactor();
@@ -377,7 +377,7 @@ public sealed class DefaultCompactorTests
                 new CompactionProducer(new CompactionStrategyKey("test.misreporting"), deterministic: true, ExtensionData.Empty),
                 new CompactionSizeEstimate(1, 1, 1))
         };
-        var validator = new FakeCompactionValidator { OnValidate = request => new CompactionValidated(request.Candidate) };
+        var validator = new FakeCompactionValidator { OnValidate = request => new CompactionValidated(new ValidatedCompaction(request.Candidate, new CompactionValidationStamp(new CompactionValidatorVersion("1"), new ContentHash("sha256:candidate"), DateTimeOffset.UnixEpoch), [])) };
         var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy, validator: validator);
         coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('m', 2000))));
         var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
@@ -990,57 +990,390 @@ public sealed class DefaultCompactorTests
     private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithModelStrategy(ScriptedLlmModel model, int maximumCheckpointCharacters)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
-        var options = Options.Create(new CompactionOptions
-        {
-            MaximumCheckpointCharacters = maximumCheckpointCharacters,
-            SummaryModelPolicy = new ModelSelectionPolicy([model.Alias]),
-        });
-        var estimator = new CharacterCompactionSizeEstimator(options);
         var descriptor = TestFactory.SummaryModel(model.Alias.Value);
-        var generator = new ModelBackedSummaryGenerator(
-            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])),
-            ScriptedModelSelector.Selecting(descriptor),
-            new AliasLlmModelResolver(model),
-            IdGenerator(static v => new ModelRequestId(v)),
-            options);
-        var strategy = new ModelCompactionStrategy(
-            AgentContextCompactionComponentDefaults.CompactorKey,
-            new FixedCompactionSummaryGeneratorResolver(generator),
-            estimator,
-            IdGenerator(static v => new MessageId(v)),
-            Clock(),
-            options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), strategy, new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options);
+        var compactor = BuildFromRegistration(
+            coordinator,
+            services =>
+            {
+                _ = services.AddModelBackedContextCompaction(options =>
+                {
+                    options.MaximumCheckpointCharacters = maximumCheckpointCharacters;
+                    options.SummaryModelPolicy = new ModelSelectionPolicy([model.Alias]);
+                });
+                _ = services.AddSingleton<IModelCatalog>(new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])));
+                _ = services.AddSingleton<IModelSelector>(ScriptedModelSelector.Selecting(descriptor));
+                _ = services.AddSingleton<ILlmModelResolver>(new AliasLlmModelResolver(model));
+            });
         return (compactor, coordinator);
+    }
+
+    /// <summary>Builds the default compactor through the public registration, with the fake coordinator and clock registered first so <c>TryAdd</c> keeps them.</summary>
+    private DefaultCompactor BuildFromRegistration(
+        FakeSessionCoordinator coordinator,
+        Action<IServiceCollection> register,
+        Action<IServiceCollection>? overrides = null,
+        TimeProvider? timeProvider = null)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISessionCoordinator>(coordinator);
+        _ = services.AddSingleton(timeProvider ?? Clock());
+        register(services);
+        overrides?.Invoke(services);
+        var provider = services.BuildServiceProvider();
+        _providers.Add(provider);
+        return provider.GetRequiredService<ICompactor>().ShouldBeOfType<DefaultCompactor>();
+    }
+
+    private ServiceProvider BuildProvider(FakeSessionCoordinator coordinator)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISessionCoordinator>(coordinator);
+        _ = services.AddContextCompaction();
+        var provider = services.BuildServiceProvider();
+        _providers.Add(provider);
+        return provider;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        foreach (var provider in _providers)
+        {
+            provider.Dispose();
+        }
     }
 
     private SessionAddress Address() => new(_agentId, _sessionId);
     /// <summary>Requests from <see cref="TestFactory.Request"/> are stamped at the Unix epoch with a five-minute deadline; the clock starts inside that window.</summary>
     private static FakeTimeProvider Clock() => new(DateTimeOffset.UnixEpoch.AddMinutes(1));
 
+    [Fact]
+    public async Task CompactAsync_WhenTheProfileEnablesActivation_JournalsTheAppendWithACompactionActivatedCheckpoint()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile, CompactionDurableOperations.Activation);
+        var request = SeedDurableRequest(coordinator, profile);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        var activation = durable.Executions.ShouldHaveSingleItem();
+        activation.Name.ShouldBe(CompactionDurableOperations.Activation);
+        activation.Address.RunId.ShouldBe(((InRunOperationCorrelation) request.Context.Correlation).RunId);
+        var manifest = DurableBoundaryPayload.Decode<DurableCompactionActivationManifest>(activation.Input);
+        manifest.CompactionId.ShouldBe(request.Context.CompactionId.Value);
+        manifest.ActivatedVersion.ShouldBe(succeeded.Record.ActivatedSessionVersion!.Value.Value);
+        durable.Writers.ShouldHaveSingleItem().Checkpoints.ShouldBe([DurableCheckpointKind.CompactionActivated]);
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheRequestSelectsNoProfile_AppendsWithoutJournaling()
+    {
+        var (compactor, coordinator, durable) = CreateDurableCompactor(
+            new DurabilityProfileKey("test-durability"), CompactionDurableOperations.Activation);
+        var request = SeedDurableRequest(coordinator, profile: null);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+        durable.Executions.ShouldBeEmpty();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheProfileDoesNotEnableActivation_AppendsWithoutJournaling()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile);
+        var request = SeedDurableRequest(coordinator, profile);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+        durable.Executions.ShouldBeEmpty();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheSelectedProfileIsNotRegistered_AppendsWithoutJournaling()
+    {
+        var (compactor, coordinator, durable) = CreateDurableCompactor(
+            new DurabilityProfileKey("another-profile"), CompactionDurableOperations.Activation);
+        var request = SeedDurableRequest(coordinator, new DurabilityProfileKey("test-durability"));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+        durable.Executions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheActivationCannotBeJournaled_PropagatesTheFaultAndNeverAppendsTheRecord()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile, CompactionDurableOperations.Activation);
+        durable.Failure = new InvalidOperationException("journal offline");
+        var request = SeedDurableRequest(coordinator, profile);
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(
+            () => compactor.CompactAsync(request, TestContext.Current.CancellationToken));
+
+        failure.Message.ShouldBe("journal offline");
+        _ = durable.Executions.ShouldHaveSingleItem();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheActivationCheckpointIsRefused_NeverAppendsTheRecord()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile, CompactionDurableOperations.Activation);
+        durable.WriteRefusal = new DurableRecordFenced(new FencingToken(1), new FencingToken(2));
+        var request = SeedDurableRequest(coordinator, profile);
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(
+            () => compactor.CompactAsync(request, TestContext.Current.CancellationToken));
+
+        failure.Message.ShouldContain("no longer owns");
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenPolicyOrdersADecliningStrategyFirst_FallsBackToTheNextStrategyAndSucceeds()
+    {
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(services =>
+            services.AddCompactionStrategy<DecliningCompactionStrategy>(DefaultKey, StrategyRegistration("declining")));
+        var request = SeedPolicyRequest(coordinator, "declining", CompactionStrategyKeys.Extractive.Value);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionSucceeded>().Record.Manifest.Producer.StrategyKey.ShouldBe(CompactionStrategyKeys.Extractive);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenEveryOrderedStrategyDeclines_ReturnsTheLastRejectionWithoutAppending()
+    {
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(services =>
+        {
+            _ = services.AddCompactionStrategy<DecliningCompactionStrategy>(DefaultKey, StrategyRegistration("first"));
+            _ = services.AddCompactionStrategy<OtherDecliningCompactionStrategy>(DefaultKey, StrategyRegistration("second"));
+        });
+        var request = SeedPolicyRequest(coordinator, "first", "second");
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<CompactionRejected>();
+        rejected.Rejection.Kind.ShouldBe(CompactionRejectionKind.PolicyViolation);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAnOrderedStrategyFails_DoesNotFallBackToTheNextStrategy()
+    {
+        var failure = new CompactionFailure(CompactionFailureKind.StrategyFailure, "strategy blew up", retryable: false, ExtensionData.Empty);
+        var failing = new FakeCompactionStrategy { OnProduce = _ => new CompactionStrategyFailed(failure) };
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(
+            services => _ = services.AddKeyedSingleton<ICompactionStrategy>(
+                CompactionServiceKeys.Strategy(DefaultKey, new CompactionStrategyKey("failing")), failing));
+        var request = SeedPolicyRequest(coordinator, "failing", CompactionStrategyKeys.Extractive.Value);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionFailed>().Failure.SafeMessage.ShouldBe("strategy blew up");
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAnOrderedStrategyIsNotRegistered_ReturnsAStrategyFailure()
+    {
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(static _ => { });
+        var request = SeedPolicyRequest(coordinator, "never-registered");
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.StrategyFailure);
+        failed.Failure.SafeMessage.ShouldContain("never-registered");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAnOrderedStrategyIsCancelled_ReturnsCancelledWithNothingAttempted()
+    {
+        var cancelled = new FakeCompactionStrategy
+        {
+            OnProduce = _ => new CompactionStrategyCancelled(new CompactionCancellation(
+                CompactionCancellationReason.CallerCancelled, CompactionCommitState.NotAttempted, "cancelled by strategy")),
+        };
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(
+            services => _ = services.AddKeyedSingleton<ICompactionStrategy>(
+                CompactionServiceKeys.Strategy(DefaultKey, new CompactionStrategyKey("cancelled")), cancelled));
+        var request = SeedPolicyRequest(coordinator, "cancelled");
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionCancelled>().CommitState.ShouldBe(CompactionCommitState.NotAttempted);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenPolicyWasCompiledForAnotherCompactor_RejectsBeforeReadingTheSession()
+    {
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(static _ => { });
+        var request = SeedPolicyRequest(coordinator, CompactionStrategyKeys.Extractive.Value) with
+        {
+            Policy = CompactionPolicyFixtures.Create(
+                compactorKey: new ComponentKey<ICompactor>("another-compactor"),
+                strategyOrder: [CompactionStrategyKeys.Extractive]),
+        };
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionRejected>().Rejection.Kind.ShouldBe(CompactionRejectionKind.PolicyViolation);
+        coordinator.ReceivedReads.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenTheRequestCarriesNoPolicy_AppliesTheCompactorsDefaultStrategyOrder()
+    {
+        var (compactor, coordinator) = CreateCompactorWithRegistrations(services =>
+        {
+            _ = services.AddAgentContextCompaction(
+                DefaultKey,
+                options => options.DefaultStrategyOrder = [new CompactionStrategyKey("declining"), CompactionStrategyKeys.Extractive]);
+            _ = services.AddCompactionStrategy<DecliningCompactionStrategy>(DefaultKey, StrategyRegistration("declining"));
+        });
+        var request = SeedPolicyRequest(coordinator);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionSucceeded>().Record.Manifest.Producer.StrategyKey.ShouldBe(CompactionStrategyKeys.Extractive);
+    }
+
+    private static ComponentKey<ICompactor> DefaultKey => AgentContextCompactionComponentDefaults.CompactorKey;
+
+    private static CompactionStrategyRegistration StrategyRegistration(string key) =>
+        new(
+            new CompactionStrategyDescriptor(
+                new CompactionStrategyKey(key), new CompactionStrategyVersion("1"), CompactionStrategyCapabilities.None, deterministic: true, summaryGeneratorKey: null),
+            order: 0,
+            before: [],
+            after: [],
+            ServiceLifetime.Singleton);
+
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithRegistrations(Action<IServiceCollection> register)
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        var compactor = BuildFromRegistration(
+            coordinator,
+            services =>
+            {
+                _ = services.AddContextCompaction(o => o.MaximumCheckpointCharacters = 30);
+                register(services);
+            });
+        return (compactor, coordinator);
+    }
+
+    /// <summary>Seeds a reducible branch and returns a request whose policy orders <paramref name="strategyOrder"/>, or no policy when none are named.</summary>
+    private CompactionRequest SeedPolicyRequest(FakeSessionCoordinator coordinator, params string[] strategyOrder)
+    {
+        var request = SeedDurableRequest(coordinator, profile: null);
+        return strategyOrder.Length == 0
+            ? request
+            : request with
+            {
+                Policy = CompactionPolicyFixtures.Create(
+                    compactorKey: DefaultKey,
+                    strategyOrder: [.. strategyOrder.Select(static key => new CompactionStrategyKey(key))]),
+            };
+    }
+
+    private CompactionRequest SeedDurableRequest(FakeSessionCoordinator coordinator, DurabilityProfileKey? profile)
+    {
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
+        var request = TestFactory.Request(
+            TestFactory.CompactionContext(_agentId, _sessionId),
+            _branchId,
+            coordinator.Version,
+            new SessionSequence(10),
+            minimumRetainedEntries: 2,
+            minimumReductionRatio: 0.1);
+        return profile is { } selected ? request with { DurabilityProfile = selected } : request;
+    }
+
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator, RecordingBoundaryCoordinator Durable) CreateDurableCompactor(
+        DurabilityProfileKey registeredProfile,
+        params DurableOperationName[] enabledOperations)
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        var registry = new DurableBoundaryRegistry();
+        var durable = new RecordingBoundaryCoordinator(registry);
+        var compactor = BuildFromRegistration(
+            coordinator,
+            services => services.AddContextCompaction(o => o.MaximumCheckpointCharacters = 30),
+            services =>
+            {
+                // The default keyed activation coordinator reads the durability coordinator, catalog, and registry from DI.
+                _ = services.AddSingleton(registry);
+                _ = services.AddSingleton<IDurableExecutionCoordinator>(durable);
+                _ = services.AddSingleton<IDurabilityProfileCatalog>(new FixedDurabilityProfileCatalog(registeredProfile, enabledOperations));
+            });
+        return (compactor, coordinator, durable);
+    }
+
     private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(int maximumCheckpointCharacters = 16_000, int maximumSourceEntries = 5_000, int sourceReadPageSize = 256, ILogger<DefaultCompactor>? logger = null, TimeProvider? timeProvider = null)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
-        var options = Options.Create(new CompactionOptions { MaximumCheckpointCharacters = maximumCheckpointCharacters, MaximumSourceEntries = maximumSourceEntries, SourceReadPageSize = sourceReadPageSize });
-        var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), timeProvider ?? Clock(), options, logger);
+        var compactor = BuildFromRegistration(
+            coordinator,
+            services => services.AddContextCompaction(o =>
+            {
+                o.MaximumCheckpointCharacters = maximumCheckpointCharacters;
+                o.MaximumSourceEntries = maximumSourceEntries;
+                o.SourceReadPageSize = sourceReadPageSize;
+            }),
+            logger is null ? null : services => services.AddSingleton(logger),
+            timeProvider);
         return (compactor, coordinator);
     }
 
     private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithFakes(ICompactionCutSelector? cutSelector = null, ICompactionStrategy? strategy = null, ICompactionValidator? validator = null, ILogger<DefaultCompactor>? logger = null)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
-        var options = Options.Create(new CompactionOptions());
-        var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, cutSelector ?? new StructuralCompactionCutSelector(options), strategy ?? new ExtractiveCompactionStrategy(estimator, options), validator ?? new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options, logger);
+        var compactor = BuildFromRegistration(
+            coordinator,
+            services => services.AddContextCompaction(),
+            services =>
+            {
+                // A fake takes the exact slot the first-party default would occupy, so the compactor reaches it through
+                // its keyed resolver, selector, and validator rather than a test-only constructor.
+                if (cutSelector is not null)
+                {
+                    _ = services.AddSingleton(cutSelector);
+                }
+
+                if (strategy is not null)
+                {
+                    _ = services.AddKeyedSingleton(
+                        CompactionServiceKeys.Strategy(AgentContextCompactionComponentDefaults.CompactorKey, CompactionStrategyKeys.Extractive),
+                        strategy);
+                }
+
+                if (validator is not null)
+                {
+                    _ = services.AddSingleton(validator);
+                }
+
+                if (logger is not null)
+                {
+                    _ = services.AddSingleton(logger);
+                }
+            });
         return (compactor, coordinator);
     }
 
     private static CharacterCompactionSizeEstimator CreateEstimator() => new(Options.Create(new CompactionOptions()));
-    private static ExtractiveCompactionStrategy CreateStrategy() => new(CreateEstimator(), Options.Create(new CompactionOptions()));
-    private static DefaultCompactionValidator CreateValidator() => new(CreateEstimator(), Options.Create(new CompactionOptions()));
-    private static GuidIdentifierGenerator<TIdentifier> IdGenerator<TIdentifier>(Func<Guid, TIdentifier> factory)
-        where TIdentifier : struct => new(factory);
     [Fact]
     public async Task CompactAsync_WhenObserved_EmitsCorrelatedContentFreeActivity()
     {
@@ -1050,9 +1383,7 @@ public sealed class DefaultCompactorTests
         var sessionId = new SessionId(Guid.NewGuid());
         var coordinator = new FakeSessionCoordinator(branchId);
         coordinator.Seed([TestFactory.MessageEntry(new SessionAddress(agentId, sessionId), branchId, 1, protectedContent)]);
-        var options = Options.Create(new CompactionOptions());
-        var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, new GuidIdentifierGenerator<CompactionManifestId>(static value => new CompactionManifestId(value)), new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)), Clock(), options);
+        var compactor = BuildFromRegistration(coordinator, services => services.AddContextCompaction());
         var request = TestFactory.Request(TestFactory.CompactionContext(agentId, sessionId), branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 5);
         using var activities = new ActivityCollector(static source => source.Name == AgentKitDiagnostics.ActivitySourceName, activity => activity.OperationName == AgentKitActivityNames.ContextCompact && Equals(activity.GetTagItem(AgentKitTagNames.CompactionId), request.Context.CompactionId.ToString()));
         _ = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);

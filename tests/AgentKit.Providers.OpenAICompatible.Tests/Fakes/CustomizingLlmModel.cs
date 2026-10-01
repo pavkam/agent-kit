@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 
+using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -22,7 +23,7 @@ internal sealed class CustomizingLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
     /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
-    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <param name="scheme">The authorization scheme the override reports.</param>
     /// <param name="adjust">The payload edit applied by the override, also receiving the base's exposed <c>Descriptor</c>.</param>
@@ -32,11 +33,11 @@ internal sealed class CustomizingLlmModel: OpenAICompatibleLlmModelBase
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
         IProviderCredentialSource credentials,
-        HttpClient httpClient,
+        ProviderEgress egress,
         TimeProvider timeProvider,
         ProviderAuthorizationScheme scheme,
         Action<JsonObject, LlmModelRequest, ModelDescriptor> adjust)
-        : base(descriptor, profile, translator, streamParser, credentials, httpClient, timeProvider)
+        : base(descriptor, profile, translator, streamParser, credentials, egress, timeProvider)
     {
         _scheme = scheme;
         _adjust = adjust;

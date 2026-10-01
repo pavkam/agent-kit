@@ -63,15 +63,21 @@ public sealed class ServiceExtensionsTests
 
     private sealed class FixedGrantStore: ISecurityGrantStore
     {
-        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
-
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant,
             SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new GrantConsumptionResult(
-                GrantConsumptionStatus.Unknown, 0, "The replacement store did not consume a grant."));
+            SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            ArgumentNullException.ThrowIfNull(enforcement);
+            ArgumentNullException.ThrowIfNull(intent);
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Unknown, 0, "This test grant store does not consume grants.", null));
+        }
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
 
         public ValueTask<GrantRevocationResult> RevokeAsync(GrantId grantId, RevocationReason reason, CancellationToken cancellationToken = default)
         {

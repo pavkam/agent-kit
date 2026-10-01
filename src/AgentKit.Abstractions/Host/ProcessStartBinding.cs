@@ -3,12 +3,12 @@
 
 namespace AgentKit;
 
-/// <summary>Maps structured process start facts onto legacy authorization intents.</summary>
+/// <summary>Maps structured process start facts onto authorization intents.</summary>
 public static class ProcessStartBinding
 {
     /// <summary>Builds the canonical resolved intent used for process security evidence.</summary>
     /// <param name="resolved">The resolved start facts.</param>
-    /// <returns>The legacy intent shape bound to the same executable and workspace evidence.</returns>
+    /// <returns>The intent shape bound to the same executable and workspace evidence.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="resolved"/> is null.</exception>
     public static ResolvedProcessIntent ToResolvedProcessIntent(ResolvedProcessStart resolved)
     {
@@ -24,9 +24,9 @@ public static class ProcessStartBinding
             resolved.StandardInputFingerprint ?? ProcessSecurityBinding.FingerprintBytes([]));
     }
 
-    /// <summary>Builds a legacy resolve request from one structured start request.</summary>
+    /// <summary>Builds a resolve request from one structured start request.</summary>
     /// <param name="start">The structured start request.</param>
-    /// <returns>The legacy resolve request.</returns>
+    /// <returns>The resolve request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="start"/> is null.</exception>
     public static ProcessResolveRequest ToResolveRequest(ProcessStartRequest start)
     {

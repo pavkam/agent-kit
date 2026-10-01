@@ -91,10 +91,27 @@ network, or process enforcement.
   evidence before transferring a lease and release late acquisitions after
   closure or cancellation. One failing source cleanup must not suppress the
   other owned cleanups.
-- The model requests a tool; it never executes one. Record accepted calls before
-  effects. Every bounded, identified request—including pre-invocation
-  rejection—produces exactly one authoritative terminal `ToolCallResult` through
-  `IToolCallRecorder` and one correlated projection.
+- The model requests a tool; it never executes one. Every bounded, identified
+  request—including pre-invocation rejection—produces exactly one authoritative
+  terminal `ToolCallResult` and one correlated projection. The executor commits
+  an `AcceptedToolCall` through the run's `IToolCallRecorder` after
+  authorization and before the invoker starts, and fails the call closed (typed
+  `Unsupported`, `DefinitelyNotPerformed`) when that record cannot be made
+  durable. It records every terminal result afterward without the caller's
+  token; a failed terminal record never changes the outcome. The first-party
+  `SessionToolCallRecorder` appends `ToolCallAcceptedSessionEntry` and a
+  content-free `ToolCallTerminalSessionEntry` through the capability's session
+  coordinator and `ToolCallSessionTarget`. Recorders are keyed by
+  `ComponentKey<IToolExecutor>`; an unkeyed recorder never satisfies a keyed
+  executor.
+- Select execution policy by the exact captured `ToolExecutionPolicyReference`
+  through `IToolExecutionPolicySelector`; never fall back to a default, a newer
+  revision, or an unbound reference. A policy plans scheduling, timeout, retry
+  pacing, and normalization; it never authorizes. `AddAgentTools` registers
+  `DefaultToolExecutionPolicy` only for `standard@1`.
+- `IToolEventSink` observes content-free `ToolEvent` values through
+  `ToolEventDispatcher`, which isolates every sink failure and bounds each
+  delivery. A sink can never change an outcome.
 - Preflight batches, preserve source ordinals, use explicit barrier/concurrency
   rules, and publish durable results deterministically.
 - Bound and normalize outputs without silently stringifying unsupported media.
@@ -109,7 +126,17 @@ network, or process enforcement.
   `AgentKit.Tools.Write`. Read line windows are incremental model-facing
   projections over host-bounded byte streams; writes require an explicit safe
   disposition and never hide parent-directory creation.
-- Retry only when effect and side-effect certainty make it safe.
+- Retry only when effect and side-effect certainty make it safe: read-only calls
+  and mutating calls known not to have started follow ordinary policy; a
+  possibly-started mutating call retries only for a declared `Idempotent` or
+  `IdempotentWithKey` descriptor whose invoker implements
+  `IIdempotencyEnforcingToolInvoker` and confirms the exact context. The attempt
+  budget counts the first attempt (`MaximumAttempts`).
+- `NetworkWebSearchProvider` consumes the tool-issued search grant with required
+  audit, then sends one bodyless `GET` through `INetworkNameResolver` and
+  `INetworkTransport` under separate resolution and send grants with redirects
+  refused; it never owns an `HttpClient`, and missing authority, enforcement, or
+  audit yields `WebSearchDenied` before any I/O.
 - This skill does not define authorization, approvals, grants, filesystem,
   network, or process behavior. Those owners remain independently replaceable.
 

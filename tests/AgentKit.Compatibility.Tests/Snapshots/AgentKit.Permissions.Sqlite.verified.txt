@@ -105,7 +105,6 @@ namespace AgentKit.Permissions.Sqlite
         public System.Threading.Tasks.ValueTask InitializeAsync(AgentKit.SecurityControlPlaneBootstrap bootstrap, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantRevocationResult> RevokeAsync(AgentKit.GrantId grantId, AgentKit.RevocationReason reason, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public readonly struct SqliteSecurityGrantStoreInstanceId : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreInstanceId>

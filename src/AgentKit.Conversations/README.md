@@ -3,14 +3,12 @@
 Drive one ongoing conversation — session creation, message admission, and one
 full agent-loop run — through a single `IConversationSession.SendAsync` call.
 
-Composing that one working conversational turn otherwise requires an application
-to call `ISessionCoordinator` to create and load a session, capture
-authorization through `ISecurityProfileSelector` twice (once to admit the user's
-message, once to authorize the run), append a `MessageSessionEntry` itself,
-build an `AgentRunRequest` from its own instructions and tools, and run
-`IAgentLoop` directly — all of it bypassing the `AgentEngine`/`Agent` facade,
-which has no method to admit a message into a session before starting a run.
-`DefaultConversationSession` performs all of that consistently for the common
+A conversation turn needs a session created or opened for one identity, the
+user's message durably admitted, and one full agent-loop run. The engine's
+`Agent` handle owns admission, lane protocol, and settlement; this package adds
+the single-session convenience over it: `DefaultConversationSession` binds one
+session and branch, sends each message through the `AgentEngine` admission path,
+and projects the committed messages as conversation events. It covers the common
 case of one long-lived, single-branch conversation against one composed agent.
 
 ## Use this project
@@ -21,13 +19,15 @@ security, session, loop, and provider services exactly as any other AgentKit
 composition, then add one conversation:
 
 ```csharp
-var services = new ServiceCollection();
+var builder = AgentEngine.CreateBuilder();
+var services = builder.Services;
 
 services.AddInMemorySecurityGrantStore();
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
-    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddInMemoryApprovalStore();
+services.AddInMemorySecurityDecisionStore();
 services.AddAllowAllSecurityPolicy();
+services.AddAgentPermissions(o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddSecurityAuthority(authorityKey);
 
 services.AddAgentSession();
 services.AddInMemorySessionStore();
@@ -35,39 +35,48 @@ services.AddInMemorySessionDirectory(new ComponentId("app.session"));
 
 services.AddAgentContext();
 services.AddAgentOutput();
-services.AddAgentLoop();
+services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
+services.AddAgentIO(
+    AgentIOComponentDefaults.InputCoordinatorKey,
+    AgentIOComponentDefaults.OutputPublisherKey);
+services.AddSessionBackedInputQueue();
+services.AddAgentHooks();
 services.AddAgentTools();
+services.AddAgentBudgets();
+services.AddBudgetProfile(AgentBudgetComponentDefaults.ProfileKey, _ => { });
+services.AddInMemoryBudgetLedger();
 
+services.AddAgentNetwork();     // provider egress sends through the network boundary
 services.AddAgentProviders();
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
 services.AddOpenAIKnownLlmModel(alias, modelId);
 
+services.AddAgent(definition);
+services.AddSecurityProfilePublication(securityPublication);
+services.AddAgentRunProfilePublication(runProfilePublication);
+
 services.AddConversationSession(options =>
 {
-    options.AgentId = agentId;
+    options.Agent = definition;
+    options.Configuration = effectiveConfiguration;
     options.Identity = identity;
-    options.SecurityProfileKey = securityProfileKey;
-    options.AgentDefinitionRevision = definitionRevision;
-    options.ConfigurationVersion = configurationVersion;
     options.SessionProfile = sessionProfile;
-    options.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
-    options.Instructions.Add(systemMessage);
-    options.MaxTurns = 4;
 });
 ```
 
-When the agent has tools, add each tool's `LlmToolDefinition` to `options.Tools`
-and, optionally, a `ConversationToolPresentationBinding` pairing the exact
-captured `ToolDescriptor` with that definition so live tool events carry a
-bounded presentation.
+The pinned `AgentDefinition` is the single source of the agent identity,
+security profile, model policy, instructions, tool selection, turn limits, and
+output contract, so the options carry no second copy of any of them. When the
+agent has tools, optionally add a `ConversationToolPresentationBinding` pairing
+each exact captured `ToolDescriptor` with its advertised `LlmToolDefinition` so
+live tool events carry a bounded presentation.
 
 Resolve `IConversationSession` and call `SendAsync` for each user message:
 
 ```csharp
-await using var provider = services.BuildServiceProvider(
-    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-var conversation = provider.GetRequiredService<IConversationSession>();
+await using var engine = builder.Build();
+var conversation = engine.Services.GetRequiredService<IConversationSession>();
 
 var result = await conversation.SendAsync("List the files here.", cancellationToken);
 foreach (var conversationEvent in result.Events)
@@ -134,12 +143,12 @@ operations after disposal begins. The application must first complete or cancel
 active conversation operations; disposal does not coordinate with an in-flight
 turn.
 
-This is not a replacement for `AgentEngine`: it does not host a catalog of
-several agent definitions and does not implement the durable, queue-backed input
-admission `AgentKit.IO` provides for multi-writer or distributed hosts. It is
-the direct, in-process composition an application reaches for when it owns its
-own `IServiceProvider` and wants one conversation with one agent — a terminal,
-desktop, or single-tenant service host.
+This is not a replacement for `AgentEngine`: it binds exactly one session on one
+agent and does not host a catalog of several agent definitions or expose the
+`Agent` operations (queued steering and follow-up input, cancel and attach by
+`RunId`). It is the direct, in-process composition an application reaches for
+when it wants one conversation with one agent — a terminal, desktop, or
+single-tenant service host.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, see the
 [repository root README](../../README.md) and the

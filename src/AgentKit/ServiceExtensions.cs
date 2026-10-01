@@ -80,6 +80,12 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<AdmissionId>(static () => new AdmissionId(Guid.NewGuid())));
             services.TryAddSingleton<IIdentifierGenerator<InputId>>(
                 new DelegateIdentifierGenerator<InputId>(static () => new InputId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<CompactionId>>(
+                new DelegateIdentifierGenerator<CompactionId>(static () => new CompactionId(Guid.NewGuid())));
+            services.TryAddSingleton<IRandomizerFactory, SecureRandomizerFactory>();
+            services.TryAddSingleton<IContentHasher, Sha256ContentHasher>();
+            services.TryAddSingleton<IAgentRunScopeFactory>(
+                static provider => new AgentRunScopeFactory(provider.GetRequiredService<IServiceScopeFactory>()));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddScoped<RunScopeState>();
@@ -107,36 +113,6 @@ public static class ServiceExtensions
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IDurableOperationHandler, RunAdmissionDurableOperationHandler>());
 
-            return services;
-        }
-
-        /// <summary>
-        /// Registers <see cref="EngineDelegationChannel"/> as the <see cref="ITaskDelegationChannel"/> the delegation
-        /// broker hands authorized prompts to, so a delegated task runs as one turn of the target agent on this
-        /// engine.
-        /// </summary>
-        /// <param name="configure">Optional channel bounds.</param>
-        /// <returns>The same <paramref name="services"/> instance.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>
-        /// Idempotent (<c>TryAdd</c>). Pair with <c>AddAgentDelegation</c> from <c>AgentKit.Goals</c> and
-        /// <c>AddTaskTool</c> from <c>AgentKit.Tools.Task</c>; the target agents must be published on the same engine.
-        /// A <see cref="GoalId"/> generator is registered when absent.
-        /// </remarks>
-        public IServiceCollection AddEngineDelegationChannel(Action<EngineDelegationChannelOptions>? configure = null)
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            var options = services.AddOptions<EngineDelegationChannelOptions>()
-                .Validate(static o => o.MaximumSummaryCharacters > 0, "MaximumSummaryCharacters must be positive.");
-            if (configure is not null)
-            {
-                _ = options.Configure(configure);
-            }
-
-            services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IIdentifierGenerator<GoalId>>(
-                new DelegateIdentifierGenerator<GoalId>(static () => new GoalId(Guid.NewGuid())));
-            services.TryAddSingleton<ITaskDelegationChannel, EngineDelegationChannel>();
             return services;
         }
 
@@ -290,6 +266,47 @@ public static class ServiceExtensions
 
             _ = services.RemoveAll<TimeProvider>();
             _ = services.AddSingleton(timeProvider);
+            return services;
+        }
+
+        /// <summary>
+        /// Replaces the engine-wide <see cref="IRandomizerFactory"/>, for example with a deterministic test or replay factory.
+        /// </summary>
+        /// <typeparam name="TFactory">The thread-safe replacement factory, registered as a singleton.</typeparam>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// This is an explicit singular replacement: every existing <see cref="IRandomizerFactory"/> descriptor is
+        /// removed before <typeparamref name="TFactory"/> is registered. The method never builds or resolves a provider.
+        /// </remarks>
+        public IServiceCollection ReplaceRandomizerFactory<TFactory>()
+            where TFactory : class, IRandomizerFactory
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.RemoveAll<IRandomizerFactory>();
+            _ = services.AddSingleton<IRandomizerFactory, TFactory>();
+            return services;
+        }
+
+        /// <summary>
+        /// Replaces the engine-wide <see cref="IContentHasher"/>.
+        /// </summary>
+        /// <typeparam name="THasher">The thread-safe replacement hasher, registered as a singleton.</typeparam>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// This is an explicit singular replacement: every existing <see cref="IContentHasher"/> descriptor is removed
+        /// before <typeparamref name="THasher"/> is registered. Existing hashes are not rewritten; a different algorithm
+        /// produces hashes that compare unequal because the algorithm is part of the hash text.
+        /// </remarks>
+        public IServiceCollection ReplaceContentHasher<THasher>()
+            where THasher : class, IContentHasher
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.RemoveAll<IContentHasher>();
+            _ = services.AddSingleton<IContentHasher, THasher>();
             return services;
         }
     }

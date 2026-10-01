@@ -13,6 +13,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 - [McpClientToolCatalogSnapshotTests](McpClientToolCatalogSnapshotTests.cs)
 - [McpToolClientTests](McpToolClientTests.cs)
+- [NetworkMcpHttpHandlerTests](NetworkMcpHttpHandlerTests.cs) — per-exchange
+  grants, origin confinement, redirect refusal, bounds, and signal hygiene
+- [HttpMcpTransportFactoryTests](HttpMcpTransportFactoryTests.cs) — the official
+  SDK client driven end to end over `INetworkTransport`
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

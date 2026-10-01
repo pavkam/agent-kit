@@ -500,8 +500,8 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         var rejection = stopped.Single(item => item.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "rejected");
         rejection.Status.ShouldBe(ActivityStatusCode.Error);
         rejection.GetTagItem(AgentKitTagNames.ErrorType).ShouldBeNull();
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7070 && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "cancelled")));
-        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7070 && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "rejected")));
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7100 && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "cancelled")));
+        logger.Entries.ShouldContain(entry => entry.EventId.Id == 7100 && entry.State.Any(item => item.Key == "Outcome" && Equals(item.Value, "rejected")));
     }
 
     /// <summary>Proves persistence and collaborator faults retain normalized exception evidence.</summary>
@@ -675,7 +675,7 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         var metric = measurements.Last(tags => tags.Any(tag => tag.Key == AgentKitTagNames.BudgetOperation && Equals(tag.Value, "snapshot")));
         metric.ShouldContain(tag => tag.Key == AgentKitTagNames.Outcome && Equals(tag.Value, "succeeded"));
         metric.ShouldNotContain(tag => tag.Key == AgentKitTagNames.TenantId || tag.Key == AgentKitTagNames.BudgetScopeId);
-        var log = logger.Entries.Last(entry => entry.EventId.Id == 7070 && entry.State.Any(item => item.Key == "BudgetOperation" && Equals(item.Value, "snapshot")));
+        var log = logger.Entries.Last(entry => entry.EventId.Id == 7100 && entry.State.Any(item => item.Key == "BudgetOperation" && Equals(item.Value, "snapshot")));
         log.State.ShouldContain(item => item.Key == "BudgetScopeId" && Equals(item.Value, scope.Id.ToString()));
         log.State.ShouldContain(item => item.Key == "TenantId" && Equals(item.Value, scope.Address.TenantId.ToString()));
         log.State.ShouldNotContain(item => item.Key.Contains("Resource", StringComparison.OrdinalIgnoreCase) || item.Key.Contains("Fingerprint", StringComparison.OrdinalIgnoreCase));
@@ -1037,9 +1037,12 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
 
     private static BudgetOverrunHoldResolutionRequest ResolutionRequest(BudgetOverrunHoldReference hold)
     {
+        var __scope = new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null));
+        var __identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human);
         var enforcement = new SecurityEnforcementRequest(
-            new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null)),
-            TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human),
+            __scope,
+            __identity,
+            TestSupport.TestSecurityEvidence.Authorization(__scope.AgentId, __scope.SessionId, __scope.Correlation, __identity),
             new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
             [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
         var receipt = new SecurityEnforcementIntentReceipt(new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()), enforcement, null, new ContentHash("sha256:sqlite-resolution-test"), DateTimeOffset.UnixEpoch);
@@ -1172,9 +1175,9 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
     /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
     /// that some third-party logging providers use instead of the generic key/value interface.</summary>
     [Fact]
-    public async Task Operations_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    public async Task Operations_WhenLoggerEnumeratesStateViaNonGenericEnumerable_ExercisesGeneratedStateAccessors()
     {
-        var logger = new LegacyEnumeratingLogger();
+        var logger = new EnumeratingStateLogger();
         var ledger = new SqliteBudgetLedgerConformanceFixture(logger).CreateLedger();
         var created = await ledger.CreateScopeAsync(Request("legacy-enumerable-scope"), TestContext.Current.CancellationToken);
         _ = created.ShouldBeOfType<BudgetLedgerScopeCreated>();
@@ -1185,7 +1188,7 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         logger.FailedCounts.ShouldAllBe(count => count > 0);
     }
 
-    private sealed class LegacyEnumeratingLogger: ILogger<SqliteBudgetLedger>
+    private sealed class EnumeratingStateLogger: ILogger<SqliteBudgetLedger>
     {
         internal List<int> CompletedCounts { get; } = [];
         internal List<int> FailedCounts { get; } = [];
@@ -1228,11 +1231,11 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
             _ = state?.ToString();
             _ = formatter(state, exception);
 
-            if (eventId.Id == 7070)
+            if (eventId.Id == 7100)
             {
                 CompletedCounts.Add(count);
             }
-            else if (eventId.Id == 7071)
+            else if (eventId.Id == 7101)
             {
                 FailedCounts.Add(count);
             }

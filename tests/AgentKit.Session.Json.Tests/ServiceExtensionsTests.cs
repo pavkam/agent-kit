@@ -190,6 +190,19 @@ public sealed class ServiceExtensionsTests: IDisposable
         provider.GetRequiredService<TimeProvider>().ShouldBeSameAs(timeProvider);
     }
 
+    [Fact]
+    public void AddJsonSessionStore_WhenComposed_RegistersTheToolCallEntryCodecsInTheCatalog()
+    {
+        var services = WithSecurityBoundaries();
+
+        _ = services.AddJsonSessionStore(StoreTarget());
+
+        using var provider = services.BuildServiceProvider();
+        var codecTypes = provider.GetServices<ISessionEntryCodec>().Select(static codec => codec.GetType()).ToArray();
+        codecTypes.ShouldContain(typeof(ToolCallAcceptedSessionEntryCodec));
+        codecTypes.ShouldContain(typeof(ToolCallTerminalSessionEntryCodec));
+    }
+
     /// <summary>Verifies the additive session-entry codecs and their catalog are registered with <c>TryAdd</c> semantics.</summary>
     [Fact]
     public void AddJsonSessionStore_WhenCodecAlreadyRegistered_DoesNotDisplaceIt()

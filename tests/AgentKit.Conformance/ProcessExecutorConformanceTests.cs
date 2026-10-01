@@ -48,11 +48,14 @@ public abstract class ProcessExecutorConformanceTests<TFixture>
         var request = fixture.CreateStartRequest();
         var resolution = await fixture.Resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
         var resolved = resolution.ShouldBeOfType<ExecutableResolved>().Resolved;
+        var deniedScope = new SecurityAuthorizationScope(new AgentId(Guid.Parse("92000000-0000-0000-0000-000000000011")), null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("93000000-0000-0000-0000-000000000012")), null));
+        var deniedIdentity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var grant = new SecurityGrant(
             new GrantId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
             new SecurityRequestId(Guid.Parse("91000000-0000-0000-0000-000000000010")),
-            new SecurityAuthorizationScope(new AgentId(Guid.Parse("92000000-0000-0000-0000-000000000011")), null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("93000000-0000-0000-0000-000000000012")), null)),
-            TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+            deniedScope,
+            deniedIdentity,
+            TestSecurityEvidence.Authorization(deniedScope.AgentId, deniedScope.SessionId, deniedScope.Correlation, deniedIdentity),
             fixture.Executor.SecurityAudience,
             SecurityOperationKind.Process,
             SecurityEffect.Execute,

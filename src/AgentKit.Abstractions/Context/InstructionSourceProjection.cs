@@ -5,16 +5,16 @@ namespace AgentKit;
 
 using System.Globalization;
 
-/// <summary>Projects between legacy instruction messages and typed instruction sources.</summary>
+/// <summary>Projects between flat instruction messages and typed instruction sources.</summary>
 public static class InstructionSourceProjection
 {
     /// <summary>The namespace used for definition-authored literal instruction sources.</summary>
     public static readonly ContextSourceNamespace DefinitionNamespace = new("agentkit.agent-definition");
 
-    /// <summary>The source key used when legacy definitions supply only flat instruction messages.</summary>
-    public static readonly ContextSourceKey LegacyInstructionsKey = new("instructions");
+    /// <summary>The source key used when an author supplies only flat instruction messages.</summary>
+    public static readonly ContextSourceKey InstructionsKey = new("instructions");
 
-    /// <summary>Flattens resolved instruction sources into the ordered message list used by the reduced loop.</summary>
+    /// <summary>Flattens resolved instruction sources into the ordered message list used to build a run request.</summary>
     /// <param name="sources">The declared instruction sources.</param>
     /// <returns>Messages in deterministic source order.</returns>
     /// <exception cref="ArgumentException"><paramref name="sources"/> is a default array or contains null.</exception>
@@ -38,13 +38,13 @@ public static class InstructionSourceProjection
         return builder.ToImmutable();
     }
 
-    /// <summary>Wraps legacy flat instruction messages as one literal definition source.</summary>
-    /// <param name="instructions">The legacy instruction messages.</param>
+    /// <summary>Wraps flat instruction messages as one literal definition source.</summary>
+    /// <param name="instructions">The instruction messages.</param>
     /// <param name="revision">The definition revision that owns the messages.</param>
     /// <returns>One literal source, or an empty array when <paramref name="instructions"/> is empty.</returns>
     /// <exception cref="ArgumentException"><paramref name="instructions"/> contains null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="revision"/> is default.</exception>
-    public static ImmutableArray<InstructionSource> FromLegacyMessages(
+    public static ImmutableArray<InstructionSource> FromMessages(
         ImmutableArray<AgentMessage> instructions,
         AgentDefinitionRevision revision)
     {
@@ -57,7 +57,7 @@ public static class InstructionSourceProjection
             new LiteralInstructionSource(
                 new ContextSourceReference(
                     DefinitionNamespace,
-                    LegacyInstructionsKey,
+                    InstructionsKey,
                     new ContextSourceVersion(revision.Value.ToString(CultureInfo.InvariantCulture))),
                 ContextTrust.AgentDefinition,
                 priority: 0,

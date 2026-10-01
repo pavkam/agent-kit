@@ -1,0 +1,64 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Goals.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Goals.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteGoalStore(AgentKit.GoalStoreKey key, AgentKit.Goals.Sqlite.SqliteGoalStoreTarget target, System.Action<AgentKit.Goals.Sqlite.SqliteGoalStoreOptions>? configure = null) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public sealed class SqliteGoalStore : AgentKit.IGoalStore
+    {
+        public SqliteGoalStore(AgentKit.Goals.Sqlite.SqliteGoalStoreTarget target, AgentKit.Goals.Sqlite.SqliteGoalStoreSettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.Sqlite.SqliteGoalStore>? logger = null) { }
+        public AgentKit.GoalStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalCreateResult> CreateAsync(AgentKit.GoalCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalLoadResult> LoadAsync(AgentKit.GoalLoadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadChildrenAsync(AgentKit.GoalChildrenRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalPageResult> ReadIntentsAsync(AgentKit.GoalIntentScanRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GoalTransitionResult> TransitionAsync(AgentKit.GoalTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteGoalStoreInstanceId : System.IEquatable<AgentKit.Goals.Sqlite.SqliteGoalStoreInstanceId>
+    {
+        public SqliteGoalStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteGoalStoreOptions
+    {
+        public SqliteGoalStoreOptions() { }
+        public System.Collections.Generic.List<AgentKit.ComponentId> AuthorizedIntentScanners { get; }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteGoalStoreSettings : System.IEquatable<AgentKit.Goals.Sqlite.SqliteGoalStoreSettings>
+    {
+        public SqliteGoalStoreSettings(System.TimeSpan lockTimeout, int maximumRecordBytes, System.Collections.Generic.IEnumerable<AgentKit.ComponentId> authorizedIntentScanners) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ComponentId> AuthorizedIntentScanners { get; }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Goals.Sqlite.SqliteGoalStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteGoalStoreTarget : System.IEquatable<AgentKit.Goals.Sqlite.SqliteGoalStoreTarget>
+    {
+        public SqliteGoalStoreTarget(string databasePath, AgentKit.Goals.Sqlite.SqliteGoalStoreInstanceId expectedStoreInstanceId, AgentKit.Goals.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Goals.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Goals.Sqlite.SqliteGoalStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Goals.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Goals.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+}

@@ -78,7 +78,21 @@ public sealed record AgentOptionalCapabilitySelection
 
     /// <summary>Gets the compaction profile that selects a keyed <see cref="ICompactor"/> for this agent.</summary>
     /// <value>A nondefault profile key, or <see langword="null"/> when this agent does not enable context compaction.</value>
-    public CompactionProfileKey? CompactionProfile { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a default key.</exception>
+    /// <remarks>
+    /// This is the settled home of compaction selection: the normative <c>AgentComponentSelection</c> deliberately has
+    /// no compaction field because compaction is optional, so the optional-capability record carries it. It is an
+    /// init-only member, not a constructor parameter, because only compaction-aware compositions set it.
+    /// </remarks>
+    public CompactionProfileKey? CompactionProfile
+    {
+        get;
+        init
+        {
+            if (value is { } profile) { ArgumentOutOfRangeException.ThrowIfEqual(profile, default, nameof(CompactionProfile)); }
+            field = value;
+        }
+    }
 
     /// <summary>Gets the declared external capability references this agent exposes to delegation or discovery.</summary>
     /// <value>An initialized, nonnull immutable array; empty when this agent declares none.</value>

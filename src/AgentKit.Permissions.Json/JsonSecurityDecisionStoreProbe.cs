@@ -33,11 +33,24 @@ internal static class JsonSecurityDecisionStoreProbe
             [],
             IdentityAssuranceLevel.Strong,
             new IdentityVersion(1));
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("probe-profile"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(new Guid("99999999-9999-9999-9999-999999999999")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:probe-policy")),
+            new ComponentKey<ISecurityAuthority>("probe-authority"),
+            new AgentDefinitionRevision(1),
+            new ConfigurationVersion(1),
+            scope,
+            identity);
         var grant = new SecurityGrant(
             new GrantId(new Guid("55555555-5555-5555-5555-555555555555")),
             new SecurityRequestId(new Guid("66666666-6666-6666-6666-666666666666")),
             scope,
             identity,
+            authorization,
             new ComponentId("probe-audience"),
             SecurityOperationKind.FileRead,
             SecurityEffect.Observe,

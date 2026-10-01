@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using AgentKit.Internal;
+
 /// <summary>Freezes declared component metadata and the corresponding Microsoft DI registrations for one composition build.</summary>
 /// <remarks>The snapshot retains immutable references to <see cref="ServiceDescriptor"/> values without resolving them. It is validation evidence for one provider build and is never shared as a cache across separately built providers.</remarks>
 internal sealed record ComponentRegistrationSnapshot
@@ -39,7 +41,7 @@ internal sealed record ComponentRegistrationSnapshot
         Services = services;
         Registrations = registrations;
         MaximumDerivedInfrastructureRegistrations = maximumDerivedInfrastructureRegistrations;
-        UnrepresentedRequiredSpine = CreateUnrepresentedRequiredSpine(registrations);
+        UnrepresentedRequiredSpine = CreateUnrepresentedRequiredSpine(services, registrations);
     }
 
     /// <summary>Gets the complete Microsoft DI registration collection frozen for this build.</summary>
@@ -54,13 +56,20 @@ internal sealed record ComponentRegistrationSnapshot
     /// <value>A validated positive bound captured before graph materialization or application service activation.</value>
     internal int MaximumDerivedInfrastructureRegistrations { get; }
 
-    /// <summary>Gets current reduced-spine service contracts that have no explicit declaration.</summary>
-    /// <value>Immutable unkeyed contract references used only as honest partial-readiness evidence.</value>
+    /// <summary>Gets required spine and selected service addresses that have no explicit declaration.</summary>
+    /// <value>
+    /// Every engine-wide singular contract the facade requires, plus every keyed registration of a definition-selectable
+    /// contract actually present in the frozen registrations, whose address no component declaration covers.
+    /// </value>
     internal ImmutableArray<ComponentContractReference> UnrepresentedRequiredSpine { get; }
 
-    /// <summary>Gets whether this step-one metadata snapshot attests to the complete normative runnable graph.</summary>
-    /// <value>Always <see langword="false"/> until every real spine owner publishes descriptors in the staged rollout.</value>
-    internal bool RepresentsCompleteRunnableGraph { get; }
+    /// <summary>Gets whether the explicit declarations cover the complete runnable graph this snapshot froze.</summary>
+    /// <value>
+    /// <see langword="true"/> only when <see cref="UnrepresentedRequiredSpine"/> is empty: every engine-wide singular and
+    /// every registered selectable keyed component has an explicit declaration. A snapshot built from registrations
+    /// that publish no descriptors is therefore honestly <see langword="false"/>.
+    /// </value>
+    internal bool RepresentsCompleteRunnableGraph => UnrepresentedRequiredSpine.IsEmpty;
 
     /// <summary>Captures one immutable snapshot without resolving services or invoking registration factories.</summary>
     /// <param name="services">The mutable service collection to copy at the boundary of one build.</param>
@@ -100,25 +109,60 @@ internal sealed record ComponentRegistrationSnapshot
             maximumDerivedInfrastructureRegistrations);
     }
 
-    /// <summary>Finds required reduced-spine contracts that are not represented by explicit declarations.</summary>
+    /// <summary>Finds required engine-wide contracts and registered selectable components that have no explicit declaration.</summary>
+    /// <param name="services">The validated non-default Microsoft DI registrations frozen for this build.</param>
     /// <param name="registrations">The validated non-default declarations frozen for this build.</param>
-    /// <returns>Unkeyed required contract references that remain outside the declared partial graph.</returns>
+    /// <returns>Contract references, in deterministic order, that remain outside the declared graph.</returns>
     private static ImmutableArray<ComponentContractReference> CreateUnrepresentedRequiredSpine(
+        ImmutableArray<ServiceDescriptor> services,
         ImmutableArray<ComponentRegistrationDescriptor> registrations)
     {
+        Debug.Assert(!services.IsDefault, "The snapshot constructor rejects default registrations.");
         Debug.Assert(!registrations.IsDefault, "The snapshot constructor rejects a default declaration collection.");
         var declared = registrations.Select(static registration => registration.Service).ToHashSet();
-        ImmutableArray<ComponentContractReference> required =
+        ImmutableArray<ComponentContractReference> engineWide =
         [
             ComponentContractReference.Unkeyed<IAgentDefinitionCatalog>(),
             ComponentContractReference.Unkeyed<IAgentRunProfilePublicationReader>(),
+            ComponentContractReference.Unkeyed<IAgentRunScopeFactory>(),
             ComponentContractReference.Unkeyed<ISecurityProfileSelector>(),
+            ComponentContractReference.Unkeyed<ISecurityAuthoritySelector>(),
+            ComponentContractReference.Unkeyed<ISecurityPolicyCatalog>(),
             ComponentContractReference.Unkeyed<ISecurityGrantStore>(),
+            ComponentContractReference.Unkeyed<IApprovalBroker>(),
+            ComponentContractReference.Unkeyed<ISessionDirectory>(),
+            ComponentContractReference.Unkeyed<ISessionStoreCatalog>(),
+            ComponentContractReference.Unkeyed<ISessionStoreSelector>(),
+            ComponentContractReference.Unkeyed<IHookDispatcher>(),
+            ComponentContractReference.Unkeyed<IHookCatalog>(),
+            ComponentContractReference.Unkeyed<IHookProfileSelector>(),
+            ComponentContractReference.Unkeyed<IModelCatalog>(),
+            ComponentContractReference.Unkeyed<IProviderProfileRuntimeSelector>(),
+            ComponentContractReference.Unkeyed<IBudgetAuthority>(),
             ComponentContractReference.Unkeyed<TimeProvider>(),
+            ComponentContractReference.Unkeyed<IRandomizerFactory>(),
+            ComponentContractReference.Unkeyed<IContentHasher>(),
             ComponentContractReference.Unkeyed<IIdentifierGenerator<RunId>>(),
             ComponentContractReference.Unkeyed<IIdentifierGenerator<OperationId>>(),
-            ComponentContractReference.Unkeyed<IAgentLoop>(),
         ];
-        return [.. required.Where(reference => !declared.Contains(reference))];
+        var selectable = new HashSet<Type>
+        {
+            typeof(IAgentLoop),
+            typeof(IRunContinuationPolicy),
+            typeof(IInputCoordinator),
+            typeof(IOutputPublisher),
+            typeof(IOutputProcessor),
+            typeof(IContextAssembler),
+            typeof(IModelSelector),
+            typeof(IModelRequestExecutor),
+            typeof(IToolExecutor),
+        };
+        var registeredSelectable = services
+            .Where(service => service.IsKeyedService
+                && service.ServiceKey is string
+                && selectable.Contains(service.ServiceType))
+            .Select(static service => new ComponentContractReference(service.ServiceType, (string) service.ServiceKey!))
+            .Distinct();
+        return [.. engineWide.Concat(registeredSelectable).Where(reference => !declared.Contains(reference))];
     }
 }

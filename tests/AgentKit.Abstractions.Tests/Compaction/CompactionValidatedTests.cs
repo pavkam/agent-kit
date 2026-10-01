@@ -9,7 +9,7 @@ using AgentKit;
 public sealed class CompactionValidatedTests
 {
     [Fact]
-    public void CompactionValidated_Equality_WhenSameValues_InstancesAreEqual() => new CompactionValidated(Candidate()).ShouldBe(new CompactionValidated(Candidate()));
+    public void CompactionValidated_Equality_WhenSameValues_InstancesAreEqual() => Validated().ShouldBe(Validated());
     private static readonly Guid _fixedOperationGuid = Guid.Parse("88888888-8888-8888-8888-888888888888");
     private static readonly Guid _fixedRunGuid = Guid.Parse("99999999-9999-9999-9999-999999999999");
     private static InRunOperationCorrelation Correlation() => new(new OperationId(_fixedOperationGuid), new RunId(_fixedRunGuid), null);
@@ -26,11 +26,15 @@ public sealed class CompactionValidatedTests
     private static CompactionProducer Producer() => new(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty);
     private static CompactionManifest Manifest() => new(new CompactionManifestId(Guid.Parse("66666666-6666-6666-6666-666666666666")), Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), Range(), new SessionSequence(3), Producer(), new ContextEpoch(0), new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(5, 5, 1), DateTimeOffset.UnixEpoch, ExtensionData.Empty);
     private static CompactionCandidate Candidate() => new(Manifest(), Checkpoint());
+    private static CompactionValidated Validated() => new(new ValidatedCompaction(
+        Candidate(),
+        new CompactionValidationStamp(new CompactionValidatorVersion("1"), new ContentHash("sha256:candidate"), DateTimeOffset.UnixEpoch),
+        []));
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new CompactionValidated(Candidate());
+        var original = Validated();
         var copy = original with { };
         copy.ShouldBe(original);
     }

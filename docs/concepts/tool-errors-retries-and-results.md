@@ -57,6 +57,12 @@ principal change.
 Backoff uses `TimeProvider` and injectable randomness, honors server/tool retry
 hints within configured bounds, and remains cancellable.
 
+The first-party executor verifies enforcement through an invoker's
+`IIdempotencyEnforcingToolInvoker` confirmation for the exact context, including
+the stable external key carried on `ToolInvocationContext`; an invoker that
+cannot confirm it is never retried after a possibly-started failure. See the
+[tools architecture](../architecture/tools.md#recording-retries-and-events).
+
 ## Model-requested correction
 
 Malformed arguments, schema validation failures, and explicit model-retry

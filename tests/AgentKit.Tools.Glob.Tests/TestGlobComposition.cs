@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 internal static class TestGlobComposition
 {
-    internal static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority)
+    internal static GlobTool CreateTool(IFileGlobber globber, ISecurityAuthority authority, ILogger<GlobTool>? logger = null)
     {
         var profileKey = new FileSystemProfileKey("test");
         var services = new ServiceCollection();
@@ -20,6 +20,7 @@ internal static class TestGlobComposition
             new FixedSecurityAuthoritySelector(authority),
             new StubSecurityRequestIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(new GlobToolOptions { ProfileKey = profileKey }));
+            Options.Create(new GlobToolOptions { ProfileKey = profileKey }),
+            logger ?? NullLogger<GlobTool>.Instance);
     }
 }

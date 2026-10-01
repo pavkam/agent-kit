@@ -82,10 +82,12 @@ internal sealed class TestSecurityHarness
 
     /// <inheritdoc/>
     public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant,
-        SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default)
+        SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(enforcement);
+        ArgumentNullException.ThrowIfNull(intent);
         cancellationToken.ThrowIfCancellationRequested();
         var matches = grant.Scope == enforcement.Scope
             && grant.Identity == enforcement.Identity
@@ -96,30 +98,22 @@ internal sealed class TestSecurityHarness
             && grant.Resources.SequenceEqual(enforcement.Resources)
             && grant.InputFingerprint == enforcement.InputFingerprint
             && grant.RevocationVersion == enforcement.RevocationVersion;
-        return !matches
-            ? ValueTask.FromResult(new GrantConsumptionResult(
-                GrantConsumptionStatus.Mismatch, 0, "The exact grant binding did not match."))
-            : ValueTask.FromResult(_consumed.Add(grant.Id)
-            ? new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "The exact grant use was consumed.")
-            : new GrantConsumptionResult(GrantConsumptionStatus.Exhausted, 0, "The grant use was already consumed."));
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant,
-        SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(intent);
-        var legacy = await ValidateAndConsumeAsync(grant, enforcement, cancellationToken).ConfigureAwait(false);
-        return legacy.Status != GrantConsumptionStatus.Consumed
-            ? legacy
-            : new GrantConsumptionResult(
-                GrantConsumptionStatus.Consumed,
-                legacy.RemainingUses,
-                legacy.SafeMessage,
-                new SecurityEnforcementIntentReceipt(
-                    intent.Id, grant.Id, grant.RequestId, enforcement, intent.RequiredFence,
-                    SecurityEnforcementBinding.Fingerprint(enforcement, intent), DateTimeOffset.UnixEpoch));
+        return ValueTask.FromResult(!matches
+            ? new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 0, "The exact grant binding did not match.", null)
+            : _consumed.Add(grant.Id)
+                ? new GrantConsumptionResult(
+                    GrantConsumptionStatus.Consumed,
+                    0,
+                    "The exact grant use was consumed.",
+                    new SecurityEnforcementIntentReceipt(
+                        intent.Id,
+                        grant.Id,
+                        grant.RequestId,
+                        enforcement,
+                        intent.RequiredFence,
+                        SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                        DateTimeOffset.UnixEpoch))
+                : new GrantConsumptionResult(GrantConsumptionStatus.Exhausted, 0, "The grant use was already consumed.", null));
     }
 
     /// <inheritdoc/>
@@ -188,4 +182,6 @@ internal sealed class TestSecurityHarness
         SecurityAuthorizationScope scope) => new(
         source.ProfileKey, source.ProfileVersion, source.PolicySnapshot, source.AuthorityKey,
         source.AgentDefinitionRevision, source.ConfigurationVersion, scope, source.Identity);
+
+    private static SecurityEnforcementIntent NewIntent() => new(new SecurityEnforcementIntentId(Guid.NewGuid()), null);
 }

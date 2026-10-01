@@ -55,6 +55,9 @@ static AgentEngine CreateResearcher(string notesRoot, string apiKey, ISearchApi 
     builder.Services.AddSingleton<IWebSearchProvider>(new CompanySearchProvider(searchApi));
     builder.Services.AddWebSearchTool(o => o.DefaultMaximumResults = 5);
 
+    // A tool registration is not exposure: select the toolsets the model may use.
+    builder.WithTools(WebFetchTool.DefaultToolset.Key, WebSearchTool.DefaultToolset.Key);
+
     // Second line of defence: a policy that sees the resolved endpoint.
     builder.Services.AddSingleton<ISecurityPolicy, ApprovedHostsPolicy>();
 
@@ -73,7 +76,7 @@ sealed class ApprovedHostsPolicy : ISecurityPolicy
 {
     static readonly HashSet<string> Hosts = ["github.com", "docs.example-library.org", "pypi.org"];
 
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default)
     {
         if (request.Kind != SecurityOperationKind.Network)
         {

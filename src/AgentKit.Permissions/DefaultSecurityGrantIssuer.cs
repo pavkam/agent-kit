@@ -63,44 +63,25 @@ public sealed class DefaultSecurityGrantIssuer: ISecurityGrantIssuer
         var grantId = _grantIds.Create();
         var expiresAt = request.Deadline < maximumExpiry ? request.Deadline : maximumExpiry;
         var allowedUses = Math.Min(request.RequestedUses, approvedBinding?.AllowedUses ?? _maximumGrantUses);
-        var grant = request.Authorization is { } captured
-            ? new SecurityGrant(
-                grantId,
-                request.Id,
-                request.Scope,
-                request.Identity,
-                captured,
-                request.Audience,
-                request.Kind,
-                request.Effect,
-                request.Resources,
-                request.InputFingerprint,
-                policyVersion,
-                revocationVersion,
-                now,
-                expiresAt,
-                allowedUses)
-            {
-                Approval = approvalResponseId,
-            }
-            : new SecurityGrant(
-                grantId,
-                request.Id,
-                request.Scope,
-                request.Identity,
-                request.Audience,
-                request.Kind,
-                request.Effect,
-                request.Resources,
-                request.InputFingerprint,
-                policyVersion,
-                revocationVersion,
-                now,
-                expiresAt,
-                allowedUses)
-            {
-                Approval = approvalResponseId,
-            };
+        var grant = new SecurityGrant(
+            grantId,
+            request.Id,
+            request.Scope,
+            request.Identity,
+            request.Authorization,
+            request.Audience,
+            request.Kind,
+            request.Effect,
+            request.Resources,
+            request.InputFingerprint,
+            policyVersion,
+            revocationVersion,
+            now,
+            expiresAt,
+            allowedUses)
+        {
+            Approval = approvalResponseId,
+        };
         return new ValueTask<SecurityGrant>(grant);
     }
 }

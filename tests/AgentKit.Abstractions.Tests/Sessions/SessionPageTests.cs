@@ -18,8 +18,9 @@ public sealed class SessionPageTests
     public void SessionPage_Equality_WhenSameValues_InstancesAreEqual()
     {
         ImmutableArray<SessionEntry> entries = [MessageEntry()];
-        var first = new SessionPage(entries, new SessionSequence(1), hasMore: false);
-        var second = new SessionPage(entries, new SessionSequence(1), hasMore: false);
+        var snapshot = new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(4));
+        var first = new SessionPage(entries, new SessionSequence(1), hasMore: false, snapshot);
+        var second = new SessionPage(entries, new SessionSequence(1), hasMore: false, snapshot);
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
@@ -33,7 +34,7 @@ public sealed class SessionPageTests
     }
 
     [Fact]
-    public void Constructor_WhenEmptyPageStartsBeyondSnapshotUpperSequence_PreservesLegacyThroughSequence()
+    public void Constructor_WhenEmptyPageStartsBeyondSnapshotUpperSequence_PreservesThroughSequence()
     {
         var snapshot = new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(1));
         var page = new SessionPage([], new SessionSequence(5), hasMore: false, snapshot);
@@ -42,9 +43,13 @@ public sealed class SessionPageTests
     }
 
     [Fact]
+    public void Constructor_WhenSnapshotIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new SessionPage([], new SessionSequence(0), hasMore: false, null!)).ParamName.ShouldBe("snapshot");
+
+    [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new SessionPage([MessageEntry()], new SessionSequence(1), hasMore: false);
+        var original = new SessionPage([MessageEntry()], new SessionSequence(1), hasMore: false, new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(4)));
         var copy = original with { };
         copy.ShouldBe(original);
     }

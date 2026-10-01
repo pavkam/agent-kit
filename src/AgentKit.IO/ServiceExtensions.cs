@@ -214,6 +214,20 @@ public static class ServiceExtensions
             where TSink : class, IRunEventSink =>
             AgentIORegistration.AddRunEventSink<TSink>(services, registration);
 
+        /// <summary>Additively registers one <see cref="IRunEventSink"/> built by a factory under its declared stable name.</summary>
+        /// <typeparam name="TSink">The sink implementation type; it identifies the implementation for duplicate-conflict validation.</typeparam>
+        /// <param name="registration">The sink's stable identity, delivery requirement, fan-out order, and flush deadline.</param>
+        /// <param name="factory">Creates the singleton sink from the provider; it may close over registration-time evidence such as an options snapshot.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="registration"/>, or <paramref name="factory"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">A different sink registration or implementation type already uses <see cref="RunEventSinkRegistration.SinkName"/>.</exception>
+        /// <remarks>Use this overload when the same sink type is registered more than once with different per-registration state.</remarks>
+        public IServiceCollection AddRunEventSink<TSink>(
+            RunEventSinkRegistration registration,
+            Func<IServiceProvider, TSink> factory)
+            where TSink : class, IRunEventSink =>
+            AgentIORegistration.AddRunEventSink(services, registration, factory);
+
         /// <summary>Registers the protected human-question broker over an application-provided channel.</summary>
         /// <returns>The same service collection for composition chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

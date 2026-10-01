@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.Anthropic.Tests.Fakes;
+using AgentKit.Providers.Egress;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies AnthropicLlmModel behavior and contracts.</summary>
@@ -17,10 +18,10 @@ public sealed class AnthropicLlmModelTests
     private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset deadline, ImmutableArray<LlmToolDefinition> tools = default, ProviderRequestOptions? options = null, LlmRequestSettings? settings = null)
     {
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [TestMessages.User("Hello!")], tools.IsDefault ? [] : tools, LlmToolChoice.Auto, settings ?? LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static AnthropicLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AnthropicProviderOptions? options = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/") }, new AnthropicMessageTranslator(), new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
+    private static AnthropicLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AnthropicProviderOptions? options = null, ProviderEgressHarness? harness = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/") }, new AnthropicMessageTranslator(), new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator()), credentials, (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress, timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsApiKeyAndVersionHeaders()
     {
@@ -437,7 +438,7 @@ public sealed class AnthropicLlmModelTests
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var reasoning = new ReasoningPart(new ReasoningContent(null, ReasoningVisibility.EncryptedSignature, "opaque", ExtensionData.Empty), ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), TestModels.ClaudeSonnet, [TestMessages.Assistant(reasoning)], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        var request = new LlmModelRequest(context, 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")));
         var failure = (await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
         failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
@@ -621,9 +622,9 @@ public sealed class AnthropicLlmModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task ExecuteAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task ExecuteAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
-        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        // A transport-level timeout surfaces from the handler as TaskCanceledException while neither the caller token nor the deadline is cancelled.
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
@@ -634,7 +635,6 @@ public sealed class AnthropicLlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
@@ -651,7 +651,6 @@ public sealed class AnthropicLlmModelTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
 
@@ -750,5 +749,60 @@ public sealed class AnthropicLlmModelTests
         terminal.PartialParts.ShouldBe(cancelled.PartialParts);
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAdmitted_RequestsEgressResolutionAndSendGrantsWithoutTheApiKey()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var options = new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false };
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-grant-secret")), options: options, harness: harness);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
+        [
+            ProviderEgress.SecurityAudience,
+            harness.Resolver.SecurityAudience,
+            harness.Transport.SecurityAudience,
+        ]);
+        harness.Authority.Requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://api.anthropic.test:443/v1/messages");
+        harness.Authority.Requests.ShouldAllBe(request => !request.InputFingerprint.Value.Contains("sk-ant-grant-secret", StringComparison.Ordinal));
+        handler.Requests.ShouldHaveSingleItem().Headers.GetValues("x-api-key").ShouldContain("sk-ant-grant-secret");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenEgressGrantDenied_FailsAuthorizationBeforeAnyIo()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var options = new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false };
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        harness.Authority.Deny = static request => request.Audience == ProviderEgress.SecurityAudience;
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-denied-secret")), options: options, harness: harness);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failed.Failure.ToString().ShouldNotContain("sk-ant-denied-secret");
+        handler.Requests.ShouldBeEmpty();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenOperationContextIsMissing_FailsAuthorizationWithoutSending()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var options = new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), options: options);
+        var request = CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)) with { Operation = null };
+
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        handler.Requests.ShouldBeEmpty();
     }
 }

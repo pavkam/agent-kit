@@ -782,19 +782,19 @@ public sealed class InMemorySessionDirectoryTests
         new SchemaVersion("v1"));
 
     private static SecurityGrant Grant(SessionOperationContext context, SecurityOperationKind kind, SecurityEffect effect) => new(
-        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), context.Authorization.Scope, context.Identity, _audience,
+        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), context.Authorization.Scope, context.Identity, context.Authorization, _audience,
         kind, effect, [SessionDirectorySecurityBinding.Resource(context.Identity.TenantId, context.ToAddress())],
         SessionDirectorySecurityBinding.LocateFingerprint(context), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
         DateTimeOffset.UnixEpoch, DateTimeOffset.MaxValue, 1);
 
     private static SecurityGrant Grant(SessionCreateRequest request, SecurityOperationKind kind, SecurityEffect effect) => new(
-        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, _audience,
+        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, request.Authorization, _audience,
         kind, effect, [SessionDirectorySecurityBinding.CreationResource(request.Identity.TenantId, request.AgentId, request.IdempotencyKey)],
         SessionDirectorySecurityBinding.LocateForCreateFingerprint(request), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
         DateTimeOffset.UnixEpoch, DateTimeOffset.MaxValue, 1);
 
     private static SecurityGrant Grant(SessionDirectoryListRequest request) => new(
-        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, _audience,
+        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, request.Authorization, _audience,
         SecurityOperationKind.StateRead, SecurityEffect.Observe,
         [SessionDirectorySecurityBinding.ListResource(request.Identity.TenantId, request.AgentId)],
         SessionDirectorySecurityBinding.ListFingerprint(request), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
@@ -858,15 +858,6 @@ public sealed class InMemorySessionDirectoryTests
         public Action? AfterConsume { get; set; }
 
         public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
-            SecurityGrant grant,
-            SecurityEnforcementRequest enforcement,
-            CancellationToken cancellationToken = default)
-        {
-            Record(enforcement);
-            return ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed."));
-        }
 
         public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
             SecurityGrant grant,

@@ -408,13 +408,13 @@ supplied keys and option bounds before mutating registrations. Registration
 never builds a service provider or performs schema acquisition.
 
 No-key convenience overloads forward to the explicit
-`AgentOutputDefaults.ProcessorKey`, whose value is `agentkit-default-output`.
-Unkeyed compatibility resolutions alias only that key. Runtime agent selection
-must still name a processor key; it never picks the last registration or falls
-back to this convenience profile when a selected key is missing. A registry or
-processor factory resolves only collaborators registered under its fixed key. It
-must not instantiate another profile's validators or retain the mutable service
-collection to perform later selection.
+`AgentOutputComponentDefaults.ProcessorKey`, whose value is
+`agentkit-default-output`. Unkeyed compatibility resolutions alias only that
+key. Runtime agent selection must still name a processor key; it never picks the
+last registration or falls back to this convenience profile when a selected key
+is missing. A registry or processor factory resolves only collaborators
+registered under its fixed key. It must not instantiate another profile's
+validators or retain the mutable service collection to perform later selection.
 
 The facade's composition validation requires exactly one selected processor,
 schema engine, and definition resolver for each runnable selection, and

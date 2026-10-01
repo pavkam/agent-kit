@@ -144,7 +144,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentOutput(options => options.MaximumCandidateBytes = 99);
 
         using var provider = services.BuildServiceProvider();
-        provider.GetRequiredKeyedService<AgentOutputOptionsSnapshot>(AgentOutputDefaults.ProcessorKey.Value)
+        provider.GetRequiredKeyedService<AgentOutputOptionsSnapshot>(AgentOutputComponentDefaults.ProcessorKey.Value)
             .MaximumCandidateBytes.ShouldBe(23);
     }
 

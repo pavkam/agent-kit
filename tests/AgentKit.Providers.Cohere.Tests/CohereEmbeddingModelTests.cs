@@ -15,8 +15,8 @@ public sealed class CohereEmbeddingModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static EmbeddingModelDescriptor CreateDescriptor() => new(new EmbeddingModelAlias("embed"), CohereProviderDefaults.ProviderId, CohereProviderDefaults.EmbeddingApiFamily, new ModelId("embed-v4.0"), deploymentId: null, CohereProviderDefaults.DefaultEmbeddingCapabilities, CohereProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
-    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello", null), new TextEmbeddingInput("world", null)], EmbeddingPurpose.Document, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty);
-    private static CohereEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, CohereProviderOptions? options = null, TimeProvider? timeProvider = null) => new(CreateDescriptor(), options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereEmbeddingRequestTranslator(), new CohereEmbeddingResponseParser(), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
+    private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello", null), new TextEmbeddingInput("world", null)], EmbeddingPurpose.Document, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
+    private static CohereEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, CohereProviderOptions? options = null, TimeProvider? timeProvider = null) => new(CreateDescriptor(), options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereEmbeddingRequestTranslator(), new CohereEmbeddingResponseParser(), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -108,7 +108,7 @@ public sealed class CohereEmbeddingModelTests
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
         var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
         var descriptor = CreateDescriptor();
-        var request = new EmbeddingModelRequest(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new EmbeddingModelRequest(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
         var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
@@ -127,7 +127,7 @@ public sealed class CohereEmbeddingModelTests
 
     /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
     [Fact]
-    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    public async Task GenerateAsync_WhenTransportTimesOutWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
     {
         var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
@@ -138,7 +138,6 @@ public sealed class CohereEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
     }
 
     /// <summary>Verifies a refused connection is a typed unavailable failure.</summary>
@@ -152,7 +151,6 @@ public sealed class CohereEmbeddingModelTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
-        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
     /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>

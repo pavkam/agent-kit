@@ -388,7 +388,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
             TestContext.Current.CancellationToken);
         var forged = new SessionReadSnapshot(
             descriptor.Address, descriptor.ActiveBranchId,
-            issued.Snapshot!.Version, new SessionSequence(3));
+            issued.Snapshot.Version, new SessionSequence(3));
         var continuedRead = new SessionReadRequest(
             context, descriptor.ActiveBranchId, new SessionSequence(0), 10, forged);
 

@@ -11,12 +11,11 @@ using AgentKit.TestSupport;
 public sealed class TodoToolTests
 {
     [Fact]
-    [Obsolete("Legacy host surface.")]
     public async Task TodoTool_WhenInvoked_UsesSameCanonicalStateAndSecurityBinding()
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
-        var tool = new TodoTool(store, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
+        var tool = new TodoTool(store, new FixedSecurityAuthoritySelector(authority), new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()), NullLogger<PlanTool>.Instance);
         var result = await tool.InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
         TodoTool.Descriptor.Id.ShouldBe(TodoTool.Id);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
@@ -24,5 +23,5 @@ public sealed class TodoToolTests
         authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(PlanSecurityBinding.ReadFingerprint(TestData.Context.ToAddress()));
     }
 
-    private static ToolInvocationContext Request(string json, bool includeSession = true) => ToolCaptureTestData.FromLegacyRequest(new(TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), TodoTool.Descriptor);
+    private static ToolInvocationContext Request(string json, bool includeSession = true) => ToolCaptureTestData.FromRequest(new(TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch), TodoTool.Descriptor);
 }

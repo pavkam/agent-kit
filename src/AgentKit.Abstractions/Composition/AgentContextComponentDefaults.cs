@@ -5,14 +5,16 @@ namespace AgentKit;
 
 /// <summary>Stable default keys for first-party <see cref="IContextAssembler"/> registration.</summary>
 /// <remarks>
-/// Until agent definitions expose an explicit context component key (WS18), run compilation resolves
-/// <see cref="IContextAssembler"/> with the same string key as the selected loop. Registering
-/// <c>AddAgentContext(AgentContextComponentDefaults.AssemblerKey)</c> therefore aligns with
-/// <c>AddAgentLoop(AgentLoopComponentDefaults.LoopKey)</c> for otherwise-unconfigured agents.
+/// A definition selects its assembler through <see cref="AgentComponentSelection.Context"/>. Registering
+/// <c>AddAgentContext(AgentContextComponentDefaults.AssemblerKey)</c> registers the key a definition names when it
+/// selects the first-party default.
 /// </remarks>
 public static class AgentContextComponentDefaults
 {
-    /// <summary>Gets the default assembler key shared with the default loop key.</summary>
-    public static ComponentKey<IContextAssembler> AssemblerKey =>
-        new(AgentLoopComponentDefaults.LoopKey.Value);
+    /// <summary>The string value of <see cref="AssemblerKey"/>, exposed as a compile-time constant.</summary>
+    public const string AssemblerKeyValue = "agentkit-default-context";
+
+    /// <summary>Gets the canonical default assembler key.</summary>
+    /// <value>A stable, nonblank key independent of any loop key.</value>
+    public static ComponentKey<IContextAssembler> AssemblerKey { get; } = new(AssemblerKeyValue);
 }

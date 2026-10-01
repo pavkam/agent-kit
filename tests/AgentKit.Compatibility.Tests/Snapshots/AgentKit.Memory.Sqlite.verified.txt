@@ -1,0 +1,86 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Memory.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Memory.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteMemoryStore(AgentKit.MemoryStoreKey key, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, System.Action<AgentKit.Memory.Sqlite.SqliteMemoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteDocumentStore(AgentKit.DocumentStoreKey key, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, System.Action<AgentKit.Memory.Sqlite.SqliteMemoryOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteVectorIndex(AgentKit.VectorSpaceDescriptor space, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, System.Action<AgentKit.Memory.Sqlite.SqliteMemoryOptions>? configure = null) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public sealed class SqliteDocumentStore : AgentKit.IDocumentStore
+    {
+        public SqliteDocumentStore(AgentKit.DocumentStoreKey key, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, AgentKit.Memory.Sqlite.SqliteMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Sqlite.SqliteDocumentStore>? logger = null) { }
+        public AgentKit.DocumentStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentActivateResult> ActivateAsync(AgentKit.DocumentActivateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentDeleteResult> DeleteAsync(AgentKit.DocumentDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentReadResult> ReadAsync(AgentKit.DocumentReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DocumentWriteResult> WriteAsync(AgentKit.DocumentWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteMemoryInstanceId : System.IEquatable<AgentKit.Memory.Sqlite.SqliteMemoryInstanceId>
+    {
+        public SqliteMemoryInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteMemoryOptions
+    {
+        public SqliteMemoryOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteMemorySettings : System.IEquatable<AgentKit.Memory.Sqlite.SqliteMemorySettings>
+    {
+        public SqliteMemorySettings(System.TimeSpan lockTimeout, int maximumRecordBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumRecordBytes { get; }
+        public static AgentKit.Memory.Sqlite.SqliteMemorySettings CreateDefault() { }
+    }
+    public sealed class SqliteMemoryStore : AgentKit.IMemoryStore
+    {
+        public SqliteMemoryStore(AgentKit.MemoryStoreKey key, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, AgentKit.Memory.Sqlite.SqliteMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Sqlite.SqliteMemoryStore>? logger = null) { }
+        public AgentKit.MemoryStoreDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryDeleteResult> DeleteAsync(AgentKit.MemoryDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryListResult> ListAsync(AgentKit.MemoryListRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryReadResult> ReadAsync(AgentKit.MemoryReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryTransitionResult> TransitionAsync(AgentKit.MemoryTransitionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.MemoryWriteResult> WriteAsync(AgentKit.MemoryWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SqliteMemoryTarget : System.IEquatable<AgentKit.Memory.Sqlite.SqliteMemoryTarget>
+    {
+        public SqliteMemoryTarget(string databasePath, AgentKit.Memory.Sqlite.SqliteMemoryInstanceId expectedInstanceId, AgentKit.Memory.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Memory.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Memory.Sqlite.SqliteMemoryInstanceId ExpectedInstanceId { get; }
+        public AgentKit.Memory.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Memory.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+    public sealed class SqliteVectorIndex : AgentKit.IVectorIndex
+    {
+        public SqliteVectorIndex(AgentKit.VectorSpaceDescriptor space, AgentKit.Memory.Sqlite.SqliteMemoryTarget target, AgentKit.Memory.Sqlite.SqliteMemorySettings settings, AgentKit.ISecurityGrantStore grants, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Memory.Sqlite.SqliteVectorIndex>? logger = null) { }
+        public bool ApproximateSearch { get; }
+        public bool IsDurable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public AgentKit.VectorSpaceDescriptor VectorSpace { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorDeleteResult> DeleteAsync(AgentKit.VectorDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorSearchResult> SearchAsync(AgentKit.VectorSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.VectorUpsertResult> UpsertAsync(AgentKit.VectorUpsertRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

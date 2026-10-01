@@ -30,7 +30,7 @@ public abstract record AgentRunOutcome
     /// <param name="original">The nonnull outcome with the same concrete runtime type.</param>
     /// <exception cref="ArgumentNullException">The original is null.</exception>
     /// <exception cref="ArgumentException">The original has a different concrete runtime type.</exception>
-    /// <remarks>Record inheritance requires a protected copy constructor. Canonical and legacy same-variant copies remain valid without reopening the outcome family.</remarks>
+    /// <remarks>Record inheritance requires a protected copy constructor. Same-variant copies remain valid without reopening the outcome family.</remarks>
     protected AgentRunOutcome(AgentRunOutcome original)
     {
         ArgumentNullException.ThrowIfNull(original);

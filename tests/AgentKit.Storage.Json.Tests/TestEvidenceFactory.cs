@@ -162,123 +162,70 @@ internal static class TestEvidenceFactory
         new ProtectedResource(ProtectedResourceKind.NetworkEndpoint, "https://example.invalid/api"),
     ];
 
-    /// <summary>Creates a bounded security grant.</summary>
-    /// <param name="withAuthorization">Whether the grant retains the captured authorization context the authority evaluated.</param>
-    /// <returns>A grant whose captured authorization is present exactly when requested.</returns>
-    internal static SecurityGrant Grant(bool withAuthorization)
+    /// <summary>Creates a bounded security grant retaining its captured authorization context.</summary>
+    /// <returns>A grant carrying the captured authorization context the authority evaluated.</returns>
+    internal static SecurityGrant Grant()
     {
         var scope = Scope();
         var identity = Identity();
-        var id = new GrantId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
-        var requestId = new SecurityRequestId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
-        var audience = new ComponentId("agentkit.filesystem");
-        var fingerprint = new InputFingerprint("sha256:grant-input");
-        var revocationVersion = new SecurityRevocationVersion(4);
-        return withAuthorization
-            ? new SecurityGrant(
-                id,
-                requestId,
-                scope,
-                identity,
-                Authorization(scope, identity),
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.CreateOrReplace,
-                Resources(),
-                fingerprint,
-                PolicyVersion,
-                revocationVersion,
-                Instant,
-                Instant.AddMinutes(30),
-                3)
-            : new SecurityGrant(
-                id,
-                requestId,
-                scope,
-                identity,
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.CreateOrReplace,
-                Resources(),
-                fingerprint,
-                PolicyVersion,
-                revocationVersion,
-                Instant,
-                Instant.AddMinutes(30),
-                3);
+        return new SecurityGrant(
+            new GrantId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
+            new SecurityRequestId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
+            scope,
+            identity,
+            Authorization(scope, identity),
+            new ComponentId("agentkit.filesystem"),
+            SecurityOperationKind.FileWrite,
+            SecurityEffect.CreateOrReplace,
+            Resources(),
+            new InputFingerprint("sha256:grant-input"),
+            PolicyVersion,
+            new SecurityRevocationVersion(4),
+            Instant,
+            Instant.AddMinutes(30),
+            3);
     }
 
     /// <summary>Creates one fully normalized protected request.</summary>
-    /// <param name="withAuthorization">Whether the request carries the captured authorization evidence to evaluate.</param>
     /// <param name="withToolCall">Whether a tool call caused the request.</param>
-    /// <returns>A request whose optional members are present exactly when requested.</returns>
-    internal static SecurityRequest Request(bool withAuthorization, bool withToolCall)
+    /// <returns>A request whose optional tool correlation is present exactly when requested.</returns>
+    internal static SecurityRequest Request(bool withToolCall)
     {
         var scope = Scope();
         var identity = Identity();
-        var id = new SecurityRequestId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
         ToolCallId? toolCallId =
             withToolCall ? new ToolCallId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")) : null;
-        var audience = new ComponentId("agentkit.filesystem");
-        var fingerprint = new InputFingerprint("sha256:request-input");
-        return withAuthorization
-            ? new SecurityRequest(
-                id,
-                scope,
-                toolCallId,
-                identity,
-                Authorization(scope, identity),
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.Append,
-                Resources(),
-                fingerprint,
-                Instant.AddMinutes(10),
-                4)
-            : new SecurityRequest(
-                id,
-                scope,
-                toolCallId,
-                identity,
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.Append,
-                Resources(),
-                fingerprint,
-                Instant.AddMinutes(10),
-                4);
+        return new SecurityRequest(
+            new SecurityRequestId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
+            scope,
+            toolCallId,
+            identity,
+            Authorization(scope, identity),
+            new ComponentId("agentkit.filesystem"),
+            SecurityOperationKind.FileWrite,
+            SecurityEffect.Append,
+            Resources(),
+            new InputFingerprint("sha256:request-input"),
+            Instant.AddMinutes(10),
+            4);
     }
 
     /// <summary>Creates fresh concrete enforcement evidence for one about-to-happen effect.</summary>
-    /// <param name="withAuthorization">Whether the effecting boundary presented captured authorization evidence.</param>
-    /// <returns>Enforcement evidence whose captured authorization is present exactly when requested.</returns>
-    internal static SecurityEnforcementRequest Enforcement(bool withAuthorization)
+    /// <returns>Enforcement evidence carrying the captured authorization the effecting boundary presented.</returns>
+    internal static SecurityEnforcementRequest Enforcement()
     {
         var scope = Scope();
         var identity = Identity();
-        var audience = new ComponentId("agentkit.filesystem");
-        var fingerprint = new InputFingerprint("sha256:enforcement-input");
-        var revocationVersion = new SecurityRevocationVersion(4);
-        return withAuthorization
-            ? new SecurityEnforcementRequest(
-                scope,
-                identity,
-                Authorization(scope, identity),
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.Replace,
-                Resources(),
-                fingerprint,
-                revocationVersion)
-            : new SecurityEnforcementRequest(
-                scope,
-                identity,
-                audience,
-                SecurityOperationKind.FileWrite,
-                SecurityEffect.Replace,
-                Resources(),
-                fingerprint,
-                revocationVersion);
+        return new SecurityEnforcementRequest(
+            scope,
+            identity,
+            Authorization(scope, identity),
+            new ComponentId("agentkit.filesystem"),
+            SecurityOperationKind.FileWrite,
+            SecurityEffect.Replace,
+            Resources(),
+            new InputFingerprint("sha256:enforcement-input"),
+            new SecurityRevocationVersion(4));
     }
 
     /// <summary>Creates the durable proof that a grant store consumed one use.</summary>
@@ -289,7 +236,7 @@ internal static class TestEvidenceFactory
             new SecurityEnforcementIntentId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd")),
             new GrantId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
             new SecurityRequestId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
-            Enforcement(withAuthorization: true),
+            Enforcement(),
             withFence ? new FencingToken(42) : null,
             new ContentHash("sha256:effect-fingerprint"),
             Instant.AddMinutes(1));

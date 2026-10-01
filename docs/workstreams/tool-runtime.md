@@ -40,8 +40,13 @@ Owning documents: [Tools](../architecture/tools.md),
       publication, keyed `DefaultToolExecutor`; model advertising still legacy
       until C7b)
 - [x] WS4-C12 first-party `IWebSearchProvider` (`NetworkWebSearchProvider` over
-      `HttpClient` + grant fingerprint; full `INetworkTransport` alignment open)
+      `INetworkNameResolver` and `INetworkTransport` under per-attempt search,
+      resolution, and send grants; no `HttpClient`; closes the web-search gap
+      the
+      [WS7-C11](provider-runtime.md#ws7-c11-provider-egress-through-inetworktransport)
+      provider-egress closure left open)
 - [x] WS4-C13 documentation
+- [x] WS4-C14 recorder, execution policy, and event sink (closes the WS20 gap)
 
 ## Verified current state
 
@@ -61,10 +66,10 @@ Owning documents: [Tools](../architecture/tools.md),
 | `IToolExecutor`, `ToolBatchResult`, `ToolExecutionCapability`, `ToolInvocationContext`, `IToolProgressReporter` (C1 contracts)                                                                                                        | EXISTS-AND-USED via legacy adapter | loop resolves `IToolExecutor` → `LegacyToolInvokerExecutor` (`ServiceExtensions.cs:339-342`); spec-shaped `DefaultToolExecutor` registered but not default (C5a)                                                        |
 | `IToolScheduler`, `ToolBatchFailureMode`, `UnknownSchedulingMode`                                                                                                                                                                     | EXISTS-UNWIRED                     | C1 contracts only; scheduler C5b                                                                                                                                                                                        |
 | `DefaultToolExecutor`, `ToolCallResolver`, `ToolArgumentValidator`, `ToolResultNormalizer`, `ToolResultProjector`, `ToolInvocationSecurityBinding`                                                                                    | EXISTS-REGISTERED                  | `AddAgentTools` TryAdd (`ServiceExtensions.cs:326-330`); sequential resolve → validate → authorize → invoke → normalize; no scheduler/retries/recorder/hooks; projector not invoked by executor yet                     |
-| `IToolCallRecorder`, `IToolEventSink`, `IToolExecutionPolicy(+Selector)`, `PreparedToolCall`, `ToolRuntimeOptions`, `ToolRetryPolicy`                                                                                                 | MISSING                            | C5b–d, C6, C8                                                                                                                                                                                                           |
+| `IToolCallRecorder`, `IToolEventSink`, `IToolExecutionPolicy(+Selector)`, `PreparedToolCall`, `ToolRuntimeOptions`, `ToolRetryPolicy`                                                                                                 | EXISTS-AND-USED                    | WS4-C14: `DefaultToolExecutor` selects a policy, records the accepted call before invocation, retries under the planned policy, and publishes events; `ToolRuntimeOptions` predates C14                                 |
 | `ValidatedToolCall`, `ResolvedToolCall`, `IToolResolver`, `IToolArgumentValidator`, `IToolResultNormalizer`, `IToolResultProjector`                                                                                                   | EXISTS                             | `Abstractions/Tools/`; first-party implementations in `AgentKit.Tools` (C5a)                                                                                                                                            |
 | `HookDispatchContext`, `IToolResultHook`, `ToolResultHookEventArgs`                                                                                                                                                                   | EXISTS-UNWIRED                     | contracts + hook kernel (C6 partial); executor dispatch and loop removal open                                                                                                                                           |
-| first-party `IWebSearchProvider`                                                                                                                                                                                                      | EXISTS (HTTP leaf)                 | `NetworkWebSearchProvider`, `AddNetworkWebSearchProvider`                                                                                                                                                               |
+| first-party `IWebSearchProvider`                                                                                                                                                                                                      | EXISTS-AND-USED (network leaf)     | `NetworkWebSearchProvider`, `AddNetworkWebSearchProvider`; sends only through `INetworkTransport`                                                                                                                       |
 | Simple `WithTools`                                                                                                                                                                                                                    | EXISTS (partial)                   | `AgentEngineBuilderExtensions.WithTools`, `UseWorkspace` selects `SimpleWorkspaceToolsets`; LLM tool list still from `IEnumerable<ITool>` until C7b                                                                     |
 
 Test doubles: `IToolInvoker` 3 class fakes (`Loop.Tests/FakeToolInvoker.cs`,
@@ -82,9 +87,11 @@ plus conformance fixture; new-runtime contracts one callback fake each in
    executor.
 2. `IToolCatalog` name collision: the coordinator stays internal until the
    legacy type is deleted (C10a → C10b).
-3. No durable accepted-call session entry exists for `IToolCallRecorder`
+3. ~~No durable accepted-call session entry exists for `IToolCallRecorder`
    (`tools.md:1094-1105`); storage shape is NO-SPEC and belongs to sessions.
-   Interim: the loop's post-batch commit.
+   Interim: the loop's post-batch commit.~~ Resolved by C14:
+   `ToolCallAcceptedSessionEntry` and `ToolCallTerminalSessionEntry` with
+   `AgentKit.Session` codecs.
 4. `AgentKit.Tools` and `AgentKit.Loop` may reference only Abstractions and
    Observability; all collaborators (`ISecurityAuthoritySelector`,
    `IHookDispatcher`, `IArtifactCoordinator`) already live there. Leaf tool
@@ -290,15 +297,87 @@ plus conformance fixture; new-runtime contracts one callback fake each in
 - Deliverables: `Tools.WebSearch/NetworkWebSearchProvider.cs` over
   `INetworkTransport` with a required endpoint option (no default);
   `AddNetworkWebSearchProvider`; tests with `ScriptedNetworkTransport`.
-- Open: which endpoint family is normative.
+- Landed: the provider takes the authority selector, grant store, audit
+  dispatcher, resolver, transport, four replaceable identity generators, a
+  `TimeProvider`, validated options, and an optional logger; it owns no
+  `HttpClient` and the registration creates none. Per attempt it validates the
+  tool-issued grant against the exact request, consumes it with required audit
+  under its own enforcement intent, then obtains a resolution grant, resolves,
+  obtains a send grant bound to the resolved addresses, and sends one bodyless
+  `GET` with `Accept: application/json`, zero redirects, a streamed response
+  bound (`MaximumResponseBytes`), the connect/resolution timeout clamped to the
+  remaining deadline, and a host-configured classification (default
+  `Confidential`). The query appears in grants and audit only through hashed
+  fingerprints and a query-fingerprinted resource, and never in a log, tag, or
+  refusal message. Authority, enforcement, or audit that is missing, throws, or
+  refuses yields `WebSearchDenied` (tool status `Denied`, effect certainty
+  definitely-not-performed); deadline expiry yields `WebSearchFailed`; caller
+  cancellation propagates. Redirects fail the attempt. Fixed in passing:
+  `published_at` was never parsed because the wire property name was not mapped.
+  Tests use `HandlerNetworkTransport`, `CallbackNetworkTransport`, and
+  `FixedAddressNameResolver` from `AgentKit.Test.Shared`.
+- Remaining limits: no credential or API-key support (the provider sends no
+  authentication); the endpoint family is still host-chosen JSON (`q`,
+  `maximum_results`, `freshness`, `domains`); the attempt has structured log
+  events (`34410`-`34413`) but no activity or meter of its own, because the
+  `execute_tool` activity and the network leaf's own signals already cover it.
 
 ### WS4-C13: Documentation
 
 - Depends on: all. Size: S.
 - Deliverables: `tools.md:471,1427-1431`, 16 READMEs, tools skill.
 
+### WS4-C14: Recorder, execution policy, and event sink
+
+- Depends on: C5a–c, C8; WS12 durability boundary. Risk: CONTRACT-BREAK
+  (`ToolExecutionCapability`, `ToolBatchEntry`, `ToolInvocationContext`,
+  `DefaultToolExecutor` and scheduler constructors, `ToolRuntimeOptions`
+  rename). Size: L.
+- Landed: contracts in `AgentKit.Abstractions` (`IToolCallRecorder`,
+  `ToolCallRecordResult`, `IToolEventSink` with `ToolEvent`,
+  `IToolExecutionPolicy`, `IToolExecutionPolicySelector`, `PreparedToolCall`,
+  `ToolExecutionPlan`, `ToolRetryPolicy`, `ToolCallSessionTarget`,
+  `IIdempotencyEnforcingToolInvoker`, and the two session entries); the
+  executor, scheduler, recorder, dispatcher, default policy, selector, and the
+  ten registration helpers in `AgentKit.Tools`; the two entry codecs in
+  `AgentKit.Session`, registered by the Json and Sqlite leaves; capability
+  wiring in the loop and the MCP server; Simple composes through
+  `AddAgentTools(key)`. Tests cover guards, DI replacement and keyed selection,
+  ordering, fail-closed recording, retry safety, cancellation, sink isolation,
+  log event IDs, activities, metrics, and content absence, and the Simple
+  end-to-end test proves an accepted and a terminal record reach a real session
+  store.
+- Deviations (full list in the
+  [tools architecture](../architecture/tools.md#configuration-and-dependency-injection)):
+  the recorder takes a `ToolCallSessionTarget`; the terminal session entry is
+  content-free evidence; terminal-record failure never changes an outcome; the
+  accepted-record lookup is a bounded window; retry confirmation is
+  `IIdempotencyEnforcingToolInvoker`; `InvocationTimeout` stays advisory; the
+  executor reserves no budget; `MaximumRetryAttempts` is renamed
+  `MaximumAttempts`.
+- Relationship to durable execution: the loop's `agentkit.loop.tool_call`
+  checkpoint stays as the journal's manifest that a requested call entered the
+  pipeline; the session accepted entry is the call's authoritative acceptance
+  fact. Neither duplicates the other (see
+  [`durable-execution.md`](../architecture/durable-execution.md)).
+
+## Remaining limits
+
+- Budget dimensions for attempted, concurrent, retry, result-byte, and
+  successful calls are still not reserved by the executor.
+- `ToolCallTerminalSessionEntry` carries no content, usage, or extension data; a
+  result carrying usage or extensions is refused by the v1 codec and its
+  terminal record is reported as not recorded.
+- MCP server dispatch needs a loadable session and a store that accepts the
+  default lane's append; it fails closed otherwise.
+- `InvocationTimeout` is not enforced by the executor.
+- A session store whose codec catalog lacks the two tool-call codecs (a custom
+  store composed without the Json or Sqlite leaf registrations) rejects the
+  accepted append, which fails the call closed rather than invoking it
+  unrecorded.
+
 ## Totals
 
-S 2, M 14, L 2. Confidence medium-low: the two name collisions, the missing
+S 2, M 14, L 3. Confidence medium-low: the two name collisions, the missing
 recorder storage shape, and the `ToolInvocationContext` identity gap can each
-add a chunk.
+add a chunk; the recorder storage shape and the identity gap landed in C14.

@@ -18,9 +18,12 @@ establish availability on a public package feed.
 
 The path below is the direct, in-process one: one conversation with one agent,
 composed by `AgentKit.Simple` over `AgentKit.Conversations`. The same
-`AgentEngine` hosts further agents and many concurrent sessions through
-`Agent.SendAsync`; queue-backed input admission is still tracked in the
-[run envelope and admission workstream](workstreams/run-envelope-and-admission.md).
+`AgentEngine` hosts further agents and many concurrent sessions: an `Agent`
+handle runs typed requests with `RunAsync<T>` and `StreamAsync<T>`, admits
+steering and follow-up input to an active run, and cancels or attaches to a run
+by `RunId`. See the
+[run envelope and admission workstream](workstreams/run-envelope-and-admission.md)
+for the admission protocol.
 
 ## Set up the repository
 
@@ -72,7 +75,7 @@ registrations you could write by hand on `builder.Services`:
 
 | Call                            | Registers                                                                                                                                                                                                                                                                                                                   |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant store, a standalone security profile with best-effort audit, an allow-all policy, every registered tool allowed, and a basic-assurance identity for the process user                                                                                                 |
+| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant, approval, and decision stores, a standalone security profile with best-effort audit, an allow-all policy, every registered tool allowed, and a basic-assurance identity for the process user                                                                        |
 | `UseOpenAI(apiKey, modelId)`    | The provider catalog, the OpenAI adapter, the API-key credential, and a catalog descriptor whose context window, output limit, capabilities, and list prices come from the bundled [known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog)                                                           |
 | `WithInstructions(text)`        | One system message, in call order                                                                                                                                                                                                                                                                                           |
 | `Build()`                       | The engine, with one published `AgentDefinition` and its run-profile publication; the first sugar call had already registered session coordination, context assembly, output processing, the turn loop, the tool runtime, security, and the conversation. The provider is built with `ValidateOnBuild` and `ValidateScopes` |

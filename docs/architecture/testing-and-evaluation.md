@@ -49,13 +49,13 @@ as verified; `Lazy<T>`, `Func<T>`, or nested scopes do not excuse a declared
 reverse edge. Tests cannot prove what arbitrary executable callbacks will do;
 review and conformance enforce their declared boundaries.
 
-Storage conformance is adapter-neutral. Every `.InMemory` and `.Sqlite` leaf for
-one contract runs the same common suite through its public DI registration.
-SQLite-specific cases use an isolated temporary target and cover close/reopen,
-schema migration, concurrent connections, rollback at transaction cuts, and
-declared durability. In-memory cases prove ephemerality. Neither suite may skip
-a common operation or infer distributed fencing, cross-store transactions, or
-external-effect atomicity from local database durability.
+Storage conformance is adapter-neutral. Every `.InMemory`, `.Sqlite`, and
+`.Json` leaf for one contract runs the same common suite through its public DI
+registration. SQLite-specific cases use an isolated temporary target and cover
+close/reopen, schema migration, concurrent connections, rollback at transaction
+cuts, and declared durability. In-memory cases prove ephemerality. Neither suite
+may skip a common operation or infer distributed fencing, cross-store
+transactions, or external-effect atomicity from local database durability.
 
 Regression fixtures cover the dangerous seams explicitly: session/security
 stores never call session coordination, output processors never call provider
@@ -241,6 +241,192 @@ execution. `EvaluationPlanId`, `EvaluationCaseId`, and evaluator/store/exporter
 keys are stable, validated dataset/configuration keys and are never generated
 run identities.
 
+### Implemented value shapes (previously unspecified)
+
+The contracts above name several values only in prose. Their implemented shapes
+live in `AgentKit.Evaluation`; each is an immutable validated value, one type
+per file, with value equality (hand-written where a member is an
+`ImmutableArray`).
+
+```csharp
+namespace AgentKit.Evaluation;
+
+// Plan side.
+public readonly record struct EvaluationPlanVersion(long Value);          // positive
+public readonly record struct EvaluatorVersion(long Value);               // positive
+public readonly record struct EvaluationCriterionKey(string Value);
+public abstract record EvaluationCriterion(EvaluationCriterionKey Key);   // sealed derived records
+public sealed record EvaluationCriteria(ImmutableArray<EvaluationCriterion> Items); // one per key
+public sealed record EvaluationFixtureReference(string Key, string Version);
+public sealed record EvaluatorReference(EvaluatorKey Key, EvaluatorVersion? RequiredVersion);
+public sealed record EvaluationExecutionPolicy(
+    int MaximumConcurrentCases, int Repetitions, TimeSpan? CaseTimeout, TimeSpan? PlanDeadline,
+    int? MaximumCaseRuns, bool StopOnEvaluatorFailure, bool PermitUnsupportedEvaluators);
+public sealed record EvaluationRecordingPolicy(
+    EvaluationResultStoreKey? ResultStore, ImmutableArray<EvaluationReportExporterKey> Exporters);
+
+// Evaluator side.
+public sealed record EvaluatorDescriptor(
+    EvaluatorKey Key, EvaluatorVersion Version, string DisplayName,
+    ImmutableArray<EvaluationCriterionKey> SupportedCriteria, bool RequiresFixture);
+public sealed record EvaluationContext(
+    EvaluationRunId RunId, EvaluationPlanId PlanId, EvaluationPlanVersion PlanVersion,
+    EvaluationCase Case, int Repetition, AgentRunResult<ValidatedOutput> Result,
+    EvaluationRunManifest Manifest, EvaluationUsageSummary Usage, TimeSpan Latency);
+public sealed record EvaluationScore(double Value, int SampleCount, double StandardDeviation);
+
+public abstract record EvaluationOutcome;   // Name, Summary, Score?, Evidence (safe named facts)
+public sealed record EvaluationPassed(EvaluationScore? Score, string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+public sealed record EvaluationFailed(EvaluationScore? Score, string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+public sealed record EvaluationInconclusive(EvaluationScore? Score, string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+public sealed record EvaluationSkipped(string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);   // declared precondition
+public sealed record EvaluationCancelled(string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+public sealed record EvaluationUnsupported(string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+public sealed record EvaluatorFaulted(string ErrorType, string Summary, ImmutableArray<EvaluationEvidence> Evidence = default);
+
+public sealed record EvaluatorResult(
+    EvaluatorKey Key, EvaluatorVersion Version, EvaluationOutcome Outcome, TimeSpan Duration);
+
+// Recorded evidence.
+public sealed record EvaluationRunManifest(
+    AgentId AgentId, AgentDefinitionRevision DefinitionRevision, AgentCatalogVersion CatalogVersion,
+    SessionProfileKey SessionProfile, ImmutableArray<string> ModelCandidates,
+    ImmutableArray<EvaluationModelUse> ModelsUsed);
+public sealed record EvaluationUsageSummary(int ModelRequests, long? InputTokens, long? OutputTokens);
+public sealed record EvaluationRunRecord(RunId RunId, SessionId SessionId, string Outcome, string Settlement);
+public enum EvaluationCaseDisposition { Evaluated, RunRejected, Cancelled, TimedOut, Faulted }
+public sealed record EvaluationCaseResult(
+    EvaluationRunId EvaluationRunId, EvaluationPlanId PlanId, EvaluationPlanVersion PlanVersion,
+    EvaluationCaseId CaseId, int CaseOrdinal, int Repetition, EvaluationCaseDisposition Disposition,
+    DateTimeOffset StartedAt, TimeSpan Latency, string? TraceId, EvaluationRunRecord? Run,
+    EvaluationRunManifest Manifest, EvaluationUsageSummary Usage, EvaluationFixtureReference? Fixture,
+    ImmutableArray<EvaluatorResult> Evaluators, ImmutableArray<EvaluationDiagnostic> Diagnostics);
+public enum EvaluationReportStatus { Completed, Cancelled, DeadlineExceeded, StoppedOnEvaluatorFailure }
+public sealed record EvaluationReport(
+    EvaluationRunId RunId, EvaluationPlanId PlanId, EvaluationPlanVersion PlanVersion,
+    DateTimeOffset StartedAt, DateTimeOffset CompletedAt, EvaluationReportStatus Status,
+    ImmutableArray<EvaluationCaseResult> Results, int NotStartedCaseRuns,
+    ImmutableArray<EvaluationStoreAppendRecord> StoreResults,
+    ImmutableArray<EvaluationExportRecord> ExportResults);
+
+// Stores, selection, export.
+public interface IEvaluationResultStore
+{
+    ValueTask<EvaluationStoreResult> AppendAsync(EvaluationCaseResult result, CancellationToken cancellationToken);
+    ValueTask<EvaluationReadResult> ReadAsync(EvaluationResultQuery query, CancellationToken cancellationToken);
+}
+public abstract record EvaluationStoreResult;           // EvaluationStoreAppended(Receipt, Replayed) | EvaluationStoreRejected(Failure)
+public abstract record EvaluationReadResult;            // EvaluationResultsRead(Results, Next) | EvaluationReadRejected(Failure)
+public abstract record EvaluationResultStoreSelection;  // EvaluationResultStoreSelected(Key, Store) | EvaluationResultStoreUnavailable(Key, SafeMessage)
+public abstract record EvaluationExportResult;          // EvaluationExported(Location?) | EvaluationExportRejected(Kind, SafeMessage)
+public interface IEvaluatorCatalog { IEvaluator? Find(EvaluatorKey key); }
+public interface IEvaluationReportExporterCatalog { IEvaluationReportExporter? Find(EvaluationReportExporterKey key); }
+```
+
+Resolved choices and deviations from the specification above, recorded so
+reviewers do not rediscover them:
+
+- **Runner dependency shape.** The first-party runner receives
+  `IEvaluatorCatalog`, `IEvaluationResultStoreSelector`,
+  `IEvaluationReportExporterCatalog`, the run-id generator, `TimeProvider`, the
+  options snapshot, and an `ILogger`. Registration binds it to exactly one
+  `AgentEngine` resolved from its own service provider; zero or several fail
+  when the runner is first resolved, and a second `IEvaluationRunner`
+  registration fails at registration. Options are validated and copied into the
+  snapshot when the runner is first resolved (and at host start when a host
+  validates options).
+- **Plan validation fails before effects.** `RunAsync` throws
+  `EvaluationPlanRejectedException`, carrying every typed
+  `EvaluationPlanProblem`, before any session, run, store, or exporter effect
+  when: the plan exceeds the concurrency, repetition, or case-run limits; a case
+  names an agent the engine does not host; the resolved definition selects
+  another session profile than the case declares; an evaluator is unregistered,
+  pinned to another version, or cannot assess the case while the plan does not
+  permit unsupported evaluators; or a named store or exporter is not registered.
+  A token cancelled before validation throws `OperationCanceledException`
+  instead.
+- **Cancellation returns a partial report.** After effects begin, cancellation
+  stops scheduling, flows to active runs and evaluators, and returns a report
+  with `EvaluationReportStatus.Cancelled` (or `DeadlineExceeded` for the plan
+  deadline, `StoppedOnEvaluatorFailure` when the plan asked to stop) holding the
+  recorded repetitions; unscheduled repetitions are counted, never invented.
+  Recording writes and report exports use their own bounded token (the default
+  case timeout) independent of the caller, so computed evidence is never lost to
+  a later cancellation; a cancelled run skips exporters and records them as
+  cancelled.
+- **Evaluator evidence travels with the outcome.** `IEvaluator` returns one
+  `EvaluationOutcome`; its optional `Evidence` array is how a judge records its
+  rubric and prompt fingerprint, so `EvaluatorResult` holds no separate
+  evidence.
+- **Built-in deterministic evaluators** use documented keys and criterion kinds:
+  `schema` (`SchemaCriterion`, validated by the registered
+  `IOutputSchemaEngine`), `exact-state` (`ExactStateCriterion`: outcome, text,
+  JSON, message count), `tool-effect` (`ToolEffectCriterion`: required and
+  forbidden calls over the run messages), and `safety` (`SafetyCriterion`:
+  forbidden substrings and non-backtracking patterns under a one-second limit,
+  required refusal markers). Results record which rule failed, never the matched
+  or expected content.
+- **Model judge.** `ModelJudgeEvaluator` (key `model-judge`, criterion
+  `RubricCriterion`) requires an explicit judge model alias, takes `RepeatCount`
+  sequential samples through the `IModelJudgeClient` seam, and reports the mean
+  normalized score with its sample count and standard deviation; an incomplete,
+  noisy, over-long, or unparseable judgement is inconclusive and a judge
+  infrastructure failure is an evaluator failure. It records the configured and
+  resolved model, provider, full rubric, scale, threshold, repeat count, SHA-256
+  fingerprint of the exact prompt, and raw scores, never the candidate or the
+  judge's reason. The first-party `ModelRequestJudgeClient` reaches the judge
+  through the provider-neutral `IModelCatalog`, `IModelSelector`, and
+  `ILlmModelResolver`, correlating the request to the judged run as an after-run
+  operation. Deviations: the judge budget (`ModelJudgeBudget`: calls and
+  reported tokens) is evaluator-local atomic accounting rather than a
+  reservation through the hierarchical budget authority, because the evaluator
+  holds no run scope; egress authority is that of the resolved model adapter
+  rather than a separate `SecurityRequest`; and a single-candidate rubric has no
+  candidate order, so blinded ordering does not apply.
+- **Store shared source.** The three result-store leaves compile the linked
+  source directories `AgentKit.Evaluation.Storage.Shared` (planner, in-memory
+  state, observation, log events 36100-36102) and
+  `AgentKit.Evaluation.Storage.Durable` (persisted documents and codec); they
+  are not projects and are never selected.
+
+- **Persisted results are a bounded projection.** A result store holds
+  `EvaluationCaseResult`, not the run's messages. It preserves the typed `RunId`
+  and `SessionId`, the trace identity of the case activity, the agent and model
+  manifest, a usage summary, latency, fixture reference, evaluator results with
+  evaluator version, and safe diagnostics. Prompts, model output, and tool data
+  are never persisted, so a result store never becomes a second copy of session
+  history. Evaluators see the full public `AgentRunResult<ValidatedOutput>`
+  through `EvaluationContext`; only their typed outcome and safe evidence
+  persist.
+- **Usage stays unknown, not zero.** `EvaluationUsageSummary` token totals are
+  present only when every model request in the run reported final usage for that
+  dimension; a partial sum would present a wrong number as a measurement.
+- **Store reads are part of the contract.** The specification shows only
+  `AppendAsync`, but a conformance suite and any comparison must read results
+  back through a public seam rather than private state. `ReadAsync` pages one
+  run in deterministic case-ordinal then repetition order. Run discovery is
+  carried by the returned `EvaluationReport` and exporters; the store does not
+  list runs.
+- **Result identity and idempotency.** A result is identified by evaluation run,
+  case ordinal, and repetition. An identical repeat replays the original
+  acknowledgement; a different result for that identity, a second plan identity
+  or version for one run, or a second case at one ordinal is `IdentityConflict`.
+- **Exporters and stores are resolved by key without a service locator in the
+  runner.** The runner receives `IEvaluatorCatalog`,
+  `IEvaluationResultStoreSelector`, and `IEvaluationReportExporterCatalog`;
+  their first-party implementations resolve keyed registrations. This replaces
+  the specification's `IEnumerable<IEvaluationReportExporter>`, which cannot be
+  selected by key.
+- **Fixtures are recorded evidence, not resolved resources.** The host composes
+  the engine and fakes that realize a fixture. `EvaluationFixtureReference`
+  travels with every result. A fixture resolver contract is deferred until a
+  second fixture implementation exists, so the "fixture resolvers" validation
+  item in the build validation list is not applicable.
+- **Evaluators declare no artifact requirements.** An approved artifact arrives
+  as a fixture or through the evaluator's own collaborators;
+  `EvaluatorDescriptor` declares supported criteria and whether a fixture is
+  required.
+
 ## First-party classes and service dependencies
 
 | Package class                                                                          | Role and injected dependencies                                                                                                                                                                                                                               |
@@ -371,11 +557,18 @@ Deterministic built-ins have documented keys and can be replaced deliberately
 without replacing unrelated evaluators.
 
 Evaluation result persistence uses explicit `AgentKit.Evaluation.InMemory`,
-`AgentKit.Evaluation.Sqlite`, or external store leaves. Both first-party leaves
-run the same result-store conformance suite; SQLite may claim durable local
-result retention only after reopen and migration tests pass. Exporters remain
-separate effects and are never inferred to share a transaction with the result
-store.
+`AgentKit.Evaluation.Sqlite`, `AgentKit.Evaluation.Json`, or external store
+leaves. All three first-party leaves run the same result-store conformance suite
+(`EvaluationResultStoreConformanceTests`, supplied by an
+`IEvaluationResultStoreConformanceFixture` that composes the store through its
+public registration); SQLite and JSON claim durable local result retention only
+after reopen tests pass, and JSON additionally proves torn-append recovery, root
+identity and encoding-contract binding, and single-writer rejection. The
+specification originally named only InMemory and SQLite; the repository-wide
+rule that every persistent store family ships `.InMemory`, `.Sqlite`, and
+`.Json` adapters under one suite settles that conflict in favor of all three.
+Exporters remain separate effects and are never inferred to share a transaction
+with the result store.
 
 AgentKit.Conformance is a non-packable test library and has no production DI
 registration. Each implementation test project supplies its fixture through the

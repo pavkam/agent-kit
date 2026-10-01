@@ -79,10 +79,12 @@ public static class AnthropicProviderDefaults
     /// This package's translator and parser round-trip Claude's
     /// <c>thinking</c> and <c>redacted_thinking</c> blocks, so
     /// <c>SupportsReasoning</c> is <see langword="true"/> unlike this
-    /// repository's OpenAI-compatible provider defaults. Image and
-    /// document content blocks, citations, and native structured-output
-    /// schemas are not yet translated, so vision and structured-output
-    /// support remain <see langword="false"/> here even though some Claude
+    /// repository's OpenAI-compatible provider defaults. Structured output
+    /// is supported by carrying the run's output contract as the reserved
+    /// synthetic tool under a forced tool choice, so
+    /// <c>SupportsStructuredOutput</c> is <see langword="true"/>. Image and
+    /// document content blocks and citations are not translated, so vision
+    /// support remains <see langword="false"/> here even though some Claude
     /// models support them natively. A caller registering a model with
     /// materially different capabilities supplies its own
     /// <see cref="ModelCapabilities"/> rather than relying on this shared

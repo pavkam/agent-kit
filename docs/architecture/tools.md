@@ -90,6 +90,18 @@ count, title/snippet bounds, and provider result kinds. Truncation clears
 completeness, and every projection marks titles, URLs, and snippets as
 non-authoritative untrusted data.
 
+The first-party `NetworkWebSearchProvider` is that provider implementation for
+one configured HTTPS endpoint. It owns no `HttpClient`: after consuming the
+tool-issued grant with required audit it obtains separate resolution and send
+grants under the captured authority, resolves through `INetworkNameResolver`,
+and sends one bodyless `GET` through `INetworkTransport` with zero redirects, a
+streamed response bound, and a configured data classification. The query reaches
+security evidence only through hashed fingerprints. Missing, throwing, or
+refusing authority, enforcement, or audit yields a denial before any DNS or
+transmission; a redirecting endpoint fails the attempt. The registration fails
+resolution of `IWebSearchProvider` when the network collaborators are absent and
+never falls back to a raw client.
+
 `AgentKit.Tools.Resource` supplies a stable `resource` list/read tool over an
 immutable host-configured file-resource catalog. Listing returns only approved
 identity, kind, trust, description, media, and integrity metadata; backing paths
@@ -134,25 +146,26 @@ Hosts may publish either or both names, but AgentKit never creates a second todo
 list beside the work plan merely to imitate another harness's spelling.
 
 `AgentKit.Tools.Task` supplies the model-facing `task` adapter over an
-explicitly selected `ITaskDelegationBroker`. It requires a durable parent
+explicitly selected `IDelegationCoordinator`. It requires a durable parent
 session and an active in-run correlation, validates the target agent, objective,
 acceptance criteria, exact child tool allow-list, turn/tool-call budgets, and
-deadline before allocating identities or requesting authority, and binds every
-field to one `Delegation/Create` grant. The result projection preserves child
-goal, attempt, session, run, terminal status, and side-effect certainty while
-marking the child summary `instruction_authority: false`.
+deadline before allocating identities, and builds one canonical
+`DelegationRequest` whose parent goal is the run's implicit root goal and whose
+idempotency key derives from the tool call, so a retried call resolves to the
+same durable child. It authorizes nothing itself: the coordinator runs the
+ordered gauntlet (profile, parent, target discovery and selection, policy,
+budget reservation), obtains one `Delegation/Create` grant bound to the exact
+request, creates the child goal durably, hands it to the dispatcher, and waits
+on durable state. The result projection preserves child goal, attempt, session,
+run, terminal status, and side-effect certainty while marking the child summary
+`instruction_authority: false`. A tool configured without a goal profile fails
+closed with a typed result.
 
-The adapter-specific `TaskDelegation*` contracts deliberately do not replace the
-fuller goal coordinator contracts. `AgentKit.Goals` supplies the protected
-default broker, which atomically consumes the exact single-use grant immediately
-before forwarding a grant-free envelope to an application-selected
-`ITaskDelegationChannel`. That channel delegates to the goal coordinator's
-durable admission and join contracts: resolve the active parent goal, attenuate
-authority and catalogs, reserve budget, and create child state idempotently.
-Local execution crosses the
+The earlier adapter-specific `TaskDelegation*` contracts, the broker, and the
+inline engine channel no longer exist. Local execution crosses the
 [host-owned worker boundary](goals-and-delegation.md#delegation-discovery-selection-policy-and-execution)
-without capturing the engine inside the tool or dispatcher graph. Admitted work
-must settle or be durably handed off. Registration supplies no fake channel and
+in `AgentKit.Goals.Hosting` without capturing the engine inside the tool or
+dispatcher graph. Admitted work must settle or be durably handed off, and a
 rejection before dispatch contains no invented child identities.
 
 `AgentKit.Tools.Skill` deliberately contributes two capabilities: the `skill`
@@ -499,13 +512,11 @@ concurrency key is required exactly for `ConcurrencyKey`; expected duration and
 approval-cacheability remain nullable when unasserted. Host policy may tighten
 every hint and treats absent or unknown evidence conservatively.
 
-This descriptor shape intentionally replaces the earlier reduced public
-constructor. `Version` is now required, the borrowed `JsonElement` input schema
-is an owned `JsonSchema`, the singular `Effect` property is represented by
+The descriptor has one constructor. `Version` is required, the input schema is
+an owned `JsonSchema` rather than a borrowed `JsonElement`, the effect set is
 `Effects`, and output schema, execution hints, and source identity are explicit.
-Callers migrate by supplying their real published version, package or
-registration source, and dialect-bound schema; no compatibility overload fills
-those facts with defaults.
+Authors supply their real published version, package or registration source, and
+dialect-bound schema; no overload fills those facts with defaults.
 
 The snapshot is bound to one run. A provider alias maps to one exact
 `ToolId`/`ToolVersion` in that snapshot and is not resolved against live DI
@@ -671,6 +682,15 @@ public sealed record ToolCallResult(
     DateTimeOffset CompletedAt,
     ExtensionData Extensions);
 ```
+
+The shipped `ToolInvocationContext` adds two trailing optional values to the
+shape above: `SessionProfile`, the captured session profile that session-backed
+invokers (planning, todo) need, and `ExternalIdempotencyKey`, which is present
+exactly when the descriptor declares `IdempotentWithKey` and is identical across
+every attempt of one call. The shipped `ToolBatchEntry` carries the
+`PreparedToolCall` and the committed `AcceptedToolCall` instead of loose
+scheduling hints and an ordinal, so the scheduler builds each terminal record
+from retained evidence.
 
 `AcceptedToolCall` is the durable invocation-acceptance fact. It exists only
 after resolution, semantic argument validation, planning, and authorization
@@ -872,6 +892,49 @@ public interface IToolExecutionPolicySelector
         CancellationToken cancellationToken);
 }
 ```
+
+`IToolExecutionPolicy` and `IToolExecutionPolicySelector` ship with these value
+shapes, which the specification left open:
+
+- `ToolExecutionPolicyContext(AgentId, SessionId, RunId, ToolCatalogVersion, PlannedAt)`
+  identifies the batch being planned and carries no authority.
+- `ToolExecutionPlan(Scheduling, Retry, InvocationTimeout, Normalization)` is
+  the per-call policy output: the effective `ToolExecutionHints`, a
+  `ToolRetryPolicy`, the per-attempt deadline, and the captured
+  `ToolResultNormalizationSnapshot`, whose `ExecutionPolicy` must equal the
+  call's captured reference.
+  `PreparedToolCall(ValidatedToolCall, ToolExecutionPlan)` validates that
+  agreement.
+- `ToolExecutionPlanResult` is `ToolExecutionPlanned` (one `PreparedToolCall`
+  per input call, in order) or `ToolExecutionPlanRejected` (a safe reason for
+  the whole group). `ToolExecutionPolicySelectionResult` is
+  `ToolExecutionPolicySelected` or `ToolExecutionPolicyUnavailable`, which
+  retains the exact requested reference.
+- `ToolExecutionCapability` carries `ExecutionPolicies`, a unique set of
+  `ToolExecutionPolicyBinding` references captured with the run's catalog, and a
+  `ToolCallSessionTarget` naming the branch and lane that receive durable
+  records. The loop derives the bindings from
+  `ToolCatalogSnapshot.ExecutionPolicies`, so a policy a run's catalog never
+  captured can never be selected for it.
+- `ToolRetryPolicy` carries only pacing: `MaximumAttempts` (counting the first
+  attempt, so one means no retry), `InitialDelay`, `BackoffMultiplier`,
+  `MaximumDelay`, and `JitterFraction`. Its `ComputeDelay` is deterministic
+  given an injected unit random value. Eligibility for retry is separate (see
+  [Retry safety](#recording-retries-and-events)).
+
+The executor groups validated calls by their captured reference in first-use
+order, rejects a reference the capability does not bind, selects each policy by
+exact key and revision, and plans one group per policy before any call is
+authorized. A missing policy, a policy that refuses or throws, and a plan that
+does not correspond one-to-one to its input each reject the whole group with a
+typed `Unsupported` terminal result that is `DefinitelyNotPerformed`, never
+accepted, and carries a fixed safe message rather than the policy's reason. The
+first-party `DefaultToolExecutionPolicy` plans from `ToolRuntimeOptions` and is
+registered for the `standard` family at revision one by `AddAgentTools`, because
+every first-party tool descriptor names that reference; any other reference must
+be registered explicitly. Hooks still dispatch through the capability's
+`ToolExecutionHookBinding`, so `IToolExecutor.ExecuteAsync` has no
+`HookDispatchContext` parameter.
 
 Providers are additive discovery sources. The catalog combines their immutable
 snapshots; the resolver binds identity; the validator handles bounded canonical
@@ -1079,29 +1142,26 @@ public interface IToolExecutor
         IToolCatalogCapture capture,
         ImmutableArray<ToolCallRequest> calls,
         ToolExecutionCapability capability,
-        HookDispatchContext hooks,
         CancellationToken cancellationToken);
 }
 
 public sealed record ToolExecutionCapability(
     SessionExecutionCapability Session,
     BudgetExecutionCapability Budget,
-    ImmutableArray<ToolExecutionPolicyBinding> ExecutionPolicies);
-
-public sealed record ToolExecutionPolicyBinding(
-    ToolExecutionPolicyReference Reference,
-    IToolExecutionPolicy Policy);
+    ToolExecutionHookBinding? Hooks = null);
 
 public interface IToolCallRecorder
 {
     ValueTask<ToolCallRecordResult> RecordAcceptedAsync(
-        AcceptedToolCall call,
+        AcceptedToolCall accepted,
         SessionExecutionCapability session,
+        ToolCallSessionTarget target,
         CancellationToken cancellationToken);
 
     ValueTask<ToolCallRecordResult> RecordTerminalAsync(
         ToolCallResult result,
         SessionExecutionCapability session,
+        ToolCallSessionTarget target,
         CancellationToken cancellationToken);
 }
 
@@ -1168,32 +1228,131 @@ and successful-call dimensions before their corresponding work and settles each
 reservation exactly once.
 
 `AgentKit.Tools` supplies sealed first-party catalog, resolver, validator,
-scheduler, normalizer, and executor classes. The executor's dependency shape is
-explicit:
+scheduler, normalizer, and executor classes. The shipped executor is the public
+`DefaultToolExecutor`, so the engine can compose it by type and tests can build
+it directly; its dependency shape is explicit:
 
 ```csharp
 namespace AgentKit.Tools;
 
-internal sealed class ToolExecutor(
+public sealed class DefaultToolExecutor(
     IToolResolver resolver,
     IToolArgumentValidator argumentValidator,
     IToolExecutionPolicySelector policySelector,
     ISecurityAuthoritySelector securityAuthorities,
+    IIdentifierGenerator<SecurityRequestId> securityRequestIds,
     IToolCallRecorder recorder,
     IToolScheduler scheduler,
-    IToolResultNormalizer resultNormalizer,
-    IToolResultProjectionPolicyCatalog projectionPolicies,
-    IToolResultProjector resultProjector,
-    IHookDispatcher hooks,
-    IEnumerable<IToolEventSink> eventSinks,
-    TimeProvider timeProvider) : IToolExecutor
+    ToolEventDispatcher events,
+    ToolSchemaLimits argumentValidationLimits,
+    IOptions<ToolRuntimeOptions> runtimeOptions,
+    TimeProvider timeProvider,
+    ILogger<DefaultToolExecutor> logger,
+    IHookDispatcher? hookDispatcher = null,
+    IApprovalWaitRecorder? approvalWaits = null) : IToolExecutor
 {
 }
 ```
 
+Deviation: the specification listed `IToolResultNormalizer`,
+`IToolResultProjectionPolicyCatalog`, and `IToolResultProjector` here and took
+`IEnumerable<IToolEventSink>` directly. The shipped scheduler owns the
+normalizer because it builds each terminal record from the attempt it just
+observed, and the loop (not the executor) projects the recorded result and
+resolves its policy, so the executor never takes the projector or its catalog.
+Events reach sinks through `ToolEventDispatcher`, which owns ordering,
+isolation, and the per-sink timeout; the executor never iterates sinks itself.
+
 The body is intentionally omitted from this constructor/dependency shape; its
 observable API is exactly `IToolExecutor`. It exposes neither the container nor
 the independently replaceable pipeline stages.
+
+### Recording, retries, and events
+
+Every call the executor admits follows one fixed order: before-hook, resolve,
+validate arguments, select and run the execution policy, authorize, **record the
+accepted call**, schedule and invoke with planned retries, normalize, result
+hook, **record the terminal result**, publish the terminal event. A call
+rejected at any earlier stage skips the accepted record and every later stage
+but the terminal ones, so each identified call has exactly one terminal result
+and one terminal record.
+
+**Accepted record, before invocation.** After authorization the executor builds
+an `AcceptedToolCall` from the retained admission evidence, the grant identity
+and validated-argument fingerprint, the declared effects, and the plan's
+normalization snapshot, and commits it through the run's `IToolCallRecorder`.
+The invoker starts only after `ToolCallRecorded`. A rejected record, a recorder
+that throws, or an unavailable store fails the call closed: a typed
+`Unsupported` terminal result, `DefinitelyNotPerformed`, the issued grant
+retained in `GrantId` without acceptance evidence, and a fixed safe message that
+never carries the recorder's detail. Caller cancellation during recording
+propagates as cancellation, and an earlier call of the same batch that was
+already accepted is settled with an `Interrupted`, `DefinitelyNotPerformed`
+terminal record before the exception leaves. A tool that declares
+`IdempotentWithKey` receives a stable external key,
+`agentkit.tool-call:{runId}:{callId}`, recorded on the accepted record and
+carried on every attempt's `ToolInvocationContext.ExternalIdempotencyKey`.
+
+**First-party recorder.** `SessionToolCallRecorder` appends
+`ToolCallAcceptedSessionEntry` and `ToolCallTerminalSessionEntry` through the
+`SessionExecutionCapability` and `ToolCallSessionTarget` the executor supplies;
+it holds no coordinator and installs no store. Each write reads the branch tip,
+appends one entry under optimistic concurrency, and re-reads after a conflict up
+to `MaximumRecordAppendAttempts`, keeping one entry identity and an idempotency
+key derived from the call across attempts. The loop already rebases its own
+append over concurrently committed entries, so interleaved tool-call entries
+never fail a tool-message commit and history assembly ignores them. A terminal
+write whose result carries acceptance evidence first finds the accepted entry in
+the most recent `AcceptedRecordLookupEntries` entries and verifies identity,
+effects, external key, admission, acceptance and grant, and policy coherence; a
+missing or incoherent accepted record rejects the write as `Conflict`.
+
+**Terminal record.** `ToolCallResult` is recorded after any result hook and
+without the caller's cancellation token, because the effect, if any, has already
+happened and the terminal evidence must not be lost to a cancelled caller. A
+terminal record that cannot be committed never changes the outcome: the result
+is returned unchanged, the failure is logged by identity and outcome only, and
+`ToolCallTerminalEvent.Recorded` is `false`. The durable accepted entry without
+a terminal entry is exactly the "effect may have started" evidence that
+[recovery](durable-execution.md) reconciles.
+
+**Retry safety and idempotency enforcement.** The attempt budget counts the
+first attempt. A failed attempt is retried only when its outcome is retryable,
+the budget and the batch deadline permit another attempt, and one of these
+holds: the call is read-only; the invoker reports a mutating call
+`DefinitelyNotPerformed`; or the mutating call may have started, its descriptor
+declares `Idempotent` (or `IdempotentWithKey` with the captured key), and the
+invoker implements `IIdempotencyEnforcingToolInvoker` and confirms enforcement
+for that exact context. A descriptor's declaration alone never proves replay
+safety, so no first-party invoker is retried after a possibly-started failure
+until it opts in. Cancellation and interruption are never retried. An invoker
+that throws is reported `InvocationFailed` with `Unknown` certainty, never
+retried, with no exception text in the result. Backoff is `ComputeDelay` over
+the injected `TimeProvider` and `IRandomizerFactory` (consulted only when jitter
+is configured), is cancellable, and publishes a `ToolRetryScheduledEvent`. The
+per-attempt `InvocationTimeout` remains an advisory
+`ToolInvocationContext.Deadline` that invokers and effecting hosts enforce; the
+executor does not cancel an attempt on its own.
+
+**Events.** `ToolEvent` is a closed, content-free family:
+`ToolCallAcceptedEvent`, `ToolRetryScheduledEvent`, and `ToolCallTerminalEvent`.
+They carry identities, resolved tool identity, status, certainty, and the
+`Accepted` and `Recorded` facts, and never the requested alias, arguments,
+results, or exception text. `ToolEventDispatcher` delivers to every
+`AddToolEventSink` registration in `(Order, Id)` order, bounds each delivery by
+`EventSinkTimeout` (abandoning a sink that ignores its token), counts and logs
+failures by sink identity and exception type, and never lets a sink change an
+outcome or another sink's delivery. Caller cancellation propagates; terminal
+events are published without it.
+
+**Observability.** Recorder writes run under `tool.call.record_accepted` and
+`tool.call.record_terminal` activities with the safe correlation identities, log
+events 4110 and 4111, and the bounded `agentkit.tool.call.record.count` and
+`.duration` metrics (stage and outcome only). Policy selection logs events 4120
+to 4122, sink failure logs 4130 and counts `agentkit.tool.event.publish.count`,
+and a retry wait runs under `tool.retry.backoff` with log event 4140 and the
+`agentkit.tool.retry.count` decision counter. Instrumentation failure never
+changes a recording, a selection, a delivery, or a retry.
 
 The scheduler receives already prepared invoker handles from the resolver; it
 does not resolve an `IServiceProvider`. Feature tools implement `IToolInvoker`
@@ -1234,18 +1393,20 @@ public sealed class ToolRuntimeOptions
     public int MaximumArgumentBytes { get; set; } = 1_048_576;
     public int MaximumResultBytes { get; set; } = 4_194_304;
     public int MaximumParallelInvocations { get; set; } = 4;
+    public int MaximumAttempts { get; set; } = 3;
+    public TimeSpan RetryInitialDelay { get; set; } = TimeSpan.FromMilliseconds(200);
+    public double RetryBackoffMultiplier { get; set; } = 2.0;
+    public TimeSpan RetryMaximumDelay { get; set; } = TimeSpan.FromSeconds(5);
+    public double RetryJitterFraction { get; set; } = 0.2;
+    public int MaximumRecordAppendAttempts { get; set; } = 4;
+    public int AcceptedRecordLookupEntries { get; set; } = 64;
+    public TimeSpan EventSinkTimeout { get; set; } = TimeSpan.FromSeconds(5);
     public TimeSpan InvocationTimeout { get; set; } = TimeSpan.FromMinutes(2);
     public ToolBatchFailureMode BatchFailureMode { get; set; } =
         ToolBatchFailureMode.SettleIndependently;
     public UnknownSchedulingMode UnknownSchedulingMode { get; set; } =
         UnknownSchedulingMode.Sequential;
-}
-
-public sealed class ToolsetOptions
-{
-    public ToolsetVersion Version { get; set; } = new(1);
-    public ToolExecutionPolicyVersion ExecutionPolicyVersion { get; set; } =
-        new(1);
+    public ToolSchemaLimits ArgumentValidationLimits { get; set; } = /* bounded defaults */;
 }
 
 public static class ServiceExtensions
@@ -1260,15 +1421,11 @@ public static class ServiceExtensions
                 executorKey,
                 configure);
 
-        public IServiceCollection AddToolset(
-            ToolsetKey key,
-            Action<ToolsetOptions> configure) =>
-            ToolServiceRegistration.AddToolset(services, key, configure);
+        public IServiceCollection AddToolset(ToolsetPublication publication) =>
+            ToolServiceRegistration.RegisterToolset(services, publication, false);
 
-        public IServiceCollection ReplaceToolset(
-            ToolsetKey key,
-            Action<ToolsetOptions> configure) =>
-            ToolServiceRegistration.ReplaceToolset(services, key, configure);
+        public IServiceCollection ReplaceToolset(ToolsetPublication publication) =>
+            ToolServiceRegistration.RegisterToolset(services, publication, true);
 
         public IServiceCollection AddToolProvider<TProvider>(
             ToolSourceId sourceId)
@@ -1394,19 +1551,120 @@ public static class ServiceExtensions
 The package-internal `ToolServiceRegistration` helper carries the generic
 constraints and performs registration without building or resolving a provider.
 
+**Shipped registration surface.** Every helper in the block above ships. The
+package also ships `AddAgentTools` (unkeyed and keyed by
+`ComponentKey<IToolExecutor>`), `AddToolset`/`ReplaceToolset`,
+`AddToolProvider`/`ReplaceToolProvider`, `AddTool`/`ReplaceTool` (singleton by
+default), `ReplaceToolCatalog`, `ReplaceToolScheduler`, `ReplaceToolExecutor`,
+`AddToolResultProjectionPolicy` and its replacement and catalog helpers, and the
+discovery helpers that the specification leaves to composition
+(`AddToolDiscoveryRuntime`, `AddToolRegistrationCatalog`,
+`AddToolCatalogMerging`, `AddToolCatalogCoordinator`, `AddToolSchemaEngine`,
+`AddStaticToolProvider`, `AddToolInvoker`, `AddToolPresentation`, and their
+`Replace*` forms).
+
+The ten helpers WS4 closed are `AddToolExecutionPolicy`,
+`ReplaceToolExecutionPolicy`, `ReplaceToolExecutionPolicySelector`,
+`AddToolEventSink`, `AddToolCallRecorder`, `ReplaceToolCallRecorder`,
+`ReplaceToolResolver`, `ReplaceToolArgumentValidator`,
+`ReplaceToolResultNormalizer`, and `ReplaceToolResultProjector`. Behavior:
+
+- Execution policies are additive and keyed by their exact
+  `ToolExecutionPolicyReference`. A repeated reference is a build error;
+  `ReplaceToolExecutionPolicy` replaces exactly one reference (adding it when
+  absent) and activates nothing. The selector materializes the keyed policies
+  once and rejects a policy whose own `Reference` differs from its key.
+  `AddAgentTools` registers `DefaultToolExecutionPolicy` for `standard` at
+  revision one unless that exact reference is already claimed.
+- Event sinks are additive singletons under a unique `ComponentId`. An identical
+  repeat is a no-op; a different sink or order under the same identity throws.
+- Recorders are keyed by the executor's `ComponentKey<IToolExecutor>`. A keyed
+  executor resolves the recorder under its exact key and never an unkeyed one:
+  `AddAgentTools(key)` registers the session-backed default under the key with
+  `TryAddKeyed`, `AddToolCallRecorder` rejects a repeated key, and
+  `ReplaceToolCallRecorder` changes exactly one key. The unkeyed executor uses
+  the unkeyed recorder that `AddAgentTools()` registers. The recorder is the
+  only keyed axis; the resolver, validator, normalizer, projector, selector, and
+  scheduler are singular unkeyed replacements.
+- `AddAgentTools(key)` also uses `TryAddKeyed` for the executor, so an executor
+  the host registered under the key first is preserved; `ReplaceToolExecutor`
+  changes it explicitly.
+- `AddAgentTools` adds `IValidateOptions<ToolRuntimeOptions>`, so impossible
+  limits fail when the options are first read at composition. It needs the
+  engine-wide `IRandomizerFactory` that the `AgentKit` facade registers; tools
+  composed without the facade register one explicitly.
+
+No store is installed: the default recorder writes through whatever session
+coordinator the run's capability carries.
+
+**Deviations recorded by WS4.** The specification is contradictory or infeasible
+against shipped code in these places, and the shipped choice governs:
+
+1. _Recorder signature._ `IToolCallRecorder` takes a `ToolCallSessionTarget`
+   (branch and lane) beside the session capability, and the first parameter of
+   `RecordAcceptedAsync` is `accepted` (the specified `call` is a reserved word
+   for analyzer purposes). An append needs the branch and lane the run owns, and
+   neither belongs on `SessionExecutionCapability`, `AcceptedToolCall`, or
+   `ToolCallRequest`.
+2. _Terminal entry is evidence, not content._ `ToolCallTerminalSessionEntry`
+   holds a `ToolCallResult` whose `Content` is empty, and its v1 codec refuses
+   usage and extension data. The specification calls the terminal record
+   complete and authoritative, but result content is committed exactly once, in
+   bounded projected form, by the loop's tool message, and the session store has
+   no second unbounded copy to keep in step. A terminal record therefore proves
+   status, certainty, acceptance, grant, normalization, and timing, and a
+   recovery that needs content reprojects from the committed tool message. A
+   recorder that wants full content registers its own implementation.
+3. _Terminal recording never changes an outcome._ A terminal record failure is
+   logged and reported on `ToolCallTerminalEvent.Recorded`; the result is
+   returned unchanged and the accepted entry without a terminal entry is the
+   recovery evidence. The specification does not say which side wins when the
+   effect has already happened.
+4. _Accepted-record lookup is bounded._ A terminal write validates against the
+   accepted entry within the last `AcceptedRecordLookupEntries` branch entries,
+   because the session read contract is forward-only. The accepted entry is
+   appended immediately before invocation, so it is always within a batch's own
+   entries; a longer-lived gap rejects the terminal write as `Conflict`.
+5. _Retry confirmation._ The specification requires the executor to verify that
+   the invoker or host will enforce the declared idempotency mechanism but names
+   no contract. `IIdempotencyEnforcingToolInvoker` is that contract, and
+   `ToolInvocationContext.ExternalIdempotencyKey` carries the stable key. The
+   shipped retry policy previously refused every possibly-started mutating
+   retry; it now permits it only through this confirmation. Raw
+   `ToolInvocationResult` has no retry-after carrier, so `ToolRetryPolicy` has
+   no retry-after field; `ToolError.RetryAfter` remains terminal-only.
+6. _Timeout enforcement._ `ToolExecutionPlan.InvocationTimeout` sets the
+   advisory per-attempt `Deadline`; the executor does not cancel an attempt.
+   Enforcing it would cut off long-running tools (for example commands) that
+   bound their own work, which changes shipped behavior beyond this chunk.
+7. _Budget reservation._ The specification has the executor reserve attempted,
+   concurrent, retry, result-byte, and successful-call dimensions. The loop
+   still counts attempted calls and the executor reserves nothing; retries
+   therefore consume no separate budget dimension.
+8. _Scheduling rejection stage._ Under `UnknownSchedulingMode.Reject` the
+   executor rejects an unspecified-mode call before acceptance, so it never
+   records an accepted call it will not invoke; the scheduler keeps its own
+   rejection for direct callers.
+9. _MCP server dispatch._ The MCP server's `tools/call` path builds its own
+   capability. It now loads the session to find the active branch and uses the
+   loop's default lane for runs without an explicit admission; a session it
+   cannot load, or a store that rejects the append, denies the call before any
+   effect.
+10. _Options naming._ `MaximumRetryAttempts` is renamed `MaximumAttempts`
+    because it counts the first attempt (the concept requires an unambiguous
+    name).
+
 `AddAgentTools` is idempotent and uses `TryAdd` for the engine-wide registration
 catalog, resolver, argument validator, policy selector, scheduler, and
 normalizer plus the singular projection-policy catalog and projector. It uses
 `TryAddKeyed` for each executor selected by `ComponentKey<IToolExecutor>`.
-Executor and recorder replacement methods target one executor key. The default
-recorder is scoped, depends only on session abstractions, and uses the
-invocation's selected session capability; neither it nor the executor captures a
-session or budget scope. Replacement methods for the other singular axes are
-explicit. Tool providers, event sinks, policy contributors, projection-policy
-snapshots, and tool registrations are additive. A duplicate
-`ToolId`/`ToolVersion`, provider source identity, or provider-visible alias is a
-build error unless an explicit replacement API names the exact registration
-being replaced.
+`ReplaceToolExecutor` targets one executor key, and the executor does not
+capture a session or budget scope: it borrows the invocation's capability.
+Replacement methods for the other singular axes are explicit. Tool providers,
+policy contributors, projection-policy snapshots, and tool registrations are
+additive. A duplicate `ToolId`/`ToolVersion`, provider source identity, or
+provider-visible alias is a build error unless an explicit replacement API names
+the exact registration being replaced.
 
 Projection is deterministic and effect-free. Summarization uses only the bounded
 recorded result and captured rules; it does not call a model or tool. An
@@ -1428,8 +1686,9 @@ singular catalog registration while preserving configured snapshots and clocks.
 `AddToolset(ToolsetPublication)` publishes complete immutable membership,
 versions, execution-policy evidence, and explicit aliases under an exact typed
 `ToolsetKey`. `ReplaceToolset` replaces every descriptor for that exact key
-without activation. The explicit publication overload is implemented; the
-options-based convenience shape above remains planned.
+without activation. A publication is the only registration shape: there is no
+options-based convenience overload, so a toolset's version and execution-policy
+evidence are always authored explicitly.
 
 `AddToolProvider<TProvider>(sourceId)` registers a concurrently callable,
 host-owned singleton under its exact `ToolSourceId`. Standard `[ServiceKey]`

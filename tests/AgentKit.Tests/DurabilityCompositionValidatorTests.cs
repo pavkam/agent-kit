@@ -163,6 +163,44 @@ public sealed class DurabilityCompositionValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenAnEnabledOperationHasNoHandler_ReportsThatOperationByName()
+    {
+        // A profile that lists a boundary promises evidence for it; without a handler the coordinator refuses it
+        // mid-run, so composition must report the gap instead.
+        var diagnostics = Validate(
+            Definitions(durable: true),
+            Catalog(Profile, EngineDurableOperations.RunAdmission, IoDurableOperations.RunSettlement),
+            Registrations(complete: true),
+            new StubDurableOperationHandler(EngineDurableOperations.RunAdmission));
+
+        var missing = diagnostics.ShouldHaveSingleItem();
+        missing.Code.ShouldBe("agentkit.durability.handler.missing");
+        missing.SafeMessage.ShouldContain(IoDurableOperations.RunSettlement.Value);
+        missing.SafeMessage.ShouldNotContain(EngineDurableOperations.RunAdmission.Value);
+    }
+
+    [Fact]
+    public void Validate_WhenEveryEnabledOperationHasAHandler_ReportsNothing()
+    {
+        var diagnostics = Validate(
+            Definitions(durable: true),
+            Catalog(Profile, EngineDurableOperations.RunAdmission, IoDurableOperations.RunSettlement),
+            Registrations(complete: true),
+            new StubDurableOperationHandler(EngineDurableOperations.RunAdmission),
+            new StubDurableOperationHandler(IoDurableOperations.RunSettlement));
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_WhenAProfileEnablesNoOperation_NeedsNoHandlers()
+    {
+        var diagnostics = Validate(Definitions(durable: true), Catalog(), Registrations(complete: true));
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Validate_WhenAProfileIsSelected_NeverActivatesAPersistenceAdapter()
     {
         // Activating a journal during validation would perform the protected effects composition has not yet proven.
@@ -188,10 +226,11 @@ public sealed class DurabilityCompositionValidatorTests
     private static ImmutableArray<CompositionDiagnostic> Validate(
         ImmutableArray<AgentDefinition> definitions,
         IDurabilityProfileCatalog? profileCatalog,
-        ComponentRegistrationSnapshot registrations)
+        ComponentRegistrationSnapshot registrations,
+        params IDurableOperationHandler[] handlers)
     {
         var diagnostics = ImmutableArray.CreateBuilder<CompositionDiagnostic>();
-        DurabilityCompositionValidator.Validate(definitions, profileCatalog, registrations, diagnostics);
+        DurabilityCompositionValidator.Validate(definitions, profileCatalog, registrations, handlers, diagnostics);
         return diagnostics.ToImmutable();
     }
 
@@ -205,8 +244,10 @@ public sealed class DurabilityCompositionValidatorTests
     private static AgentOptionalCapabilitySelection Selection(DurabilityProfileKey profile) =>
         new(null, null, profile, null, null, []);
 
-    private static StubDurabilityProfileCatalog Catalog(DurabilityProfileKey? registered = null) =>
-        new StubDurabilityProfileCatalog(registered ?? Profile);
+    private static StubDurabilityProfileCatalog Catalog(
+        DurabilityProfileKey? registered = null,
+        params DurableOperationName[] enabledOperations) =>
+        new StubDurabilityProfileCatalog(registered ?? Profile, enabledOperations);
 
     private static ComponentRegistrationSnapshot Registrations(
         bool complete,
@@ -278,7 +319,9 @@ public sealed class DurabilityCompositionValidatorTests
     }
 
     /// <summary>A catalog that publishes exactly one profile under the key the test registered.</summary>
-    private sealed class StubDurabilityProfileCatalog(DurabilityProfileKey registered): IDurabilityProfileCatalog
+    private sealed class StubDurabilityProfileCatalog(
+        DurabilityProfileKey registered,
+        DurableOperationName[] enabledOperations): IDurabilityProfileCatalog
     {
         public bool TryGet(DurabilityProfileKey key, [NotNullWhen(true)] out DurabilityProfileSnapshot? profile)
         {
@@ -290,11 +333,21 @@ public sealed class DurabilityCompositionValidatorTests
                     new DurableJournalKey("journal"),
                     new DurableLeaseManagerKey("leases"),
                     new RecoveryPolicyKey("policy"),
-                    [],
+                    [.. enabledOperations],
                     new ContentHash("sha256:profile"))
                 : null;
             return profile is not null;
         }
+    }
+
+    private sealed class StubDurableOperationHandler(DurableOperationName operationName): IDurableOperationHandler
+    {
+        public DurableOperationName OperationName { get; } = operationName;
+
+        public ValueTask<DurableOperationResult> InvokeAsync(
+            DurableInvocationContext context,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Composition validation never invokes a handler.");
     }
 
     private sealed class StubDurableExecutionCoordinator: IDurableExecutionCoordinator

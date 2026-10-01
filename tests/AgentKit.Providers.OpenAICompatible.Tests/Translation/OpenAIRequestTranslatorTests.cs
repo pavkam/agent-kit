@@ -358,7 +358,7 @@ public sealed class OpenAIRequestTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenUseMaxCompletionTokensFieldIsFalse_UsesLegacyMaxTokensField()
+    public void Translate_WhenUseMaxCompletionTokensFieldIsFalse_UsesMaxTokensField()
     {
         var settings = LlmRequestSettings.Default with
         {

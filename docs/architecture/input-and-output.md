@@ -393,7 +393,24 @@ public enum RunEventDelivery
 public sealed record RunEventSinkRegistration(
     string SinkName,
     RunEventDelivery Delivery,
-    int Order);
+    int Order,
+    TimeSpan FlushDeadline = default);
+
+public interface IFlushableRunEventSink : IRunEventSink
+{
+    ValueTask FlushAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IRequiredRunEventSinkCoordinator
+{
+    ValueTask<RequiredRunEventSinkDrainResult> DrainAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record RequiredRunEventSinkDrainResult(
+    ImmutableArray<string> Drained,
+    ImmutableArray<string> TimedOut,
+    ImmutableArray<string> Failed);
 
 public enum BackpressureDecision
 {
@@ -430,9 +447,8 @@ run/operation identity; a later recovery record never mutates a result already
 returned to a caller.
 
 The canonical final envelope accepts the seven `Run*` semantic cases shown
-above. Legacy reduced-loop outcomes require an explicit mapping that preserves
-their error and effect evidence; they cannot enter the final envelope by
-accidental type compatibility. `CancellationReason` retains an `AgentError`
+above. Loop outcomes outside that closed family cannot enter the final envelope
+by accidental type compatibility. `CancellationReason` retains an `AgentError`
 whose exact code is `Cancelled`, keeping timeout distinct. `RunFailure` and
 `PolicyHalt` retain normalized errors, while `RunLimitFailure` retains exact
 budget failure, enforcement boundary, partial-output and effect-certainty
@@ -480,6 +496,19 @@ fails build rather than silently replacing the earlier registration.
 accepted the event; `RunEventDelivery.BestEffort` means the publisher may
 isolate that sink's failure or backpressure without blocking other sinks or the
 run.
+
+A required sink that fails an inline delivery makes the publisher's
+`SettlementOutcome` `RunSettlementRecoveryRequired`; the loop copies it into the
+final result, so the run never claims clean settlement. A required sink may
+buffer deliveries behind its own bounded queue; it then implements
+`IFlushableRunEventSink`. At engine shutdown `AgentEngine.DisposeAsync` calls
+`IRequiredRunEventSinkCoordinator.DrainAsync` before disposing the owned
+provider. The coordinator starts every required flush before awaiting any and
+waits at most each sink's own `RunEventSinkRegistration.FlushDeadline` (30
+seconds when unspecified) on the injected `TimeProvider`. A deadline or faulted
+flush is reported in `RequiredRunEventSinkDrainResult` and logged, never thrown,
+so a stuck sink cannot deadlock shutdown. A sink with no buffering has nothing
+left to drain once its inline delivery was awaited.
 
 `IOutputBackpressurePolicy` is consulted whenever a delivery attempt to one sink
 or subscriber cannot proceed immediately — a fan-out buffer at capacity or a
@@ -584,15 +613,16 @@ alone. `AgentKit`'s facade selects the DI-resolved `IOutputPublisher` and
 pattern-matches it against `ISubscribableOutputPublisher` only when a caller
 requests `Agent.StreamAsync<TOutput>`; a configured publisher that does not
 implement it makes streaming a composition-time unsupported capability for that
-agent, never a silent fallback to polling or to a fabricated empty stream.
-`AgentRunOutputPublisher` (`AgentKit.IO`) is the first-party implementation: it
+agent, never a silent fallback to polling or to a fabricated empty stream. Both
+first-party publishers in `AgentKit.IO` implement it. `AgentRunOutputPublisher`
 owns one run's `RunEventHub` directly and exposes `Subscribe<TOutput>()` over
 the same completion source `CompleteAsync` resolves, so a stream obtained
 before, during, or immediately after settlement observes the same final
-envelope. `DefaultOutputPublisher`, which fans events out to registered sinks
-and durable delivery, does not implement `ISubscribableOutputPublisher` today;
-an agent selecting it for its output publisher key can still use
-`RunAsync<TOutput>`, just not `StreamAsync<TOutput>`.
+envelope. `DefaultOutputPublisher`, which also fans events out to registered
+sinks and durable delivery, exposes the same subscription over its per-run hub.
+A custom publisher that implements only `IOutputPublisher` still supports
+`RunAsync<TOutput>`, but streaming through it is a typed unsupported-capability
+rejection.
 
 The input coordinator and output publisher are run-scoped. The hub and mutable
 subscription state are run-scoped. Stateless, thread-safe promotion and
@@ -639,9 +669,20 @@ public static class ServiceExtensions
             RunEventSinkRegistration registration)
             where TSink : class, IRunEventSink =>
             AgentIORegistration.AddRunEventSink<TSink>(services, registration);
+
+        public IServiceCollection AddRunEventSink<TSink>(
+            RunEventSinkRegistration registration,
+            Func<IServiceProvider, TSink> factory)
+            where TSink : class, IRunEventSink =>
+            AgentIORegistration.AddRunEventSink<TSink>(services, registration, factory);
     }
 }
 ```
+
+The factory overload builds the singleton sink from the provider and may close
+over registration-time evidence such as an options snapshot. It exists so one
+sink type can be registered under several names with different per-registration
+state; the duplicate-name and delivery-conflict rules are identical.
 
 The default coordinator and publisher use `TryAddKeyedScoped`; they are singular
 per key and have explicit per-key replacement. Sinks are additive with stable

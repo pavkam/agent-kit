@@ -54,7 +54,7 @@ is denied before anyone is asked, and a write to `docs/guide.md` is asked about.
 ```csharp
 sealed class DocsOnlyWritePolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default)
     {
         if (request.Kind is not (SecurityOperationKind.FileWrite or SecurityOperationKind.DirectoryCreate))
         {
@@ -73,7 +73,7 @@ sealed class DocsOnlyWritePolicy : ISecurityPolicy
 
 sealed class ApproveWritesPolicy : ISecurityPolicy
 {
-    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(request.Kind is SecurityOperationKind.FileWrite or SecurityOperationKind.DirectoryCreate
             ? new SecurityPolicyResult(SecurityPolicyResultKind.RequireApproval, "docs.ask", "Documentation changes need your approval.")
             : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));

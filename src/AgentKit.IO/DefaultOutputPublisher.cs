@@ -162,7 +162,18 @@ internal sealed class DefaultOutputPublisher: ISubscribableOutputPublisher
     {
         var sinkName = SinkName(sink);
         var started = _timeProvider.GetTimestamp();
-        var task = sink.PublishAsync(runEvent, cancellationToken);
+        ValueTask task;
+        try
+        {
+            task = sink.PublishAsync(runEvent, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // A sink may fault before it returns its pending delivery. That is the same failed delivery as one that
+            // faults while pending, so it takes the same fault path below instead of escaping the publisher.
+            task = ValueTask.FromException(exception);
+        }
+
         while (!task.IsCompleted)
         {
             var decision = await _backpressurePolicy.DecideAsync(

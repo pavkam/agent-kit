@@ -26,26 +26,28 @@ engine is still the real engine: `GetAgentsAsync` lists the one published
 
 ## What each call registers
 
-| Call                                                      | Registers                                                                                                                                                                                                                                                              |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()`                           | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile` with best-effort audit, `AddAllowAllSecurityPolicy`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools(AllowAllRegisteredTools)`, and a basic-assurance local identity          |
-| `UseSqliteSessions(path)`                                 | `AddSqliteSessionStore` and `AddSqliteSessionDirectory` at that file (created on demand) and a durable session profile; see [Storing conversations](../../docs/guides/storage.md)                                                                                      |
-| `UseWorkspace(root)`                                      | `AddSandboxedFileSystem(root)` plus `AddReadTool`, `AddWriteTool`, `AddEditTool`, `AddGlobTool`, `AddSearchTool`, `AddListTool`; see [Working with files](../../docs/guides/file-system.md)                                                                            |
-| `UseOpenAI(apiKey, modelId)`                              | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                                       |
-| `UseAnthropic(apiKey, modelId)`                           | The same shape for Anthropic: `AddAnthropic`, `AddAnthropicApiKeyCredential`, `AddAnthropicKnownLlmModel`                                                                                                                                                              |
-| `UseOllama(modelId)`                                      | `AddOllama`, a placeholder credential a local server ignores (or the key you pass), `AddOllamaLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults; models are not in the catalog                                                                 |
-| `UseOpenRouter(apiKey, modelId)`                          | `AddOpenRouter`, `AddOpenRouterApiKeyCredential`, `AddOpenRouterLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults                                                                                                                              |
-| `UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)` | `AddAzureOpenAI` at the endpoint, `AddAzureOpenAIApiKeyCredential`, `AddAzureOpenAILlmModel(descriptor)` and `AddModelDescriptors`; a known OpenAI model's limits and prices are overlaid on the deployment                                                            |
-| Any first sugar call                                      | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its run-profile publication, and `AddConversationSession` |
+| Call                                                                                                  | Registers                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()`                                                                       | `AddInMemorySecurityGrantStore`, `AddInMemoryApprovalStore`, `AddInMemorySecurityDecisionStore`, `AddAllowAllSecurityPolicy`, best-effort audit delivery, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools`, and a basic-assurance local identity                                                                                                                                                     |
+| `UseSqliteSessions(path)`                                                                             | `AddSqliteSessionStore` and `AddSqliteSessionDirectory` at that file (created on demand) and a durable session profile; see [Storing conversations](../../docs/guides/storage.md)                                                                                                                                                                                                                                             |
+| `UseWorkspace(root)`                                                                                  | keyed `AddOperatingSystemFileSystem` over `root` plus `AddReadTool`, `AddWriteTool`, `AddListTool`, `AddGlobTool`, `AddSearchTool`, `AddEditTool`, `AddPatchTool` and the one toolset the definition selects; see [Working with files](../../docs/guides/file-system.md)                                                                                                                                                      |
+| `UseOpenAI(apiKey, modelId)`                                                                          | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                                                                                                                                                                                              |
+| `UseAnthropic(apiKey, modelId)`                                                                       | The same shape for Anthropic: `AddAnthropic`, `AddAnthropicApiKeyCredential`, `AddAnthropicKnownLlmModel`                                                                                                                                                                                                                                                                                                                     |
+| `UseOllama(modelId)`                                                                                  | `AddOllama`, a placeholder credential a local server ignores (or the key you pass), `AddOllamaLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults; models are not in the catalog                                                                                                                                                                                                                        |
+| `UseOpenRouter(apiKey, modelId)`                                                                      | `AddOpenRouter`, `AddOpenRouterApiKeyCredential`, `AddOpenRouterLlmModel(descriptor)` and `AddModelDescriptors` with the adapter defaults                                                                                                                                                                                                                                                                                     |
+| `UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)`                                             | `AddAzureOpenAI` at the endpoint, `AddAzureOpenAIApiKeyCredential`, `AddAzureOpenAILlmModel(descriptor)` and `AddModelDescriptors`; a known OpenAI model's limits and prices are overlaid on the deployment                                                                                                                                                                                                                   |
+| Any provider sugar call (`UseOpenAI`, `UseAnthropic`, `UseOllama`, `UseOpenRouter`, `UseAzureOpenAI`) | `AddAgentNetwork`, because every provider attempt sends through `INetworkTransport` under per-attempt egress grants; `UseOllama` additionally allows `http` and private addresses so a local server is reachable                                                                                                                                                                                                              |
+| Any first sugar call                                                                                  | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentIO` + `AddSessionBackedInputQueue`, `AddAgentHooks`, `AddAgentTools`, `AddAgentBudgets` with the default budget profile and an in-memory ledger, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its security and run-profile publications, and `AddConversationSession` |
+| `WithDurability()`                                                                                    | `AddAgentDurability`, the in-memory journal, lease manager, and backend, the default recovery policy, handlers for every first-party boundary, and one durability profile enabling all seven boundaries on every hosted definition; see [Durable execution](../../docs/architecture/durable-execution.md#simple-composition)                                                                                                  |
 
 Calls chain in any order before `Build()`; the plan is read lazily when the
-provider is built. Every `ITool` registered on `builder.Services` that the tool
-runtime allows (all of them under the local defaults, or the
-`AgentToolsOptions.AllowedToolIds` you name) is advertised to the model, and
-appears in the published `AgentDefinition`, with its exact captured descriptor;
-a registered tool the allow-list excludes is never shown, so the model cannot
-spend a turn on a call that is certain to be rejected. Nothing is chosen
-silently: storage, authority, and identity are external facts, so
+provider is built. The definition selects toolsets, not individual tools: the
+workspace and delegation sugar publish and select their own, `WithTools(keys)`
+selects any toolset you registered with `AddToolset`, and a run advertises to
+the model exactly the tools those toolsets name, with their exact captured
+descriptors. A registered tool outside every selected toolset is never shown, so
+the model cannot spend a turn on a call that is certain to be rejected. Nothing
+is chosen silently: storage, authority, and identity are external facts, so
 `UseLocalDevelopmentDefaults` is an explicit, named opt-in, and `Build()` fails
 with a diagnostic naming what is missing (the engine's own composition
 diagnostic for storage and security, a plan diagnostic for the model or
@@ -56,8 +58,11 @@ identity).
 `builder.Services` is the same collection every registration lands on, so the
 escape hatch is the ordinary AgentKit API:
 
-- **Tools:** `builder.Services.AddSandboxedFileSystem(root).AddReadTool();` and
-  the model sees `read_file` on the next turn.
+- **Tools:**
+  `builder.Services.AddOperatingSystemFileSystem(key, o => o.Roots.Add(...))`
+  with `AddReadTool(o => { o.ProfileKey = key; o.HostRootPath = root; })` and a
+  `WithTools(ReadFileTool.DefaultToolset.Key)` selection, and the model sees
+  `read_file` on the next turn.
 - **Another provider or an unknown model:** register the provider package's
   services on `builder.Services`, then `builder.UseModel(alias)`. The
   `Use<Provider>` methods share the alias `assistant`, so a builder calls one of
@@ -65,6 +70,11 @@ escape hatch is the ordinary AgentKit API:
 - **Durable sessions:** skip `UseLocalDevelopmentDefaults`, register
   `AddSqliteSessionStore`/`AddSqliteSessionDirectory` plus your security
   services, and call `WithIdentity`.
+- **Crash recovery:** `WithDurability()` journals every first-party boundary to
+  process-local in-memory adapters, which are explicitly ephemeral: the
+  boundaries, checkpoints, and recovery decisions are real and inspectable, but
+  nothing survives the process. Register keyed SQLite or JSON journal adapters
+  and `AddDurabilityProfile` on `builder.Services` for durable storage.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
 - **Several agents:** `AddAgent(agentId, o => ...)` publishes another definition
@@ -77,9 +87,14 @@ escape hatch is the ordinary AgentKit API:
   run reserve against hard limits; a refused reservation ends the turn naming
   the exhausted dimension. Accounting is in-memory unless you register a SQLite
   ledger first.
-- **Long conversations:** `WithCompaction()` registers the extractive compactor;
-  when the history nears the model's declared context window the loop
-  checkpoints older entries and rebuilds the request from the summary.
+- **Durable content:** `WithArtifacts()` registers the artifact coordinator over
+  an explicitly ephemeral in-memory store and selects it in every definition;
+  register SQLite, JSON, or file-system artifact stores and your own profile for
+  durable content.
+- **Long conversations:** `WithCompaction()` registers the extractive compactor
+  and a compaction profile that every definition selects; when the history nears
+  the model's declared context window the loop checkpoints older entries and
+  rebuilds the request from the summary.
 - **Hooks:** `builder.Services.AddBeforeToolInvocationHook<MyHook>()` (or the
   run-started and before-model-request variants) runs your hook at that
   boundary; the dispatcher is already registered.

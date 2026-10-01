@@ -19,10 +19,8 @@ namespace AgentKit;
 /// This is a deliberately minimal capability inventory covering the
 /// behaviors exercised by the current chat-completion request/response
 /// contracts. It intentionally omits media, citation, and continuation
-/// capabilities that belong to context assembly and structured-output
-/// components not yet implemented in this repository; those fields will be
-/// added additively once those components exist rather than being
-/// fabricated here.
+/// capabilities that no provider adapter translates; those fields will be
+/// added additively when an adapter does rather than being fabricated here.
 /// </para>
 /// </remarks>
 public sealed record ModelCapabilities
