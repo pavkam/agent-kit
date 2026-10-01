@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.MistralAI.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -58,8 +59,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAI();
         _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -71,8 +73,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMistralAI();
         _ = services.AddMistralAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

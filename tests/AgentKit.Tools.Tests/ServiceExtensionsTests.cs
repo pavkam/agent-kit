@@ -1239,10 +1239,81 @@ public sealed class ServiceExtensionsTests
             throw new NotSupportedException();
     }
 
+    [Fact]
+    public void AddToolResultSpill_WhenArgumentsAreInvalid_ThrowsNamingThem()
+    {
+        IServiceCollection nullServices = null!;
+        var executor = new ComponentKey<IToolExecutor>("tools");
+        var coordinator = new ComponentKey<IArtifactCoordinator>("artifacts");
+        static void Valid(ToolResultSpillOptions options) => options.Directory = new ArtifactDirectoryId("tool-results");
+
+        Should.Throw<ArgumentNullException>(() => nullServices.AddToolResultSpill(executor, coordinator, Valid)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddToolResultSpill(executor, coordinator, null!)).ParamName.ShouldBe("configure");
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => new ServiceCollection().AddToolResultSpill(default, coordinator, Valid));
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => new ServiceCollection().AddToolResultSpill(executor, default, Valid));
+        Should.Throw<ArgumentException>(() => new ServiceCollection().AddToolResultSpill(executor, coordinator, static _ => { })).ParamName.ShouldBe("configure");
+        Should.Throw<ArgumentException>(() => new ServiceCollection().AddToolResultSpill(executor, coordinator, static options =>
+        {
+            options.Directory = new ArtifactDirectoryId("tool-results");
+            options.MediaType = " ";
+        })).ParamName.ShouldBe("configure");
+        Should.Throw<ArgumentOutOfRangeException>(() => new ServiceCollection().AddToolResultSpill(executor, coordinator, static options =>
+        {
+            options.Directory = new ArtifactDirectoryId("tool-results");
+            options.Timeout = TimeSpan.Zero;
+        })).ParamName.ShouldBe("configure");
+    }
+
+    [Fact]
+    public void AddToolResultSpill_WhenRegisteredTwice_ResolvesTheFirstKeyedSpillOverTheKeyedCoordinator()
+    {
+        var executor = new ComponentKey<IToolExecutor>("tools");
+        var coordinator = new ComponentKey<IArtifactCoordinator>("artifacts");
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ILogger<ArtifactToolResultSpill>>(Microsoft.Extensions.Logging.Abstractions.NullLogger<ArtifactToolResultSpill>.Instance);
+        _ = services.AddKeyedSingleton<IArtifactCoordinator>(coordinator.Value, new UnusedCoordinator());
+        _ = services.AddToolResultSpill(executor, coordinator, static options => options.Directory = new ArtifactDirectoryId("first"));
+        _ = services.AddToolResultSpill(executor, coordinator, static options => options.Directory = new ArtifactDirectoryId("second"));
+        using var provider = services.BuildServiceProvider();
+
+        var spill = provider.GetRequiredKeyedService<IToolResultSpill>(executor.Value);
+
+        _ = spill.ShouldBeOfType<ArtifactToolResultSpill>();
+        spill.ShouldBeSameAs(provider.GetRequiredKeyedService<IToolResultSpill>(executor.Value));
+        provider.GetService<IToolResultSpill>().ShouldBeNull();
+    }
+
+    [Fact]
+    public void AddToolResultSpill_WhenTheCoordinatorKeyIsNotRegistered_FailsWhenTheSpillIsResolved()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ILogger<ArtifactToolResultSpill>>(Microsoft.Extensions.Logging.Abstractions.NullLogger<ArtifactToolResultSpill>.Instance);
+        _ = services.AddToolResultSpill(
+            new ComponentKey<IToolExecutor>("tools"), new ComponentKey<IArtifactCoordinator>("missing"), static options => options.Directory = new ArtifactDirectoryId("d"));
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<InvalidOperationException>(() => provider.GetRequiredKeyedService<IToolResultSpill>("tools"));
+    }
+
+    private sealed class UnusedCoordinator: IArtifactCoordinator
+    {
+        public Task<ArtifactPrepareResult> PrepareAsync(ArtifactPrepareRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ValueTask<ArtifactFinalizeResult> FinalizeAsync(ArtifactFinalizeRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ValueTask<ArtifactAbortResult> AbortAsync(ArtifactAbortRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<ArtifactReadResult> ReadAsync(ArtifactReadRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ValueTask<ArtifactDeleteResult> DeleteAsync(ArtifactDeleteRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ValueTask<ArtifactReconciliationResult> ReconcileAsync(ArtifactReconciliationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     private sealed class ReplacementNormalizer: IToolResultNormalizer
     {
         public ValueTask<ToolResultNormalizationResult> NormalizeAsync(
-            ValidatedToolCall validatedCall, ToolInvocationResult invocation, ToolResultNormalizationSnapshot snapshot, CancellationToken cancellationToken = default) =>
+            ValidatedToolCall validatedCall, ToolInvocationResult invocation, ToolResultNormalizationSnapshot snapshot, IToolResultSpill? spill = null, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

@@ -34,6 +34,8 @@ namespace AgentKit.Simple
             public AgentKit.AgentEngineBuilder WithArtifacts(System.Action<AgentKit.Simple.SimpleArtifactOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder WithDurability(System.Action<AgentKit.Durability.AgentDurabilityOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder WithSqliteDurability(string databasePath, System.Action<AgentKit.Durability.AgentDurabilityOptions>? configure = null, AgentKit.Durability.Sqlite.SqliteDurableStoreInstanceId? instanceId = default) { }
+            public AgentKit.AgentEngineBuilder WithJsonDurability(string directoryPath, System.Action<AgentKit.Durability.AgentDurabilityOptions>? configure = null, AgentKit.Durability.Json.JsonDurableStoreInstanceId? instanceId = default) { }
             public AgentKit.AgentEngineBuilder WithOutput(AgentKit.OutputDefinition definition) { }
             public AgentKit.AgentEngineBuilder WithOutput<T>(string schemaJson, string? name = null, int maximumRepairAttempts = 2, AgentKit.OutputMode mode = 3) { }
         }

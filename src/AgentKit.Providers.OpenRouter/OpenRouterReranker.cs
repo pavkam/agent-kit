@@ -16,36 +16,33 @@ public sealed class OpenRouterReranker: IReranker
     private readonly OpenRouterProviderOptions _options;
     private readonly IOpenRouterRerankRequestTranslator _translator;
     private readonly IOpenRouterRerankResponseParser _responseParser;
-    private readonly IProviderCredentialSource _credentials;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
-    private readonly IProviderProfileRuntimeSelector? _profileSelector;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
 
     /// <summary>Initializes a new instance of the <see cref="OpenRouterReranker"/> class.</summary>
     /// <param name="descriptor">The reranker descriptor this instance serves.</param>
     /// <param name="options">The validated OpenRouter provider options.</param>
     /// <param name="translator">Translates rerank requests into OpenRouter wire bodies.</param>
     /// <param name="responseParser">Parses OpenRouter rerank responses.</param>
-    /// <param name="credentials">Resolves credentials for the OpenRouter provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadlines and credential expiry.</param>
-    /// <param name="profileSelector">The optional profile runtime selector.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     public OpenRouterReranker(
         RerankerDescriptor descriptor,
         OpenRouterProviderOptions options,
         IOpenRouterRerankRequestTranslator translator,
         IOpenRouterRerankResponseParser responseParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderProfileRuntimeSelector? profileSelector = null)
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
-        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(profileSelector);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
@@ -53,7 +50,6 @@ public sealed class OpenRouterReranker: IReranker
         _options = options;
         _translator = translator;
         _responseParser = responseParser;
-        _credentials = credentials;
         _egress = egress;
         _timeProvider = timeProvider;
         _profileSelector = profileSelector;
@@ -83,14 +79,12 @@ public sealed class OpenRouterReranker: IReranker
         var sendStarted = _timeProvider.GetTimestamp();
         using var sendActivity = ProviderRequestObservability.StartRerankSend(_descriptor.ProviderId);
         IProviderProfileRuntimeLease? profileLease = null;
-        IProviderCredentialSource credentialSource;
         Uri? endpointOverride;
         try
         {
-            var binding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
+            var binding = await ProviderProfileAttemptBinding.SelectRuntimeAsync(
                     _descriptor.Binding,
                     request.Operation,
-                    _credentials,
                     _profileSelector,
                     _descriptor.ProviderId,
                     cancellationToken)
@@ -102,8 +96,7 @@ public sealed class OpenRouterReranker: IReranker
                 return new RerankModelFailed(binding.Failure!);
             }
 
-            profileLease = binding.Lease;
-            credentialSource = binding.CredentialSource!;
+            profileLease = binding.Runtime;
             endpointOverride = binding.EndpointBaseAddress;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -113,28 +106,6 @@ public sealed class OpenRouterReranker: IReranker
 
         try
         {
-            ProviderCredential credential;
-            try
-            {
-                credential = await credentialSource.GetCredentialAsync(_descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return Failed(ProviderFailureKind.Cancellation, "The attempt was cancelled.");
-            }
-
-            var authorization = ProviderAuthorizationHeaderFactory.Create(
-                credential,
-                _descriptor.ProviderId,
-                _timeProvider,
-                ProviderAuthorizationScheme.BearerToken);
-            if (authorization is ProviderAuthorizationDenied denied)
-            {
-                return new RerankModelFailed(denied.Failure);
-            }
-
-            var granted = (ProviderAuthorizationGranted) authorization;
-
             JsonObject payload;
             try
             {
@@ -148,12 +119,12 @@ public sealed class OpenRouterReranker: IReranker
                     exception);
             }
 
-            using var httpRequest = CreateHttpRequest(payload, granted, endpointOverride);
+            using var httpRequest = CreateHttpRequest(payload, endpointOverride);
             using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
             var sent = await _egress
-                .SendAsync(ProviderEgressRequest.ForReranking(_descriptor, request, httpRequest), cancellationToken)
+                .SendAsync(ProviderEgressRequest.ForReranking(_descriptor, request, httpRequest, profileLease is null ? null : new ProviderEgressCredential(profileLease, ProviderAuthorizationScheme.BearerToken)), cancellationToken)
                 .ConfigureAwait(false);
             if (sent is ProviderEgressRefused refused)
             {
@@ -199,7 +170,6 @@ public sealed class OpenRouterReranker: IReranker
 
     private HttpRequestMessage CreateHttpRequest(
         JsonObject payload,
-        ProviderAuthorizationGranted authorization,
         Uri? endpointBaseOverride)
     {
         var httpRequest = new HttpRequestMessage(
@@ -209,7 +179,6 @@ public sealed class OpenRouterReranker: IReranker
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in OpenRouterProviderDefaults.CreateProfile(_options).DefaultRequestHeaders)
         {

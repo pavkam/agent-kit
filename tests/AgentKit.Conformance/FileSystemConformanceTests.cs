@@ -223,6 +223,101 @@ public abstract class FileSystemConformanceTests<TFixture>
         results.Where(static result => result is not FileWriteSuccess).ShouldAllBe(static result => result is FileWriteConflict);
     }
 
+    /// <summary>Verifies deleting an existing regular file removes exactly that file and reports its length.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenTheRegularFileExists_RemovesItAndReportsItsLength()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("doomed.txt", "twelve bytes"u8.ToArray(), TestContext.Current.CancellationToken);
+        await fixture.SeedFileAsync("kept.txt", "kept"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("doomed.txt"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileDeleteSuccess>().PreviousBytes.ShouldBe(12);
+        (await ReadTextAsync(fixture, "doomed.txt")).ShouldBeNull();
+        (await ReadTextAsync(fixture, "kept.txt")).ShouldBe("kept");
+    }
+
+    /// <summary>Verifies deleting a missing file reports not-found rather than a failure or denial.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenTheFileIsMissing_ReturnsNotFound()
+    {
+        await using var fixture = CreateFixture();
+
+        var result = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("absent.txt"), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileDeleteNotFound>();
+    }
+
+    /// <summary>Verifies deleting twice removes the file once and then reports not-found.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenRepeated_RemovesOnceThenReportsNotFound()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("once.txt", "data"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var first = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("once.txt"), TestContext.Current.CancellationToken);
+        var second = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("once.txt"), TestContext.Current.CancellationToken);
+
+        _ = first.ShouldBeOfType<FileDeleteSuccess>();
+        _ = second.ShouldBeOfType<FileDeleteNotFound>();
+    }
+
+    /// <summary>Verifies a fingerprint precondition that no longer matches conflicts without removing the file.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenTheFingerprintPreconditionDiffers_ReturnsConflictWithoutRemoving()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("guarded.txt", "current"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await fixture.Deleter.DeleteAsync(
+            fixture.CreateAuthorizedDelete("guarded.txt", FileSecurityBinding.ContentFingerprint("stale"u8)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileDeleteConflict>();
+        (await ReadTextAsync(fixture, "guarded.txt")).ShouldBe("current");
+    }
+
+    /// <summary>Verifies a fingerprint precondition that matches the current bytes permits the removal.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenTheFingerprintPreconditionMatches_RemovesTheFile()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("guarded.txt", "current"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await fixture.Deleter.DeleteAsync(
+            fixture.CreateAuthorizedDelete("guarded.txt", FileSecurityBinding.ContentFingerprint("current"u8)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileDeleteSuccess>();
+        (await ReadTextAsync(fixture, "guarded.txt")).ShouldBeNull();
+    }
+
+    /// <summary>Verifies a directory target is never removed and its children survive.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenTheTargetIsADirectory_DoesNotRemoveItOrItsChildren()
+    {
+        await using var fixture = CreateFixture();
+        await fixture.SeedFileAsync("dir/child.txt", "child"u8.ToArray(), TestContext.Current.CancellationToken);
+
+        var result = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("dir"), TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<FileDeleteSuccess>();
+        (await ReadTextAsync(fixture, "dir/child.txt")).ShouldBe("child");
+    }
+
+    /// <summary>Verifies required audit failure closes before any removal.</summary>
+    [Fact]
+    public async Task DeleteAsync_WhenRequiredAuditUnavailable_DeniesBeforeMutation()
+    {
+        await using var fixture = CreateFixture();
+        fixture.UseRejectingAudit();
+
+        var result = await fixture.Deleter.DeleteAsync(fixture.CreateAuthorizedDelete("audited.txt"), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileDeleteDenied>();
+    }
+
     private static async ValueTask<FileWriteResult> WriteAsync(
         TFixture fixture,
         string path,

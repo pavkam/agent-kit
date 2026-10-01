@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Memory/AgentKit.Memory.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Memory.InMemory/AgentKit.Memory.InMemory.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Observability/AgentKit.Observability.csproj"/>

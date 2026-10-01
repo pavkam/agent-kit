@@ -53,8 +53,21 @@ public sealed class ToolRuntimeOptions
     /// <value>Five seconds by default. A timed-out sink is counted as failed and never changes an outcome.</value>
     public TimeSpan EventSinkTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>Gets or sets the default deadline applied to each tool batch unless overridden by capability evidence.</summary>
+    /// <summary>Gets or sets the deadline the executor enforces on each invocation attempt unless a descriptor's expected duration asks for longer.</summary>
+    /// <value>Two minutes by default. At the deadline the executor cancels the attempt's token and reports a timed-out terminal result; a tool that declares a longer <see cref="ToolExecutionHints.ExpectedDuration"/> is granted it, never beyond <see cref="MaximumInvocationTimeout"/>.</value>
     public TimeSpan InvocationTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Gets or sets the longest per-attempt deadline any descriptor's expected duration may request.</summary>
+    /// <value>One hour by default; must not be less than <see cref="InvocationTimeout"/>. Descriptor hints are untrusted, so host policy caps what they can extend.</value>
+    public TimeSpan MaximumInvocationTimeout { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Gets or sets how long the scheduler waits for a timed-out attempt to observe cancellation before abandoning it.</summary>
+    /// <value>Five seconds by default. An attempt that is still running after the drain is reported timed out with unknown side-effect certainty and its eventual outcome is ignored.</value>
+    public TimeSpan InvocationDrainPeriod { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Gets or sets how many leading bytes of an externalized result stay inline beside the artifact reference.</summary>
+    /// <value>2048 by default; zero keeps only the reference. The preview never exceeds the result's canonical byte bound.</value>
+    public int ResultSpillPreviewBytes { get; set; } = 2_048;
 
     /// <summary>Gets or sets how sibling calls settle when one call in a batch fails.</summary>
     public ToolBatchFailureMode BatchFailureMode { get; set; } = ToolBatchFailureMode.SettleIndependently;

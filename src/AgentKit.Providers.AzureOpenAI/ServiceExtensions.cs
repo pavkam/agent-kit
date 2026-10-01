@@ -118,12 +118,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
-                services,
-                AzureOpenAIProviderDefaults.CredentialSourceKey,
-                AzureOpenAIProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, AzureOpenAIProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -154,11 +149,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(AzureOpenAIProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                AzureOpenAIProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
+                AzureOpenAIProviderDefaults.CredentialSourceKey,
+                AzureOpenAIProviderDefaults.ProviderId);
 
             return services;
         }
@@ -263,10 +257,9 @@ public static class ServiceExtensions
                     profile,
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -340,10 +333,9 @@ public static class ServiceExtensions
                     profile,
                     provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

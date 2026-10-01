@@ -55,9 +55,13 @@ official vendor protocol documentation.
    conformance. Wire compatibility is neither provider identity nor a union of
    every compatible endpoint's capabilities.
 8. Bind every operation to keyed, versioned endpoint and credential/account
-   profiles. Resolve credentials only at send time, authorize classified egress,
-   and keep secrets out of options display, logs, snapshots, exceptions, and
-   records. Shared wire mechanics do not own provider authentication policy.
+   profiles. Resolve credentials only at send time through the profile's
+   captured `IProviderCredentialSource` (one consumed credential-read grant, one
+   disposable `IProviderCredentialLease` applied to an
+   `IProviderAuthenticationTarget`; never an unkeyed or `ProviderId`-keyed
+   source), authorize classified egress, and keep secrets out of options
+   display, logs, snapshots, exceptions, and records. Shared wire mechanics do
+   not own provider authentication policy.
 9. Send only through `ProviderEgress`; never construct an `HttpClient`, a
    handler, or an SDK transport in an adapter. Build the request as an in-memory
    `HttpRequestMessage`, pass it with the descriptor and attempt request

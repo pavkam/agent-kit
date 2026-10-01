@@ -52,6 +52,34 @@ not distributed replication, cloud-object retention, or an atomic transaction
 with session history. Payload and database targets remain explicit host
 configuration; no package invents a database path.
 
+The file-system leaf removes a released payload with an explicit authorized
+delete effect and, at recovery, sweeps payload files that no live or staged
+entry references by enumerating its root through the directory-reader
+capability. It deletes only names it derives for payloads, never its log or a
+foreign file. The selected file-system profile must therefore declare the read,
+write, enumerate, and delete capabilities; a missing capability fails recovery
+closed instead of degrading to truncation. A failed release after the entry
+committed leaves the file for the next recovery sweep rather than failing the
+deletion.
+
+The reference-commit intent store has the same three-leaf shape as the stores:
+`InMemoryArtifactReferenceCommitIntentStore`,
+`SqliteArtifactReferenceCommitIntentStore` and
+`JsonArtifactReferenceCommitIntentStore` implement
+`IArtifactReferenceCommitIntentStore` over one shared transition table and run
+one reusable conformance suite. The durable adapters write each recorded intent
+and transition before acknowledging it and propagate a storage failure while
+leaving the previous state intact. Each holds its own database or root
+exclusively, bound to a distinct schema or store kind so it can never be opened
+as an artifact store, and each is registered through
+`AddSqliteArtifactReferenceCommitIntentStore` or
+`AddJsonArtifactReferenceCommitIntentStore`. The store remains caller-owned: the
+caller that commits the referencing record owns it, no atomic transaction with
+that record is claimed, and the artifact runtime only reads, fences, and
+completes intents through the contract. Operations are observed under the shared
+`artifact.store.operation` activity and metrics with `intent_record`,
+`intent_get`, `intent_transition`, and `intent_list_pending` operation labels.
+
 ## Normative minimal contract shape
 
 ```csharp
@@ -436,11 +464,12 @@ media, overflow, hash mismatch, stale version, missing authority, partial
 upload, backend failure, and retention conflict are typed outcomes.
 
 Registration without an explicit artifact leaf fails when a profile selects
-artifact storage. Common in-memory and SQLite behavior is verified by one
-reusable suite; adapter-specific tests prove restart durability, transaction
-boundaries, streaming limits, and only the capabilities each descriptor claims.
+artifact storage. Common in-memory, SQLite, JSON, and file-system behavior is
+verified by one reusable suite; adapter-specific tests prove restart durability,
+transaction boundaries, streaming limits, and only the capabilities each
+descriptor claims.
 
-## Implementation notes and deviations (WS15)
+## Implementation notes and deviations
 
 The landed implementation follows this document with the deviations below. Each
 is recorded so the next reader does not mistake it for an oversight.
@@ -470,21 +499,20 @@ is recorded so the next reader does not mistake it for an oversight.
   holds and non-delegated external ownership block deletion.
 - **Reconciliation.** Fence-first: a conditional transition moves an intent
   Pending to Fenced or Committed and Fenced to Collected; when evidence is
-  unavailable the result stays pending. The intent store is caller-owned. Only
-  an in-memory intent store adapter exists; **SQLite and JSON intent stores are
-  not built**, so durable reconciliation needs an application-supplied intent
-  store.
+  unavailable the result stays pending. The intent store is caller-owned, and
+  in-memory, SQLite, and JSON adapters exist (see above).
 - **Shared store machinery.** `AgentKit.Artifacts.Storage.Shared` (planner,
   state machine, gateway, enforcement, observation, state-backend base) and
   `AgentKit.Artifacts.Storage.Durable` (stored-entry documents) are compiled
   into each leaf rather than shipped as packages. All leaves are single-writer:
   SQLite holds an exclusive lock, JSON an advisory lock, and the file-system
   adapter none. Reads verify length and SHA-256 before returning bytes.
-- **File-system adapter.** Flat layout; it never creates directories. The file
-  boundary has no delete or enumeration, so a released payload is truncated
-  rather than removed and crash leftovers are not swept. Log recovery needs the
-  first operation's authorization because there is no explicit initialize, and a
-  recovery failure propagates as an I/O failure. Each file effect is authorized
+- **File-system adapter.** Flat layout; it never creates directories. A released
+  payload is deleted through `IFileDeleter`, and recovery enumerates the root
+  through `IDirectoryReader` to delete unreferenced payload files. Log recovery
+  needs the first operation's authorization because there is no explicit
+  initialize, and a recovery failure (including an unavailable deleter or
+  directory reader) propagates as an I/O failure. Each file effect is authorized
   through the security authority selector. Conformance runs over
   `AgentKit.FileSystem.InMemory`.
 - **Composition validation.** The facade validates through

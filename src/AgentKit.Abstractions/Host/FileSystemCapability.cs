@@ -31,4 +31,7 @@ public enum FileSystemCapability
 
     /// <summary>Explicit parent-directory creation through <see cref="IDirectoryCreator"/>.</summary>
     CreateDirectory = 1 << 6,
+
+    /// <summary>Explicit regular-file removal through <see cref="IFileDeleter"/>.</summary>
+    Delete = 1 << 7,
 }

@@ -161,6 +161,54 @@ internal static class HookServiceRegistration
         return services;
     }
 
+    internal static IServiceCollection AddBeforeMemoryProposalHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
+        where THook : class, IBeforeMemoryProposalHook
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeMemoryProposal);
+        _ = AddAgentHooks(services, configure: null);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeMemoryProposalHook, THook>());
+        AddBinding<THook>(services, typeof(IBeforeMemoryProposalHook), descriptor);
+        return services;
+    }
+
+    internal static IServiceCollection AddBeforeMemoryWriteHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
+        where THook : class, IBeforeMemoryWriteHook
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeMemoryWrite);
+        _ = AddAgentHooks(services, configure: null);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeMemoryWriteHook, THook>());
+        AddBinding<THook>(services, typeof(IBeforeMemoryWriteHook), descriptor);
+        return services;
+    }
+
+    internal static IServiceCollection AddBeforeRetrievalHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
+        where THook : class, IBeforeRetrievalHook
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeRetrieval);
+        _ = AddAgentHooks(services, configure: null);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeRetrievalHook, THook>());
+        AddBinding<THook>(services, typeof(IBeforeRetrievalHook), descriptor);
+        return services;
+    }
+
+    internal static IServiceCollection AddBeforeRetrievalExposureHook<THook>(IServiceCollection services, HookRegistrationDescriptor descriptor)
+        where THook : class, IBeforeRetrievalExposureHook
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNotEqual(descriptor.Point, AgentHookPoints.BeforeRetrievalExposure);
+        _ = AddAgentHooks(services, configure: null);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IBeforeRetrievalExposureHook, THook>());
+        AddBinding<THook>(services, typeof(IBeforeRetrievalExposureHook), descriptor);
+        return services;
+    }
+
     private static void RegisterBuiltInPointDefinitions(IServiceCollection services)
     {
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.RunStarted);
@@ -169,6 +217,10 @@ internal static class HookServiceRegistration
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeToolInvocation);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.ToolResult);
         services.TryAddSingleton(BuiltInAgentHookPointDefinitions.OutputValidating);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeMemoryProposal);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeMemoryWrite);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeRetrieval);
+        services.TryAddSingleton(BuiltInAgentHookPointDefinitions.BeforeRetrievalExposure);
         services.TryAddSingleton<IReadOnlyList<HookPointDefinitionRegistration>>(static _ =>
         [
             BuiltInAgentHookPointDefinitions.RunStartedRegistration,
@@ -177,6 +229,10 @@ internal static class HookServiceRegistration
             BuiltInAgentHookPointDefinitions.BeforeToolInvocationRegistration,
             BuiltInAgentHookPointDefinitions.ToolResultRegistration,
             BuiltInAgentHookPointDefinitions.OutputValidatingRegistration,
+            BuiltInAgentHookPointDefinitions.BeforeMemoryProposalRegistration,
+            BuiltInAgentHookPointDefinitions.BeforeMemoryWriteRegistration,
+            BuiltInAgentHookPointDefinitions.BeforeRetrievalRegistration,
+            BuiltInAgentHookPointDefinitions.BeforeRetrievalExposureRegistration,
         ]);
         services.TryAddSingleton<IHookMutationValidator<RunStartedEventArgs>, DefaultAgentHookMutationValidator<RunStartedEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<ContextAssembledEventArgs>, DefaultAgentHookMutationValidator<ContextAssembledEventArgs>>();
@@ -184,6 +240,10 @@ internal static class HookServiceRegistration
         services.TryAddSingleton<IHookMutationValidator<BeforeToolInvocationEventArgs>, DefaultAgentHookMutationValidator<BeforeToolInvocationEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<ToolResultHookEventArgs>, DefaultAgentHookMutationValidator<ToolResultHookEventArgs>>();
         services.TryAddSingleton<IHookMutationValidator<OutputValidatingEventArgs>, DefaultAgentHookMutationValidator<OutputValidatingEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<BeforeMemoryProposalEventArgs>, DefaultAgentHookMutationValidator<BeforeMemoryProposalEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<BeforeMemoryWriteEventArgs>, DefaultAgentHookMutationValidator<BeforeMemoryWriteEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<BeforeRetrievalEventArgs>, DefaultAgentHookMutationValidator<BeforeRetrievalEventArgs>>();
+        services.TryAddSingleton<IHookMutationValidator<BeforeRetrievalExposureEventArgs>, DefaultAgentHookMutationValidator<BeforeRetrievalExposureEventArgs>>();
     }
 
     private static void AddBinding<THook>(

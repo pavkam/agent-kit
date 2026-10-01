@@ -42,7 +42,7 @@ public sealed class SqliteArtifactStore: IArtifactStore, IDisposable
         ArgumentNullException.ThrowIfNull(grants);
         ArgumentNullException.ThrowIfNull(intentIds);
         ArgumentNullException.ThrowIfNull(time);
-        _backend = new SqliteArtifactBackend(new SqliteArtifactDatabase(target, settings), logger);
+        _backend = new SqliteArtifactBackend(new SqliteArtifactDatabase(target, settings, SqliteArtifactSchema.Store), logger);
         _gateway = new ArtifactStoreGateway("sqlite", new ComponentId("agentkit.artifacts.sqlite"), _backend, grants, intentIds, time, logger);
     }
 

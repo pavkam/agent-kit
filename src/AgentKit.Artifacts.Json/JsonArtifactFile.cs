@@ -12,26 +12,28 @@ namespace AgentKit.Artifacts.Json;
 internal sealed class JsonArtifactFile: IDisposable
 {
     private const int _schemaVersion = 1;
-    private const string _storeKind = "agentkit.artifacts.store";
     private const string _payloadDirectory = "payloads";
 
     private readonly JsonArtifactTarget _target;
     private readonly JsonArtifactSettings _settings;
+    private readonly JsonArtifactFileKind _kind;
     private readonly ILogger _logger;
     private readonly JsonStoreRoot _root;
     private readonly JsonRecordLog _log;
     private JsonStoreLock? _exclusive;
 
-    internal JsonArtifactFile(JsonArtifactTarget target, JsonArtifactSettings settings, ILogger logger)
+    internal JsonArtifactFile(JsonArtifactTarget target, JsonArtifactSettings settings, JsonArtifactFileKind kind, ILogger logger)
     {
         Debug.Assert(target is not null, "The store validates its target before creating the file.");
         Debug.Assert(settings is not null, "The store validates its settings before creating the file.");
+        Debug.Assert(kind is not null, "The store names the root kind it owns.");
         Debug.Assert(logger is not null, "The store supplies a logger.");
         _target = target;
         _settings = settings;
+        _kind = kind;
         _logger = logger;
         _root = new JsonStoreRoot(target.DirectoryPath);
-        _log = new JsonRecordLog(_root.LogPath("artifacts"), settings.MaximumRecordBytes);
+        _log = new JsonRecordLog(_root.LogPath(kind.LogName), settings.MaximumRecordBytes);
     }
 
     /// <summary>Gets a value indicating whether the last replay held more records than the compaction threshold or recovered a torn append.</summary>
@@ -61,7 +63,11 @@ internal sealed class JsonArtifactFile: IDisposable
         {
             verifyEncoding();
             BindManifest(cancellationToken);
-            _ = Directory.CreateDirectory(PayloadRoot);
+            if (_kind.HasPayloads)
+            {
+                _ = Directory.CreateDirectory(PayloadRoot);
+            }
+
             var replay = _log.Replay(cancellationToken);
             if (replay.HasIncompleteTrailingRecord && _target.RecoveryMode != JsonStoreRecoveryMode.RecoverTornAppends)
             {
@@ -158,7 +164,7 @@ internal sealed class JsonArtifactFile: IDisposable
                 throw new InvalidOperationException("The configured JSON artifact-store root has no manifest.");
             }
 
-            var created = new JsonStoreManifest(_target.ExpectedInstanceId.Value, _storeKind, _schemaVersion, _settings.Encoding.Fingerprint);
+            var created = new JsonStoreManifest(_target.ExpectedInstanceId.Value, _kind.StoreKind, _schemaVersion, _settings.Encoding.Fingerprint);
             JsonAtomicDocument.Replace(
                 _root.ManifestPath,
                 JsonStoreSerialization.Encode(created, _settings.Encoding.DocumentOptions, _settings.MaximumDocumentBytes),
@@ -167,7 +173,7 @@ internal sealed class JsonArtifactFile: IDisposable
         }
 
         var manifest = JsonStoreSerialization.Decode<JsonStoreManifest>(payload, _settings.Encoding.DocumentOptions);
-        if (manifest.StoreId != _target.ExpectedInstanceId.Value || !string.Equals(manifest.StoreKind, _storeKind, StringComparison.Ordinal))
+        if (manifest.StoreId != _target.ExpectedInstanceId.Value || !string.Equals(manifest.StoreKind, _kind.StoreKind, StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The JSON artifact-store identity does not match bootstrap configuration.");
         }

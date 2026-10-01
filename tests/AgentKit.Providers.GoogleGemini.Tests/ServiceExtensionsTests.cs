@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.GoogleGemini.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -58,8 +59,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGemini();
         _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -71,8 +73,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddGoogleGemini();
         _ = services.AddGoogleGeminiOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

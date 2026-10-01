@@ -15,7 +15,7 @@ namespace AgentKit.Providers.GoogleGemini
     }
     public sealed class GoogleGeminiEmbeddingModel : AgentKit.IEmbeddingModel
     {
-        public GoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider) { }
+        public GoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -45,7 +45,7 @@ namespace AgentKit.Providers.GoogleGemini
     }
     public sealed class GoogleGeminiLlmModel : AgentKit.ILlmModel
     {
-        public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -53,7 +53,7 @@ namespace AgentKit.Providers.GoogleGemini
     {
         public const string DefaultApiVersion = "v1beta";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
         public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
         public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }

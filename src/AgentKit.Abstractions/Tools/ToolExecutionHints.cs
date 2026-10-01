@@ -44,7 +44,7 @@ public sealed record ToolExecutionHints
     /// <value>A nonblank ordinal key exactly for concurrency-key scheduling; otherwise null.</value>
     public string? ConcurrencyKey { get; }
     /// <summary>Gets the optional expected execution duration.</summary>
-    /// <value>A nonnegative advisory duration, or null when unasserted; it is not an execution deadline.</value>
+    /// <value>A nonnegative advisory duration, or null when unasserted; it is not a deadline, but a policy may grant an attempt this long before it is cancelled, up to a host-configured maximum.</value>
     public TimeSpan? ExpectedDuration { get; }
     /// <summary>Gets the approval-cacheability claim.</summary>
     /// <value>An advisory true or false claim, or null when unasserted; security policy remains authoritative.</value>

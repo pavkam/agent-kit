@@ -130,6 +130,42 @@ public sealed class AgentRunRequestTests
     }
 
     [Fact]
+    public void Restrictions_WhenOmitted_AreNullSoTheRunKeepsItsWholeSurfaceAndRootBudget()
+    {
+        var request = LoopTestData.RunRequest();
+
+        request.AllowedTools.ShouldBeNull();
+        request.BudgetParentScopeId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Restrictions_WhenSupplied_RoundTripAndAcceptAnEmptyAllowList()
+    {
+        var parent = new BudgetScopeId(Guid.Parse("e0000000-0000-0000-0000-000000000001"));
+
+        var request = LoopTestData.RunRequest() with { AllowedTools = [], BudgetParentScopeId = parent };
+
+        request.AllowedTools.ShouldNotBeNull().ShouldBeEmpty();
+        request.BudgetParentScopeId.ShouldBe(parent);
+    }
+
+    [Fact]
+    public void AllowedTools_WhenDefaultArray_ThrowsExactArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => LoopTestData.RunRequest() with { AllowedTools = default(ImmutableArray<ToolId>) });
+
+        exception.ParamName.ShouldBe("AllowedTools");
+    }
+
+    [Fact]
+    public void BudgetParentScopeId_WhenDefault_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => LoopTestData.RunRequest() with { BudgetParentScopeId = default(BudgetScopeId) });
+
+        exception.ParamName.ShouldBe("BudgetParentScopeId");
+    }
+
+    [Fact]
     public void Constructor_WhenDefinitionIsSupplied_DerivesRequestMembersFromTheDefinition()
     {
         var request = LoopTestData.RunRequest();

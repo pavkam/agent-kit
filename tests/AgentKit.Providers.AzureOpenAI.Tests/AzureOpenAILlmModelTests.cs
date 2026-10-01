@@ -24,14 +24,14 @@ public sealed class AzureOpenAILlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), new DeploymentId("prod-gpt4o"), AzureOpenAIProviderDefaults.DefaultCapabilities, AzureOpenAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
-    private static AzureOpenAILlmModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, FakeTimeProvider? timeProvider = null) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), PreferStreaming = preferStreaming, }), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), new DeploymentId("prod-gpt4o"), AzureOpenAIProviderDefaults.DefaultCapabilities, AzureOpenAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
+    private static AzureOpenAILlmModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, FakeTimeProvider? timeProvider = null) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), PreferStreaming = preferStreaming, }), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://my-resource.openai.azure.test/")));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsApiKeyHeaderAndOverridesModelFieldWithDeploymentName()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -53,7 +53,7 @@ public sealed class AzureOpenAILlmModelTests
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = CreateModel(handler, new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(expiredToken), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
@@ -67,7 +67,7 @@ public sealed class AzureOpenAILlmModelTests
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
         var validToken = new OAuthTokenProviderCredential("valid-entra-token", Now.AddHours(1));
-        var model = CreateModel(handler, new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(validToken)), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(validToken), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -81,7 +81,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_401.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("bad-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("bad-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
@@ -96,7 +96,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.TooManyRequests, "responses/error_429.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
@@ -116,7 +116,7 @@ public sealed class AzureOpenAILlmModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -137,7 +137,7 @@ public sealed class AzureOpenAILlmModelTests
                 SupportsToolCalls = false
             },
         };
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var observer = new RecordingModelResponseObserver();
@@ -156,7 +156,7 @@ public sealed class AzureOpenAILlmModelTests
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -179,7 +179,7 @@ public sealed class AzureOpenAILlmModelTests
             Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -197,7 +197,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var requestDescriptor = descriptor with { ModelId = new ModelId("different-model") };
         var observer = new RecordingModelResponseObserver();
 
@@ -214,7 +214,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var requestDescriptor = descriptor with
         {
             Capabilities = descriptor.Capabilities with { SupportsStructuredOutput = !descriptor.Capabilities.SupportsStructuredOutput },
@@ -235,7 +235,7 @@ public sealed class AzureOpenAILlmModelTests
         {
             Capabilities = AzureOpenAIProviderDefaults.DefaultCapabilities with { SupportsParallelToolCalls = false },
         };
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, settings, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
@@ -254,7 +254,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddSeconds(-1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var observer = new RecordingModelResponseObserver();
@@ -288,7 +288,7 @@ public sealed class AzureOpenAILlmModelTests
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -305,7 +305,7 @@ public sealed class AzureOpenAILlmModelTests
     {
         var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -331,7 +331,7 @@ public sealed class AzureOpenAILlmModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
         using var cancellation = new CancellationTokenSource();
 
@@ -362,7 +362,7 @@ public sealed class AzureOpenAILlmModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -386,7 +386,7 @@ public sealed class AzureOpenAILlmModelTests
             Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"id\":\"chatcmpl-1\","u8.ToArray())),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -415,7 +415,7 @@ public sealed class AzureOpenAILlmModelTests
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/event-stream") });
         var descriptor = CreateDescriptor();
         var timeProvider = new FakeTimeProvider(Now);
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor, preferStreaming: true, timeProvider);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor, preferStreaming: true, timeProvider);
         // The request deadline is one minute out; the observer expires it the moment the text part completes, so the
         // adapter (not the wire parser) owns the terminal failure and must carry the already-completed part.
         var observer = new DeadlineExpiringModelResponseObserver(timeProvider, TimeSpan.FromMinutes(2));
@@ -444,7 +444,7 @@ public sealed class AzureOpenAILlmModelTests
             """;
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(truncatedBody, Encoding.UTF8, "text/event-stream") });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor, preferStreaming: true);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -477,7 +477,7 @@ public sealed class AzureOpenAILlmModelTests
             """;
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/event-stream") });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor, preferStreaming: true);
         using var cts = new CancellationTokenSource();
         // Started, PartStarted, two deltas, PartCompleted: cancel once the text part has been completed.
         var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);

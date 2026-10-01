@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenRouter.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 using AgentKit.Providers.OpenRouter.Tests.Fakes;
 using AgentKit.TestSupport;
@@ -15,7 +16,7 @@ public sealed class OpenRouterRerankerTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private static readonly RerankerDescriptor Descriptor = new(
+    private static readonly RerankerDescriptor Descriptor = ProviderEgressHarness.Bind(new RerankerDescriptor(
         new RerankerAlias("rank"),
         OpenRouterProviderDefaults.ProviderId,
         OpenRouterProviderDefaults.ApiFamily,
@@ -23,7 +24,7 @@ public sealed class OpenRouterRerankerTests
         deploymentId: null,
         new RerankerCapabilities(supportsTopCount: true, ExtensionData.Empty),
         new RerankerLimits(maxDocumentsPerRequest: 100, maxDocumentCharacters: 4096),
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     private static RerankModelRequest CreateRequest(ProtectedSemanticOperationContext? operation = null) => new(
         operation ?? ProviderEgressHarness.Operation,
@@ -44,9 +45,8 @@ public sealed class OpenRouterRerankerTests
         new OpenRouterProviderOptions(),
         new OpenRouterRerankRequestTranslator(),
         new OpenRouterRerankResponseParser(),
-        new StaticApiKeyCredentialSource("sk-or-rerank-secret"),
         (harness ?? ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now))).Egress,
-        new FakeTimeProvider(Now));
+        new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-or-rerank-secret")), OpenRouterProviderDefaults.DefaultBaseAddress));
 
     private static StubHttpMessageHandler Serving(string json) => new(_ => new HttpResponseMessage(HttpStatusCode.OK)
     {
@@ -68,11 +68,12 @@ public sealed class OpenRouterRerankerTests
         sent.Headers.Authorization!.Parameter.ShouldBe("sk-or-rerank-secret");
         harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
         [
+            ProviderCredentialReadGate.DefaultAudience,
             ProviderEgress.SecurityAudience,
             harness.Resolver.SecurityAudience,
             harness.Transport.SecurityAudience,
         ]);
-        harness.Authority.Requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://openrouter.ai:443/api/v1/rerank");
+        harness.Authority.Requests[1].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://openrouter.ai:443/api/v1/rerank");
     }
 
     [Fact]

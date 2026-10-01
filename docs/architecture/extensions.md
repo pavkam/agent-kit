@@ -595,7 +595,10 @@ Hook families may cover:
   stream events;
 - tool discovery, schema validation, security authorization, execution, and
   result normalization;
-- memory proposal, storage, retrieval, and model exposure;
+- memory proposal, write, retrieval, and model exposure (shipped as
+  `BeforeMemoryProposal`, `BeforeMemoryWrite`, `BeforeRetrieval`, and
+  `BeforeRetrievalExposure`; see
+  [Memory hook points](memory-and-retrieval.md#memory-hook-points));
 - goal creation, delegation, joining, and completion;
 - output validation and final-result publication; and
 - security request presentation, decision observation, approval resolution, and

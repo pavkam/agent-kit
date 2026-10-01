@@ -19,7 +19,7 @@ public sealed class DocumentChunkRetrievalSourceTests
         await PublishAsync(harness, owner, xDocument, "v1", "xxx about excellent things", "p-1");
         await PublishAsync(harness, owner, new DocumentId(Guid.NewGuid()), "v1", "yyy about other things", "p-2");
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         result.IsCompleted.ShouldBeTrue();
         var top = result.Candidates.First(static candidate => candidate.DocumentId is not null);
@@ -39,7 +39,7 @@ public sealed class DocumentChunkRetrievalSourceTests
         await PublishAsync(harness, owner, id, "v1", "xxx the old policy", "p-1");
         await PublishAsync(harness, owner, id, "v2", "xxx the new policy", "p-2");
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         var texts = result.Candidates.Where(static candidate => candidate.DocumentId is not null).Select(static candidate => candidate.Content.Text).ToArray();
         texts.ShouldAllBe(static text => text.Contains("new policy", StringComparison.Ordinal));
@@ -54,7 +54,7 @@ public sealed class DocumentChunkRetrievalSourceTests
         var stranger = MemoryTestData.NewOwner("tenant-b");
         await PublishAsync(harness, owner, new DocumentId(Guid.NewGuid()), "v1", "xxx confidential material", "p-1");
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(stranger, "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(stranger, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         result.Candidates.Any(static candidate => candidate.DocumentId is not null).ShouldBeFalse();
     }
@@ -67,7 +67,7 @@ public sealed class DocumentChunkRetrievalSourceTests
         var colleague = MemoryTestData.NewOwner("tenant-a", "colleague");
         await PublishAsync(harness, owner, new DocumentId(Guid.NewGuid()), "v1", "xxx private notes", "p-1");
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(colleague, "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(colleague, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         result.Candidates.Any(static candidate => candidate.DocumentId is not null).ShouldBeFalse();
     }
@@ -85,7 +85,7 @@ public sealed class DocumentChunkRetrievalSourceTests
             withVectors: false);
         var owner = MemoryTestData.NewOwner();
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         result.Failure!.Kind.ShouldBe(RetrievalFailureKind.SourcesUnavailable);
     }
@@ -95,10 +95,10 @@ public sealed class DocumentChunkRetrievalSourceTests
     {
         using var harness = DocumentHarness.Create();
         var owner = MemoryTestData.NewOwner();
-        var remembered = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "xxx remembered in memory"), TestContext.Current.CancellationToken);
+        var remembered = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "xxx remembered in memory"), hooks: null, TestContext.Current.CancellationToken);
         harness.Provider.GetRequiredService<DocumentHarness.LetterEmbeddings>().Fail = true;
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "xxx remembered"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "xxx remembered"), hooks: null, TestContext.Current.CancellationToken);
 
         result.IsCompleted.ShouldBeTrue();
         result.Candidates.Select(static candidate => candidate.MemoryId).ShouldContain(remembered.Record!.Id);
@@ -112,7 +112,7 @@ public sealed class DocumentChunkRetrievalSourceTests
             arrange: services => services.AddDocumentRetrievalSource(),
             profile: configured => configured.RetrievalSources = [MemoryRetrievalSourceKeys.Documents]);
 
-        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(MemoryTestData.NewOwner(), "x"), TestContext.Current.CancellationToken);
+        var result = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(MemoryTestData.NewOwner(), "x"), hooks: null, TestContext.Current.CancellationToken);
 
         result.Failure!.Kind.ShouldBe(RetrievalFailureKind.SourcesUnavailable);
     }

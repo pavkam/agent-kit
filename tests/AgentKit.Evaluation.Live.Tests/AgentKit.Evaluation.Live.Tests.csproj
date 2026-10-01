@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <!-- Every test here is an opt-in live test that skips without credentials; a run where all tests skip is not a failure. -->
+    <TestingPlatformCommandLineArguments>$(TestingPlatformCommandLineArguments) --ignore-exit-code 8</TestingPlatformCommandLineArguments>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit.Evaluation/AgentKit.Evaluation.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Evaluation.InMemory/AgentKit.Evaluation.InMemory.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Simple/AgentKit.Simple.csproj" />
+  </ItemGroup>
+</Project>

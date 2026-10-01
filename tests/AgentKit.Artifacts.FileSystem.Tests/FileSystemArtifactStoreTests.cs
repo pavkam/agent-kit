@@ -87,14 +87,17 @@ public sealed class FileSystemArtifactStoreTests
 
         var payload = FileSystemArtifactLayout.PayloadName(request.TenantId, request.ContentHash);
         var requests = fixture.Authority.Requests;
-        requests.Count.ShouldBe(4);
+        requests.Count.ShouldBe(5);
         requests[0].Kind.ShouldBe(SecurityOperationKind.FileRead);
         requests[0].Effect.ShouldBe(SecurityEffect.Observe);
-        requests[1].Kind.ShouldBe(SecurityOperationKind.FileWrite);
-        requests[1].Effect.ShouldBe(SecurityEffect.CreateOrReplace);
-        requests[1].Resources.ShouldBe([FileSecurityBinding.Resource(new FileTarget(new FileRootId("artifacts"), new NormalizedRelativePath(payload)))]);
-        requests[2].Effect.ShouldBe(SecurityEffect.Append);
-        requests[3].Effect.ShouldBe(SecurityEffect.Create);
+        requests[1].Kind.ShouldBe(SecurityOperationKind.DirectoryRead);
+        requests[1].Effect.ShouldBe(SecurityEffect.Observe);
+        requests[1].Resources.ShouldBe([DirectorySecurityBinding.Resource(path: null)]);
+        requests[2].Kind.ShouldBe(SecurityOperationKind.FileWrite);
+        requests[2].Effect.ShouldBe(SecurityEffect.CreateOrReplace);
+        requests[2].Resources.ShouldBe([FileSecurityBinding.Resource(new FileTarget(new FileRootId("artifacts"), new NormalizedRelativePath(payload)))]);
+        requests[3].Effect.ShouldBe(SecurityEffect.Append);
+        requests[4].Effect.ShouldBe(SecurityEffect.Create);
         requests.ShouldAllBe(recorded => recorded.Audience == fixture.Volume.SecurityAudience && recorded.Authorization == request.Grant.Authorization);
     }
 
@@ -127,7 +130,7 @@ public sealed class FileSystemArtifactStoreTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenTheLastReferenceIsDeleted_TruncatesThePayloadAndTheTombstoneSurvivesReopen()
+    public async Task DeleteAsync_WhenTheLastReferenceIsDeleted_RemovesThePayloadFileAndTheTombstoneSurvivesReopen()
     {
         await using var fixture = new FileSystemArtifactStoreConformanceFixture();
         var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
@@ -137,7 +140,7 @@ public sealed class FileSystemArtifactStoreTests
 
         _ = await DeleteAsync(fixture, store, reference);
 
-        (await Effects(fixture).ReadAsync(Authorization(fixture), payload, 1_024, TestContext.Current.CancellationToken)).ShouldBeEmpty();
+        (await Effects(fixture).ReadAsync(Authorization(fixture), payload, 1_024, TestContext.Current.CancellationToken)).ShouldBeNull();
         var reopened = fixture.Reopen();
         var read = fixture.CreateRead(reference, fixture.PrimaryIdentity);
         await fixture.RegisterGrantAsync(read.Grant, TestContext.Current.CancellationToken);
@@ -200,6 +203,131 @@ public sealed class FileSystemArtifactStoreTests
         await fixture.RegisterGrantAsync(request.Grant, TestContext.Current.CancellationToken);
 
         _ = await Should.ThrowAsync<IOException>(async () => await store.PrepareAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheLastReferenceIsDeleted_AuthorizesAnExactDeleteEffectOnThePayloadFile()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var reference = await CommitAsync(fixture, store);
+        var payload = FileSystemArtifactLayout.PayloadName(reference.TenantId, reference.Integrity.ContentHash);
+        fixture.Authority.Requests.Clear();
+
+        _ = await DeleteAsync(fixture, store, reference);
+
+        var request = fixture.Authority.Requests.Single(static recorded => recorded.Effect == SecurityEffect.Delete);
+        var target = new FileTarget(new FileRootId("artifacts"), new NormalizedRelativePath(payload));
+        request.Kind.ShouldBe(SecurityOperationKind.FileWrite);
+        request.Audience.ShouldBe(fixture.Volume.SecurityAudience);
+        request.Resources.ShouldBe([FileSecurityBinding.Resource(target)]);
+        request.InputFingerprint.ShouldBe(FileSecurityBinding.DeleteFingerprint(target, expectedTargetFingerprint: null));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheDeleterProfileIsUnavailable_StillTombstonesAndTheNextRecoverySweepsThePayload()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var reference = await CommitAsync(fixture, store);
+        var payload = FileSystemArtifactLayout.PayloadName(reference.TenantId, reference.Integrity.ContentHash);
+        fixture.Selector.DeleterUnavailable = true;
+
+        var deleted = await DeleteAsync(fixture, store, reference);
+        fixture.Selector.DeleterUnavailable = false;
+
+        _ = deleted.ShouldBeOfType<ArtifactStoreDeleted>();
+        (await Effects(fixture).ReadAsync(Authorization(fixture), payload, 1_024, TestContext.Current.CancellationToken)).ShouldBe(_content);
+        _ = fixture.Reopen();
+        await RecoverAsync(fixture);
+        (await Effects(fixture).ReadAsync(Authorization(fixture), payload, 1_024, TestContext.Current.CancellationToken)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Reopen_WhenACrashLeftUnreferencedPayloadFiles_SweepsThemAndKeepsLiveStagedLogAndForeignFiles()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var finalized = await CommitAsync(fixture, store);
+        var prepare = fixture.CreatePrepare("staged only"u8.ToArray(), idempotencyKey: "staged");
+        await fixture.RegisterGrantAsync(prepare.Grant, TestContext.Current.CancellationToken);
+        _ = (await store.PrepareAsync(prepare, TestContext.Current.CancellationToken)).ShouldBeOfType<ArtifactStorePrepared>();
+        var live = FileSystemArtifactLayout.PayloadName(finalized.TenantId, finalized.Integrity.ContentHash);
+        var staged = FileSystemArtifactLayout.PayloadName(prepare.TenantId, prepare.ContentHash);
+        var orphan = FileSystemArtifactLayout.PayloadName(new TenantId("crashed-tenant"), FileSecurityBinding.ContentFingerprint("orphan"u8));
+        var foreign = "notes.txt";
+        var effects = Effects(fixture);
+        foreach (var name in new[] { orphan, foreign })
+        {
+            _ = await effects.WriteAsync(Authorization(fixture), name, "left behind"u8.ToArray(), FileWriteDisposition.CreateOrReplace, TestContext.Current.CancellationToken);
+        }
+
+        _ = fixture.Reopen();
+        await RecoverAsync(fixture);
+
+        (await effects.ReadAsync(Authorization(fixture), orphan, 1_024, TestContext.Current.CancellationToken)).ShouldBeNull();
+        (await effects.ReadAsync(Authorization(fixture), live, 1_024, TestContext.Current.CancellationToken)).ShouldBe(_content);
+        _ = (await effects.ReadAsync(Authorization(fixture), staged, 1_024, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        _ = (await effects.ReadAsync(Authorization(fixture), FileSystemArtifactLayout.LogName, 1_000_000, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        _ = (await effects.ReadAsync(Authorization(fixture), foreign, 1_024, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenTheLogDoesNotExistYetButAPayloadWasLeftByACrash_SweepsItBeforeStaging()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var orphan = FileSystemArtifactLayout.PayloadName(new TenantId("crashed-tenant"), FileSecurityBinding.ContentFingerprint("orphan"u8));
+        _ = await Effects(fixture).WriteAsync(Authorization(fixture), orphan, "left behind"u8.ToArray(), FileWriteDisposition.CreateOrReplace, TestContext.Current.CancellationToken);
+        var request = fixture.CreatePrepare(_content);
+        await fixture.RegisterGrantAsync(request.Grant, TestContext.Current.CancellationToken);
+
+        _ = (await store.PrepareAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<ArtifactStorePrepared>();
+
+        (await Effects(fixture).ReadAsync(Authorization(fixture), orphan, 1_024, TestContext.Current.CancellationToken)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenTheDirectoryReaderProfileIsUnavailableDuringRecovery_FailsClosedWithAnException()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        fixture.Selector.DirectoryReaderUnavailable = true;
+        var request = fixture.CreatePrepare(_content);
+        await fixture.RegisterGrantAsync(request.Grant, TestContext.Current.CancellationToken);
+
+        _ = await Should.ThrowAsync<IOException>(async () => await store.PrepareAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenTheDeleterProfileIsUnavailableDuringASweep_FailsClosedWithAnException()
+    {
+        await using var fixture = new FileSystemArtifactStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var orphan = FileSystemArtifactLayout.PayloadName(new TenantId("crashed-tenant"), FileSecurityBinding.ContentFingerprint("orphan"u8));
+        _ = await Effects(fixture).WriteAsync(Authorization(fixture), orphan, "left behind"u8.ToArray(), FileWriteDisposition.CreateOrReplace, TestContext.Current.CancellationToken);
+        fixture.Selector.DeleterUnavailable = true;
+        var request = fixture.CreatePrepare(_content);
+        await fixture.RegisterGrantAsync(request.Grant, TestContext.Current.CancellationToken);
+
+        _ = await Should.ThrowAsync<IOException>(async () => await store.PrepareAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void Layout_WhenClassifyingNames_RecognizesOnlyPayloadFilesTheStoreNames()
+    {
+        var hash = FileSecurityBinding.ContentFingerprint("x"u8);
+        var payload = FileSystemArtifactLayout.PayloadName(new TenantId("a"), hash);
+
+        FileSystemArtifactLayout.IsPayloadName(payload).ShouldBeTrue();
+        FileSystemArtifactLayout.IsPayloadName(FileSystemArtifactLayout.LogName).ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName("notes.txt").ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName("payload-.bin").ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName(payload.ToUpperInvariant()).ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName(payload.Replace("-", "_", StringComparison.Ordinal)).ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName(payload[..^4] + ".tmp").ShouldBeFalse();
+        FileSystemArtifactLayout.IsPayloadName(payload.Insert(payload.Length - 4, "g")).ShouldBeFalse();
+        Should.Throw<ArgumentNullException>(() => FileSystemArtifactLayout.IsPayloadName(null!)).ParamName.ShouldBe("name");
     }
 
     [Fact]
@@ -301,6 +429,22 @@ public sealed class FileSystemArtifactStoreTests
         FileSystemArtifactLayout.PayloadName(new TenantId("a"), hash).ShouldNotContain("/");
         _ = Should.Throw<InvalidDataException>(() => FileSystemArtifactLayout.PayloadName(new TenantId("a"), new ContentHash("sha256:../../etc")));
         Should.Throw<ArgumentException>(() => FileSystemArtifactLayout.PayloadName(default, hash)).ParamName.ShouldBe("tenantId");
+    }
+
+    /// <summary>Forces recovery of the reopened store by issuing one harmless read so its first operation sweeps the root.</summary>
+    private static async Task RecoverAsync(FileSystemArtifactStoreConformanceFixture fixture)
+    {
+        var store = fixture.Reopen();
+        var read = fixture.CreateRead(
+            new ArtifactReference(
+                new ArtifactId(Guid.Parse("70000000-0000-0000-0000-0000000000a1")), new ArtifactVersion("1"), new ArtifactDirectoryId("recover"),
+                new ArtifactProfileKey("conformance"), new ArtifactProfileVersion(1), fixture.PrimaryIdentity.TenantId, new ArtifactOwnerId("owner"),
+                fixture.PrimaryIdentity.PrincipalId, "text/plain", 1, new ArtifactIntegrity(FileSecurityBinding.ContentFingerprint("x"u8), fixture.Now),
+                DataClassification.Internal, ArtifactOwnershipKind.Session, ArtifactMutability.Immutable,
+                new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false), null, fixture.Now),
+            fixture.PrimaryIdentity);
+        await fixture.RegisterGrantAsync(read.Grant, TestContext.Current.CancellationToken);
+        _ = await store.ReadAsync(read, TestContext.Current.CancellationToken);
     }
 
     private static FileSystemArtifactEffects Effects(FileSystemArtifactStoreConformanceFixture fixture) => new(

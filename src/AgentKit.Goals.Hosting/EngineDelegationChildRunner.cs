@@ -91,7 +91,7 @@ public sealed class EngineDelegationChildRunner: IDelegationChildRunner
             request.SessionId,
             delegation.Authorization.Identity,
             input,
-            options: new AgentRunOptions(maxTurns),
+            options: new AgentRunOptions(maxTurns, allowedTools: delegation.Scope.AllowedTools, budgetParentScopeId: delegation.Budget.ScopeId),
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (run is not AgentRunFinished<string> finished)
         {

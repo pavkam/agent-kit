@@ -11,6 +11,13 @@ trailing append on request, and claims no multi-process coordination and no
 atomicity with session history. The root is explicit host configuration; no
 package invents a path.
 
+The same package also ships `JsonArtifactReferenceCommitIntentStore`, a durable
+`IArtifactReferenceCommitIntentStore` the caller that commits artifact
+references owns. Each intent and transition is flushed to its own log before it
+is acknowledged, a late reference commit and a fence race through one
+conditional transition, and the root it locks must not be shared with an
+artifact store.
+
 ## Use this project
 
 Start with `AddJsonArtifactStore` in

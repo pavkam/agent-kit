@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAI.Tests;
 using System.Net;
 
 using AgentKit.Providers;
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.OpenAI.Tests.Fakes;
 using AgentKit.Providers.OpenRouter;
 using AgentKit.Providers.ZAI;
@@ -78,8 +79,9 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.CredentialSourceKey);
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
 
@@ -90,8 +92,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.CredentialSourceKey);
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
 
@@ -112,22 +115,20 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public async Task ProviderCredentials_WhenThreeProvidersCoexist_ResolveByProviderIdentity()
+    public async Task ProviderCredentials_WhenThreeProvidersCoexist_ResolveBySourceKey()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAIApiKeyCredential("openai-key");
         _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
         _ = services.AddZAIApiKeyCredential("zai-key");
-        using var provider = services.BuildServiceProvider();
-        var openAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
-        var openRouter = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
-        var zAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
-        var openAICredential = await openAI.GetCredentialAsync(OpenAIProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
-        var openRouterCredential = await openRouter.GetCredentialAsync(OpenRouterProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
-        var zAICredential = await zAI.GetCredentialAsync(ZAIProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
-        openAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openai-key");
-        openRouterCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openrouter-key");
-        zAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("zai-key");
+        _ = services.AddProviderEgressTestServices();
+        await using var provider = services.BuildServiceProvider();
+        var openAICredential = await ResolveApiKeyAsync(provider, OpenAIProviderDefaults.CredentialSourceKey);
+        var openRouterCredential = await ResolveApiKeyAsync(provider, OpenRouterProviderDefaults.CredentialSourceKey);
+        var zAICredential = await ResolveApiKeyAsync(provider, ZAIProviderDefaults.CredentialSourceKey);
+        openAICredential.ApiKey.ShouldBe("openai-key");
+        openRouterCredential.ApiKey.ShouldBe("openrouter-key");
+        zAICredential.ApiKey.ShouldBe("zai-key");
     }
 
     [Fact]
@@ -399,18 +400,18 @@ public sealed class ServiceExtensionsTests
         await using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
         models.Select(model => model.Alias.Value).ShouldBe(["openai-chat", "openrouter-chat", "zai-chat"], ignoreOrder: true);
-        var openAICredential = await ResolveApiKeyAsync(provider, OpenAIProviderDefaults.ProviderId);
-        var openRouterCredential = await ResolveApiKeyAsync(provider, OpenRouterProviderDefaults.ProviderId);
-        var zAICredential = await ResolveApiKeyAsync(provider, ZAIProviderDefaults.ProviderId);
+        var openAICredential = await ResolveApiKeyAsync(provider, OpenAIProviderDefaults.CredentialSourceKey);
+        var openRouterCredential = await ResolveApiKeyAsync(provider, OpenRouterProviderDefaults.CredentialSourceKey);
+        var zAICredential = await ResolveApiKeyAsync(provider, ZAIProviderDefaults.CredentialSourceKey);
         openAICredential.ApiKey.ShouldBe("openai-key");
         openRouterCredential.ApiKey.ShouldBe("openrouter-key");
         zAICredential.ApiKey.ShouldBe("zai-key");
     }
 
-    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderId providerId)
+    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderCredentialSourceKey sourceKey)
     {
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(providerId);
-        var credential = await source.GetCredentialAsync(providerId, TestContext.Current.CancellationToken).ConfigureAwait(false);
-        return credential.ShouldBeOfType<ApiKeyProviderCredential>();
+        var probe = await ProviderCredentialProbe.ProbeAsync(provider, sourceKey, cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        _ = probe.Resolution.ShouldBeOfType<ProviderCredentialResolved>();
+        return new ApiKeyProviderCredential(probe.Headers["Authorization"]["Bearer ".Length..]);
     }
 }

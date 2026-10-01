@@ -1,0 +1,39 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.FileSystem;
+
+/// <summary>Operating-system <see cref="IFileDeleter"/> bound to one keyed profile snapshot.</summary>
+internal sealed class OperatingSystemFileDeleter(
+    ISecurityGrantStore grantStore,
+    ISecurityAuditDispatcher auditDispatcher,
+    IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+    IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
+    TimeProvider timeProvider,
+    OperatingSystemFileSystemOptionsSnapshot options): IFileDeleter
+{
+    private readonly ISecurityGrantStore _grantStore = grantStore;
+    private readonly ISecurityAuditDispatcher _auditDispatcher = auditDispatcher;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds = auditRecordIds;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds = intentIds;
+    private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly OperatingSystemFileSystemOptionsSnapshot _options = options;
+
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; } = new($"agentkit.filesystem.os.{options.ProfileKey.Value}");
+
+    /// <inheritdoc/>
+    public ValueTask<FileDeleteResult> DeleteAsync(
+        AuthorizedFileDelete operation,
+        CancellationToken cancellationToken = default) =>
+        OperatingSystemFileDeleteOperations.DeleteAsync(
+            operation,
+            _grantStore,
+            _auditDispatcher,
+            _auditRecordIds,
+            _intentIds,
+            _timeProvider,
+            _options,
+            SecurityAudience,
+            cancellationToken);
+}

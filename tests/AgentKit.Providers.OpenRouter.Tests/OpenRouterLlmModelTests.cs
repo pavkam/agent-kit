@@ -20,7 +20,7 @@ public sealed class OpenRouterLlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), OpenRouterProviderDefaults.ProviderId, OpenRouterProviderDefaults.ApiFamily, new ModelId("openai/gpt-4o"), deploymentId: null, OpenRouterProviderDefaults.DefaultCapabilities, OpenRouterProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), OpenRouterProviderDefaults.ProviderId, OpenRouterProviderDefaults.ApiFamily, new ModelId("openai/gpt-4o"), deploymentId: null, OpenRouterProviderDefaults.DefaultCapabilities, OpenRouterProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndAttributionHeaders()
     {
@@ -32,7 +32,7 @@ public sealed class OpenRouterLlmModelTests
             ApplicationTitle = "AgentKit Tests",
         };
         var descriptor = CreateDescriptor();
-        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("sk-or-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-or-real-looking-key")), OpenRouterProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -57,7 +57,7 @@ public sealed class OpenRouterLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenRouterLlmModel(descriptor, OpenRouterProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(expiredToken), OpenRouterProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

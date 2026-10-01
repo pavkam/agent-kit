@@ -15,25 +15,18 @@ namespace AgentKit.Artifacts.InMemory;
 public sealed class InMemoryArtifactReferenceCommitIntentStore: IArtifactReferenceCommitIntentStore
 {
     private readonly Lock _lock = new();
-    private readonly Dictionary<TenantArtifactPreparationKey, ArtifactReferenceCommitIntent> _intents = [];
+    private readonly ArtifactReferenceCommitIntentTable _table = new();
 
     /// <inheritdoc/>
     public ValueTask<ArtifactReferenceCommitIntentResult> RecordAsync(ArtifactReferenceCommitIntent intent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(intent);
         cancellationToken.ThrowIfCancellationRequested();
-        var key = new TenantArtifactPreparationKey(intent.TenantId, intent.PreparationId);
         lock (_lock)
         {
-            if (!_intents.TryGetValue(key, out var stored))
-            {
-                _intents.Add(key, intent);
-                return Result(ArtifactReferenceCommitIntentOutcome.Applied, intent);
-            }
-
-            return Result(
-                SameIntent(stored, intent) ? ArtifactReferenceCommitIntentOutcome.Replayed : ArtifactReferenceCommitIntentOutcome.Conflict,
-                stored);
+            var decision = _table.PlanRecord(intent);
+            _table.Apply(decision);
+            return ValueTask.FromResult(decision.Result);
         }
     }
 
@@ -45,9 +38,7 @@ public sealed class InMemoryArtifactReferenceCommitIntentStore: IArtifactReferen
         cancellationToken.ThrowIfCancellationRequested();
         lock (_lock)
         {
-            return _intents.TryGetValue(new TenantArtifactPreparationKey(tenantId, preparationId), out var stored)
-                ? Result(ArtifactReferenceCommitIntentOutcome.Replayed, stored)
-                : Result(ArtifactReferenceCommitIntentOutcome.NotFound, null);
+            return ValueTask.FromResult(_table.Get(tenantId, preparationId));
         }
     }
 
@@ -65,34 +56,11 @@ public sealed class InMemoryArtifactReferenceCommitIntentStore: IArtifactReferen
         ArgumentOutOfRangeException.ThrowIfUndefined(expected);
         ArgumentOutOfRangeException.ThrowIfUndefined(nextState);
         cancellationToken.ThrowIfCancellationRequested();
-        var key = new TenantArtifactPreparationKey(tenantId, preparationId);
         lock (_lock)
         {
-            if (!_intents.TryGetValue(key, out var stored))
-            {
-                return Result(ArtifactReferenceCommitIntentOutcome.NotFound, null);
-            }
-
-            if (stored.State == nextState)
-            {
-                return Result(ArtifactReferenceCommitIntentOutcome.Replayed, stored);
-            }
-
-            if (stored.State != expected)
-            {
-                return Result(ArtifactReferenceCommitIntentOutcome.StateChanged, stored);
-            }
-
-            if (!IsLegal(expected, nextState))
-            {
-                return Result(ArtifactReferenceCommitIntentOutcome.Conflict, stored);
-            }
-
-            var updated = new ArtifactReferenceCommitIntent(
-                stored.Id, stored.TenantId, stored.PreparationId, stored.ArtifactId, stored.Version, stored.OwnerId,
-                stored.Pin, nextState, stored.RecordedAt, at < stored.RecordedAt ? stored.RecordedAt : at);
-            _intents[key] = updated;
-            return Result(ArtifactReferenceCommitIntentOutcome.Applied, updated);
+            var decision = _table.PlanTransition(tenantId, preparationId, expected, nextState, at);
+            _table.Apply(decision);
+            return ValueTask.FromResult(decision.Result);
         }
     }
 
@@ -108,34 +76,7 @@ public sealed class InMemoryArtifactReferenceCommitIntentStore: IArtifactReferen
         cancellationToken.ThrowIfCancellationRequested();
         lock (_lock)
         {
-            return ValueTask.FromResult<ImmutableArray<ArtifactReferenceCommitIntent>>(
-            [
-                .. _intents.Values
-                    .Where(intent => intent.TenantId == tenantId
-                        && intent.State == ArtifactReferenceCommitState.Pending
-                        && intent.RecordedAt < recordedBefore)
-                    .OrderBy(static intent => intent.RecordedAt)
-                    .ThenBy(static intent => intent.Id.Value)
-                    .Take(limit),
-            ]);
+            return ValueTask.FromResult(_table.ListPending(tenantId, recordedBefore, limit));
         }
     }
-
-    private static bool IsLegal(ArtifactReferenceCommitState from, ArtifactReferenceCommitState to) =>
-        (from, to) is (ArtifactReferenceCommitState.Pending, ArtifactReferenceCommitState.Committed)
-            or (ArtifactReferenceCommitState.Pending, ArtifactReferenceCommitState.Fenced)
-            or (ArtifactReferenceCommitState.Fenced, ArtifactReferenceCommitState.Collected);
-
-    private static bool SameIntent(ArtifactReferenceCommitIntent stored, ArtifactReferenceCommitIntent candidate) =>
-        stored.Id == candidate.Id
-        && stored.TenantId == candidate.TenantId
-        && stored.PreparationId == candidate.PreparationId
-        && stored.ArtifactId == candidate.ArtifactId
-        && stored.Version == candidate.Version
-        && stored.OwnerId == candidate.OwnerId;
-
-    private static ValueTask<ArtifactReferenceCommitIntentResult> Result(
-        ArtifactReferenceCommitIntentOutcome outcome,
-        ArtifactReferenceCommitIntent? intent) =>
-        ValueTask.FromResult(new ArtifactReferenceCommitIntentResult(outcome, intent));
 }

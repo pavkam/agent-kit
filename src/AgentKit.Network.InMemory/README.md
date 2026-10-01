@@ -36,8 +36,6 @@ projects above are composition collaborators, not necessarily dependencies.
   — focused behavior and registration tests.
 - [Component specification](../../docs/architecture/network.md) — intended
   ownership and contracts.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

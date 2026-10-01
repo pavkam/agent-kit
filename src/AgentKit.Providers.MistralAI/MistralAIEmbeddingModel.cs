@@ -21,44 +21,44 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
     private readonly MistralAIProviderOptions _options;
     private readonly IMistralAIEmbeddingRequestTranslator _translator;
     private readonly IMistralAIEmbeddingResponseParser _responseParser;
-    private readonly IProviderCredentialSource _credentials;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
 
     /// <summary>Initializes a new instance of the <see cref="MistralAIEmbeddingModel"/> class.</summary>
     /// <param name="descriptor">The descriptor of the model this instance serves.</param>
     /// <param name="options">The validated Mistral AI provider options.</param>
     /// <param name="translator">Translates provider-neutral requests into Mistral AI embeddings request bodies.</param>
     /// <param name="responseParser">Parses Mistral AI embeddings responses into normalized results.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public MistralAIEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
         MistralAIProviderOptions options,
         IMistralAIEmbeddingRequestTranslator translator,
         IMistralAIEmbeddingResponseParser responseParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
-        ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(profileSelector);
 
         Alias = descriptor.Alias;
         _descriptor = descriptor;
         _options = options;
         _translator = translator;
         _responseParser = responseParser;
-        _credentials = credentials;
         _egress = egress;
         _timeProvider = timeProvider;
+        _profileSelector = profileSelector;
     }
 
     /// <inheritdoc/>
@@ -108,27 +108,42 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
                 "The request deadline had already elapsed before the attempt could be sent.");
         }
 
-        ProviderCredential credential;
+        ProviderProfileAttemptBinding.ProfileRuntimeSelection selection;
         try
         {
-            credential = await _credentials.GetCredentialAsync(_descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+            selection = await ProviderProfileAttemptBinding.SelectRuntimeAsync(
+                    _descriptor.Binding,
+                    request.Operation,
+                    _profileSelector,
+                    _descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return Cancel(_descriptor.ProviderId);
         }
-
-        var authorization = ProviderAuthorizationHeaderFactory.Create(
-            credential,
-            _descriptor.ProviderId,
-            _timeProvider,
-            MistralAIProviderDefaults.AuthorizationScheme);
-        if (authorization is ProviderAuthorizationDenied denied)
+        catch (OperationCanceledException exception)
         {
-            return new EmbeddingAttemptFailed(denied.Failure);
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The credential profile was not selected before its own deadline.",
+                exception);
+        }
+        catch (Exception exception)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Authentication,
+                "The credential profile could not be selected.",
+                exception);
         }
 
-        var granted = (ProviderAuthorizationGranted) authorization;
+        if (!selection.IsSuccess)
+        {
+            return new EmbeddingAttemptFailed(selection.Failure!);
+        }
+
+        await using var profileRuntime = selection.Runtime;
 
         JsonObject payload;
         try
@@ -143,12 +158,12 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
                 exception);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, granted);
+        using var httpRequest = CreateHttpRequest(payload);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
         var sent = await _egress
-            .SendAsync(ProviderEgressRequest.ForEmbedding(_descriptor, request, httpRequest), cancellationToken)
+            .SendAsync(ProviderEgressRequest.ForEmbedding(_descriptor, request, httpRequest, profileRuntime is null ? null : new ProviderEgressCredential(profileRuntime, MistralAIProviderDefaults.AuthorizationScheme)), cancellationToken)
             .ConfigureAwait(false);
         if (sent is ProviderEgressRefused refused)
         {
@@ -227,15 +242,13 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload)
     {
         var uri = MistralAIProviderDefaults.BuildEmbeddingsUri(_options);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
-
-        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

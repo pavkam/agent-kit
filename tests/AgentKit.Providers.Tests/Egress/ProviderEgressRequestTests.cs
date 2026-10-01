@@ -39,7 +39,7 @@ public sealed class ProviderEgressRequestTests
         var request = new LlmModelRequest(context, 2, Now, ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         using var message = Message();
 
-        var egress = ProviderEgressRequest.ForConversation(descriptor, request, message, streaming: true);
+        var egress = ProviderEgressRequest.ForConversation(descriptor, request, message, streaming: true, credential: null);
 
         egress.Kind.ShouldBe(ProviderEgressOperation.Conversation);
         egress.Operation.ShouldBe(ProviderEgressHarness.Operation);
@@ -53,6 +53,21 @@ public sealed class ProviderEgressRequestTests
     }
 
     [Fact]
+    public void ForConversation_WhenCredentialIsSupplied_RetainsItAndOtherwiseCarriesNone()
+    {
+        var descriptor = ProviderTestData.Model("chat") with { Binding = Binding };
+        var context = new LlmRequestContext(ProviderTestData.ModelRequestId, descriptor, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var request = new LlmModelRequest(context, 1, Now, ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
+        using var message = Message();
+        var credential = new ProviderEgressCredential(
+            new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("s"))).CreateLease(Binding),
+            ProviderAuthorizationScheme.BearerToken);
+
+        ProviderEgressRequest.ForConversation(descriptor, request, message, streaming: false, credential).Credential.ShouldBeSameAs(credential);
+        ProviderEgressRequest.ForConversation(descriptor, request, message, streaming: false, credential: null).Credential.ShouldBeNull();
+    }
+
+    [Fact]
     public void ForEmbedding_WhenCalled_MarksTheEmbeddingOperationAsNonStreaming()
     {
         var descriptor = ProviderTestData.EmbeddingModel("embed") with { Binding = Binding };
@@ -63,7 +78,7 @@ public sealed class ProviderEgressRequestTests
         var request = new EmbeddingModelRequest(context, 1, Now, ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
         using var message = Message();
 
-        var egress = ProviderEgressRequest.ForEmbedding(descriptor, request, message);
+        var egress = ProviderEgressRequest.ForEmbedding(descriptor, request, message, credential: null);
 
         egress.Kind.ShouldBe(ProviderEgressOperation.Embedding);
         egress.Binding.ShouldBe(Binding);
@@ -92,7 +107,7 @@ public sealed class ProviderEgressRequestTests
             Now);
         using var message = Message();
 
-        var egress = ProviderEgressRequest.ForReranking(descriptor, request, message);
+        var egress = ProviderEgressRequest.ForReranking(descriptor, request, message, credential: null);
 
         egress.Kind.ShouldBe(ProviderEgressOperation.Reranking);
         egress.Attempt.ShouldBe(3);
@@ -119,7 +134,8 @@ public sealed class ProviderEgressRequestTests
             1,
             Now,
             false,
-            message));
+            message,
+            credential: null));
 
         exception.ParamName.ShouldBe("kind");
     }
@@ -141,7 +157,8 @@ public sealed class ProviderEgressRequestTests
             1,
             Now,
             false,
-            null!));
+            null!,
+            credential: null));
 
         exception.ParamName.ShouldBe("message");
     }
@@ -152,7 +169,7 @@ public sealed class ProviderEgressRequestTests
         using var message = Message();
         var descriptor = ProviderTestData.Model("chat");
 
-        Should.Throw<ArgumentNullException>(() => ProviderEgressRequest.ForConversation(null!, null!, message, false)).ParamName.ShouldBe("descriptor");
-        Should.Throw<ArgumentNullException>(() => ProviderEgressRequest.ForConversation(descriptor, null!, message, false)).ParamName.ShouldBe("request");
+        Should.Throw<ArgumentNullException>(() => ProviderEgressRequest.ForConversation(null!, null!, message, false, credential: null)).ParamName.ShouldBe("descriptor");
+        Should.Throw<ArgumentNullException>(() => ProviderEgressRequest.ForConversation(descriptor, null!, message, false, credential: null)).ParamName.ShouldBe("request");
     }
 }

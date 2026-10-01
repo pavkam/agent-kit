@@ -14,18 +14,18 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 
 /// <summary>
 /// A reusable <see cref="ILlmModel"/> implementation for OpenAI-compatible
-/// Chat Completions endpoints, performing translation, credential
-/// resolution, transport, and stream parsing through injected collaborators.
+/// Chat Completions endpoints, performing translation, profile selection,
+/// transport, and stream parsing through injected collaborators.
 /// </summary>
 /// <remarks>
 /// <para>
 /// A concrete provider package (such as AgentKit.Providers.OpenAI) derives
 /// from this class and supplies its own <see cref="ModelDescriptor"/>,
-/// <see cref="OpenAICompatibilityProfile"/>, and
-/// <see cref="IProviderCredentialSource"/>. This base class owns the shared
-/// request pipeline: capability pre-check, translation, credential-to-header
-/// resolution, deadline enforcement, transport, response parsing, and
-/// normalized failure mapping.
+/// <see cref="OpenAICompatibilityProfile"/>. This base class owns the shared
+/// request pipeline: capability pre-check, translation, endpoint and credential
+/// profile selection, deadline enforcement, transport through
+/// <see cref="ProviderEgress"/> (which obtains the credential-read grant and
+/// lease and applies it), response parsing, and normalized failure mapping.
 /// </para>
 /// <para>
 /// Two narrow extension points let a branded dialect diverge without
@@ -53,16 +53,14 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// The largest delay <see cref="CancellationTokenSource(TimeSpan, TimeProvider)"/> accepts
     /// (<see cref="uint.MaxValue"/> - 1 milliseconds, ~49.7 days). A caller expressing "no practical
     /// deadline" (a far-future <see cref="LlmModelRequest.Deadline"/>) must not turn every attempt into
-    /// an unhandled <see cref="ArgumentOutOfRangeException"/> after credential resolution and
-    /// translation have already run.
+    /// an unhandled <see cref="ArgumentOutOfRangeException"/> after translation has already run.
     /// </summary>
     private static readonly TimeSpan _maximumDeadlineDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIRequestTranslator _translator;
     private readonly IOpenAIStreamParser _streamParser;
-    private readonly IProviderCredentialSource _credentials;
-    private readonly IProviderProfileRuntimeSelector? _profileSelector;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
 
@@ -74,28 +72,24 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// <param name="profile">The tested wire-behavior configuration for the target endpoint.</param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
-    /// <param name="profileSelector">
-    /// The optional profile runtime selector used when <see cref="ModelDescriptor.Binding"/> is configured.
-    /// </param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     protected OpenAICompatibleLlmModelBase(
         ModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderProfileRuntimeSelector? profileSelector = null)
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(streamParser);
-        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(profileSelector);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
@@ -104,7 +98,6 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         _profile = profile;
         _translator = translator;
         _streamParser = streamParser;
-        _credentials = credentials;
         _profileSelector = profileSelector;
         _egress = egress;
         _timeProvider = timeProvider;
@@ -124,8 +117,8 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     protected ModelDescriptor Descriptor { get; }
 
     /// <summary>
-    /// Gets the header authentication scheme a resolved
-    /// <see cref="ProviderCredential"/> is applied with. The default sends an
+    /// Gets the header authentication scheme the released credential lease
+    /// is applied with. The default sends an
     /// API key or OAuth token as <c>Authorization: Bearer &lt;secret&gt;</c>.
     /// </summary>
     /// <value>
@@ -136,8 +129,8 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// sending OAuth tokens as bearer tokens.
     /// </value>
     /// <remarks>
-    /// The value is read once per attempt, after the credential has been
-    /// resolved and before any HTTP request is created. Overrides must be
+    /// The value is read once per attempt, after the profile runtime has been
+    /// selected and before the request is handed to provider egress. Overrides must be
     /// pure and thread-safe: this adapter is shared across concurrent
     /// attempts.
     /// </remarks>
@@ -155,8 +148,8 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// </param>
     /// <param name="request">The request being sent, already preflight-validated against <see cref="Descriptor"/>.</param>
     /// <remarks>
-    /// This hook runs after successful translation and credential
-    /// resolution and before the HTTP request is created, so an override
+    /// This hook runs after successful translation and before the profile
+    /// runtime is selected and the HTTP request is created, so an override
     /// cannot influence capability preflight, authorization, or deadline
     /// evaluation. It is invoked on the request path of every attempt and
     /// must be thread-safe. An exception thrown by an override escapes
@@ -255,72 +248,6 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 "The request deadline had already elapsed before the attempt could be sent.").ConfigureAwait(false);
         }
 
-        var sendStarted = _timeProvider.GetTimestamp();
-        using var sendActivity = ProviderRequestObservability.StartChatSend(Descriptor.ProviderId);
-        IProviderProfileRuntimeLease? profileLease = null;
-        ProviderCredential credential;
-        Uri? endpointOverride = null;
-        try
-        {
-            var credentialBinding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
-                    Descriptor.Binding,
-                    request.Operation,
-                    _credentials,
-                    _profileSelector,
-                    Descriptor.ProviderId,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (!credentialBinding.IsSuccess)
-            {
-                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
-                ProviderRequestObservability.RecordRequest("chat", "failed", _timeProvider.GetElapsedTime(sendStarted));
-                return await FailAsync(credentialBinding.Failure!).ConfigureAwait(false);
-            }
-
-            profileLease = credentialBinding.Lease;
-            endpointOverride = credentialBinding.EndpointBaseAddress;
-            credential = await credentialBinding.CredentialSource!
-                .GetCredentialAsync(Descriptor.ProviderId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return await CancelAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception)
-        {
-            // The credential source's own internal timeout (e.g. a token provider's HTTP call), not the
-            // caller's cancellation: the same distinction the transport path below already makes.
-            return await FailWithKindAsync(
-                ProviderFailureKind.Timeout,
-                "The credential source did not resolve a credential before its own deadline.",
-                exception).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            // IProviderCredentialSource.GetCredentialAsync is user-supplied and routinely fails with
-            // provider-specific exceptions (e.g. an Entra/Azure.Identity token provider's
-            // AuthenticationFailedException). Every other auth failure in this class reports
-            // Authentication; an uncaught exception here would break the "terminal outcome equals last
-            // event" contract instead.
-            return await FailWithKindAsync(
-                ProviderFailureKind.Authentication,
-                "The request credential could not be resolved.",
-                exception).ConfigureAwait(false);
-        }
-
-        var authorization = ProviderAuthorizationHeaderFactory.Create(
-            credential,
-            Descriptor.ProviderId,
-            _timeProvider,
-            AuthorizationScheme);
-        if (authorization is ProviderAuthorizationDenied denied)
-        {
-            return await FailAsync(denied.Failure).ConfigureAwait(false);
-        }
-
-        var granted = (ProviderAuthorizationGranted) authorization;
-
         var useStreaming = _profile.PreferStreaming && Descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -338,7 +265,49 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
         AdjustRequestPayload(payload, request);
 
-        using var httpRequest = CreateHttpRequest(payload, granted, endpointOverride);
+        var sendStarted = _timeProvider.GetTimestamp();
+        using var sendActivity = ProviderRequestObservability.StartChatSend(Descriptor.ProviderId);
+        IProviderProfileRuntimeLease? profileLease = null;
+        Uri? endpointOverride = null;
+        try
+        {
+            var selection = await ProviderProfileAttemptBinding.SelectRuntimeAsync(
+                    Descriptor.Binding,
+                    request.Operation,
+                    _profileSelector,
+                    Descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!selection.IsSuccess)
+            {
+                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
+                ProviderRequestObservability.RecordRequest("chat", "failed", _timeProvider.GetElapsedTime(sendStarted));
+                return await FailAsync(selection.Failure!).ConfigureAwait(false);
+            }
+
+            profileLease = selection.Runtime;
+            endpointOverride = selection.EndpointBaseAddress;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return await CancelAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception)
+        {
+            return await FailWithKindAsync(
+                ProviderFailureKind.Timeout,
+                "The credential profile was not selected before its own deadline.",
+                exception).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            return await FailWithKindAsync(
+                ProviderFailureKind.Authentication,
+                "The credential profile could not be selected.",
+                exception).ConfigureAwait(false);
+        }
+
+        using var httpRequest = CreateHttpRequest(payload, endpointOverride);
         using var deadlineSource = new CancellationTokenSource(
             remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
@@ -346,7 +315,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         try
         {
             var sent = await _egress
-                .SendAsync(ProviderEgressRequest.ForConversation(Descriptor, request, httpRequest, useStreaming), cancellationToken)
+                .SendAsync(ProviderEgressRequest.ForConversation(Descriptor, request, httpRequest, useStreaming, CreateCredential(profileLease)), cancellationToken)
                 .ConfigureAwait(false);
             if (sent is ProviderEgressRefused refused)
             {
@@ -441,9 +410,11 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         }
     }
 
+    private ProviderEgressCredential? CreateCredential(IProviderProfileRuntimeLease? runtime) =>
+        runtime is null ? null : new ProviderEgressCredential(runtime, AuthorizationScheme);
+
     private HttpRequestMessage CreateHttpRequest(
         JsonObject payload,
-        ProviderAuthorizationGranted authorization,
         Uri? endpointBaseOverride)
     {
         var targetUri = endpointBaseOverride is null
@@ -453,8 +424,6 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
-
-        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in _profile.DefaultRequestHeaders)
         {

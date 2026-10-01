@@ -101,8 +101,10 @@ namespace AgentKit
     public abstract class AgentResolution : System.IEquatable<AgentKit.AgentResolution> { }
     public sealed class AgentRunOptions : System.IEquatable<AgentKit.AgentRunOptions>
     {
-        public AgentRunOptions(int? maxTurns = default, System.TimeSpan? attemptTimeout = default) { }
+        public AgentRunOptions(int? maxTurns = default, System.TimeSpan? attemptTimeout = default, System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? allowedTools = default, AgentKit.BudgetScopeId? budgetParentScopeId = default) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? AllowedTools { get; init; }
         public System.TimeSpan? AttemptTimeout { get; init; }
+        public AgentKit.BudgetScopeId? BudgetParentScopeId { get; init; }
         public int? MaxTurns { get; init; }
     }
     public sealed class AgentRunRequest : System.IEquatable<AgentKit.AgentRunRequest>

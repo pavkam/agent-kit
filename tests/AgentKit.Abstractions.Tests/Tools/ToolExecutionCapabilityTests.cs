@@ -30,8 +30,14 @@ public sealed class ToolExecutionCapabilityTests
         Should.Throw<ArgumentNullException>(() => new ToolExecutionCapability(null!, BudgetCapability(), SessionTarget(), [])).ParamName.ShouldBe("session");
 
     [Fact]
-    public void Constructor_WhenBudgetIsNull_ThrowsExactParameter() =>
-        Should.Throw<ArgumentNullException>(() => new ToolExecutionCapability(SessionCapability(), null!, SessionTarget(), [])).ParamName.ShouldBe("budget");
+    public void Constructor_WhenBudgetIsNull_DeclaresAnUnbudgetedRunAndComparesUnequalToABudgetedOne()
+    {
+        var unbudgeted = new ToolExecutionCapability(SessionCapability(), null, SessionTarget(), []);
+        var budgeted = new ToolExecutionCapability(SessionCapability(), BudgetCapability(), SessionTarget(), []);
+
+        unbudgeted.Budget.ShouldBeNull();
+        unbudgeted.ShouldNotBe(budgeted);
+    }
 
     [Fact]
     public void Constructor_WhenSessionTargetIsNull_ThrowsExactParameter() =>

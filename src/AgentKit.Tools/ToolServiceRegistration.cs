@@ -328,9 +328,10 @@ internal static class ToolServiceRegistration
     /// <summary>Builds the first-party executor over the host's singular collaborators and one selected recorder.</summary>
     /// <param name="provider">The nonnull host provider used while constructing the executor.</param>
     /// <param name="recorder">The nonnull recorder this executor commits accepted and terminal records through.</param>
+    /// <param name="resultSpill">The result spill selected for this executor, or <see langword="null"/> when oversized results are truncated.</param>
     /// <returns>The immutable executor.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    internal static DefaultToolExecutor CreateExecutor(IServiceProvider provider, IToolCallRecorder recorder)
+    internal static DefaultToolExecutor CreateExecutor(IServiceProvider provider, IToolCallRecorder recorder, IToolResultSpill? resultSpill)
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(recorder);
@@ -348,6 +349,7 @@ internal static class ToolServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<DefaultToolExecutor>>(),
             provider.GetService<IHookDispatcher>(),
-            provider.GetService<IApprovalWaitRecorder>());
+            provider.GetService<IApprovalWaitRecorder>(),
+            resultSpill);
     }
 }

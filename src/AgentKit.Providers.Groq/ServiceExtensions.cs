@@ -101,12 +101,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
-                services,
-                GroqProviderDefaults.CredentialSourceKey,
-                GroqProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, GroqProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -135,16 +130,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
-                GroqProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
                 GroqProviderDefaults.CredentialSourceKey,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(GroqProviderDefaults.ProviderId)));
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                GroqProviderDefaults.ProviderId,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(GroqProviderDefaults.ProviderId)));
+                GroqProviderDefaults.ProviderId);
 
             return services;
         }
@@ -234,10 +223,9 @@ public static class ServiceExtensions
                     GroqProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GroqProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

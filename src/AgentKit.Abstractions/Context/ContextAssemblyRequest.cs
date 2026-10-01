@@ -27,10 +27,13 @@ namespace AgentKit;
 /// data, and the optional output contract. There is no evidence-less request.
 /// </para>
 /// <para>
-/// Hook dispatch and the context budget are not request fields: the keyed
-/// assembler is composed with its hook dispatcher and budget allocator
-/// (<c>ContextAssemblerServices</c>), and the budget is derived from the
-/// selected <see cref="ModelDescriptor"/>'s limits and the assembler's options.
+/// The context budget is not a request field: the keyed assembler is composed
+/// with its hook dispatcher and budget allocator (<c>ContextAssemblerServices</c>),
+/// and the budget is derived from the selected <see cref="ModelDescriptor"/>'s
+/// limits and the assembler's options. The one hook-related field is the
+/// optional <see cref="Hooks"/> context the loop captured for this run, which
+/// the assembler only forwards to contributors that dispatch their own hook
+/// points (retrieval); the assembler never dispatches through it.
 /// </para>
 /// </remarks>
 public sealed record ContextAssemblyRequest
@@ -136,6 +139,14 @@ public sealed record ContextAssemblyRequest
     /// <value>The selected definition, or <see langword="null"/> when the run has no structured output requirement.</value>
     public OutputDefinition? Output { get; init; }
 
+    /// <summary>Gets the run's captured hook context, forwarded to contributors that dispatch their own hook points.</summary>
+    /// <value>
+    /// The loop's captured dispatch context when the run's hook catalog registers a retrieval hook; otherwise
+    /// <see langword="null"/>. It is a read-only capability: contributors derive per-point dispatches from it and never
+    /// select a live hook profile.
+    /// </value>
+    public HookDispatchContext? Hooks { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(ContextAssemblyRequest? other) =>
         other is not null
@@ -151,7 +162,8 @@ public sealed record ContextAssemblyRequest
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
         && Extensions.Equals(other.Extensions)
-        && Equals(Output, other.Output);
+        && Equals(Output, other.Output)
+        && Equals(Hooks, other.Hooks);
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -174,6 +186,7 @@ public sealed record ContextAssemblyRequest
         hash.Add(Settings);
         hash.Add(Extensions);
         hash.Add(Output);
+        hash.Add(Hooks);
         return hash.ToHashCode();
     }
 

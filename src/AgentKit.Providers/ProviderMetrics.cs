@@ -41,6 +41,27 @@ internal static class ProviderMetrics
         unit: "s",
         description: "Duration of provider egress boundary crossings in seconds, through response headers.");
 
+    private static readonly Counter<long> _providerCredentialRead = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.ProviderCredentialReadCount,
+        unit: "{read}",
+        description: "Number of terminal provider credential-read outcomes.");
+
+    private static readonly Histogram<double> _providerCredentialReadDuration = AgentKitDiagnostics.Metrics.CreateHistogram<double>(
+        AgentKitMetricNames.ProviderCredentialReadDuration,
+        unit: "s",
+        description: "Duration of provider credential reads in seconds, through lease application.");
+
+    /// <summary>Records one provider credential-read outcome using the bounded outcome only.</summary>
+    /// <param name="outcome">The bounded terminal outcome: <c>released</c>, <c>cancelled</c>, or a lowercase failure kind.</param>
+    /// <param name="duration">The elapsed time from grant request through lease application or refusal.</param>
+    internal static void RecordCredentialRead(string outcome, TimeSpan duration)
+    {
+        _providerCredentialRead.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+        _providerCredentialReadDuration.Record(
+            duration.TotalSeconds,
+            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
+
     /// <summary>Records one provider egress outcome using bounded dimensions only.</summary>
     /// <param name="operation">The bounded provider operation tag.</param>
     /// <param name="outcome">The bounded terminal outcome: <c>sent</c> or a lowercase failure kind.</param>

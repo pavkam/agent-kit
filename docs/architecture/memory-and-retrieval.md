@@ -480,6 +480,43 @@ retrieval invocations. In-run callers provide their compiled hook lease;
 maintenance callers may pass `null`. The injected dispatcher uses only that
 lease and never selects a live/unkeyed hook profile or persists the context.
 
+### Memory hook points
+
+Four typed hook points, all with `FailOperation` failure policy, let an
+application observe and constrain memory without replacing the coordinator or
+pipeline. Their registration extensions (`AddBeforeMemoryProposalHook`,
+`AddBeforeMemoryWriteHook`, `AddBeforeRetrievalHook`,
+`AddBeforeRetrievalExposureHook`) live in `AgentKit.Hooks`, which owns dispatch;
+the interfaces and event arguments live in `AgentKit.Abstractions`. The point
+names are an addition to the specification, which fixes only that the
+coordinator and pipeline accept a `HookDispatchContext?`.
+
+| Point (`AgentHookPoints`)                                  | Kind            | Runs                                                                                        | May change                                                                    |
+| ---------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `BeforeMemoryProposal` (`agentkit.memory.proposal.before`) | ShortCircuiting | In `ProposeAsync` and `CorrectAsync`, before memory policy evaluates the proposal           | Set a `MemoryHookVeto(code, safeReason)`, which becomes a typed policy denial |
+| `BeforeMemoryWrite`                                        | ShortCircuiting | After policy allowed the write and the record is built, before the write grant is requested | Set a `MemoryHookVeto`                                                        |
+| `BeforeRetrieval`                                          | Mutating        | After the profile budget narrowing, before the retrieval read grant                         | Lower `MaximumItems` and `MaximumBytes` only (never raise)                    |
+| `BeforeRetrievalExposure`                                  | Mutating        | After authorization, rerank, and exposure authorization, before the budget selection        | Add `ExcludedPositions` (drop candidates only; no add, reorder, or edit)      |
+
+`CorrectAsync` dispatches the proposal and write points for the replacement
+record; `DeleteAsync` dispatches none, because a deletion is never blocked by an
+application hook. A hook cannot widen a budget, admit a candidate the pipeline
+refused, or mint a grant: vetoes only deny, and exclusion only removes.
+`MemoryHookRunner` derives a fresh per-point dispatch from the caller's context
+(catalog, activation, correlation, and deadline), dispatches a point only when
+the captured catalog registers it, and with no context, dispatcher, or
+registration the operation runs exactly as without hooks. A hook fault, invalid
+mutation, or timeout refuses the operation fail-closed with the fixed safe
+message "A memory hook failed, so the operation was refused."; cancellation
+propagates.
+
+In-run retrieval reaches these hooks: the loop captures the run's hook context
+when its catalog registers a retrieval point and forwards it through
+`ContextAssemblyRequest.Hooks` and `ContextContributionRequest.Hooks`, and
+`RetrievalContextContributor` passes it to the pipeline. The assembler never
+dispatches through it. A run whose catalog registers no retrieval hook carries
+no context, so retrieval behaves exactly as before.
+
 There is no all-purpose `IMemory` and no mandatory store or pipeline base class.
 Storage backends and retrieval sources implement their narrow contracts
 directly. A leaf integration may provide a base class only for proven common
@@ -863,8 +900,9 @@ minimal shape left open, and none widens authority.
 - `IDocumentLifecycleCoordinator` is an addition to the minimal shape. It owns
   the stage, embed, index, activate sequence and the deletion propagation that
   the stores cannot perform across families.
-- `HookDispatchContext` is omitted from the coordinator and pipeline, as in the
-  goals runtime.
+- `HookDispatchContext?` is a parameter of the coordinator and pipeline
+  (maintenance callers pass `null`), as in the goals runtime; see
+  [Memory hook points](#memory-hook-points).
 - `DataClassification` is the existing generic ordered sensitivity. A profile
   and a query each carry a ceiling; a query ceiling above the profile ceiling is
   refused, never lowered.

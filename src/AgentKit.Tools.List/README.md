@@ -43,8 +43,6 @@ invoke the tool through `ToolInvocationContext` and the permissions stack's
   ownership and contracts.
 - [Coding-harness tools](../../docs/profiles/coding-harness/coding-harness-built-in-tools.md)
   — the application profile for these features.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

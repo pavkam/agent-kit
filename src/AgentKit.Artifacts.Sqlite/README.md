@@ -10,6 +10,13 @@ an atomic transaction with session history. The database file is held
 exclusively while the store is open, and every persistence target is explicit
 host configuration; no package invents a database path.
 
+The same package also ships `SqliteArtifactReferenceCommitIntentStore`, a
+durable `IArtifactReferenceCommitIntentStore` the caller that commits artifact
+references owns. Each intent and transition is committed before it is
+acknowledged, a late reference commit and a fence race through one conditional
+transition, and the database it holds exclusively must not be shared with an
+artifact store.
+
 ## Use this project
 
 Start with `AddSqliteArtifactStore` in

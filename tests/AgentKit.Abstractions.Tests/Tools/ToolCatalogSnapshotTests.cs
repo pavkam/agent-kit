@@ -261,6 +261,61 @@ public sealed class ToolCatalogSnapshotTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void IntersectWith_WhenListNamesSomeTools_RetainsOnlyThoseToolsPoliciesAndAliasesWithTheSameEvidence()
+    {
+        var read = Descriptor("read", "1");
+        var write = Descriptor("write", "2");
+        var snapshot = Create(
+            [read, write],
+            Policies(read, write),
+            ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity>
+            {
+                [new ToolAlias("read_file")] = Identity(read),
+                [new ToolAlias("write_file")] = Identity(write),
+            }));
+
+        var restricted = snapshot.IntersectWith([read.Id, new ToolId("absent")]);
+
+        restricted.Tools.ShouldBe([read]);
+        restricted.ExecutionPolicies.Keys.ShouldBe([Identity(read)]);
+        restricted.ProviderAliases.Keys.ShouldBe([new ToolAlias("read_file")]);
+        restricted.Version.ShouldBe(snapshot.Version);
+        restricted.RunId.ShouldBe(snapshot.RunId);
+        restricted.SourceVersions.ShouldBe(snapshot.SourceVersions);
+        snapshot.Tools.Length.ShouldBe(2);
+    }
+
+    [Fact]
+    public void IntersectWith_WhenListIsEmpty_RetainsNoTool()
+    {
+        var read = Descriptor("read", "1");
+        var snapshot = Create([read], Policies(read), EmptyAliases());
+
+        var restricted = snapshot.IntersectWith([]);
+
+        restricted.Tools.ShouldBeEmpty();
+        restricted.ExecutionPolicies.ShouldBeEmpty();
+        restricted.ProviderAliases.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void IntersectWith_WhenListNamesEveryTool_ReturnsAnEqualSnapshot()
+    {
+        var read = Descriptor("read", "1");
+        var snapshot = Create([read], Policies(read), EmptyAliases());
+
+        snapshot.IntersectWith([read.Id]).ShouldBe(snapshot);
+    }
+
+    [Fact]
+    public void IntersectWith_WhenListIsDefault_ThrowsArgumentException()
+    {
+        var snapshot = Create([], EmptyPolicies(), EmptyAliases());
+
+        Should.Throw<ArgumentException>(() => snapshot.IntersectWith(default)).ParamName.ShouldBe("allowedTools");
+    }
+
     private static ImmutableDictionary<ToolSourceId, ToolSourceVersion> Sources(string version = "source-7") =>
         ImmutableDictionary<ToolSourceId, ToolSourceVersion>.Empty.Add(new ToolSourceId("agentkit.tools.tests"), new ToolSourceVersion(version));
 

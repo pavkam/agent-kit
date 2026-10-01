@@ -20,7 +20,7 @@ public sealed class MoonshotKimiLlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), MoonshotKimiProviderDefaults.ProviderId, MoonshotKimiProviderDefaults.ApiFamily, new ModelId("kimi-k2-0711-preview"), deploymentId: null, MoonshotKimiProviderDefaults.DefaultCapabilities, MoonshotKimiProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), MoonshotKimiProviderDefaults.ProviderId, MoonshotKimiProviderDefaults.ApiFamily, new ModelId("kimi-k2-0711-preview"), deploymentId: null, MoonshotKimiProviderDefaults.DefaultCapabilities, MoonshotKimiProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -30,7 +30,7 @@ public sealed class MoonshotKimiLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("real-looking-key")), MoonshotKimiProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -52,7 +52,7 @@ public sealed class MoonshotKimiLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("real-looking-key")), MoonshotKimiProviderDefaults.DefaultBaseAddress));
         var agentId = new AgentId(Guid.NewGuid());
         var sessionId = new SessionId(Guid.NewGuid());
         var branchId = new BranchId(Guid.NewGuid());
@@ -107,7 +107,7 @@ public sealed class MoonshotKimiLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(expiredToken), MoonshotKimiProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

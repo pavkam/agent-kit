@@ -26,6 +26,9 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
     public IFileWriter Writer => _fileSystem;
 
     /// <inheritdoc/>
+    public IFileDeleter Deleter => _fileSystem;
+
+    /// <inheritdoc/>
     public IDirectoryCreator? DirectoryCreator => _fileSystem;
 
     /// <inheritdoc/>
@@ -34,6 +37,11 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
     /// <inheritdoc/>
     public async ValueTask SeedFileAsync(string relativePath, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default)
     {
+        if (relativePath.LastIndexOf('/') is var separator and > 0)
+        {
+            _fileSystem.CreateDirectory(new FileSystemPath(relativePath[..separator]));
+        }
+
         var operation = CreateAuthorizedWrite(relativePath, content, FileWriteDisposition.CreateOrReplace);
         _ = await _fileSystem.WriteAsync(
             operation,
@@ -86,6 +94,19 @@ public sealed class InMemoryFileSystemConformanceFixture: IFileSystemConformance
             FileWriteAtomicityMode.Required,
             FileWriteEffectClass.WorkspaceBytes,
             TestSecurity.Grant());
+    }
+
+    /// <inheritdoc/>
+    public AuthorizedFileDelete CreateAuthorizedDelete(string relativePath, ContentHash? expectedTargetFingerprint = null)
+    {
+        var resolved = new ResolvedFileTarget(
+            new FileRootId("workspace"),
+            new NormalizedRelativePath(relativePath),
+            hostTargetPath: relativePath,
+            FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8),
+            expectedTargetFingerprint ?? FileSecurityBinding.ContentFingerprint("target"u8));
+        return new AuthorizedFileDelete(resolved, expectedTargetFingerprint, TestSecurity.Grant());
     }
 
     /// <inheritdoc/>

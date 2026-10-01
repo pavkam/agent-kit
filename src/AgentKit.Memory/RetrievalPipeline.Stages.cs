@@ -8,7 +8,7 @@ using System.Text;
 
 internal sealed partial class RetrievalPipeline
 {
-    private async ValueTask<RetrievalResult> RunAsync(RetrievalQuery original, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
+    private async ValueTask<RetrievalResult> RunAsync(RetrievalQuery original, HookDispatchContext? hooks, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
     {
         var profile = lease.Profile;
         if (!profile.RetrievalEnabled)
@@ -22,6 +22,25 @@ internal sealed partial class RetrievalPipeline
         }
 
         var effective = original.WithBudget(original.Budget.Narrow(profile.RetrievalBudget));
+        if (_hooks.IsActive(hooks, AgentHookPoints.BeforeRetrieval))
+        {
+            var starting = effective.Budget;
+            var retrievalHook = await _hooks.DispatchAsync(
+                hooks,
+                AgentHookPointDefinitions.BeforeRetrieval,
+                dispatch => new BeforeRetrievalEventArgs(dispatch, effective, starting),
+                cancellationToken).ConfigureAwait(false);
+            if (retrievalHook.Failed)
+            {
+                return Fail(original, RetrievalFailureKind.Denied, MemoryHookRunner.FailedMessage);
+            }
+
+            if (retrievalHook.Args is { BudgetNarrowed: true } narrowed)
+            {
+                effective = effective.WithBudget(new RetrievalBudget(narrowed.MaximumItems, narrowed.MaximumBytes, starting.MaximumTokens));
+            }
+        }
+
         var authorization = await _grants.IssueAsync(
             lease.SecurityAuthorities, original.Context.Authorization, _audience, SecurityOperationKind.StateRead, SecurityEffect.Observe,
             [new ProtectedResource(ProtectedResourceKind.ApplicationState, $"retrieval:{original.Id}")],
@@ -94,6 +113,24 @@ internal sealed partial class RetrievalPipeline
 
             unauthorized += ranked.Length - authorizedCandidates.Length;
             ranked = authorizedCandidates;
+        }
+
+        if (!ranked.IsEmpty && _hooks.IsActive(hooks, AgentHookPoints.BeforeRetrievalExposure))
+        {
+            var offered = ranked;
+            var exposureHook = await _hooks.DispatchAsync(
+                hooks,
+                AgentHookPointDefinitions.BeforeRetrievalExposure,
+                dispatch => new BeforeRetrievalExposureEventArgs(dispatch, effective, offered),
+                cancellationToken).ConfigureAwait(false);
+            if (exposureHook.Failed)
+            {
+                return Fail(original, RetrievalFailureKind.ExposureUnavailable, MemoryHookRunner.FailedMessage);
+            }
+
+            var remaining = exposureHook.Args!.Remaining;
+            unauthorized += ranked.Length - remaining.Length;
+            ranked = remaining;
         }
 
         var budgeted = await lease.BudgetPolicy.SelectAsync(new RetrievalBudgetRequest(effective.Budget, ranked), cancellationToken).ConfigureAwait(false);

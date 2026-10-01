@@ -3,13 +3,14 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.FileSystem.InMemory
 {
-    public sealed class InMemoryFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryCreator, AgentKit.IDirectoryReader, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileMetadataReader, AgentKit.IFileReader, AgentKit.IFileSnapshotReader, AgentKit.IFileWriter, AgentKit.IWorkspacePatchApplier
+    public sealed class InMemoryFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryCreator, AgentKit.IDirectoryReader, AgentKit.IFileContentSearcher, AgentKit.IFileDeleter, AgentKit.IFileGlobber, AgentKit.IFileMetadataReader, AgentKit.IFileReader, AgentKit.IFileSnapshotReader, AgentKit.IFileWriter, AgentKit.IWorkspacePatchApplier
     {
         public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, AgentKit.ISecurityAuditDispatcher hostAuditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> hostAuditRecordIds, AgentKit.FileSystemProfileKey hostProfileKey) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.DirectoryCreateResult> CreateAsync(AgentKit.AuthorizedDirectoryCreate operation, System.Threading.CancellationToken cancellationToken = default) { }
         public void CreateDirectory(AgentKit.FileSystemPath path) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileDeleteResult> DeleteAsync(AgentKit.AuthorizedFileDelete operation, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Collections.Generic.IAsyncEnumerable<AgentKit.FileSystemEntry> EnumerateAsync(AgentKit.AuthorizedDirectoryEnumeration operation, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.FileMetadataResult> GetMetadataAsync(AgentKit.AuthorizedFileMetadataRead operation, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default) { }

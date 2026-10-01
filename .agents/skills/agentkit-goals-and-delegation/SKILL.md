@@ -43,13 +43,20 @@ for catalog snapshots, placement, nested call budgets, and result publication.
   `IDelegationCoordinator` and authorizes nothing itself. The composition
   validator in the facade proves the registrations a goal profile names; keep it
   descriptor-only and never activate a store or worker from it.
+- The child run is enforced, not merely recorded: the engine child runner passes
+  the delegation's `AllowedTools` as `AgentRunOptions.AllowedTools` (a narrowing
+  per-run catalog intersection; unlisted tools resolve as unknown, an empty list
+  exposes none) and its budget scope as `AgentRunOptions.BudgetParentScopeId`
+  (the parent of the run's own scope). Both fold into the run policy version.
 - Preserve goal, attempt, delegation, agent, session, run, operation, and causal
   identities across every transition.
 - Delegation narrows authority, data, resources, context, budget, and deadline.
   It cannot broaden the parent's authority or mutate the parent's history.
 - Route agent communication through normal input admission with typed routing
   and idempotency metadata (`IAgentMessageChannel`); prose is content, not
-  control state, and message text never gains instruction authority.
+  control state, and message text never gains instruction authority. There is no
+  first-party model-facing messaging tool: who may steer whom is application
+  policy, so an application writes its own tool over the channel.
 - Capture join criteria and result ordering. Ordinal joins ignore completion
   timing; fastest-valid joins persist a durable inbox winner and replay it.
   Child prose remains untrusted after schema validation; verify exact evidence.

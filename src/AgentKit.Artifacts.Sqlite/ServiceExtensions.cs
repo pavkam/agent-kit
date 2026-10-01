@@ -37,5 +37,29 @@ public static class ServiceExtensions
                 provider.GetService<ILogger<SqliteArtifactStore>>()));
             return services;
         }
+
+        /// <summary>Registers the durable SQLite reference-commit intent store a coordinator reconciles against.</summary>
+        /// <param name="target">The exact database and bootstrap effects the host authorizes; it must not be shared with an artifact store or another intent store.</param>
+        /// <param name="configure">Optional lock timeout and size bound.</param>
+        /// <returns>The same service collection.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+        /// <remarks>The caller that commits artifact references owns this store and its transaction. The store is a singleton that opens its database lazily on first use and holds it exclusively; call <see cref="SqliteArtifactReferenceCommitIntentStore.InitializeAsync"/> at host startup to surface a misconfigured database early. The container disposes the store, releasing the file. Repeated registration is ignored, and no persistence target is ever chosen implicitly.</remarks>
+        public IServiceCollection AddSqliteArtifactReferenceCommitIntentStore(SqliteArtifactTarget target, Action<SqliteArtifactOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            var options = new SqliteArtifactOptions();
+            configure?.Invoke(options);
+            var settings = new SqliteArtifactSettings(options.LockTimeout, options.MaximumRecordBytes);
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IArtifactReferenceCommitIntentStore>(provider => new SqliteArtifactReferenceCommitIntentStore(
+                target,
+                settings,
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<SqliteArtifactReferenceCommitIntentStore>>()));
+            return services;
+        }
     }
 }

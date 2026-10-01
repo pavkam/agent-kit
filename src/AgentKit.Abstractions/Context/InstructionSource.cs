@@ -7,7 +7,7 @@ namespace AgentKit;
 /// <remarks>
 /// Instruction sources retain identity until provider translation. This hierarchy is closed in the
 /// abstractions assembly; only <see cref="LiteralInstructionSource"/> ships in the first wave.
-/// Additional source kinds arrive through later context workstreams.
+/// Additional source kinds arrive through later context additions.
 /// </remarks>
 public abstract record InstructionSource
 {

@@ -127,12 +127,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
-                services,
-                OpenRouterProviderDefaults.CredentialSourceKey,
-                OpenRouterProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, OpenRouterProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -161,16 +156,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
-                OpenRouterProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
                 OpenRouterProviderDefaults.CredentialSourceKey,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OpenRouterProviderDefaults.ProviderId)));
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                OpenRouterProviderDefaults.ProviderId,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OpenRouterProviderDefaults.ProviderId)));
+                OpenRouterProviderDefaults.ProviderId);
 
             return services;
         }
@@ -263,10 +252,9 @@ public static class ServiceExtensions
                     OpenRouterProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -333,10 +321,9 @@ public static class ServiceExtensions
                     OpenRouterProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -379,10 +366,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IOpenRouterRerankRequestTranslator>(),
                     provider.GetRequiredService<IOpenRouterRerankResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

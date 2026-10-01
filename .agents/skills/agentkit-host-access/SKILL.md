@@ -68,6 +68,11 @@ When changing C#, read the [modern C# rules](../references/modern-csharp.md).
   Empty and whitespace-only payloads are valid.
 - Parent-directory creation is a separate declared, authorized, and audited
   effect; never smuggle it into file writing for convenience.
+- File removal is the separate `IFileDeleter` capability: a `FileWrite`
+  operation with the `Delete` effect, a fingerprint binding root, path, and an
+  optional target precondition, descriptor-relative no-follow removal of exactly
+  one regular file (never a directory), and not-found for a repeat. A write
+  grant never authorizes a deletion.
 - Sandboxing and transport restrictions reduce consequences but never grant
   permission. Changed paths, destinations, redirects, executable inputs, or
   scopes require reevaluation.

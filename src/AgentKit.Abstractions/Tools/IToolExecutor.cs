@@ -12,7 +12,7 @@ namespace AgentKit;
 /// there and turns its raw evidence into one authoritative <see cref="ToolCallResult"/> per call, including a
 /// pre-invocation rejection for an unknown, invalid, denied, or ambiguous call. Ship note: the normative shape also
 /// carries a <c>HookDispatchContext hooks</c> parameter; that parameter is omitted here until the hook kernel
-/// (workstream 2) publishes <c>HookDispatchContext</c>, and an implementation resolves the shared
+/// publishes <c>HookDispatchContext</c>, and an implementation resolves the shared
 /// <see cref="IHookDispatcher"/> directly in the interim.
 /// </remarks>
 public interface IToolExecutor

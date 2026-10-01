@@ -58,6 +58,8 @@ internal static class InMemoryFileSystemRegistration
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileWriter>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
+        _ = services.AddKeyedSingleton<IFileDeleter>(key.Value, static (provider, serviceKey) =>
+            provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IFileMetadataReader>(key.Value, static (provider, serviceKey) =>
             provider.GetRequiredKeyedService<InMemoryFileSystem>(serviceKey!));
         _ = services.AddKeyedSingleton<IDirectoryCreator>(key.Value, static (provider, serviceKey) =>
@@ -79,6 +81,7 @@ internal static class InMemoryFileSystemRegistration
             new FileSystemCapabilities(
                 FileSystemCapability.Read
                 | FileSystemCapability.Write
+                | FileSystemCapability.Delete
                 | FileSystemCapability.Metadata
                 | FileSystemCapability.CreateDirectory
                 | FileSystemCapability.Enumerate)));

@@ -3,7 +3,6 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Google

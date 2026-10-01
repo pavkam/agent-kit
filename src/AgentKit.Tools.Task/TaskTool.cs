@@ -78,7 +78,7 @@ public sealed class TaskTool: IToolInvoker
         new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
         outputSchema: null,
         new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
-        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: TimeSpan.FromHours(1), approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.task"),
         ExtensionData.Empty);
 

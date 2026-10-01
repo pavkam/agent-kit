@@ -127,12 +127,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
-                services,
-                CohereProviderDefaults.CredentialSourceKey,
-                CohereProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, CohereProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -162,11 +157,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(CohereProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                CohereProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
+                CohereProviderDefaults.CredentialSourceKey,
+                CohereProviderDefaults.ProviderId);
 
             return services;
         }
@@ -256,10 +250,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<ICohereRequestTranslator>(),
                     provider.GetRequiredService<ICohereResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -368,9 +361,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<ICohereEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<ICohereEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -413,10 +406,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<ICohereRerankRequestTranslator>(),
                     provider.GetRequiredService<ICohereRerankResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -13,9 +13,10 @@ namespace AgentKit.Goals;
 /// the ceilings are enforced arithmetically and the reservation carries no scope.
 /// </para>
 /// <para>
-/// The scope records the ceiling as hard limits for the child; the local worker cannot bind the child run's own budget scope
-/// to it, because the engine exposes no per-run scope injection, so turn count is enforced through the run's turn limit and
-/// the deadline. Settlement compares known usage to the ceiling and never counts unknown token usage as an overrun.
+/// The scope records the ceiling as hard limits for the child. The engine-backed child runner passes that scope as
+/// <c>AgentRunOptions.BudgetParentScopeId</c>, so the child run's own budget scope is created beneath it and the run is
+/// bounded by the reserved ceiling as well as by the run's turn limit and the delegation deadline. Settlement compares known
+/// usage to the ceiling and never counts unknown token usage as an overrun.
 /// </para>
 /// </remarks>
 /// <param name="authority">The optional budget authority that holds child scopes.</param>

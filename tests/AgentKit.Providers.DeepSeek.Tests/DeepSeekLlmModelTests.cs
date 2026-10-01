@@ -20,7 +20,7 @@ public sealed class DeepSeekLlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), DeepSeekProviderDefaults.ProviderId, DeepSeekProviderDefaults.ApiFamily, new ModelId("deepseek-chat"), deploymentId: null, DeepSeekProviderDefaults.DefaultCapabilities, DeepSeekProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), DeepSeekProviderDefaults.ProviderId, DeepSeekProviderDefaults.ApiFamily, new ModelId("deepseek-chat"), deploymentId: null, DeepSeekProviderDefaults.DefaultCapabilities, DeepSeekProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -30,7 +30,7 @@ public sealed class DeepSeekLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("ds-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("ds-real-looking-key")), DeepSeekProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -52,7 +52,7 @@ public sealed class DeepSeekLlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("ds-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("ds-real-looking-key")), DeepSeekProviderDefaults.DefaultBaseAddress));
         var agentId = new AgentId(Guid.NewGuid());
         var sessionId = new SessionId(Guid.NewGuid());
         var branchId = new BranchId(Guid.NewGuid());
@@ -107,7 +107,7 @@ public sealed class DeepSeekLlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new DeepSeekLlmModel(descriptor, DeepSeekProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(expiredToken), DeepSeekProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

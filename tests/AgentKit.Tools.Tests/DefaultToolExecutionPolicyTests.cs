@@ -17,6 +17,21 @@ public sealed class DefaultToolExecutionPolicyTests
         DefaultToolExecutionPolicy.StandardReference.Version.ShouldBe(new ToolExecutionPolicyVersion(1));
     }
 
+    [Theory]
+    [InlineData(30, 9, 30)]
+    [InlineData(5, 9, 9)]
+    [InlineData(7_200, 9, 3_600)]
+    public async Task PlanAsync_WhenADescriptorExpectsADuration_GrantsItOnlyAboveTheConfiguredTimeoutAndUpToTheMaximum(int expectedSeconds, int timeoutSeconds, int plannedSeconds)
+    {
+        var options = new ToolRuntimeOptions { InvocationTimeout = TimeSpan.FromSeconds(timeoutSeconds), MaximumInvocationTimeout = TimeSpan.FromHours(1) };
+        var policy = new DefaultToolExecutionPolicy(Standard, Options.Create(options));
+        var call = Validated(hints: new ToolExecutionHints(ToolSchedulingMode.Sequential, null, TimeSpan.FromSeconds(expectedSeconds), null));
+
+        var result = await policy.PlanAsync([call], Context(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ToolExecutionPlanned>().Calls[0].ExecutionPlan.InvocationTimeout.ShouldBe(TimeSpan.FromSeconds(plannedSeconds));
+    }
+
     [Fact]
     public async Task PlanAsync_WhenCallsNameTheReference_PlansEachCallFromTheConfiguredOptions()
     {

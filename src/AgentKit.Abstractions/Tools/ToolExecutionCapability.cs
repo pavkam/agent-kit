@@ -16,21 +16,20 @@ public sealed record ToolExecutionCapability
 {
     /// <summary>Initializes an immutable tool-execution capability.</summary>
     /// <param name="session">The nonnull invocation-only session execution capability.</param>
-    /// <param name="budget">The nonnull invocation-only budget execution capability.</param>
+    /// <param name="budget">The invocation-only budget execution capability, or <see langword="null"/> for a run that reserves no tool budget dimensions.</param>
     /// <param name="sessionTarget">The nonnull branch and lane that receive the batch's accepted and terminal records.</param>
     /// <param name="executionPolicies">The initialized execution-policy references the run's catalog captured; may be empty, which permits no call.</param>
     /// <param name="hooks">Optional hook binding for before-invocation and result points; null when hooks are inactive.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="session"/>, <paramref name="budget"/>, <paramref name="sessionTarget"/>, or a binding is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="session"/>, <paramref name="sessionTarget"/>, or a binding is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="executionPolicies"/> is uninitialized or names one reference twice.</exception>
     public ToolExecutionCapability(
         SessionExecutionCapability session,
-        BudgetExecutionCapability budget,
+        BudgetExecutionCapability? budget,
         ToolCallSessionTarget sessionTarget,
         ImmutableArray<ToolExecutionPolicyBinding> executionPolicies,
         ToolExecutionHookBinding? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(budget);
         ArgumentNullException.ThrowIfNull(sessionTarget);
         ArgumentException.ThrowIfDefault(executionPolicies);
         ArgumentException.ThrowIfContainsNull(executionPolicies);
@@ -52,8 +51,8 @@ public sealed record ToolExecutionCapability
     public SessionExecutionCapability Session { get; }
 
     /// <summary>Gets the invocation-only budget execution capability.</summary>
-    /// <value>The selected budget profile and borrowed live scope for this batch.</value>
-    public BudgetExecutionCapability Budget { get; }
+    /// <value>The selected budget profile and borrowed live scope for this batch, or <see langword="null"/> when the run reserves no tool budget dimensions; the executor then performs no tool budget reservation.</value>
+    public BudgetExecutionCapability? Budget { get; }
 
     /// <summary>Gets the branch and lane that receive the batch's durable tool-call records.</summary>
     /// <value>A position inside <see cref="Session"/>'s session; appends still pass the coordinator's own checks.</value>

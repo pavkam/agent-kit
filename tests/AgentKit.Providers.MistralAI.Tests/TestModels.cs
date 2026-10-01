@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.MistralAI.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for Mistral's <c>mistral-large-latest</c> model.</summary>
-    public static ModelDescriptor MistralLarge { get; } = new(
+    public static ModelDescriptor MistralLarge { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         MistralAIProviderDefaults.ProviderId,
         MistralAIProviderDefaults.ApiFamily,
@@ -16,7 +18,7 @@ internal static class TestModels
         MistralAIProviderDefaults.DefaultCapabilities,
         MistralAIProviderDefaults.DefaultLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = MistralLarge with

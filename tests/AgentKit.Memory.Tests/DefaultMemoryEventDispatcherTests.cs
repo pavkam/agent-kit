@@ -110,6 +110,50 @@ public sealed class DefaultMemoryEventDispatcherTests
         result.RequiredDeliveryComplete.ShouldBeFalse();
     }
 
+    private sealed class UnresolvableSink: IMemoryEventSink
+    {
+        public ValueTask PublishAsync(MemoryEvent memoryEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Never resolved.");
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenARequiredSinkCannotBeResolved_LogsTheUnavailableEventAndReportsTheFailure()
+    {
+        var logger = new RecordingLogger<DefaultMemoryEventDispatcher>();
+        using var harness = MemoryHarness.Create(arrange: services =>
+        {
+            _ = services.AddSingleton<ILogger<DefaultMemoryEventDispatcher>>(logger);
+            _ = services.AddSingleton(new MemoryEventSinkDeclaration(Sink("tests.unresolvable", 1, MemoryEventDelivery.Required), typeof(UnresolvableSink)));
+        });
+
+        var result = await harness.Provider.GetRequiredService<IMemoryEventDispatcher>().PublishAsync(MemoryTestData.ProfileKey, Event(), TestContext.Current.CancellationToken);
+
+        result.RequiredFailures.ShouldBe(1);
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(32302);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain("tests.unresolvable");
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenASinkFails_LogsTheFailedEventWithTheErrorTypeAndNoMessage()
+    {
+        var logger = new RecordingLogger<DefaultMemoryEventDispatcher>();
+        using var harness = MemoryHarness.Create(arrange: services =>
+        {
+            _ = services.AddSingleton<ILogger<DefaultMemoryEventDispatcher>>(logger);
+            _ = services.AddMemoryEventSink<ThrowingSink>(Sink("a", 1, MemoryEventDelivery.Observational));
+        });
+
+        _ = await harness.Provider.GetRequiredService<IMemoryEventDispatcher>().PublishAsync(MemoryTestData.ProfileKey, Event(), TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(32303);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain(nameof(InvalidOperationException));
+        entry.Message.ShouldNotContain("The sink failed.");
+    }
+
     [Fact]
     public async Task PublishAsync_WhenASinkIsCancelled_PropagatesCancellation()
     {

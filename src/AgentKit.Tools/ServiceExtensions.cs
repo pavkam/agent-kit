@@ -484,7 +484,7 @@ public static class ServiceExtensions
             _ = services.AddToolCatalogCoordinator();
             services.TryAddSingleton<IToolRunCatalogCaptureFactory, ToolRunCatalogCaptureFactory>();
             services.TryAddSingleton<IToolExecutor>(static provider =>
-                ToolServiceRegistration.CreateExecutor(provider, provider.GetRequiredService<IToolCallRecorder>()));
+                ToolServiceRegistration.CreateExecutor(provider, provider.GetRequiredService<IToolCallRecorder>(), provider.GetService<IToolResultSpill>()));
 
             return services;
         }
@@ -515,7 +515,65 @@ public static class ServiceExtensions
             services.TryAddKeyedSingleton<IToolExecutor>(
                 executorKey.Value,
                 (provider, _) => ToolServiceRegistration.CreateExecutor(
-                    provider, provider.GetRequiredKeyedService<IToolCallRecorder>(executorKey.Value)));
+                    provider,
+                    provider.GetRequiredKeyedService<IToolCallRecorder>(executorKey.Value),
+                    provider.GetKeyedService<IToolResultSpill>(executorKey.Value)));
+            return services;
+        }
+
+        /// <summary>Selects an artifact coordinator that the keyed tool executor externalizes oversized results through.</summary>
+        /// <param name="executorKey">The nondefault executor component key whose results may be spilled.</param>
+        /// <param name="coordinatorKey">The nondefault keyed <see cref="IArtifactCoordinator"/> that stores the content; its profile routes the directory.</param>
+        /// <param name="configure">Configures the required artifact directory and optional retention, classification, media type, and timeout.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="executorKey"/> or <paramref name="coordinatorKey"/> is default, or an option is out of range.</exception>
+        /// <exception cref="ArgumentException">A configured directory, retention policy, or media type is blank.</exception>
+        /// <remarks>
+        /// <para>
+        /// The spill is optional per executor: an executor without one truncates oversized results to the configured bound. The
+        /// content is stored whole only when it is entirely text, the captured normalization snapshot permits externalization, and
+        /// it exceeds the canonical byte bound; the terminal result then keeps a bounded preview and an artifact reference, and the
+        /// projection tells the model where the complete output lives. A refused or timed-out spill falls back to truncation.
+        /// </para>
+        /// <para>
+        /// The coordinator is resolved when the executor is first built, so an unregistered coordinator key fails there rather than
+        /// mid-run. Registration is idempotent: a spill already registered for the executor key is preserved. The artifact is
+        /// owned by the session and retained under the configured policy; no reconciliation intent is recorded.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddToolResultSpill(
+            ComponentKey<IToolExecutor> executorKey,
+            ComponentKey<IArtifactCoordinator> coordinatorKey,
+            Action<ToolResultSpillOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(configure);
+            ArgumentOutOfRangeException.ThrowIfEqual(executorKey, default);
+            ArgumentOutOfRangeException.ThrowIfEqual(coordinatorKey, default);
+            var options = new ToolResultSpillOptions();
+            configure(options);
+            var snapshot = new ToolResultSpillOptions
+            {
+                Directory = options.Directory,
+                RetentionPolicy = options.RetentionPolicy,
+                Classification = options.Classification,
+                MediaType = options.MediaType,
+                Timeout = options.Timeout,
+            };
+            ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.Directory.Value, nameof(configure));
+            ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.RetentionPolicy.Value, nameof(configure));
+            ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.MediaType, nameof(configure));
+            ArgumentOutOfRangeException.ThrowIfUndefined(snapshot.Classification, nameof(configure));
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(snapshot.Timeout, TimeSpan.Zero, nameof(configure));
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddKeyedSingleton<IToolResultSpill>(
+                executorKey.Value,
+                (provider, _) => new ArtifactToolResultSpill(
+                    provider.GetRequiredKeyedService<IArtifactCoordinator>(coordinatorKey.Value),
+                    snapshot,
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<ILogger<ArtifactToolResultSpill>>()));
             return services;
         }
 

@@ -21,7 +21,7 @@ namespace AgentKit.Providers.Http;
 /// <c>Authorization: Bearer &lt;token&gt;</c>, and is rejected here, before
 /// any network call, once its
 /// <see cref="OAuthTokenProviderCredential.ExpiresAtUtc"/> is at or before
-/// the injected clock's current instant.
+/// the supplied instant.
 /// </para>
 /// <para>
 /// This factory does not perform an OAuth token-acquisition or refresh
@@ -49,7 +49,7 @@ public static class ProviderAuthorizationHeaderFactory
     /// </summary>
     /// <param name="credential">The credential to resolve.</param>
     /// <param name="providerId">The provider the request will be sent to, used for diagnostics.</param>
-    /// <param name="timeProvider">The clock used to evaluate OAuth token expiry.</param>
+    /// <param name="utcNow">The instant against which OAuth token expiry is evaluated.</param>
     /// <param name="scheme">The provider's verified API-key header shape.</param>
     /// <returns>
     /// A <see cref="ProviderAuthorizationGranted"/> carrying a usable
@@ -59,23 +59,22 @@ public static class ProviderAuthorizationHeaderFactory
     /// accept, or an unrecognized credential kind.
     /// </returns>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="credential"/>, <paramref name="timeProvider"/>, or
-    /// <paramref name="scheme"/> is <see langword="null"/>.
+    /// <paramref name="credential"/> or <paramref name="scheme"/> is
+    /// <see langword="null"/>.
     /// </exception>
     public static ProviderAuthorizationResult Create(
         ProviderCredential credential,
         ProviderId providerId,
-        TimeProvider timeProvider,
+        DateTimeOffset utcNow,
         ProviderAuthorizationScheme scheme)
     {
         ArgumentNullException.ThrowIfNull(credential);
-        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(scheme);
 
         return credential switch
         {
             ApiKeyProviderCredential apiKey => CreateFromApiKey(apiKey, providerId, scheme),
-            OAuthTokenProviderCredential oauthToken => CreateFromOAuthToken(oauthToken, providerId, timeProvider),
+            OAuthTokenProviderCredential oauthToken => CreateFromOAuthToken(oauthToken, providerId, utcNow),
             _ => Deny(
                 providerId,
                 $"Credential kind '{credential.GetType().Name}' is not supported by the '{providerId}' provider integration."),
@@ -101,12 +100,11 @@ public static class ProviderAuthorizationHeaderFactory
     private static ProviderAuthorizationResult CreateFromOAuthToken(
         OAuthTokenProviderCredential oauthToken,
         ProviderId providerId,
-        TimeProvider timeProvider)
+        DateTimeOffset utcNow)
     {
         Debug.Assert(oauthToken is not null, "Caller matched a non-null OAuth credential.");
-        Debug.Assert(timeProvider is not null, "Caller validated the clock.");
 
-        return oauthToken.ExpiresAtUtc is { } expiresAtUtc && expiresAtUtc <= timeProvider.GetUtcNow()
+        return oauthToken.ExpiresAtUtc is { } expiresAtUtc && expiresAtUtc <= utcNow
             ? Deny(providerId, "The configured OAuth access token has expired.")
             : new ProviderAuthorizationGranted(_bearerHeaderName, _bearerPrefix + oauthToken.AccessToken);
     }

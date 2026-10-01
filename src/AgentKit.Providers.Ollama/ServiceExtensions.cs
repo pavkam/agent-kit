@@ -118,12 +118,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
-                services,
-                OllamaProviderDefaults.CredentialSourceKey,
-                OllamaProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, OllamaProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -152,16 +147,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
-                OllamaProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
                 OllamaProviderDefaults.CredentialSourceKey,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OllamaProviderDefaults.ProviderId)));
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                OllamaProviderDefaults.ProviderId,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(OllamaProviderDefaults.ProviderId)));
+                OllamaProviderDefaults.ProviderId);
 
             return services;
         }
@@ -251,10 +240,9 @@ public static class ServiceExtensions
                     OllamaProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OllamaProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -318,10 +306,9 @@ public static class ServiceExtensions
                     OllamaProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OllamaProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

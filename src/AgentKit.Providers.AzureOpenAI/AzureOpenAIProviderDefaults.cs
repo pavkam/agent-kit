@@ -3,7 +3,6 @@
 
 namespace AgentKit.Providers.AzureOpenAI;
 
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity, path, and capability defaults for the Azure OpenAI

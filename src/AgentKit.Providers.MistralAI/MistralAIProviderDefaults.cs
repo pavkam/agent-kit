@@ -4,7 +4,6 @@
 namespace AgentKit.Providers.MistralAI;
 
 using AgentKit.Providers;
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Mistral AI

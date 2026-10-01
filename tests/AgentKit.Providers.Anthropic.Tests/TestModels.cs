@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.Anthropic.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for Anthropic's <c>claude-sonnet-4-5</c> model.</summary>
-    public static ModelDescriptor ClaudeSonnet { get; } = new(
+    public static ModelDescriptor ClaudeSonnet { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         AnthropicProviderDefaults.ProviderId,
         AnthropicProviderDefaults.ApiFamily,
@@ -16,7 +18,7 @@ internal static class TestModels
         AnthropicProviderDefaults.DefaultCapabilities,
         AnthropicProviderDefaults.DefaultLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = ClaudeSonnet with

@@ -104,12 +104,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = OpenAICompatibleProviderProfileRegistration.RegisterDualKeyCredentialSource(
-                services,
-                DeepSeekProviderDefaults.CredentialSourceKey,
-                DeepSeekProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, DeepSeekProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -138,16 +133,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
-                DeepSeekProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
                 DeepSeekProviderDefaults.CredentialSourceKey,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(DeepSeekProviderDefaults.ProviderId)));
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                DeepSeekProviderDefaults.ProviderId,
-                static (provider, _) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(DeepSeekProviderDefaults.ProviderId)));
+                DeepSeekProviderDefaults.ProviderId);
 
             return services;
         }
@@ -237,10 +226,9 @@ public static class ServiceExtensions
                     DeepSeekProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

@@ -26,14 +26,14 @@ public sealed class FileSystemArtifactStoreConformanceFixture: ArtifactStoreConf
             new AcceptingAudit(),
             new SequentialAuditIds(),
             _profile);
-        Selector = new StaticFileSystemSelector(_profile, Volume, Volume);
+        Selector = new StaticFileSystemSelector(_profile, Volume, Volume, Volume, Volume);
         Authority = new GrantIssuingAuthority(Grants, Clock);
     }
 
     /// <summary>Gets the in-memory volume the store writes through.</summary>
     internal InMemoryFileSystem Volume { get; }
 
-    /// <summary>Gets the selector that resolves the volume's reader and writer.</summary>
+    /// <summary>Gets the selector that resolves the volume's reader, writer, deleter, and directory reader.</summary>
     internal StaticFileSystemSelector Selector { get; }
 
     /// <summary>Gets the authority that authorizes each file effect.</summary>

@@ -17,21 +17,19 @@ public sealed class DeepSeekLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="profile">The DeepSeek compatibility profile.</param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
-    /// <param name="credentials">Resolves the current DeepSeek credential.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
-    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public DeepSeekLlmModel(
         ModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderProfileRuntimeSelector? profileSelector = null)
-        : base(descriptor, profile, translator, streamParser, credentials, egress, timeProvider, profileSelector)
+        IProviderProfileRuntimeSelector profileSelector)
+        : base(descriptor, profile, translator, streamParser, egress, timeProvider, profileSelector)
     {
     }
 }

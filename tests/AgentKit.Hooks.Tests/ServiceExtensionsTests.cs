@@ -47,6 +47,52 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddMemoryHooks_WhenCalled_RegisterEachHookAndPublishItsPointDefinition()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddBeforeMemoryProposalHook<TestBeforeMemoryProposalHook>(
+            HookRegistrationDescriptors.ForPoint(new HookId("test.proposal"), AgentHookPointDefinitions.BeforeMemoryProposalRegistration));
+        _ = services.AddBeforeMemoryWriteHook<TestBeforeMemoryWriteHook>(
+            HookRegistrationDescriptors.ForPoint(new HookId("test.write"), AgentHookPointDefinitions.BeforeMemoryWriteRegistration));
+        _ = services.AddBeforeRetrievalHook<TestBeforeRetrievalHook>(
+            HookRegistrationDescriptors.ForPoint(new HookId("test.retrieval"), AgentHookPointDefinitions.BeforeRetrievalRegistration));
+        _ = services.AddBeforeRetrievalExposureHook<TestBeforeRetrievalExposureHook>(
+            HookRegistrationDescriptors.ForPoint(new HookId("test.exposure"), AgentHookPointDefinitions.BeforeRetrievalExposureRegistration));
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetServices<IBeforeMemoryProposalHook>().ShouldHaveSingleItem().ShouldBeOfType<TestBeforeMemoryProposalHook>();
+        _ = provider.GetServices<IBeforeMemoryWriteHook>().ShouldHaveSingleItem().ShouldBeOfType<TestBeforeMemoryWriteHook>();
+        _ = provider.GetServices<IBeforeRetrievalHook>().ShouldHaveSingleItem().ShouldBeOfType<TestBeforeRetrievalHook>();
+        _ = provider.GetServices<IBeforeRetrievalExposureHook>().ShouldHaveSingleItem().ShouldBeOfType<TestBeforeRetrievalExposureHook>();
+        provider.GetRequiredService<HookPointDefinition<IBeforeMemoryProposalHook, BeforeMemoryProposalEventArgs>>().Kind.ShouldBe(HookPointKind.ShortCircuiting);
+        provider.GetRequiredService<HookPointDefinition<IBeforeMemoryWriteHook, BeforeMemoryWriteEventArgs>>().Kind.ShouldBe(HookPointKind.ShortCircuiting);
+        provider.GetRequiredService<HookPointDefinition<IBeforeRetrievalHook, BeforeRetrievalEventArgs>>().Kind.ShouldBe(HookPointKind.Mutating);
+        provider.GetRequiredService<HookPointDefinition<IBeforeRetrievalExposureHook, BeforeRetrievalExposureEventArgs>>().Kind.ShouldBe(HookPointKind.Mutating);
+        provider.GetRequiredService<IReadOnlyList<HookPointDefinitionRegistration>>().Select(static registration => registration.Point)
+            .ShouldContain(AgentHookPoints.BeforeMemoryProposal);
+        provider.GetRequiredService<IReadOnlyList<HookPointDefinitionRegistration>>().Select(static registration => registration.Point)
+            .ShouldContain(AgentHookPoints.BeforeRetrievalExposure);
+    }
+
+    [Fact]
+    public void AddMemoryHooks_WhenDescriptorNamesAnotherPoint_ThrowsArgumentExceptionAndServicesNullThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+        var wrong = HookRegistrationDescriptors.ForPoint(new HookId("wrong"), AgentHookPointDefinitions.RunStartedRegistration);
+        IServiceCollection missing = null!;
+
+        _ = Should.Throw<ArgumentException>(() => services.AddBeforeMemoryProposalHook<TestBeforeMemoryProposalHook>(wrong));
+        _ = Should.Throw<ArgumentException>(() => services.AddBeforeMemoryWriteHook<TestBeforeMemoryWriteHook>(wrong));
+        _ = Should.Throw<ArgumentException>(() => services.AddBeforeRetrievalHook<TestBeforeRetrievalHook>(wrong));
+        _ = Should.Throw<ArgumentException>(() => services.AddBeforeRetrievalExposureHook<TestBeforeRetrievalExposureHook>(wrong));
+        Should.Throw<ArgumentNullException>(() => missing.AddBeforeMemoryProposalHook<TestBeforeMemoryProposalHook>(wrong)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => missing.AddBeforeMemoryWriteHook<TestBeforeMemoryWriteHook>(wrong)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => missing.AddBeforeRetrievalHook<TestBeforeRetrievalHook>(wrong)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => missing.AddBeforeRetrievalExposureHook<TestBeforeRetrievalExposureHook>(wrong)).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddPointHooks_WhenServicesNull_ThrowArgumentNullException()
     {
         IServiceCollection services = null!;
@@ -188,6 +234,30 @@ public sealed class ServiceExtensionsTests
     private sealed class TestBeforeToolInvocationHook: IBeforeToolInvocationHook
     {
         public ValueTask InvokeAsync(BeforeToolInvocationEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeMemoryProposalHook: IBeforeMemoryProposalHook
+    {
+        public ValueTask InvokeAsync(BeforeMemoryProposalEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeMemoryWriteHook: IBeforeMemoryWriteHook
+    {
+        public ValueTask InvokeAsync(BeforeMemoryWriteEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeRetrievalHook: IBeforeRetrievalHook
+    {
+        public ValueTask InvokeAsync(BeforeRetrievalEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class TestBeforeRetrievalExposureHook: IBeforeRetrievalExposureHook
+    {
+        public ValueTask InvokeAsync(BeforeRetrievalExposureEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }
 }

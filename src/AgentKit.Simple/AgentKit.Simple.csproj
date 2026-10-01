@@ -29,6 +29,8 @@
     <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <ProjectReference Include="../AgentKit.Durability/AgentKit.Durability.csproj"/>
     <ProjectReference Include="../AgentKit.Durability.InMemory/AgentKit.Durability.InMemory.csproj"/>
+    <ProjectReference Include="../AgentKit.Durability.Json/AgentKit.Durability.Json.csproj"/>
+    <ProjectReference Include="../AgentKit.Durability.Sqlite/AgentKit.Durability.Sqlite.csproj"/>
     <ProjectReference Include="../AgentKit.Loop/AgentKit.Loop.csproj"/>
     <ProjectReference Include="../AgentKit.Output/AgentKit.Output.csproj"/>
     <ProjectReference Include="../AgentKit.Permissions/AgentKit.Permissions.csproj"/>

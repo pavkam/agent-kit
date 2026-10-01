@@ -9,6 +9,7 @@ namespace AgentKit.Artifacts.Sqlite
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteArtifactStore(AgentKit.ArtifactBackendKey key, AgentKit.Artifacts.Sqlite.SqliteArtifactTarget target, System.Action<AgentKit.Artifacts.Sqlite.SqliteArtifactOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteArtifactReferenceCommitIntentStore(AgentKit.Artifacts.Sqlite.SqliteArtifactTarget target, System.Action<AgentKit.Artifacts.Sqlite.SqliteArtifactOptions>? configure = null) { }
         }
     }
     public readonly struct SqliteArtifactInstanceId : System.IEquatable<AgentKit.Artifacts.Sqlite.SqliteArtifactInstanceId>
@@ -22,6 +23,16 @@ namespace AgentKit.Artifacts.Sqlite
         public SqliteArtifactOptions() { }
         public System.TimeSpan LockTimeout { get; set; }
         public int MaximumRecordBytes { get; set; }
+    }
+    public sealed class SqliteArtifactReferenceCommitIntentStore : AgentKit.IArtifactReferenceCommitIntentStore, System.IDisposable
+    {
+        public SqliteArtifactReferenceCommitIntentStore(AgentKit.Artifacts.Sqlite.SqliteArtifactTarget target, AgentKit.Artifacts.Sqlite.SqliteArtifactSettings settings, System.TimeProvider time, Microsoft.Extensions.Logging.ILogger<AgentKit.Artifacts.Sqlite.SqliteArtifactReferenceCommitIntentStore>? logger = null) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactReferenceCommitIntentResult> GetAsync(AgentKit.TenantId tenantId, AgentKit.ArtifactPreparationId preparationId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<System.Collections.Immutable.ImmutableArray<AgentKit.ArtifactReferenceCommitIntent>> ListPendingAsync(AgentKit.TenantId tenantId, System.DateTimeOffset recordedBefore, int limit, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactReferenceCommitIntentResult> RecordAsync(AgentKit.ArtifactReferenceCommitIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactReferenceCommitIntentResult> TransitionAsync(AgentKit.TenantId tenantId, AgentKit.ArtifactPreparationId preparationId, AgentKit.ArtifactReferenceCommitState expected, AgentKit.ArtifactReferenceCommitState nextState, System.DateTimeOffset at, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class SqliteArtifactSettings : System.IEquatable<AgentKit.Artifacts.Sqlite.SqliteArtifactSettings>
     {

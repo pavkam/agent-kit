@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// <para>
 /// This class gives tests and ephemeral hosts a fast, hermetic double for the operating-system profile that proves the
-/// same <see cref="IFileReader"/>, <see cref="IFileWriter"/>, <see cref="IFileMetadataReader"/>,
+/// same <see cref="IFileReader"/>, <see cref="IFileWriter"/>, <see cref="IFileDeleter"/>, <see cref="IFileMetadataReader"/>,
 /// <see cref="IDirectoryCreator"/>, <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>,
 /// <see cref="IFileContentSearcher"/>, <see cref="IFileSnapshotReader"/>, <see cref="IAtomicFileReplacer"/>, and
 /// <see cref="IWorkspacePatchApplier"/> contracts without touching real disk. Every effect still validates and consumes a
@@ -37,6 +37,7 @@ public sealed partial class InMemoryFileSystem:
     IWorkspacePatchApplier,
     IFileReader,
     IFileWriter,
+    IFileDeleter,
     IFileMetadataReader,
     IDirectoryCreator,
     IDirectoryReader

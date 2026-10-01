@@ -86,7 +86,7 @@ public sealed class RetrievalContextContributor: IContextContributor
             new RetrievalBudget(_options.MaximumItems, _options.MaximumBytes, _options.MaximumTokens),
             _options.MaximumClassification,
             new ModelDestination(request.Model.Alias));
-        var result = await _pipeline.RetrieveAsync(query, cancellationToken).ConfigureAwait(false);
+        var result = await _pipeline.RetrieveAsync(query, request.Hooks, cancellationToken).ConfigureAwait(false);
         if (!result.IsCompleted)
         {
             var kind = result.Failure.Kind.ToString();

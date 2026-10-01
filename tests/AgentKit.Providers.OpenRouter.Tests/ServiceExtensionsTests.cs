@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenRouter.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -83,8 +84,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -96,8 +98,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

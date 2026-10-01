@@ -8,8 +8,9 @@ namespace AgentKit.Artifacts.FileSystem;
 /// <para>
 /// Every artifact operation first consumes its own single-use artifact grant, then performs each file read and write under a separate
 /// security request bound to the same captured authorization, so the file boundary enforces its own exact grant for every concrete
-/// effect. Writes name an explicit disposition; the store creates no directory, deletes nothing the contracts cannot delete, and
-/// never opens a host path itself.
+/// effect. Writes name an explicit disposition, a released payload is removed by an explicit delete effect, recovery sweeps
+/// unreferenced payload files by enumerating the root, and the store creates no directory and never opens a host path itself. The
+/// selected profile must declare the read, write, enumerate, and delete capabilities.
 /// </para>
 /// <para>
 /// Entry state is a flushed newline-delimited log replayed through the same planner the other adapters run, so staging visibility,
@@ -26,7 +27,7 @@ public sealed class FileSystemArtifactStore: IArtifactStore, IDisposable
     /// <summary>Initializes a store bound to one file-system profile and root without performing any effect.</summary>
     /// <param name="target">The non-null profile, logical root, and host root.</param>
     /// <param name="settings">The non-null immutable bounds.</param>
-    /// <param name="fileSystems">The selector that resolves the profile's reader and writer.</param>
+    /// <param name="fileSystems">The selector that resolves the profile's reader, writer, deleter, and directory reader.</param>
     /// <param name="authorities">The selector that activates the captured authority for each file effect.</param>
     /// <param name="requestIds">The security request identity source.</param>
     /// <param name="fileOperationIds">The file-operation identity source.</param>

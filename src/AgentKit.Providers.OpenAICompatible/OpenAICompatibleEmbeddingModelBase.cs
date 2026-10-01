@@ -15,18 +15,18 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// <summary>
 /// A reusable <see cref="IEmbeddingModel"/> implementation for
 /// OpenAI-compatible <c>POST /embeddings</c> endpoints, performing
-/// translation, credential resolution, transport, and response parsing
+/// translation, profile selection, transport, and response parsing
 /// through injected collaborators.
 /// </summary>
 /// <remarks>
 /// <para>
 /// A concrete provider package (such as AgentKit.Providers.OpenAI) derives
 /// from this class and supplies its own <see cref="EmbeddingModelDescriptor"/>,
-/// <see cref="OpenAICompatibilityProfile"/>, and
-/// <see cref="IProviderCredentialSource"/>. This base class owns the shared
-/// request pipeline: translation, credential-to-header resolution, deadline
-/// enforcement, transport, response parsing, and normalized failure
-/// mapping.
+/// <see cref="OpenAICompatibilityProfile"/>. This base class owns the shared
+/// request pipeline: translation, endpoint and credential profile selection,
+/// deadline enforcement, transport through <see cref="ProviderEgress"/> (which
+/// obtains the credential-read grant and lease and applies it), response
+/// parsing, and normalized failure mapping.
 /// </para>
 /// <para>
 /// Two narrow extension points let a branded dialect diverge without
@@ -51,16 +51,14 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// The largest delay <see cref="CancellationTokenSource(TimeSpan, TimeProvider)"/> accepts
     /// (<see cref="uint.MaxValue"/> - 1 milliseconds, ~49.7 days). A caller expressing "no practical
     /// deadline" (a far-future deadline) must not turn every attempt into an unhandled
-    /// <see cref="ArgumentOutOfRangeException"/> after credential resolution and translation have
-    /// already run.
+    /// <see cref="ArgumentOutOfRangeException"/> after translation has already run.
     /// </summary>
     private static readonly TimeSpan _maximumDeadlineDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIEmbeddingRequestTranslator _translator;
     private readonly IOpenAIEmbeddingResponseParser _responseParser;
-    private readonly IProviderCredentialSource _credentials;
-    private readonly IProviderProfileRuntimeSelector? _profileSelector;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
 
@@ -76,28 +74,24 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// </param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
-    /// <param name="profileSelector">
-    /// The optional profile runtime selector used when <see cref="EmbeddingModelDescriptor.Binding"/> is configured.
-    /// </param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     protected OpenAICompatibleEmbeddingModelBase(
         EmbeddingModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIEmbeddingRequestTranslator translator,
         IOpenAIEmbeddingResponseParser responseParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderProfileRuntimeSelector? profileSelector = null)
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
-        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(profileSelector);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
@@ -106,7 +100,6 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         _profile = profile;
         _translator = translator;
         _responseParser = responseParser;
-        _credentials = credentials;
         _profileSelector = profileSelector;
         _egress = egress;
         _timeProvider = timeProvider;
@@ -126,8 +119,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     protected EmbeddingModelDescriptor Descriptor { get; }
 
     /// <summary>
-    /// Gets the header authentication scheme a resolved
-    /// <see cref="ProviderCredential"/> is applied with. The default sends an
+    /// Gets the header authentication scheme the released credential lease
+    /// is applied with. The default sends an
     /// API key or OAuth token as <c>Authorization: Bearer &lt;secret&gt;</c>.
     /// </summary>
     /// <value>
@@ -138,8 +131,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// sending OAuth tokens as bearer tokens.
     /// </value>
     /// <remarks>
-    /// The value is read once per attempt, after the credential has been
-    /// resolved and before any HTTP request is created. Overrides must be
+    /// The value is read once per attempt, after the profile runtime has been
+    /// selected and before the request is handed to provider egress. Overrides must be
     /// pure and thread-safe: this adapter is shared across concurrent
     /// attempts.
     /// </remarks>
@@ -157,8 +150,8 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     /// </param>
     /// <param name="request">The request being sent, already preflight-validated against <see cref="Descriptor"/>.</param>
     /// <remarks>
-    /// This hook runs after successful translation and credential
-    /// resolution and before the HTTP request is created, so an override
+    /// This hook runs after successful translation and before the profile
+    /// runtime is selected and the HTTP request is created, so an override
     /// cannot influence capability preflight, authorization, or deadline
     /// evaluation. It is invoked on the request path of every attempt and
     /// must be thread-safe. An exception thrown by an override escapes
@@ -222,65 +215,6 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 "The request deadline had already elapsed before the attempt could be sent.");
         }
 
-        var sendStarted = _timeProvider.GetTimestamp();
-        using var sendActivity = ProviderRequestObservability.StartEmbeddingSend(Descriptor.ProviderId);
-        IProviderProfileRuntimeLease? profileLease = null;
-        ProviderCredential credential;
-        Uri? endpointOverride = null;
-        try
-        {
-            var credentialBinding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
-                    Descriptor.Binding,
-                    request.Operation,
-                    _credentials,
-                    _profileSelector,
-                    Descriptor.ProviderId,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (!credentialBinding.IsSuccess)
-            {
-                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
-                ProviderRequestObservability.RecordRequest("embedding", "failed", _timeProvider.GetElapsedTime(sendStarted));
-                return Fail(credentialBinding.Failure!);
-            }
-
-            profileLease = credentialBinding.Lease;
-            endpointOverride = credentialBinding.EndpointBaseAddress;
-            credential = await credentialBinding.CredentialSource!
-                .GetCredentialAsync(Descriptor.ProviderId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return Cancel(Descriptor.ProviderId);
-        }
-        catch (OperationCanceledException exception)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Timeout,
-                "The credential source did not resolve a credential before its own deadline.",
-                exception);
-        }
-        catch (Exception exception)
-        {
-            return FailWithKind(
-                ProviderFailureKind.Authentication,
-                "The request credential could not be resolved.",
-                exception);
-        }
-
-        var authorization = ProviderAuthorizationHeaderFactory.Create(
-            credential,
-            Descriptor.ProviderId,
-            _timeProvider,
-            AuthorizationScheme);
-        if (authorization is ProviderAuthorizationDenied denied)
-        {
-            return Fail(denied.Failure);
-        }
-
-        var granted = (ProviderAuthorizationGranted) authorization;
-
         JsonObject payload;
         try
         {
@@ -296,15 +230,57 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
 
         AdjustRequestPayload(payload, request);
 
+        var sendStarted = _timeProvider.GetTimestamp();
+        using var sendActivity = ProviderRequestObservability.StartEmbeddingSend(Descriptor.ProviderId);
+        IProviderProfileRuntimeLease? profileLease = null;
+        Uri? endpointOverride = null;
         try
         {
-            using var httpRequest = CreateHttpRequest(payload, granted, endpointOverride);
+            var selection = await ProviderProfileAttemptBinding.SelectRuntimeAsync(
+                    Descriptor.Binding,
+                    request.Operation,
+                    _profileSelector,
+                    Descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!selection.IsSuccess)
+            {
+                sendActivity?.SetFailed("invalid_request", nameof(ProviderFailureKind.InvalidRequest));
+                ProviderRequestObservability.RecordRequest("embedding", "failed", _timeProvider.GetElapsedTime(sendStarted));
+                return Fail(selection.Failure!);
+            }
+
+            profileLease = selection.Runtime;
+            endpointOverride = selection.EndpointBaseAddress;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Cancel(Descriptor.ProviderId);
+        }
+        catch (OperationCanceledException exception)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The credential profile was not selected before its own deadline.",
+                exception);
+        }
+        catch (Exception exception)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Authentication,
+                "The credential profile could not be selected.",
+                exception);
+        }
+
+        try
+        {
+            using var httpRequest = CreateHttpRequest(payload, endpointOverride);
             using var deadlineSource = new CancellationTokenSource(
                 remaining > _maximumDeadlineDelay ? _maximumDeadlineDelay : remaining, _timeProvider);
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
             var sent = await _egress
-                .SendAsync(ProviderEgressRequest.ForEmbedding(Descriptor, request, httpRequest), cancellationToken)
+                .SendAsync(ProviderEgressRequest.ForEmbedding(Descriptor, request, httpRequest, CreateCredential(profileLease)), cancellationToken)
                 .ConfigureAwait(false);
             if (sent is ProviderEgressRefused refused)
             {
@@ -391,9 +367,11 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         }
     }
 
+    private ProviderEgressCredential? CreateCredential(IProviderProfileRuntimeLease? runtime) =>
+        runtime is null ? null : new ProviderEgressCredential(runtime, AuthorizationScheme);
+
     private HttpRequestMessage CreateHttpRequest(
         JsonObject payload,
-        ProviderAuthorizationGranted authorization,
         Uri? endpointBaseOverride)
     {
         var targetUri = endpointBaseOverride is null
@@ -403,8 +381,6 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
-
-        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in _profile.DefaultRequestHeaders)
         {

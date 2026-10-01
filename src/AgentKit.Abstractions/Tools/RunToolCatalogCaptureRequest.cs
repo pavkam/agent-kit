@@ -67,4 +67,24 @@ public sealed record RunToolCatalogCaptureRequest
 
     /// <summary>Gets the model capabilities used during catalog preflight.</summary>
     public ModelCapabilities? ModelCapabilities { get; }
+
+    /// <summary>Gets the per-run tool allow-list, or <see langword="null"/> when the run exposes the whole captured catalog.</summary>
+    /// <value>
+    /// The tool identifiers the run may see and call. The factory intersects the captured catalog with this list, so a tool
+    /// outside it is neither advertised nor resolvable; an empty list exposes no tool. The restriction can only narrow the
+    /// selected toolsets and never adds a tool the toolsets did not publish.
+    /// </value>
+    public ImmutableArray<ToolId>? AllowedTools
+    {
+        get;
+        init
+        {
+            if (value is { } allowed)
+            {
+                ArgumentException.ThrowIfDefault(allowed, nameof(AllowedTools));
+            }
+
+            field = value;
+        }
+    }
 }

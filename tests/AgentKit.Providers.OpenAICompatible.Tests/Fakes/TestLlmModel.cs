@@ -17,18 +17,18 @@ internal sealed class TestLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="profile">The tested wire-behavior configuration for the target endpoint.</param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="streamParser">Parses OpenAI-compatible responses into normalized events.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The profile runtime selector.</param>
     public TestLlmModel(
         ModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIRequestTranslator translator,
         IOpenAIStreamParser streamParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
-        TimeProvider timeProvider)
-        : base(descriptor, profile, translator, streamParser, credentials, egress, timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector profileSelector)
+        : base(descriptor, profile, translator, streamParser, egress, timeProvider, profileSelector)
     {
     }
 }

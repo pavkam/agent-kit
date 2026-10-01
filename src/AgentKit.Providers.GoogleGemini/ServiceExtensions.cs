@@ -117,12 +117,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
-                services,
-                GoogleGeminiProviderDefaults.CredentialSourceKey,
-                GoogleGeminiProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, GoogleGeminiProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -153,11 +148,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(GoogleGeminiProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                GoogleGeminiProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
+                GoogleGeminiProviderDefaults.CredentialSourceKey,
+                GoogleGeminiProviderDefaults.ProviderId);
 
             return services;
         }
@@ -253,10 +247,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -370,9 +363,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleGeminiEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

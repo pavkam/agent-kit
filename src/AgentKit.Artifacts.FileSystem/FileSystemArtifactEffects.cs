@@ -3,11 +3,12 @@
 
 namespace AgentKit.Artifacts.FileSystem;
 
-/// <summary>Performs each protected file read and write the store needs, authorizing every effect under the captured authorization of the current operation.</summary>
+/// <summary>Performs each protected file read, write, delete, and root enumeration the store needs, authorizing every effect under the captured authorization of the current operation.</summary>
 /// <remarks>
 /// Every effect passes one typed security request to the captured authority, receives an exact single-use grant, and presents it to
-/// the selected reader or writer, which revalidates and consumes it. The store never opens a host path itself, never creates a
-/// directory, and never chooses a disposition implicitly: each write names create-only, replace-existing, create-or-replace, or append.
+/// the selected reader, writer, deleter, or directory reader, which revalidates and consumes it. The store never opens a host path
+/// itself, never creates a directory, and never chooses a disposition implicitly: each write names create-only, replace-existing,
+/// create-or-replace, or append, and each removal is an explicit delete effect on one exact regular file.
 /// </remarks>
 internal sealed class FileSystemArtifactEffects
 {
@@ -83,6 +84,81 @@ internal sealed class FileSystemArtifactEffects
             resolved, disposition, expectedTargetFingerprint: null, payload.Length, payloadFingerprint,
             FileWriteAtomicityMode.Required, FileWriteEffectClass.WorkspaceBytes, grant);
         return await writerSelected.Writer.WriteAsync(operation, new FileWriteContent(payload, payloadFingerprint), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes one regular file directly under the root.</summary>
+    /// <param name="authorization">The captured authorization of the current operation.</param>
+    /// <param name="name">The single-segment file name directly under the root.</param>
+    /// <param name="cancellationToken">Cancels before the effect.</param>
+    /// <returns>The closed deletion outcome; a missing file reports not-found.</returns>
+    /// <exception cref="FileEffectException">The deleter or authority is unavailable, or authorization was refused.</exception>
+    internal async ValueTask<FileDeleteResult> DeleteAsync(
+        SecurityAuthorizationContext authorization,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        var selection = await _fileSystems.SelectAsync(_target.ProfileKey, FileSystemCapability.Delete, cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemFileDeleterSelected deleterSelected)
+        {
+            throw new FileEffectException("The configured file-system deleter profile is unavailable.");
+        }
+
+        var relative = new NormalizedRelativePath(name);
+        var target = FileHostTargetBinding.Target(_target.RootId, relative);
+        var resolved = FileHostTargetBinding.Resolve(_target.RootId, relative, _target.HostRootPath);
+        var grant = await AuthorizeAsync(
+            authorization,
+            deleterSelected.Deleter.SecurityAudience,
+            SecurityOperationKind.FileWrite,
+            SecurityEffect.Delete,
+            FileSecurityBinding.Resource(target),
+            FileSecurityBinding.DeleteFingerprint(target, expectedTargetFingerprint: null),
+            cancellationToken).ConfigureAwait(false);
+        return await deleterSelected.Deleter.DeleteAsync(new AuthorizedFileDelete(resolved, expectedTargetFingerprint: null, grant), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Lists the names of the regular files directly under the root.</summary>
+    /// <param name="authorization">The captured authorization of the current operation.</param>
+    /// <param name="cancellationToken">Cancels before or during enumeration.</param>
+    /// <returns>The file names in ordinal order; directories are omitted.</returns>
+    /// <exception cref="FileEffectException">The directory reader or authority is unavailable, authorization was refused, or the root cannot be observed.</exception>
+    internal async ValueTask<IReadOnlyList<string>> EnumerateFilesAsync(
+        SecurityAuthorizationContext authorization,
+        CancellationToken cancellationToken)
+    {
+        var selection = await _fileSystems.SelectAsync(_target.ProfileKey, FileSystemCapability.Enumerate, cancellationToken).ConfigureAwait(false);
+        if (selection is not FileSystemDirectoryReaderSelected readerSelected)
+        {
+            throw new FileEffectException("The configured file-system directory-reader profile is unavailable.");
+        }
+
+        var grant = await AuthorizeAsync(
+            authorization,
+            readerSelected.DirectoryReader.SecurityAudience,
+            SecurityOperationKind.DirectoryRead,
+            SecurityEffect.Observe,
+            DirectorySecurityBinding.Resource(path: null),
+            DirectorySecurityBinding.Fingerprint(path: null),
+            cancellationToken).ConfigureAwait(false);
+        var operation = new AuthorizedDirectoryEnumeration(
+            FileHostTargetBinding.Resolve(_target.RootId, new NormalizedRelativePath("."), _target.HostRootPath), grant);
+        var names = new List<string>();
+        try
+        {
+            await foreach (var entry in readerSelected.DirectoryReader.EnumerateAsync(operation, cancellationToken).ConfigureAwait(false))
+            {
+                if (!entry.IsDirectory)
+                {
+                    names.Add(entry.Name.Value);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException or IOException)
+        {
+            throw new FileEffectException("The file-system root could not be enumerated.");
+        }
+
+        return names;
     }
 
     /// <summary>Reads one complete file, bounded.</summary>

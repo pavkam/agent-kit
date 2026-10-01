@@ -65,6 +65,62 @@ public static class ServiceExtensions
             return HookServiceRegistration.AddBeforeToolInvocationHook<THook>(services, descriptor);
         }
 
+        /// <summary>Registers a hook for <see cref="AgentHookPoints.BeforeMemoryProposal"/>.</summary>
+        /// <typeparam name="THook">The hook implementation, resolved from the container when the catalog selects it.</typeparam>
+        /// <param name="descriptor">The registration identity, ordering, and failure requirements; its point must be <see cref="AgentHookPoints.BeforeMemoryProposal"/>.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException">The descriptor names a different hook point.</exception>
+        /// <remarks>Registration is additive and builds no service provider; the hook only runs for operations whose captured hook catalog includes it.</remarks>
+        public IServiceCollection AddBeforeMemoryProposalHook<THook>(HookRegistrationDescriptor descriptor)
+            where THook : class, IBeforeMemoryProposalHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddBeforeMemoryProposalHook<THook>(services, descriptor);
+        }
+
+        /// <summary>Registers a hook for <see cref="AgentHookPoints.BeforeMemoryWrite"/>.</summary>
+        /// <typeparam name="THook">The hook implementation, resolved from the container when the catalog selects it.</typeparam>
+        /// <param name="descriptor">The registration identity, ordering, and failure requirements; its point must be <see cref="AgentHookPoints.BeforeMemoryWrite"/>.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException">The descriptor names a different hook point.</exception>
+        /// <remarks>Registration is additive and builds no service provider; the hook only runs for operations whose captured hook catalog includes it.</remarks>
+        public IServiceCollection AddBeforeMemoryWriteHook<THook>(HookRegistrationDescriptor descriptor)
+            where THook : class, IBeforeMemoryWriteHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddBeforeMemoryWriteHook<THook>(services, descriptor);
+        }
+
+        /// <summary>Registers a hook for <see cref="AgentHookPoints.BeforeRetrieval"/>.</summary>
+        /// <typeparam name="THook">The hook implementation, resolved from the container when the catalog selects it.</typeparam>
+        /// <param name="descriptor">The registration identity, ordering, and failure requirements; its point must be <see cref="AgentHookPoints.BeforeRetrieval"/>.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException">The descriptor names a different hook point.</exception>
+        /// <remarks>Registration is additive and builds no service provider; the hook only runs for operations whose captured hook catalog includes it.</remarks>
+        public IServiceCollection AddBeforeRetrievalHook<THook>(HookRegistrationDescriptor descriptor)
+            where THook : class, IBeforeRetrievalHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddBeforeRetrievalHook<THook>(services, descriptor);
+        }
+
+        /// <summary>Registers a hook for <see cref="AgentHookPoints.BeforeRetrievalExposure"/>.</summary>
+        /// <typeparam name="THook">The hook implementation, resolved from the container when the catalog selects it.</typeparam>
+        /// <param name="descriptor">The registration identity, ordering, and failure requirements; its point must be <see cref="AgentHookPoints.BeforeRetrievalExposure"/>.</param>
+        /// <returns>The same <see cref="IServiceCollection"/> so registrations can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException">The descriptor names a different hook point.</exception>
+        /// <remarks>Registration is additive and builds no service provider; the hook only runs for operations whose captured hook catalog includes it.</remarks>
+        public IServiceCollection AddBeforeRetrievalExposureHook<THook>(HookRegistrationDescriptor descriptor)
+            where THook : class, IBeforeRetrievalExposureHook
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return HookServiceRegistration.AddBeforeRetrievalExposureHook<THook>(services, descriptor);
+        }
+
         /// <summary>Replaces the singular <see cref="IHookDispatcher"/> registration.</summary>
         /// <typeparam name="TDispatcher">The replacement dispatcher type.</typeparam>
         /// <returns>The same <paramref name="services"/> instance.</returns>

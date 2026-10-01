@@ -21,7 +21,7 @@ public sealed class GoogleGeminiLlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static GoogleGeminiLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, GoogleGeminiProviderOptions? options = null) => new(descriptor ?? TestModels.GeminiFlash, options ?? new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static GoogleGeminiLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, GoogleGeminiProviderOptions? options = null) => new(descriptor ?? TestModels.GeminiFlash, options ?? new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, (options ?? new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/") }).BaseAddress));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsApiKeyHeaderAndGenerateContentUri()
     {

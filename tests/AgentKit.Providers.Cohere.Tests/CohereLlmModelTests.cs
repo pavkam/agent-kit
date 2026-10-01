@@ -21,7 +21,7 @@ public sealed class CohereLlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static CohereLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, CohereProviderOptions? options = null) => new(descriptor ?? TestModels.CommandAPlus, options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereRequestTranslator(), new CohereResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static CohereLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, CohereProviderOptions? options = null) => new(descriptor ?? TestModels.CommandAPlus, options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereRequestTranslator(), new CohereResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, (options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }).BaseAddress));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsBearerHeaderAndChatUri()
     {

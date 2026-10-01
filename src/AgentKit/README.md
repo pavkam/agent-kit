@@ -129,8 +129,6 @@ projects above are composition collaborators, not necessarily dependencies.
   registration tests.
 - [Component specification](../../docs/architecture/composition-and-configuration.md)
   — intended ownership and contracts.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

@@ -35,7 +35,7 @@ public sealed class AnthropicProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("sk-ant-test"),
             AnthropicProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             AnthropicProviderDefaults.AuthorizationScheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();

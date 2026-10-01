@@ -32,4 +32,10 @@ internal static partial class ProviderEgressLog
         ProviderId providerId,
         ProviderEgressOperation operation,
         string stage);
+
+    [LoggerMessage(
+        6123,
+        LogLevel.Debug,
+        "Provider {ProviderId} {Operation} credential was released under a credential-read grant and applied.")]
+    internal static partial void CredentialApplied(ILogger logger, ProviderId providerId, ProviderEgressOperation operation);
 }

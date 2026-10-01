@@ -75,6 +75,25 @@ public sealed class RunPolicyVersioningTests
     }
 
     [Fact]
+    public void Compute_WhenNoRestrictionIsGiven_ReturnsTheVersionItAlwaysDid()
+    {
+        var plain = RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options());
+
+        RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options(), allowedTools: null, budgetParentScopeId: null).ShouldBe(plain);
+    }
+
+    [Fact]
+    public void Compute_WhenAllowListOrBudgetParentDiffers_ReturnsADifferentVersion()
+    {
+        var plain = RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options());
+        var listed = RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options(), allowedTools: [new ToolId("read")]);
+        var other = RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options(), allowedTools: [new ToolId("write")]);
+        var scoped = RunPolicyVersioning.Compute(8, TimeSpan.FromMinutes(2), Key(), Options(), budgetParentScopeId: new BudgetScopeId(Guid.Parse("d0000000-0000-0000-0000-000000000003")));
+
+        new[] { plain, listed, other, scoped }.Distinct().Count().ShouldBe(4);
+    }
+
+    [Fact]
     public void Compute_WhenAnyLoopOptionDiffers_ReturnsADifferentVersion()
     {
         var baseline = Options();

@@ -101,4 +101,68 @@ public static class AgentHookPointDefinitions
         typeof(OutputValidatingEventArgs),
         HookPointKind.ShortCircuiting,
         HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.BeforeMemoryProposal"/>.</summary>
+    public static HookPointDefinition<IBeforeMemoryProposalHook, BeforeMemoryProposalEventArgs> BeforeMemoryProposal { get; } = new(
+        AgentHookPoints.BeforeMemoryProposal,
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<BeforeMemoryProposalEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.BeforeMemoryProposal"/>.</summary>
+    public static HookPointDefinitionRegistration BeforeMemoryProposalRegistration { get; } = new(
+        AgentHookPoints.BeforeMemoryProposal,
+        typeof(IBeforeMemoryProposalHook),
+        typeof(BeforeMemoryProposalEventArgs),
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.BeforeMemoryWrite"/>.</summary>
+    public static HookPointDefinition<IBeforeMemoryWriteHook, BeforeMemoryWriteEventArgs> BeforeMemoryWrite { get; } = new(
+        AgentHookPoints.BeforeMemoryWrite,
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<BeforeMemoryWriteEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.BeforeMemoryWrite"/>.</summary>
+    public static HookPointDefinitionRegistration BeforeMemoryWriteRegistration { get; } = new(
+        AgentHookPoints.BeforeMemoryWrite,
+        typeof(IBeforeMemoryWriteHook),
+        typeof(BeforeMemoryWriteEventArgs),
+        HookPointKind.ShortCircuiting,
+        HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.BeforeRetrieval"/>.</summary>
+    public static HookPointDefinition<IBeforeRetrievalHook, BeforeRetrievalEventArgs> BeforeRetrieval { get; } = new(
+        AgentHookPoints.BeforeRetrieval,
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<BeforeRetrievalEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.BeforeRetrieval"/>.</summary>
+    public static HookPointDefinitionRegistration BeforeRetrievalRegistration { get; } = new(
+        AgentHookPoints.BeforeRetrieval,
+        typeof(IBeforeRetrievalHook),
+        typeof(BeforeRetrievalEventArgs),
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation);
+
+    /// <summary>Gets the closed definition for <see cref="AgentHookPoints.BeforeRetrievalExposure"/>.</summary>
+    public static HookPointDefinition<IBeforeRetrievalExposureHook, BeforeRetrievalExposureEventArgs> BeforeRetrievalExposure { get; } = new(
+        AgentHookPoints.BeforeRetrievalExposure,
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation,
+        new DefaultAgentHookMutationValidator<BeforeRetrievalExposureEventArgs>(),
+        static (hook, args, context, cancellationToken) => hook.InvokeAsync(args, context, cancellationToken));
+
+    /// <summary>Gets the point-definition registration for <see cref="AgentHookPoints.BeforeRetrievalExposure"/>.</summary>
+    public static HookPointDefinitionRegistration BeforeRetrievalExposureRegistration { get; } = new(
+        AgentHookPoints.BeforeRetrievalExposure,
+        typeof(IBeforeRetrievalExposureHook),
+        typeof(BeforeRetrievalExposureEventArgs),
+        HookPointKind.Mutating,
+        HookFailureMode.FailOperation);
 }

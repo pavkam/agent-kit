@@ -89,4 +89,12 @@ public sealed record ContextContributionRequest
 
     /// <summary>Gets the effective configuration snapshot for this assembly.</summary>
     public EffectiveConfigurationSnapshot Configuration { get; }
+
+    /// <summary>Gets the run's captured hook context for contributors that dispatch their own hook points.</summary>
+    /// <value>
+    /// The context the loop captured for this run when its hook catalog registers a hook the contributor dispatches
+    /// (for example a retrieval hook); otherwise <see langword="null"/>, in which case the contributor runs without hooks.
+    /// A contributor derives per-point dispatches from it and never selects a live hook profile.
+    /// </value>
+    public HookDispatchContext? Hooks { get; init; }
 }

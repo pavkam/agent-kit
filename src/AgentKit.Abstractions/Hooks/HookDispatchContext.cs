@@ -47,4 +47,18 @@ public sealed record HookDispatchContext
 
     /// <summary>Gets the activation lease owning this dispatch's hook instances and reentrancy tracker.</summary>
     public IHookActivationLease Activation { get; }
+
+    /// <summary>Derives the context for another hook point within the same operation, catalog, and activation.</summary>
+    /// <param name="point">The hook point the derived context dispatches.</param>
+    /// <param name="dispatchId">The fresh identity of the derived dispatch.</param>
+    /// <param name="timestamp">The instant the derived dispatch starts; it must precede <see cref="HookDispatchMetadata.Deadline"/>.</param>
+    /// <returns>
+    /// A context that keeps this context's catalog, activation, correlation, and deadline, so it never selects a different
+    /// hook profile and cannot extend the caller's deadline.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="point"/> or <paramref name="dispatchId"/> is the default value, or <paramref name="timestamp"/> is not before the deadline.
+    /// </exception>
+    public HookDispatchContext ForPoint(HookPointId point, HookDispatchId dispatchId, DateTimeOffset timestamp) =>
+        new(Catalog, new HookDispatchMetadata(point, dispatchId, Dispatch.Correlation, timestamp, Dispatch.Deadline), Activation);
 }

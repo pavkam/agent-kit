@@ -81,7 +81,7 @@ public sealed class GoogleGeminiProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("AIza-test"),
             GoogleGeminiProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             GoogleGeminiProviderDefaults.AuthorizationScheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();

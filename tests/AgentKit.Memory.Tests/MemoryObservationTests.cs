@@ -24,7 +24,7 @@ public sealed class MemoryObservationTests
         using var counts = new MetricCollector(AgentKitMetricNames.MemoryOperationCount);
         var proposal = MemoryTestData.Proposal(owner);
 
-        _ = await harness.Coordinator.ProposeAsync(proposal, TestContext.Current.CancellationToken);
+        _ = await harness.Coordinator.ProposeAsync(proposal, hooks: null, TestContext.Current.CancellationToken);
 
         var span = activities.Snapshot().ShouldHaveSingleItem();
         span.Status.ShouldBe(ActivityStatusCode.Ok);
@@ -42,7 +42,7 @@ public sealed class MemoryObservationTests
         var owner = MemoryTestData.NewOwner($"tenant-{Guid.NewGuid():N}");
         using var activities = Collect(AgentKitActivityNames.MemoryPropose, owner.Identity.TenantId.Value);
 
-        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), TestContext.Current.CancellationToken);
+        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), hooks: null, TestContext.Current.CancellationToken);
 
         var span = activities.Snapshot().ShouldHaveSingleItem();
         span.Status.ShouldBe(ActivityStatusCode.Error);
@@ -58,7 +58,7 @@ public sealed class MemoryObservationTests
         using var source = new CancellationTokenSource();
         await source.CancelAsync();
 
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), source.Token));
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), hooks: null, source.Token));
 
         activities.Snapshot().ShouldHaveSingleItem().GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
     }
@@ -70,7 +70,7 @@ public sealed class MemoryObservationTests
         using var harness = MemoryHarness.Create(arrange: services => services.AddSingleton<ILogger<DefaultMemoryCoordinator>>(logger));
         var owner = MemoryTestData.NewOwner($"tenant-{Guid.NewGuid():N}");
 
-        var result = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), TestContext.Current.CancellationToken);
+        var result = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner), hooks: null, TestContext.Current.CancellationToken);
 
         result.IsAccepted.ShouldBeTrue();
     }
@@ -83,7 +83,7 @@ public sealed class MemoryObservationTests
         var owner = MemoryTestData.NewOwner($"tenant-{Guid.NewGuid():N}");
         using var activities = Collect(AgentKitActivityNames.MemoryPropose, owner.Identity.TenantId.Value);
 
-        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "protected preference body"), TestContext.Current.CancellationToken);
+        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "protected preference body"), hooks: null, TestContext.Current.CancellationToken);
 
         var entry = logger.Snapshot().ShouldHaveSingleItem();
         entry.EventId.Id.ShouldBe(32310);
@@ -97,7 +97,7 @@ public sealed class MemoryObservationTests
     {
         using var harness = MemoryHarness.Create();
         var owner = MemoryTestData.NewOwner($"tenant-{Guid.NewGuid():N}");
-        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "The user prefers concise answers."), TestContext.Current.CancellationToken);
+        _ = await harness.Coordinator.ProposeAsync(MemoryTestData.Proposal(owner, "The user prefers concise answers."), hooks: null, TestContext.Current.CancellationToken);
         using var retrieval = Collect(AgentKitActivityNames.RetrievalRetrieve, owner.Identity.TenantId.Value);
         using var sourceSpans = new ActivityCollector(
             static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
@@ -106,7 +106,7 @@ public sealed class MemoryObservationTests
         using var counts = new MetricCollector(AgentKitMetricNames.RetrievalCount);
         var query = MemoryTestData.Query(owner, "concise answers");
 
-        _ = await harness.Pipeline.RetrieveAsync(query, TestContext.Current.CancellationToken);
+        _ = await harness.Pipeline.RetrieveAsync(query, hooks: null, TestContext.Current.CancellationToken);
 
         var span = retrieval.Snapshot().ShouldHaveSingleItem();
         span.Status.ShouldBe(ActivityStatusCode.Ok);
@@ -124,7 +124,7 @@ public sealed class MemoryObservationTests
         using var retrieval = Collect(AgentKitActivityNames.RetrievalRetrieve, owner.Identity.TenantId.Value);
         var query = MemoryTestData.Query(owner, "secret query words", maximumClassification: DataClassification.Restricted);
 
-        _ = await harness.Pipeline.RetrieveAsync(query, TestContext.Current.CancellationToken);
+        _ = await harness.Pipeline.RetrieveAsync(query, hooks: null, TestContext.Current.CancellationToken);
 
         var span = retrieval.Snapshot().ShouldHaveSingleItem();
         span.Status.ShouldBe(ActivityStatusCode.Error);

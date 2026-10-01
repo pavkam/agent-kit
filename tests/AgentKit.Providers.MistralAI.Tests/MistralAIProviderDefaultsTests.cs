@@ -58,7 +58,7 @@ public sealed class MistralAIProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("mistral-test-key"),
             MistralAIProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             MistralAIProviderDefaults.AuthorizationScheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();

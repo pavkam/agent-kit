@@ -65,7 +65,7 @@ public sealed class AzureOpenAIProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("azure-key"),
             AzureOpenAIProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             AzureOpenAIProviderDefaults.AuthorizationScheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();

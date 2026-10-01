@@ -20,4 +20,16 @@ internal enum ArtifactStoreOperationKind
 
     /// <summary>Deleting a committed version.</summary>
     Delete = 4,
+
+    /// <summary>Recording a reference-commit intent.</summary>
+    IntentRecord = 5,
+
+    /// <summary>Reading a reference-commit intent.</summary>
+    IntentGet = 6,
+
+    /// <summary>Conditionally transitioning a reference-commit intent.</summary>
+    IntentTransition = 7,
+
+    /// <summary>Listing pending reference-commit intents.</summary>
+    IntentListPending = 8,
 }

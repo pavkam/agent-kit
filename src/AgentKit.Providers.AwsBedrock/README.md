@@ -7,6 +7,11 @@ Use this adapter when your application selects Amazon Bedrock. Configure the
 endpoint, credential source, model identity, and capability profile explicitly.
 The current registration surface exposes conversational models.
 
+Credentials are read through the provider credential-read boundary: your
+application supplies raw keys through `IAwsCredentialSource`, and
+`AwsSigV4CredentialSource` wraps it so each attempt consumes a credential-read
+grant and signs the request through a disposable lease.
+
 ## Use this project
 
 Start with `AddAwsBedrock`, `AddAwsBedrockLlmModel` in
@@ -42,8 +47,6 @@ above are composition collaborators, not necessarily dependencies.
   — intended ownership and contracts.
 - [Amazon Bedrock API reference](../../docs/providers/aws-bedrock.md) — wire
   behavior and capability requirements.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

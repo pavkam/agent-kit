@@ -38,6 +38,7 @@ engine is still the real engine: `GetAgentsAsync` lists the one published
 | `UseAzureOpenAI(endpoint, apiKey, deploymentId, modelId)`                                             | `AddAzureOpenAI` at the endpoint, `AddAzureOpenAIApiKeyCredential`, `AddAzureOpenAILlmModel(descriptor)` and `AddModelDescriptors`; a known OpenAI model's limits and prices are overlaid on the deployment                                                                                                                                                                                                                   |
 | Any provider sugar call (`UseOpenAI`, `UseAnthropic`, `UseOllama`, `UseOpenRouter`, `UseAzureOpenAI`) | `AddAgentNetwork`, because every provider attempt sends through `INetworkTransport` under per-attempt egress grants; `UseOllama` additionally allows `http` and private addresses so a local server is reachable                                                                                                                                                                                                              |
 | Any first sugar call                                                                                  | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentIO` + `AddSessionBackedInputQueue`, `AddAgentHooks`, `AddAgentTools`, `AddAgentBudgets` with the default budget profile and an in-memory ledger, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its security and run-profile publications, and `AddConversationSession` |
+| `WithSqliteDurability(path)` / `WithJsonDurability(dir)`                                              | `WithDurability()`'s profile, handlers, and policy over the SQLite journal, lease manager, and backend (or the JSON journal with in-memory leases and backend) at the explicit path, initialized when first resolved                                                                                                                                                                                                          |
 | `WithDurability()`                                                                                    | `AddAgentDurability`, the in-memory journal, lease manager, and backend, the default recovery policy, handlers for every first-party boundary, and one durability profile enabling all seven boundaries on every hosted definition; see [Durable execution](../../docs/architecture/durable-execution.md#simple-composition)                                                                                                  |
 
 Calls chain in any order before `Build()`; the plan is read lazily when the
@@ -73,8 +74,14 @@ escape hatch is the ordinary AgentKit API:
 - **Crash recovery:** `WithDurability()` journals every first-party boundary to
   process-local in-memory adapters, which are explicitly ephemeral: the
   boundaries, checkpoints, and recovery decisions are real and inspectable, but
-  nothing survives the process. Register keyed SQLite or JSON journal adapters
-  and `AddDurabilityProfile` on `builder.Services` for durable storage.
+  nothing survives the process. `WithSqliteDurability(databasePath)` and
+  `WithJsonDurability(directoryPath)` select the SQLite or JSON adapters at an
+  explicit absolute path (never implied) so a restarted process can read the
+  records a lost one left; one composition selects one store, and a second,
+  different choice throws. JSON keeps leases and backend ownership in-process
+  and its root must be canonical (no symbolic links). Register your own keyed
+  adapters and `AddDurabilityProfile` on `builder.Services` for cross-process
+  ownership.
 - **Real security:** register your own `ISecurityPolicy` implementations and an
   audit sink instead of the local defaults.
 - **Several agents:** `AddAgent(agentId, o => ...)` publishes another definition

@@ -16,7 +16,7 @@ public static class ServiceExtensions
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="key"/> is default or blank.</exception>
         /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
-        /// <remarks>The store is a singleton that requires an <see cref="IFileSystemSelector"/>, an <see cref="ISecurityAuthoritySelector"/>, and an <see cref="ISecurityGrantStore"/>. It performs no effect until its first operation, and no persistence target is ever chosen implicitly.</remarks>
+        /// <remarks>The store is a singleton that requires an <see cref="IFileSystemSelector"/>, an <see cref="ISecurityAuthoritySelector"/>, and an <see cref="ISecurityGrantStore"/>. The profile it selects must declare the read, write, enumerate, and delete capabilities. It performs no effect until its first operation, and no persistence target is ever chosen implicitly.</remarks>
         public IServiceCollection AddFileSystemArtifactStore(ArtifactBackendKey key, FileSystemArtifactTarget target, Action<FileSystemArtifactOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);

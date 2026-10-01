@@ -12,7 +12,7 @@ using AgentKit.TestSupport;
 public sealed class OpenAIEmbeddingModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static EmbeddingModelDescriptor CreateDescriptor() => new(new EmbeddingModelAlias("embed"), OpenAIProviderDefaults.ProviderId, OpenAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-3-small"), deploymentId: null, OpenAIProviderDefaults.DefaultEmbeddingCapabilities, OpenAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
+    private static EmbeddingModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new EmbeddingModelDescriptor(new EmbeddingModelAlias("embed"), OpenAIProviderDefaults.ProviderId, OpenAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-3-small"), deploymentId: null, OpenAIProviderDefaults.DefaultEmbeddingCapabilities, OpenAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty));
     private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
@@ -20,7 +20,7 @@ public sealed class OpenAIEmbeddingModelTests
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_success.json");
         var options = new OpenAIProviderOptions();
         var descriptor = CreateDescriptor();
-        var model = new OpenAIEmbeddingModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), new StaticApiKeyCredentialSource("sk-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenAIEmbeddingModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-real-looking-key")), OpenAIProviderDefaults.DefaultBaseAddress));
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         var vector = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Vector.ShouldBeOfType<DenseFloatVector>();

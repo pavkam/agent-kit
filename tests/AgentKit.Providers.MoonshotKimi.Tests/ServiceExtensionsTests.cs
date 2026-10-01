@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.MoonshotKimi.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -59,9 +60,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMoonshotKimi();
         _ = services.AddMoonshotKimiApiKeyCredential("test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            MoonshotKimiProviderDefaults.ProviderId);
+            MoonshotKimiProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -69,38 +71,32 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task AddMoonshotKimiApiKeyCredential_WhenAnotherProviderCredentialCoexists_ResolvesByProviderIdentity(
+    public async Task AddMoonshotKimiApiKeyCredential_WhenAnotherProviderCredentialCoexists_ResolvesBySourceKey(
         bool moonshotRegisteredFirst)
     {
         var services = new ServiceCollection();
-        var otherProviderId = new ProviderId("other-provider");
-        var otherSource = new StaticApiKeyCredentialSource("other-key");
+        var otherSourceKey = new ProviderCredentialSourceKey("other-source");
+        var otherSource = new StaticProviderCredentialSource(new ApiKeyProviderCredential("other-key"));
 
         if (moonshotRegisteredFirst)
         {
             _ = services.AddMoonshotKimiApiKeyCredential("moonshot-key");
-            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherProviderId, otherSource);
+            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherSourceKey, otherSource);
         }
         else
         {
-            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherProviderId, otherSource);
+            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherSourceKey, otherSource);
             _ = services.AddMoonshotKimiApiKeyCredential("moonshot-key");
         }
 
+        _ = services.AddProviderEgressTestServices();
         await using var provider = services.BuildServiceProvider();
-        var moonshotSource = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            MoonshotKimiProviderDefaults.ProviderId);
-        var resolvedOtherSource = provider.GetRequiredKeyedService<IProviderCredentialSource>(otherProviderId);
 
-        var moonshotCredential = await moonshotSource.GetCredentialAsync(
-            MoonshotKimiProviderDefaults.ProviderId,
-            TestContext.Current.CancellationToken);
-        var otherCredential = await resolvedOtherSource.GetCredentialAsync(
-            otherProviderId,
-            TestContext.Current.CancellationToken);
+        var moonshotCredential = await ResolveApiKeyAsync(provider, MoonshotKimiProviderDefaults.CredentialSourceKey);
+        var otherCredential = await ResolveApiKeyAsync(provider, otherSourceKey);
 
-        moonshotCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("moonshot-key");
-        otherCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("other-key");
+        moonshotCredential.ApiKey.ShouldBe("moonshot-key");
+        otherCredential.ApiKey.ShouldBe("other-key");
     }
 
     [Fact]
@@ -110,9 +106,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddMoonshotKimi();
         _ = services.AddMoonshotKimiOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            MoonshotKimiProviderDefaults.ProviderId);
+            MoonshotKimiProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
@@ -272,5 +269,12 @@ public sealed class ServiceExtensionsTests
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new OAuthTokenProviderCredential("token", null));
+    }
+
+    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderCredentialSourceKey sourceKey)
+    {
+        var probe = await ProviderCredentialProbe.ProbeAsync(provider, sourceKey, cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        _ = probe.Resolution.ShouldBeOfType<ProviderCredentialResolved>();
+        return new ApiKeyProviderCredential(probe.Headers["Authorization"]["Bearer ".Length..]);
     }
 }

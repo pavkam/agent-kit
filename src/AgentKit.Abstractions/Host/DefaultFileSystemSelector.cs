@@ -66,6 +66,10 @@ public sealed class DefaultFileSystemSelector: IFileSystemSelector
                 key,
                 _provider.GetRequiredKeyedService<IDirectoryCreator>(serviceKey),
                 capabilities),
+            FileSystemCapability.Delete => new FileSystemFileDeleterSelected(
+                key,
+                _provider.GetRequiredKeyedService<IFileDeleter>(serviceKey),
+                capabilities),
             FileSystemCapability.None => new FileSystemCapabilityUnsupported(key, requiredCapability, capabilities),
             FileSystemCapability.Enumerate => new FileSystemDirectoryReaderSelected(
                 key,

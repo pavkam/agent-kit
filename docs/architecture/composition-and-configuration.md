@@ -1271,7 +1271,9 @@ Every behaviorally meaningful choice has one declared configuration home:
 - process behavior and safe feature defaults use typed DI options validated on
   build or host start;
 - per-agent selections and defaults use immutable `AgentDefinition` values;
-- invocation-specific changes use immutable `AgentRunOptions`;
+- invocation-specific changes use immutable `AgentRunOptions` (turn limit,
+  attempt timeout, a tool allow-list that only narrows the run's catalog, and a
+  parent budget scope under which the run's own scope is created);
 - next-turn changes use named, expiring override values; and
 - implementation replacement, additive behavior, and policy strategy use DI.
 

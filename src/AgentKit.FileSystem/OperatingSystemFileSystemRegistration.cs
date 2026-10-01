@@ -45,6 +45,8 @@ internal static class OperatingSystemFileSystemRegistration
             CreateReader(provider, serviceKey!));
         _ = services.AddKeyedSingleton<IFileWriter>(key.Value, static (provider, serviceKey) =>
             CreateWriter(provider, serviceKey!));
+        _ = services.AddKeyedSingleton<IFileDeleter>(key.Value, static (provider, serviceKey) =>
+            CreateDeleter(provider, serviceKey!));
         _ = services.AddKeyedSingleton(key.Value, static (provider, serviceKey) =>
             CreateWorkspaceHost(provider, serviceKey!));
         _ = services.AddKeyedSingleton<IDirectoryReader>(key.Value, static (provider, serviceKey) =>
@@ -64,6 +66,7 @@ internal static class OperatingSystemFileSystemRegistration
             new FileSystemCapabilities(
                 FileSystemCapability.Read
                 | FileSystemCapability.Write
+                | FileSystemCapability.Delete
                 | FileSystemCapability.Metadata
                 | FileSystemCapability.Enumerate)));
         services.TryAddSingleton<IFileSystemSelector>(static provider =>
@@ -108,6 +111,21 @@ internal static class OperatingSystemFileSystemRegistration
         return profile.ProfileKey != profileKey
             ? throw new InvalidOperationException("The keyed file-system snapshot does not match the registration key.")
             : new OperatingSystemFileWriter(
+            provider.GetRequiredService<ISecurityGrantStore>(),
+            provider.GetRequiredService<ISecurityAuditDispatcher>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+            provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
+            provider.GetRequiredService<TimeProvider>(),
+            profile);
+    }
+
+    private static OperatingSystemFileDeleter CreateDeleter(IServiceProvider provider, object serviceKey)
+    {
+        var profileKey = new FileSystemProfileKey((string) serviceKey);
+        var profile = provider.GetRequiredKeyedService<OperatingSystemFileSystemOptionsSnapshot>(serviceKey);
+        return profile.ProfileKey != profileKey
+            ? throw new InvalidOperationException("The keyed file-system snapshot does not match the registration key.")
+            : new OperatingSystemFileDeleter(
             provider.GetRequiredService<ISecurityGrantStore>(),
             provider.GetRequiredService<ISecurityAuditDispatcher>(),
             provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),

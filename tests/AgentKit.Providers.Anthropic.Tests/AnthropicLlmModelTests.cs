@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.Anthropic.Tests.Fakes;
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 using AgentKit.TestSupport;
 
@@ -21,7 +22,7 @@ public sealed class AnthropicLlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static AnthropicLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AnthropicProviderOptions? options = null, ProviderEgressHarness? harness = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/") }, new AnthropicMessageTranslator(), new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator()), credentials, (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static AnthropicLlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AnthropicProviderOptions? options = null, ProviderEgressHarness? harness = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/") }, new AnthropicMessageTranslator(), new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator()), (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, (options ?? new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/") }).BaseAddress));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsApiKeyAndVersionHeaders()
     {
@@ -764,11 +765,12 @@ public sealed class AnthropicLlmModelTests
         _ = result.ShouldBeOfType<ModelAttemptCompleted>();
         harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
         [
+            ProviderCredentialReadGate.DefaultAudience,
             ProviderEgress.SecurityAudience,
             harness.Resolver.SecurityAudience,
             harness.Transport.SecurityAudience,
         ]);
-        harness.Authority.Requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://api.anthropic.test:443/v1/messages");
+        harness.Authority.Requests[1].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://api.anthropic.test:443/v1/messages");
         harness.Authority.Requests.ShouldAllBe(request => !request.InputFingerprint.Value.Contains("sk-ant-grant-secret", StringComparison.Ordinal));
         handler.Requests.ShouldHaveSingleItem().Headers.GetValues("x-api-key").ShouldContain("sk-ant-grant-secret");
     }
@@ -788,6 +790,27 @@ public sealed class AnthropicLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
         failed.Failure.ToString().ShouldNotContain("sk-ant-denied-secret");
+        handler.Requests.ShouldBeEmpty();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCredentialReadGrantDenied_FailsAuthorizationWithoutReadingTheSecretOrSending()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var options = new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false };
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        harness.Authority.Deny = static request => request.Audience == ProviderCredentialReadGate.DefaultAudience;
+        var source = new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-unread-secret"));
+        var model = CreateModel(handler, source, options: options, harness: harness);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failed.Failure.ToString().ShouldNotContain("sk-ant-unread-secret");
+        source.ResolutionCount.ShouldBe(0);
         handler.Requests.ShouldBeEmpty();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }

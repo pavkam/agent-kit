@@ -90,15 +90,15 @@ namespace AgentKit.Providers
     }
     public static class NativeProviderChatSend
     {
-        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.NativeProviderChatSend.AttemptContext> BeginAsync(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, AgentKit.IProviderCredentialSource fallbackCredentials, AgentKit.IProviderProfileRuntimeSelector? profileSelector, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
+        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.NativeProviderChatSend.AttemptContext> BeginAsync(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, AgentKit.IProviderProfileRuntimeSelector profileSelector, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
         public sealed class AttemptContext : System.IAsyncDisposable
         {
             public System.Diagnostics.Activity? Activity { get; }
-            public AgentKit.IProviderCredentialSource? CredentialSource { get; }
             public System.Uri? EndpointBaseOverride { get; }
             public AgentKit.ProviderFailure? Failure { get; }
             public bool IsSuccess { get; }
             public AgentKit.IProviderProfileRuntimeLease? Lease { get; }
+            public AgentKit.Providers.Egress.ProviderEgressCredential? CreateCredential(AgentKit.ProviderAuthorizationScheme scheme) { }
             public System.Threading.Tasks.ValueTask DisposeAsync() { }
             public void RecordFailed() { }
         }
@@ -115,7 +115,10 @@ namespace AgentKit.Providers
     }
     public static class ProviderCredentialSourceRegistration
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterDualKeyCredentialSource(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderId providerId, AgentKit.IProviderCredentialSource credentialSource) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddCredentialReadGate(Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddOAuthTokenSource<TProvider>(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderId providerId)
+            where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddStaticApiKeySource(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, string apiKey) { }
     }
     public sealed class ProviderEndpointProfileOptions
     {
@@ -148,16 +151,16 @@ namespace AgentKit.Providers
     public static class ProviderProfileAttemptBinding
     {
         public static System.Uri NormalizeBaseAddress(System.Uri baseAddress) { }
-        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution> ResolveCredentialSourceAsync(AgentKit.ProviderOperationBinding? binding, AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.IProviderCredentialSource fallbackCredentials, AgentKit.IProviderProfileRuntimeSelector? profileSelector, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken) { }
-        public readonly struct ProfileCredentialResolution
+        public static System.Threading.Tasks.ValueTask<AgentKit.Providers.ProviderProfileAttemptBinding.ProfileRuntimeSelection> SelectRuntimeAsync(AgentKit.ProviderOperationBinding? binding, AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.IProviderProfileRuntimeSelector profileSelector, AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken) { }
+        public readonly struct ProfileRuntimeSelection
         {
-            public AgentKit.IProviderCredentialSource? CredentialSource { get; }
             public System.Uri? EndpointBaseAddress { get; }
             public AgentKit.ProviderFailure? Failure { get; }
             public bool IsSuccess { get; }
-            public AgentKit.IProviderProfileRuntimeLease? Lease { get; }
-            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution FromFailure(AgentKit.ProviderFailure failure) { }
-            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileCredentialResolution FromSource(AgentKit.IProviderCredentialSource credentialSource, System.Uri? endpointBaseAddress, AgentKit.IProviderProfileRuntimeLease? lease) { }
+            public AgentKit.IProviderProfileRuntimeLease? Runtime { get; }
+            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileRuntimeSelection Unbound { get; }
+            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileRuntimeSelection FromFailure(AgentKit.ProviderFailure failure) { }
+            public static AgentKit.Providers.ProviderProfileAttemptBinding.ProfileRuntimeSelection FromRuntime(AgentKit.IProviderProfileRuntimeLease runtime) { }
         }
     }
     public static class ProviderRequestObservability
@@ -217,6 +220,45 @@ namespace AgentKit.Providers
         public System.Threading.Tasks.ValueTask<AgentKit.ModelDescriptorSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
     }
 }
+namespace AgentKit.Providers.Credentials
+{
+    public sealed class DelegatingOAuthCredentialSource : AgentKit.IProviderCredentialSource
+    {
+        public DelegatingOAuthCredentialSource(AgentKit.ProviderCredentialSourceKey key, AgentKit.IOAuthAccessTokenProvider tokenProvider, AgentKit.Providers.Credentials.ProviderCredentialReadGate gate) { }
+        public AgentKit.ProviderCredentialSourceKey Key { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProviderCredentialResolutionResult> ResolveAsync(AgentKit.ProviderCredentialResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public override string ToString() { }
+    }
+    public sealed class ProviderCredentialLease : AgentKit.IProviderCredentialLease, System.IAsyncDisposable
+    {
+        public ProviderCredentialLease(AgentKit.ProviderCredential credential) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProviderFailure?> ApplyAsync(AgentKit.IProviderAuthenticationTarget target, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public override string ToString() { }
+    }
+    public static class ProviderCredentialReadBinding
+    {
+        public const AgentKit.SecurityEffect Effect = 0;
+        public const AgentKit.SecurityOperationKind OperationKind = 9;
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.ProviderEndpointProfileSnapshot endpoint, AgentKit.ProviderCredentialProfileSnapshot credential, int attempt, System.DateTimeOffset deadline) { }
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> Resources(AgentKit.ProviderCredentialProfileSnapshot credential) { }
+    }
+    public sealed class ProviderCredentialReadGate
+    {
+        public ProviderCredentialReadGate(AgentKit.ISecurityGrantStore grantStore, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
+        public static AgentKit.ComponentId DefaultAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProviderCredentialUnavailable?> ConsumeAsync(AgentKit.IProviderCredentialSource source, AgentKit.ProviderCredentialResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class StaticApiKeyCredentialSource : AgentKit.IProviderCredentialSource
+    {
+        public StaticApiKeyCredentialSource(AgentKit.ProviderCredentialSourceKey key, string apiKey, AgentKit.Providers.Credentials.ProviderCredentialReadGate gate) { }
+        public AgentKit.ProviderCredentialSourceKey Key { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProviderCredentialResolutionResult> ResolveAsync(AgentKit.ProviderCredentialResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public override string ToString() { }
+    }
+}
 namespace AgentKit.Providers.Egress
 {
     public sealed class ProviderEgress
@@ -228,6 +270,12 @@ namespace AgentKit.Providers.Egress
     public static class ProviderEgressBodyFault
     {
         public static AgentKit.ProviderFailureKind Classify(System.IO.IOException exception, out string safeMessage) { }
+    }
+    public sealed class ProviderEgressCredential : System.IEquatable<AgentKit.Providers.Egress.ProviderEgressCredential>
+    {
+        public ProviderEgressCredential(AgentKit.IProviderProfileRuntimeLease runtime, AgentKit.ProviderAuthorizationScheme scheme) { }
+        public AgentKit.IProviderProfileRuntimeLease Runtime { get; init; }
+        public AgentKit.ProviderAuthorizationScheme Scheme { get; init; }
     }
     public enum ProviderEgressOperation
     {
@@ -250,10 +298,11 @@ namespace AgentKit.Providers.Egress
     }
     public sealed class ProviderEgressRequest : System.IEquatable<AgentKit.Providers.Egress.ProviderEgressRequest>
     {
-        public ProviderEgressRequest(AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.Providers.Egress.ProviderEgressOperation kind, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointId endpointId, AgentKit.ProviderOperationBinding? binding, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, string? modelRevision, int attempt, System.DateTimeOffset deadline, bool streaming, System.Net.Http.HttpRequestMessage message) { }
+        public ProviderEgressRequest(AgentKit.ProtectedSemanticOperationContext? operation, AgentKit.Providers.Egress.ProviderEgressOperation kind, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointId endpointId, AgentKit.ProviderOperationBinding? binding, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, string? modelRevision, int attempt, System.DateTimeOffset deadline, bool streaming, System.Net.Http.HttpRequestMessage message, AgentKit.Providers.Egress.ProviderEgressCredential? credential) { }
         public AgentKit.ApiFamilyId ApiFamily { get; init; }
         public int Attempt { get; init; }
         public AgentKit.ProviderOperationBinding? Binding { get; init; }
+        public AgentKit.Providers.Egress.ProviderEgressCredential? Credential { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.DeploymentId? DeploymentId { get; init; }
         public AgentKit.ProviderEndpointId EndpointId { get; init; }
@@ -265,9 +314,9 @@ namespace AgentKit.Providers.Egress
         public AgentKit.ProviderId ProviderId { get; init; }
         public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; init; }
         public bool Streaming { get; init; }
-        public static AgentKit.Providers.Egress.ProviderEgressRequest ForConversation(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, System.Net.Http.HttpRequestMessage message, bool streaming) { }
-        public static AgentKit.Providers.Egress.ProviderEgressRequest ForEmbedding(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.EmbeddingModelRequest request, System.Net.Http.HttpRequestMessage message) { }
-        public static AgentKit.Providers.Egress.ProviderEgressRequest ForReranking(AgentKit.RerankerDescriptor descriptor, AgentKit.RerankModelRequest request, System.Net.Http.HttpRequestMessage message) { }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForConversation(AgentKit.ModelDescriptor descriptor, AgentKit.LlmModelRequest request, System.Net.Http.HttpRequestMessage message, bool streaming, AgentKit.Providers.Egress.ProviderEgressCredential? credential) { }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForEmbedding(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.EmbeddingModelRequest request, System.Net.Http.HttpRequestMessage message, AgentKit.Providers.Egress.ProviderEgressCredential? credential) { }
+        public static AgentKit.Providers.Egress.ProviderEgressRequest ForReranking(AgentKit.RerankerDescriptor descriptor, AgentKit.RerankModelRequest request, System.Net.Http.HttpRequestMessage message, AgentKit.Providers.Egress.ProviderEgressCredential? credential) { }
     }
     public sealed class ProviderEgressResponse : System.IAsyncDisposable
     {
@@ -309,19 +358,9 @@ namespace AgentKit.Providers.Http
     }
     public static class ProviderAuthorizationHeaderFactory
     {
-        public static AgentKit.Providers.Http.ProviderAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider, AgentKit.Providers.Http.ProviderAuthorizationScheme scheme) { }
+        public static AgentKit.Providers.Http.ProviderAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.DateTimeOffset utcNow, AgentKit.ProviderAuthorizationScheme scheme) { }
     }
     public abstract class ProviderAuthorizationResult : System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationResult> { }
-    public sealed class ProviderAuthorizationScheme : System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationScheme>
-    {
-        public ProviderAuthorizationScheme(string? apiKeyHeaderName, string apiKeyValuePrefix) { }
-        public string? ApiKeyHeaderName { get; init; }
-        public string ApiKeyValuePrefix { get; init; }
-        public bool SupportsApiKey { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme BearerToken { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme OAuthTokenOnly { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme ForApiKeyHeader(string headerName) { }
-    }
     public static class ProviderErrorMessageEvidence
     {
         public const string Key = "agentkit.provider.error_message";

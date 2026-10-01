@@ -904,6 +904,115 @@ public sealed class AgentEngineBuilderExtensionsTests
     }
 
     [Fact]
+    public void WithSqliteDurability_WhenArgumentsAreInvalid_ThrowsBeforeRegistering()
+    {
+        var builder = AgentEngine.CreateBuilder();
+
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithSqliteDurability("/tmp/x.db")).ParamName.ShouldBe("builder");
+        Should.Throw<ArgumentException>(() => builder.WithSqliteDurability(" ")).ParamName.ShouldBe("databasePath");
+        Should.Throw<ArgumentException>(() => builder.WithSqliteDurability("relative.db")).ParamName.ShouldBe("databasePath");
+    }
+
+    [Fact]
+    public void WithJsonDurability_WhenArgumentsAreInvalid_ThrowsBeforeRegistering()
+    {
+        var builder = AgentEngine.CreateBuilder();
+
+        Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithJsonDurability("/tmp/x")).ParamName.ShouldBe("builder");
+        Should.Throw<ArgumentException>(() => builder.WithJsonDurability(" ")).ParamName.ShouldBe("directoryPath");
+        Should.Throw<ArgumentException>(() => builder.WithJsonDurability("relative")).ParamName.ShouldBe("directoryPath");
+    }
+
+    [Fact]
+    public void WithDurability_WhenAnotherStorageWasAlreadySelected_ThrowsInvalidOperationException()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "agentkit-simple-" + Guid.NewGuid().ToString("N"));
+        var builder = AgentEngine.CreateBuilder().WithSqliteDurability(Path.Combine(root, "d.db"));
+
+        Should.Throw<InvalidOperationException>(() => builder.WithDurability()).Message.ShouldContain("sqlite");
+        _ = Should.Throw<InvalidOperationException>(() => builder.WithJsonDurability(Path.Combine(root, "json")));
+        _ = builder.WithSqliteDurability(Path.Combine(root, "d.db"));
+    }
+
+    [Fact]
+    public async Task WithSqliteDurability_WhenATurnCompletes_PersistsTheJournalInTheNamedDatabase()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "agentkit-simple-" + Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(root, "nested", "durable.db");
+        try
+        {
+            var handler = new StubOpenAIHandler("fine");
+            var builder = AgentEngine.CreateBuilder()
+                .UseLocalDevelopmentDefaults()
+                .UseOpenAI("sk-test", "gpt-4o-mini")
+                .WithSqliteDurability(databasePath);
+            _ = builder.Services.ReplaceNetworkWithHandler(handler);
+            await using (var engine = builder.Build())
+            {
+                var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+                reply.ShouldBe("fine");
+                _ = engine.Services.GetRequiredKeyedService<IDurableOperationJournal>("agentkit.simple.sqlite")
+                    .ShouldBeOfType<Durability.Sqlite.SqliteDurableOperationJournal>();
+            }
+
+            File.Exists(databasePath).ShouldBeTrue();
+            new FileInfo(databasePath).Length.ShouldBeGreaterThan(0);
+        }
+        finally
+        {
+            DeleteQuietly(root);
+        }
+    }
+
+    [Fact]
+    public async Task WithJsonDurability_WhenATurnCompletes_PersistsTheJournalUnderTheNamedDirectory()
+    {
+        // The JSON store refuses any root that traverses a link, and macOS reaches its temp directory through one.
+        var temp = OperatingSystem.IsMacOS() && Path.GetTempPath().StartsWith("/var/", StringComparison.Ordinal)
+            ? "/private" + Path.GetTempPath()
+            : Path.GetTempPath();
+        var root = Path.Combine(temp, "agentkit-simple-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(root, "journal");
+        try
+        {
+            var handler = new StubOpenAIHandler("fine");
+            var builder = AgentEngine.CreateBuilder()
+                .UseLocalDevelopmentDefaults()
+                .UseOpenAI("sk-test", "gpt-4o-mini")
+                .WithJsonDurability(directory);
+            _ = builder.Services.ReplaceNetworkWithHandler(handler);
+            await using (var engine = builder.Build())
+            {
+                var reply = await engine.AskAsync("hello", TestContext.Current.CancellationToken);
+
+                reply.ShouldBe("fine");
+                _ = engine.Services.GetRequiredKeyedService<IDurableOperationJournal>("agentkit.simple.json")
+                    .ShouldBeOfType<Durability.Json.JsonDurableOperationJournal>();
+            }
+
+            Directory.Exists(directory).ShouldBeTrue();
+            Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories).ShouldNotBeEmpty();
+        }
+        finally
+        {
+            DeleteQuietly(root);
+        }
+    }
+
+    private static void DeleteQuietly(string root)
+    {
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best-effort temp cleanup; a lingering handle must not fail the test.
+        }
+    }
+
+    [Fact]
     public void WithDelegation_WhenBuilderIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => ((AgentEngineBuilder) null!).WithDelegation()).ParamName.ShouldBe("builder");
 

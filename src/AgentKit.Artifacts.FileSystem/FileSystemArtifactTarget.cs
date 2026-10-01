@@ -11,7 +11,7 @@ namespace AgentKit.Artifacts.FileSystem;
 public sealed record FileSystemArtifactTarget
 {
     /// <summary>Initializes a validated target.</summary>
-    /// <param name="profileKey">The file-system profile whose reader and writer the store selects.</param>
+    /// <param name="profileKey">The file-system profile whose reader, writer, deleter, and directory reader the store selects.</param>
     /// <param name="rootId">The configured logical root identity every target is addressed under.</param>
     /// <param name="hostRootPath">The fully qualified host directory of the root.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="profileKey"/> is default.</exception>
@@ -33,7 +33,7 @@ public sealed record FileSystemArtifactTarget
         HostRootPath = Path.GetFullPath(hostRootPath);
     }
 
-    /// <summary>Gets the file-system profile whose reader and writer the store selects.</summary>
+    /// <summary>Gets the file-system profile whose reader, writer, deleter, and directory reader the store selects.</summary>
     public FileSystemProfileKey ProfileKey { get; }
 
     /// <summary>Gets the configured logical root identity.</summary>

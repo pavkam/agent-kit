@@ -37,6 +37,7 @@ concrete fixture inherits the suite for its own production class.
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription
   cancellation, disposal, single-reader ownership and independent completion.
 - [ArtifactStoreConformanceTests](ArtifactStoreConformanceTests.cs)
+- [ArtifactReferenceCommitIntentStoreConformanceTests](ArtifactReferenceCommitIntentStoreConformanceTests.cs)
 - [GoalStoreConformanceTests](GoalStoreConformanceTests.cs) — goal creation,
   idempotent replay, optimistic transitions, attempt changes, tenant and scope
   isolation, child paging, and intent discovery, run by the in-memory, JSON,

@@ -49,6 +49,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
     private readonly TimeProvider _timeProvider;
     private readonly IHookDispatcher? _hookDispatcher;
     private readonly IApprovalWaitRecorder? _approvalWaits;
+    private readonly IToolResultSpill? _resultSpill;
     private readonly ILogger<DefaultToolExecutor> _logger;
 
     /// <summary>Initializes the first-party spec-shaped tool executor.</summary>
@@ -69,6 +70,10 @@ public sealed class DefaultToolExecutor: IToolExecutor
     /// The optional recorder that journals a call whose authorization deferred to a pending approval. When omitted, a
     /// deferral is treated as an unauthorized call and leaves no durable wait.
     /// </param>
+    /// <param name="resultSpill">
+    /// The optional externalization of oversized results through an artifact coordinator. When omitted, an oversized result is
+    /// truncated to its canonical byte bound.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
     public DefaultToolExecutor(
         IToolResolver resolver,
@@ -84,7 +89,8 @@ public sealed class DefaultToolExecutor: IToolExecutor
         TimeProvider timeProvider,
         ILogger<DefaultToolExecutor> logger,
         IHookDispatcher? hookDispatcher = null,
-        IApprovalWaitRecorder? approvalWaits = null)
+        IApprovalWaitRecorder? approvalWaits = null,
+        IToolResultSpill? resultSpill = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(argumentValidator);
@@ -111,6 +117,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
         _timeProvider = timeProvider;
         _hookDispatcher = hookDispatcher;
         _approvalWaits = approvalWaits;
+        _resultSpill = resultSpill;
         _logger = logger;
     }
 
@@ -140,7 +147,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
             await AdmitAsync(capability, results, prepared, admitted, cancellationToken).ConfigureAwait(false);
             if (admitted.Count > 0)
             {
-                await ScheduleAsync(calls[0], results, admitted, cancellationToken).ConfigureAwait(false);
+                await ScheduleAsync(calls[0], results, admitted, capability.Budget, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception)
@@ -464,6 +471,7 @@ public sealed class DefaultToolExecutor: IToolExecutor
         ToolCallRequest anchor,
         ToolCallResult?[] results,
         List<Admitted> admitted,
+        BudgetExecutionCapability? budget,
         CancellationToken cancellationToken)
     {
         var entries = admitted.Select(static item => item.Entry).ToImmutableArray();
@@ -480,7 +488,9 @@ public sealed class DefaultToolExecutor: IToolExecutor
             entries,
             _runtimeOptions.BatchFailureMode,
             _runtimeOptions.UnknownSchedulingMode,
-            BatchDeadline(entries));
+            BatchDeadline(entries),
+            budget,
+            _resultSpill);
         foreach (var item in admitted)
         {
             item.HandedOff = true;

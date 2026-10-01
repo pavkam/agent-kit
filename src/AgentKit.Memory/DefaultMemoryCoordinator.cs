@@ -24,6 +24,7 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
     private readonly IMemoryProfileRuntimeSelector _runtimes;
     private readonly IMemoryPolicyDispatcher _policies;
     private readonly MemoryGrantIssuer _grants;
+    private readonly MemoryHookRunner _hooks;
     private readonly TimeProvider _time;
     private readonly ILogger<DefaultMemoryCoordinator> _logger;
 
@@ -31,6 +32,7 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
     /// <param name="runtimes">The selector that activates the exact profile runtime for each operation.</param>
     /// <param name="policies">The dispatcher that combines the profile's policies.</param>
     /// <param name="grants">The issuer of single-use grants from the captured authority.</param>
+    /// <param name="hooks">The runner that dispatches the memory hook points under the caller's captured hook context.</param>
     /// <param name="time">The injected clock for record instants and observation.</param>
     /// <param name="logger">The optional content-free logger.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
@@ -38,46 +40,49 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
         IMemoryProfileRuntimeSelector runtimes,
         IMemoryPolicyDispatcher policies,
         MemoryGrantIssuer grants,
+        MemoryHookRunner hooks,
         TimeProvider time,
         ILogger<DefaultMemoryCoordinator>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(runtimes);
         ArgumentNullException.ThrowIfNull(policies);
         ArgumentNullException.ThrowIfNull(grants);
+        ArgumentNullException.ThrowIfNull(hooks);
         ArgumentNullException.ThrowIfNull(time);
         _runtimes = runtimes;
         _policies = policies;
         _grants = grants;
+        _hooks = hooks;
         _time = time;
         _logger = logger ?? NullLogger<DefaultMemoryCoordinator>.Instance;
     }
 
     /// <inheritdoc/>
-    public async ValueTask<MemoryProposalResult> ProposeAsync(MemoryProposal proposal, CancellationToken cancellationToken = default)
+    public async ValueTask<MemoryProposalResult> ProposeAsync(MemoryProposal proposal, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(proposal);
         return await RunAsync(
             "propose", AgentKitActivityNames.MemoryPropose, proposal.Id, proposal.Context,
-            async (lease, _) => await ProposeCoreAsync(proposal, lease, cancellationToken).ConfigureAwait(false),
+            async (lease, _) => await ProposeCoreAsync(proposal, hooks, lease, cancellationToken).ConfigureAwait(false),
             static result => result.Outcome == MemoryProposalOutcome.Accepted ? null : OutcomeName(result),
             static failure => MemoryProposalResult.Rejected(failure),
             cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<MemoryTransitionResult> CorrectAsync(MemoryCorrectionRequest request, CancellationToken cancellationToken = default)
+    public async ValueTask<MemoryTransitionResult> CorrectAsync(MemoryCorrectionRequest request, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return await RunAsync(
             "correct", AgentKitActivityNames.MemoryCorrect, request.Id, request.Context,
-            async (lease, _) => await CorrectCoreAsync(request, lease, cancellationToken).ConfigureAwait(false),
+            async (lease, _) => await CorrectCoreAsync(request, hooks, lease, cancellationToken).ConfigureAwait(false),
             static result => result.Failure is { } failure ? MemoryStoreObservationName(failure.Kind) : null,
             static failure => MemoryTransitionResult.Rejected(failure),
             cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<MemoryDeleteResult> DeleteAsync(MemoryDeleteCommand command, CancellationToken cancellationToken = default)
+    public async ValueTask<MemoryDeleteResult> DeleteAsync(MemoryDeleteCommand command, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
         return await RunAsync(
@@ -180,7 +185,7 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
         return result;
     }
 
-    private async ValueTask<MemoryProposalResult> ProposeCoreAsync(MemoryProposal proposal, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
+    private async ValueTask<MemoryProposalResult> ProposeCoreAsync(MemoryProposal proposal, HookDispatchContext? hooks, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
     {
         var profile = lease.Profile;
         if (!profile.DurableMemoryEnabled || lease.MemoryStore is not { } store)
@@ -192,6 +197,17 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
         {
             return await DenyAsync(lease, proposal, new MemoryPolicyDenied(
                 new ComponentId("agentkit.memory.classification-ceiling"), "classification-exceeded", "The proposal's classification exceeds the profile's ceiling."), cancellationToken).ConfigureAwait(false);
+        }
+
+        var (proposalVetoFailed, proposalVetoOutcome) = await ProposalVetoAsync(proposal, hooks, cancellationToken).ConfigureAwait(false);
+        if (proposalVetoFailed)
+        {
+            return MemoryProposalResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, MemoryHookRunner.FailedMessage));
+        }
+
+        if (proposalVetoOutcome is { } veto)
+        {
+            return await DenyAsync(lease, proposal, HookDenial(veto), cancellationToken).ConfigureAwait(false);
         }
 
         var decision = await _policies.EvaluateAsync(proposal, new MemoryPolicyContext(profile, _time.GetUtcNow()), cancellationToken).ConfigureAwait(false);
@@ -229,6 +245,17 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
             now,
             now,
             proposal.Extensions);
+        var (writeVetoFailed, writeVetoOutcome) = await WriteVetoAsync(proposal.Context, record, hooks, cancellationToken).ConfigureAwait(false);
+        if (writeVetoFailed)
+        {
+            return MemoryProposalResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, MemoryHookRunner.FailedMessage));
+        }
+
+        if (writeVetoOutcome is { } writeRefusal)
+        {
+            return await DenyAsync(lease, proposal, HookDenial(writeRefusal), cancellationToken).ConfigureAwait(false);
+        }
+
         var key = new IdempotencyKey($"agentkit.memory.propose:{proposal.Id}");
         var issue = await _grants.IssueAsync(
             lease.SecurityAuthorities, proposal.Context.Authorization, store.Descriptor.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Create,
@@ -252,13 +279,46 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
         return MemoryProposalResult.Accepted(written.Record, written.Replayed);
     }
 
+    private static MemoryPolicyDenied HookDenial(MemoryHookVeto veto) =>
+        new(new ComponentId("agentkit.memory.hook"), veto.Code, veto.SafeReason);
+
+    private async ValueTask<(bool Failed, MemoryHookVeto? Veto)> ProposalVetoAsync(MemoryProposal proposal, HookDispatchContext? hooks, CancellationToken cancellationToken)
+    {
+        if (!_hooks.IsActive(hooks, AgentHookPoints.BeforeMemoryProposal))
+        {
+            return (false, null);
+        }
+
+        var outcome = await _hooks.DispatchAsync(
+            hooks,
+            AgentHookPointDefinitions.BeforeMemoryProposal,
+            dispatch => new BeforeMemoryProposalEventArgs(dispatch, proposal),
+            cancellationToken).ConfigureAwait(false);
+        return outcome.Failed ? (true, null) : (false, outcome.Args!.Veto);
+    }
+
+    private async ValueTask<(bool Failed, MemoryHookVeto? Veto)> WriteVetoAsync(MemoryOperationContext context, DurableMemoryRecord record, HookDispatchContext? hooks, CancellationToken cancellationToken)
+    {
+        if (!_hooks.IsActive(hooks, AgentHookPoints.BeforeMemoryWrite))
+        {
+            return (false, null);
+        }
+
+        var outcome = await _hooks.DispatchAsync(
+            hooks,
+            AgentHookPointDefinitions.BeforeMemoryWrite,
+            dispatch => new BeforeMemoryWriteEventArgs(dispatch, context, record),
+            cancellationToken).ConfigureAwait(false);
+        return outcome.Failed ? (true, null) : (false, outcome.Args!.Veto);
+    }
+
     private async ValueTask<MemoryProposalResult> DenyAsync(IMemoryProfileRuntimeLease lease, MemoryProposal proposal, MemoryPolicyDenied denial, CancellationToken cancellationToken)
     {
         await PublishAsync(lease, proposal.Context, MemoryEventKind.ProposalDenied, proposal.Id, denial.Code, "propose", cancellationToken).ConfigureAwait(false);
         return MemoryProposalResult.PolicyDenied(denial);
     }
 
-    private async ValueTask<MemoryTransitionResult> CorrectCoreAsync(MemoryCorrectionRequest request, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
+    private async ValueTask<MemoryTransitionResult> CorrectCoreAsync(MemoryCorrectionRequest request, HookDispatchContext? hooks, IMemoryProfileRuntimeLease lease, CancellationToken cancellationToken)
     {
         var profile = lease.Profile;
         if (!profile.DurableMemoryEnabled || lease.MemoryStore is not { } store)
@@ -300,6 +360,18 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
             return MemoryTransitionResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, "The corrected memory's classification exceeds the profile's ceiling."));
         }
 
+        var (proposalVetoFailed, proposalVetoOutcome) = await ProposalVetoAsync(proposal, hooks, cancellationToken).ConfigureAwait(false);
+        if (proposalVetoFailed)
+        {
+            return MemoryTransitionResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, MemoryHookRunner.FailedMessage));
+        }
+
+        if (proposalVetoOutcome is { } correctionVeto)
+        {
+            await PublishAsync(lease, context, MemoryEventKind.ProposalDenied, request.ReplacementId, correctionVeto.Code, "correct", cancellationToken).ConfigureAwait(false);
+            return MemoryTransitionResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, correctionVeto.SafeReason));
+        }
+
         var decision = await _policies.EvaluateAsync(proposal, new MemoryPolicyContext(profile, now), cancellationToken).ConfigureAwait(false);
         if (decision is not MemoryPolicyAllowed)
         {
@@ -312,6 +384,18 @@ internal sealed class DefaultMemoryCoordinator: IMemoryCoordinator
             request.ReplacementId, original.AgentId, context.SessionId, (context.Correlation as InRunOperationCorrelation)?.RunId ?? original.SourceRunId,
             original.Namespace, original.TenantId, original.Visibility, original.Kind, request.Content, original.Classification, request.Provenance,
             original.Retention, MemoryLifecycleState.Active, new VersionToken("1"), now, now, original.Extensions);
+        var (correctionWriteVetoFailed, correctionWriteVetoOutcome) = await WriteVetoAsync(context, replacement, hooks, cancellationToken).ConfigureAwait(false);
+        if (correctionWriteVetoFailed)
+        {
+            return MemoryTransitionResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, MemoryHookRunner.FailedMessage));
+        }
+
+        if (correctionWriteVetoOutcome is { } correctionWriteRefusal)
+        {
+            await PublishAsync(lease, context, MemoryEventKind.ProposalDenied, request.ReplacementId, correctionWriteRefusal.Code, "correct", cancellationToken).ConfigureAwait(false);
+            return MemoryTransitionResult.Rejected(new MemoryStoreFailure(MemoryStoreFailureKind.Denied, correctionWriteRefusal.SafeReason));
+        }
+
         var transitionKey = new IdempotencyKey($"agentkit.memory.correct:{request.IdempotencyKey.Value}");
         var fingerprint = MemorySecurityBinding.TransitionFingerprint(request.Id, MemoryLifecycleState.Corrected, request.ExpectedVersion, replacement, transitionKey, now);
         var issue = await _grants.IssueAsync(

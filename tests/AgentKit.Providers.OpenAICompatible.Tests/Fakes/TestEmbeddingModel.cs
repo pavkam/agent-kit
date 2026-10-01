@@ -17,18 +17,18 @@ internal sealed class TestEmbeddingModel: OpenAICompatibleEmbeddingModelBase
     /// <param name="profile">The tested wire-behavior configuration for the target endpoint.</param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
     /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The profile runtime selector.</param>
     public TestEmbeddingModel(
         EmbeddingModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIEmbeddingRequestTranslator translator,
         IOpenAIEmbeddingResponseParser responseParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
-        TimeProvider timeProvider)
-        : base(descriptor, profile, translator, responseParser, credentials, egress, timeProvider)
+        TimeProvider timeProvider,
+        IProviderProfileRuntimeSelector profileSelector)
+        : base(descriptor, profile, translator, responseParser, egress, timeProvider, profileSelector)
     {
     }
 }

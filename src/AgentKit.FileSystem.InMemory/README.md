@@ -7,13 +7,13 @@ Use this in place of `AgentKit.FileSystem` when a component needs a fast,
 hermetic keyed file-system double: unit and integration tests, sandboxed
 execution environments without real disk access, or any host that wants
 workspace state to disappear with the process. It proves the same `IFileReader`,
-`IFileWriter`, `IFileMetadataReader`, `IDirectoryCreator`, `IDirectoryReader`,
-`IFileGlobber`, `IFileContentSearcher`, `IFileSnapshotReader`,
-`IAtomicFileReplacer`, and `IWorkspacePatchApplier` contracts as the
-operating-system profile, including grant validation, byte and traversal bounds,
-and honest per-entry patch settlement. There are no symbolic links in the
-virtual tree, so the boundary-crossing failure modes that exist purely to defend
-a real filesystem against symlink traversal do not apply here.
+`IFileWriter`, `IFileDeleter`, `IFileMetadataReader`, `IDirectoryCreator`,
+`IDirectoryReader`, `IFileGlobber`, `IFileContentSearcher`,
+`IFileSnapshotReader`, `IAtomicFileReplacer`, and `IWorkspacePatchApplier`
+contracts as the operating-system profile, including grant validation, byte and
+traversal bounds, and honest per-entry patch settlement. There are no symbolic
+links in the virtual tree, so the boundary-crossing failure modes that exist
+purely to defend a real filesystem against symlink traversal do not apply here.
 
 ## Use this project
 
@@ -58,8 +58,6 @@ projects above are composition collaborators, not necessarily dependencies.
   — focused behavior and registration tests.
 - [Component specification](../../docs/architecture/file-system.md) — intended
   ownership and contracts.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

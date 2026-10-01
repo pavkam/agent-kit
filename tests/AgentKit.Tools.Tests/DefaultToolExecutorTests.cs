@@ -10,6 +10,7 @@ using AgentKit.TestSupport;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Verifies <see cref="DefaultToolExecutor"/> sequential pipeline behavior.</summary>
 public sealed class DefaultToolExecutorTests
@@ -600,6 +601,342 @@ public sealed class DefaultToolExecutorTests
         SignalAssertions.ShouldNotContainContent([], logger.Snapshot(), metrics.Snapshot(), secret);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenRunIsBudgeted_HoldsAStartedConcurrentSlotAroundTheInvocationAndAccountsTheSuccess()
+    {
+        var scope = new RecordingBudgetScope();
+        bool? heldDuringInvocation = null;
+        var invoker = new RecordingInvoker((_, _) =>
+        {
+            var slot = scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.ConcurrentToolCalls);
+            heldDuringInvocation = slot.Started && slot.Committed is null;
+            return ValueTask.FromResult(SuccessResult("ok"));
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        heldDuringInvocation.ShouldBe(true);
+        var slot = scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.ConcurrentToolCalls);
+        slot.Committed.ShouldBe(1m);
+        scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.SuccessfulToolCalls).Committed.ShouldBe(1m);
+        scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.ToolResultBytes).Committed.ShouldBe(2m);
+        scope.Reservations.Select(static item => item.Request.IdempotencyKey.Value).Distinct().Count().ShouldBe(scope.Reservations.Count);
+        scope.Reservations.ShouldAllBe(static item => item.Request.IdempotencyKey.Value.StartsWith("tool:33333333-3333-3333-3333-333333333333:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTheConcurrentBudgetIsRefused_RejectsTheAcceptedCallWithoutInvokingIt()
+    {
+        var scope = new RecordingBudgetScope();
+        _ = scope.Refused.Add(BudgetDimensions.ConcurrentToolCalls);
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok")));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.ResourceLimitExceeded);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        invoker.Invocations.ShouldBe(0);
+        _ = harness.Recorder.Accepted.ShouldHaveSingleItem();
+        _ = harness.Recorder.Terminals.ShouldHaveSingleItem();
+        scope.Reservations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTheBudgetLedgerCannotAnswer_FailsTheCallClosedWithoutInvokingIt()
+    {
+        var scope = new RecordingBudgetScope { Unavailable = true };
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult("ok")));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.ResourceLimitExceeded);
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAReadOnlyCallIsRetried_CountsEachRetryOnTheRetriesDimension()
+    {
+        var scope = new RecordingBudgetScope();
+        var invoker = new RecordingInvoker((context, _) => ValueTask.FromResult(
+            context.Attempt < 3 ? RetryableFailure() : SuccessResult("ok")));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Invocations.ShouldBe(3);
+        scope.Reservations.Where(static item => item.Dimension == BudgetDimensions.ToolRetries).Select(static item => item.Committed)
+            .ShouldBe([1m, 1m]);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTheRetryBudgetIsRefused_DeclinesTheRetryAndReturnsTheFailure()
+    {
+        var scope = new RecordingBudgetScope();
+        _ = scope.Refused.Add(BudgetDimensions.ToolRetries);
+        var invoker = new RecordingInvoker((_, _) => ValueTask.FromResult(RetryableFailure()));
+        var harness = CreateHarness(new AllowInvocationAuthority());
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        invoker.Invocations.ShouldBe(1);
+        scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.ConcurrentToolCalls).Committed.ShouldBe(1m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAnAttemptReachesItsDeadlineAndHonorsCancellation_ReportsTimedOutAndSignalsTheToken()
+    {
+        var time = new FakeTimeProvider();
+        var options = new ToolRuntimeOptions { MaximumAttempts = 1, InvocationTimeout = TimeSpan.FromSeconds(30) };
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sawCancellation = false;
+        var invoker = new RecordingInvoker(async (_, token) =>
+        {
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+                sawCancellation = true;
+                throw;
+            }
+
+            return SuccessResult();
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, time: time);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var pending = harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+        await started.Task;
+        time.Advance(TimeSpan.FromSeconds(30));
+        var result = await pending;
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.TimedOut);
+        terminal.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        terminal.Retryable.ShouldBeTrue();
+        sawCancellation.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAnAttemptIgnoresCancellationThroughTheDrainPeriod_AbandonsItAndKeepsItsConcurrentSlot()
+    {
+        var time = new FakeTimeProvider();
+        var options = new ToolRuntimeOptions
+        {
+            MaximumAttempts = 1,
+            InvocationTimeout = TimeSpan.FromSeconds(30),
+            InvocationDrainPeriod = TimeSpan.FromSeconds(5),
+        };
+        var scope = new RecordingBudgetScope();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new TaskCompletionSource<ToolInvocationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invoker = new RecordingInvoker((_, _) =>
+        {
+            started.SetResult();
+            return new ValueTask<ToolInvocationResult>(never.Task);
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, time: time);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var pending = harness.Executor.ExecuteAsync(capture, [CallRequest()], BudgetedCapability(scope), TestContext.Current.CancellationToken);
+        await started.Task;
+        time.Advance(TimeSpan.FromSeconds(30));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        pending.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromSeconds(5));
+        var result = await pending;
+        never.SetException(new InvalidOperationException("late failure is observed and ignored"));
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.TimedOut);
+        var slot = scope.Reservations.Single(static item => item.Dimension == BudgetDimensions.ConcurrentToolCalls);
+        slot.Started.ShouldBeTrue();
+        slot.Committed.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAnAttemptFinishesWithinTheDrainAfterItsDeadline_KeepsItsOwnSuccessfulResult()
+    {
+        var time = new FakeTimeProvider();
+        var options = new ToolRuntimeOptions { MaximumAttempts = 1, InvocationTimeout = TimeSpan.FromSeconds(30) };
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invoker = new RecordingInvoker(async (_, token) =>
+        {
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return SuccessResult("finished");
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, time: time);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var pending = harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+        await started.Task;
+        time.Advance(TimeSpan.FromSeconds(30));
+        var result = await pending;
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAReadOnlyAttemptTimesOutAndAttemptsRemain_RetriesIt()
+    {
+        var time = new FakeTimeProvider();
+        var options = new ToolRuntimeOptions
+        {
+            MaximumAttempts = 2,
+            InvocationTimeout = TimeSpan.FromSeconds(30),
+            RetryInitialDelay = TimeSpan.Zero,
+            RetryMaximumDelay = TimeSpan.Zero,
+            RetryJitterFraction = 0.0,
+        };
+        var invoker = new RecordingInvoker(async (context, token) =>
+        {
+            if (context.Attempt == 1)
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+
+            return SuccessResult("second");
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, time: time);
+        await using var capture = await CreateCaptureAsync(invoker);
+
+        var pending = harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+        while (!pending.IsCompleted)
+        {
+            time.Advance(TimeSpan.FromSeconds(30));
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        (await pending).Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        invoker.Invocations.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAMutatingAttemptTimesOutWithUnknownCertainty_IsNotRetried()
+    {
+        var time = new FakeTimeProvider();
+        var options = new ToolRuntimeOptions { MaximumAttempts = 3, InvocationTimeout = TimeSpan.FromSeconds(30) };
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invoker = new RecordingInvoker(async (context, token) =>
+        {
+            _ = started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return SuccessResult();
+        });
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, time: time);
+        await using var capture = await CreateCaptureAsync(invoker, MutatingDescriptor());
+
+        var pending = harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+        await started.Task;
+        time.Advance(TimeSpan.FromSeconds(30));
+        var result = await pending;
+
+        result.Results.ShouldHaveSingleItem().Status.ShouldBe(ToolTerminalStatus.TimedOut);
+        invoker.Invocations.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAComposedSpillStoresAnOversizedResult_ReturnsABoundedPreviewAndTheArtifactReference()
+    {
+        var reference = TestArtifactReference();
+        var spill = new RecordingSpill(new ToolResultSpilled(reference));
+        var options = new ToolRuntimeOptions { MaximumResultBytes = 16, ResultSpillPreviewBytes = 8 };
+        var harness = CreateHarness(new AllowInvocationAuthority(), options: options, spill: spill);
+        await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult(new string('x', 100)))));
+
+        var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+        var terminal = result.Results.ShouldHaveSingleItem();
+        terminal.Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        terminal.Content.Length.ShouldBe(2);
+        terminal.Content[0].ShouldBeOfType<ToolResultTextContent>().Text.ShouldBe("xxxxxxxx");
+        terminal.Content[1].ShouldBeOfType<ToolResultArtifactContent>().Reference.ShouldBe(reference);
+        spill.Requests.ShouldHaveSingleItem().Content.Length.ShouldBe(100);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenNoSpillIsComposedOrItIsRefused_TruncatesTheOversizedResult()
+    {
+        var options = new ToolRuntimeOptions { MaximumResultBytes = 16 };
+        var refused = new RecordingSpill(new ToolResultNotSpilled("refused"));
+        foreach (var spill in new IToolResultSpill?[] { null, refused })
+        {
+            var harness = CreateHarness(new AllowInvocationAuthority(), options: options, spill: spill);
+            await using var capture = await CreateCaptureAsync(new RecordingInvoker((_, _) => ValueTask.FromResult(SuccessResult(new string('x', 100)))));
+
+            var result = await harness.Executor.ExecuteAsync(capture, [CallRequest()], ExecutionCapability(), TestContext.Current.CancellationToken);
+
+            var content = result.Results.ShouldHaveSingleItem().Content.ShouldHaveSingleItem().ShouldBeOfType<ToolResultTextContent>();
+            content.Text.Length.ShouldBe(16);
+        }
+
+        _ = refused.Requests.ShouldHaveSingleItem();
+    }
+
+    private static ToolInvocationResult RetryableFailure() => new(
+        new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed, retryable: true, "transient", ExtensionData.Empty),
+        []);
+
+    private static ToolDescriptor MutatingDescriptor()
+    {
+        var baseline = ToolCaptureTestData.Descriptor();
+        return new ToolDescriptor(
+            baseline.Id, baseline.Version, baseline.Name, baseline.Description, baseline.InputSchema, baseline.OutputSchema,
+            new ToolEffects(ToolEffect.Mutating, null, null),
+            baseline.ExecutionHints, baseline.SourceId, baseline.Extensions);
+    }
+
+    private static ArtifactReference TestArtifactReference() => new(
+        new ArtifactId(Guid.Parse("a0000000-0000-0000-0000-0000000000a1")),
+        new ArtifactVersion("1"),
+        new ArtifactDirectoryId("tool-results"),
+        new ArtifactProfileKey("artifacts"),
+        new ArtifactProfileVersion(1),
+        new TenantId("tenant"),
+        new ArtifactOwnerId("session:test"),
+        new PrincipalId("principal"),
+        "text/plain",
+        100,
+        new ArtifactIntegrity(FileSecurityBinding.ContentFingerprint("x"u8), DateTimeOffset.UnixEpoch),
+        DataClassification.Internal,
+        ArtifactOwnershipKind.Session,
+        ArtifactMutability.Immutable,
+        new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false),
+        null,
+        DateTimeOffset.UnixEpoch);
+
+    private sealed class RecordingSpill(ToolResultSpillResult outcome): IToolResultSpill
+    {
+        public List<ToolResultSpillRequest> Requests { get; } = [];
+
+        public ValueTask<ToolResultSpillResult> SpillAsync(ToolResultSpillRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return ValueTask.FromResult(outcome);
+        }
+    }
+
     private static ToolDescriptor KeyedDescriptor()
     {
         var baseline = ToolCaptureTestData.Descriptor();
@@ -702,20 +1039,23 @@ public sealed class DefaultToolExecutorTests
         IToolExecutionPolicySelector? selector = null,
         ToolRuntimeOptions? options = null,
         IEnumerable<ToolEventSinkBinding>? sinks = null,
-        List<string>? order = null)
+        List<string>? order = null,
+        TimeProvider? time = null,
+        IToolResultSpill? spill = null)
     {
+        var clock = time ?? TimeProvider.System;
         var limits = new ToolSchemaLimits(262_144, 64, 10_000, 100_000);
         var schemaEngine = new BoundedToolSchemaEngine(
             TimeProvider.System,
             NullLogger<BoundedToolSchemaEngine>.Instance,
             NullLogger<CompiledToolSchema>.Instance);
         var runtimeOptions = Options.Create(options ?? new ToolRuntimeOptions { RetryInitialDelay = TimeSpan.Zero, RetryMaximumDelay = TimeSpan.Zero, RetryJitterFraction = 0.0 });
-        var events = new ToolEventDispatcher(sinks ?? [], runtimeOptions, TimeProvider.System, NullLogger<ToolEventDispatcher>.Instance);
+        var events = new ToolEventDispatcher(sinks ?? [], runtimeOptions, clock, NullLogger<ToolEventDispatcher>.Instance);
         var normalizer = new ToolResultNormalizer(runtimeOptions);
         var scheduler = new BarrierSegmentToolScheduler(
             normalizer,
             runtimeOptions,
-            TimeProvider.System,
+            clock,
             events,
             new FixedRandomizerFactory(),
             NullLogger<BarrierSegmentToolScheduler>.Instance);
@@ -732,9 +1072,10 @@ public sealed class DefaultToolExecutorTests
             events,
             limits,
             runtimeOptions,
-            TimeProvider.System,
+            clock,
             NullLogger<DefaultToolExecutor>.Instance,
-            approvalWaits: approvalWaits);
+            approvalWaits: approvalWaits,
+            resultSpill: spill);
         return new Harness(executor, effectiveRecorder);
     }
 
@@ -828,20 +1169,28 @@ public sealed class DefaultToolExecutorTests
             baseDescriptor.Extensions);
     }
 
-    private static ToolExecutionCapability ExecutionCapability(params ToolExecutionPolicyReference[] policies) => new(
+    private static ToolExecutionCapability ExecutionCapability(params ToolExecutionPolicyReference[] policies) =>
+        CapabilityOver(budgetScope: null, policies);
+
+    private static ToolExecutionCapability BudgetedCapability(RecordingBudgetScope scope) =>
+        CapabilityOver(scope, []);
+
+    private static ToolExecutionCapability CapabilityOver(RecordingBudgetScope? budgetScope, ToolExecutionPolicyReference[] policies) => new(
         new SessionExecutionCapability(
             TestSecurityEvidence.SessionProfile(),
             new UnsupportedSessionCoordinator(),
             new UnsupportedSessionRunCoordinator()),
-        new BudgetExecutionCapability(
-            new BudgetProfileKey("standard"),
-            new BudgetProfileVersion(1),
-            TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
-            new InRunOperationCorrelation(
-                new OperationId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
-                new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
-                new TurnId(Guid.Parse("55555555-5555-5555-5555-555555555555"))),
-            new FakeBudgetScope()),
+        budgetScope is null
+            ? null
+            : new BudgetExecutionCapability(
+                new BudgetProfileKey("standard"),
+                new BudgetProfileVersion(1),
+                TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+                new InRunOperationCorrelation(
+                    new OperationId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                    new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    new TurnId(Guid.Parse("55555555-5555-5555-5555-555555555555"))),
+                budgetScope),
         Target,
         [.. (policies.Length == 0 ? [Standard] : policies).Select(static reference => new ToolExecutionPolicyBinding(reference))]);
 
@@ -950,26 +1299,5 @@ public sealed class DefaultToolExecutorTests
             _waits.Add((request, approval));
             return ValueTask.CompletedTask;
         }
-    }
-
-    private sealed class FakeBudgetScope: IBudgetScope
-    {
-        public BudgetScopeId Id { get; } = new(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"));
-        public BudgetScopeAddress Address { get; } = new(
-            new TenantId("tenant"),
-            new PrincipalId("principal"),
-            new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
-            new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
-            new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
-            new OperationId(Guid.Parse("44444444-4444-4444-4444-444444444444")));
-
-        public ValueTask<BudgetReservationResult> ReserveAsync(BudgetReservationRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(ImmutableArray<BudgetReservationRequest> requests, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 }

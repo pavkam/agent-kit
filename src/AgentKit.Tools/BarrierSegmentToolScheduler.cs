@@ -21,6 +21,8 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 {
     private const ToolSchedulingMode _rejectSchedulingMode = (ToolSchedulingMode) byte.MaxValue;
 
+    private static readonly TimeSpan _maximumTimer = TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
+
     private readonly IToolResultNormalizer _resultNormalizer;
     private readonly ToolRuntimeOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -71,6 +73,10 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
         var results = new ToolCallResult?[batch.Entries.Length];
         var segments = BarrierSegmentPlanner.Partition(batch, _options);
+        var batchRun = new BatchRun(
+            batch.Deadline,
+            batch.Budget is { } budget ? new ToolBudgetGate(budget, batch.RunId, _logger) : null,
+            batch.ResultSpill);
         var stopScheduling = false;
 
         for (var segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
@@ -88,7 +94,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                     await ExecuteRejectSegmentAsync(segment, results, cancellationToken).ConfigureAwait(false);
                     break;
                 case BarrierSegmentKind.Barrier:
-                    await ExecuteBarrierSegmentAsync(segment, results, batch.Deadline, cancellationToken).ConfigureAwait(false);
+                    await ExecuteBarrierSegmentAsync(segment, results, batchRun, cancellationToken).ConfigureAwait(false);
                     if (batch.FailureMode == ToolBatchFailureMode.FailFast && SegmentContainsFailure(segment, results))
                     {
                         stopScheduling = true;
@@ -96,7 +102,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
                     break;
                 case BarrierSegmentKind.Parallel:
-                    await ExecuteParallelSegmentAsync(segment, results, batch.FailureMode, batch.Deadline, cancellationToken)
+                    await ExecuteParallelSegmentAsync(segment, results, batch.FailureMode, batchRun, cancellationToken)
                         .ConfigureAwait(false);
                     if (batch.FailureMode == ToolBatchFailureMode.FailFast && SegmentContainsFailure(segment, results))
                     {
@@ -141,20 +147,20 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
     private async Task ExecuteBarrierSegmentAsync(
         PlannedSegment segment,
         ToolCallResult?[] results,
-        DateTimeOffset batchDeadline,
+        BatchRun batchRun,
         CancellationToken cancellationToken)
     {
         Debug.Assert(segment.Entries.Length == 1, "Barrier segments contain exactly one entry.");
         var entry = segment.Entries[0];
         var index = segment.EntryIndexes[0];
-        results[index] = await InvokeEntryAsync(entry, batchDeadline, cancellationToken).ConfigureAwait(false);
+        results[index] = await InvokeEntryAsync(entry, batchRun, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ExecuteParallelSegmentAsync(
         PlannedSegment segment,
         ToolCallResult?[] results,
         ToolBatchFailureMode failureMode,
-        DateTimeOffset batchDeadline,
+        BatchRun batchRun,
         CancellationToken cancellationToken)
     {
         using var failFastSource = failureMode == ToolBatchFailureMode.FailFast
@@ -180,7 +186,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                     keyLocks,
                     admissionGate,
                     failFastSource,
-                    batchDeadline,
+                    batchRun,
                     segmentToken);
             }
 
@@ -203,7 +209,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
         Dictionary<string, SemaphoreSlim> keyLocks,
         SemaphoreSlim admissionGate,
         CancellationTokenSource? failFastSource,
-        DateTimeOffset batchDeadline,
+        BatchRun batchRun,
         CancellationToken segmentToken)
     {
         SemaphoreSlim? keyLock = null;
@@ -258,7 +264,7 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 _ = admissionGate.Release();
             }
 
-            var terminal = await InvokeEntryAsync(entry, batchDeadline, segmentToken).ConfigureAwait(false);
+            var terminal = await InvokeEntryAsync(entry, batchRun, segmentToken).ConfigureAwait(false);
             results[resultIndex] = terminal;
             if (failFastSource is not null
                 && terminal.Status is not ToolTerminalStatus.Succeeded
@@ -297,13 +303,36 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
     private async Task<ToolCallResult> InvokeEntryAsync(
         ToolBatchEntry entry,
-        DateTimeOffset batchDeadline,
+        BatchRun batchRun,
         CancellationToken cancellationToken)
     {
+        ToolBudgetGate.ConcurrentSlot? slot = null;
+        var abandoned = false;
         try
         {
             var plan = entry.Prepared.ExecutionPlan;
             var invoker = entry.InvokerLease.Invoker;
+            if (batchRun.Gate is { } gate)
+            {
+                try
+                {
+                    slot = await gate.TryEnterAsync(entry, ReservationExpiry(batchRun), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return InterruptedBeforeStart(entry);
+                }
+
+                if (slot is null)
+                {
+                    return ToolCallResultComposer.AcceptedNotStarted(
+                        entry,
+                        ToolTerminalStatus.ResourceLimitExceeded,
+                        "The tool call was not started because its concurrent tool-call budget was refused.",
+                        _timeProvider.GetUtcNow());
+                }
+            }
+
             IRandomizer? randomizer = null;
             ToolInvocationResult invocation;
             var startedAt = _timeProvider.GetUtcNow();
@@ -313,7 +342,9 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 var context = ReissueForAttempt(entry.Invocation, attempt, startedAt, plan.InvocationTimeout);
                 try
                 {
-                    invocation = await invoker.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
+                    var settled = await InvokeWithDeadlineAsync(invoker, context, plan.InvocationTimeout, cancellationToken).ConfigureAwait(false);
+                    invocation = settled.Result;
+                    abandoned |= settled.Abandoned;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -340,6 +371,12 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
 
                 var decline = ToolRetryDecider.Decline(invocation, context, invoker, plan.Retry, attempt);
                 var delay = TimeSpan.Zero;
+                if (decline is null && abandoned)
+                {
+                    // An abandoned attempt may still be running, so starting another would overlap its possible effect.
+                    decline = "abandoned";
+                }
+
                 if (decline is null)
                 {
                     var unit = 0.0;
@@ -352,9 +389,24 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                     }
 
                     delay = plan.Retry.ComputeDelay(attempt, unit);
-                    if (_timeProvider.GetUtcNow() + delay >= batchDeadline)
+                    if (_timeProvider.GetUtcNow() + delay >= batchRun.Deadline)
                     {
                         decline = "deadline";
+                    }
+                }
+
+                if (decline is null && batchRun.Gate is { } retryGate)
+                {
+                    try
+                    {
+                        if (!await retryGate.TryCountRetryAsync(entry, attempt, ReservationExpiry(batchRun), cancellationToken).ConfigureAwait(false))
+                        {
+                            decline = "budget";
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        decline = "cancelled";
                     }
                 }
 
@@ -370,17 +422,126 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
                 }
             }
 
-            // A settled attempt already carries its evidence; normalization is bounded CPU-only work that must still run
-            // after the caller cancels, because discarding a completed result would misstate whether the effect happened.
+            // A settled attempt already carries its evidence; normalization must still run after the caller cancels, because
+            // discarding a completed result would misstate whether the effect happened. Any spill is bounded by its own timeout.
             var normalization = await _resultNormalizer
-                .NormalizeAsync(entry.Prepared.Call, invocation, plan.Normalization, CancellationToken.None)
+                .NormalizeAsync(entry.Prepared.Call, invocation, plan.Normalization, batchRun.Spill, CancellationToken.None)
                 .ConfigureAwait(false);
-            return ToolCallResultComposer.FromAcceptedInvocation(
+            var terminal = ToolCallResultComposer.FromAcceptedInvocation(
                 entry, invocation, normalization, startedAt, _timeProvider.GetUtcNow());
+            if (batchRun.Gate is { } accounting)
+            {
+                try
+                {
+                    await accounting.AccountSettledAsync(entry, terminal, ReservationExpiry(batchRun), CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    ToolLog.Failed(_logger, entry.Invocation.CallId, entry.Invocation.Tool.Id, exception.GetType().Name);
+                }
+            }
+
+            return terminal;
         }
         finally
         {
+            if (slot is not null)
+            {
+                await slot.ReleaseAsync(abandoned).ConfigureAwait(false);
+            }
+
             await entry.InvokerLease.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static DateTimeOffset ReservationExpiry(BatchRun batchRun) =>
+        batchRun.Deadline >= DateTimeOffset.MaxValue.AddMinutes(-1) ? DateTimeOffset.MaxValue : batchRun.Deadline.AddMinutes(1);
+
+    /// <summary>Runs one attempt under its enforced deadline.</summary>
+    /// <remarks>
+    /// The attempt's token is linked to the caller's and to the deadline, so the invoker is cancelled when either fires. When the
+    /// deadline fires first the attempt gets <see cref="ToolRuntimeOptions.InvocationDrainPeriod"/> to observe cancellation; a
+    /// result it still produces is honored unless it only reports the cancellation, and an attempt that ignores cancellation is
+    /// abandoned with unknown side-effect certainty. Caller cancellation keeps its existing behavior: the invoker settles
+    /// cooperatively and the exception propagates.
+    /// </remarks>
+    private async Task<AttemptOutcome> InvokeWithDeadlineAsync(
+        IToolInvoker invoker,
+        ToolInvocationContext context,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(timeout > _maximumTimer ? _maximumTimer : timeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        var attempt = invoker.InvokeAsync(context, linked.Token).AsTask();
+        var elapsed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = deadline.Token.Register(static state => ((TaskCompletionSource) state!).TrySetResult(), elapsed);
+        if (await Task.WhenAny(attempt, elapsed.Task).ConfigureAwait(false) == attempt || cancellationToken.IsCancellationRequested)
+        {
+            return await SettleAsync(attempt, deadline, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var drained = await Task.WhenAny(attempt, Task.Delay(_options.InvocationDrainPeriod, _timeProvider, cancellationToken)).ConfigureAwait(false);
+        if (drained != attempt)
+        {
+            _ = attempt.ContinueWith(
+                static finished => _ = finished.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            ObserveTimeout(context, abandoned: true);
+            return new AttemptOutcome(TimedOut(), Abandoned: true);
+        }
+
+        return await SettleAsync(attempt, deadline, context, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Maps a finished attempt to its outcome, converting a cancellation that only reflects the elapsed deadline into a timeout.</summary>
+    private async Task<AttemptOutcome> SettleAsync(
+        Task<ToolInvocationResult> attempt,
+        CancellationTokenSource deadline,
+        ToolInvocationContext context,
+        CancellationToken cancellationToken)
+    {
+        var timedOut = deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+        try
+        {
+            var result = await attempt.ConfigureAwait(false);
+            if (timedOut && result.Outcome.Kind == ToolCallOutcomeKind.Cancelled)
+            {
+                ObserveTimeout(context, abandoned: false);
+                return new AttemptOutcome(TimedOut(), Abandoned: false);
+            }
+
+            return new AttemptOutcome(result, Abandoned: false);
+        }
+        catch (OperationCanceledException) when (timedOut)
+        {
+            ObserveTimeout(context, abandoned: false);
+            return new AttemptOutcome(TimedOut(), Abandoned: false);
+        }
+    }
+
+    private static ToolInvocationResult TimedOut() =>
+        new(
+            new ToolCallOutcome(
+                ToolCallOutcomeKind.Failed,
+                ToolTerminalStatus.TimedOut,
+                SideEffectCertainty.Unknown,
+                retryable: true,
+                "The tool invocation exceeded its time limit.",
+                ExtensionData.Empty),
+            []);
+
+    private void ObserveTimeout(ToolInvocationContext context, bool abandoned)
+    {
+        try
+        {
+            ToolLog.InvocationTimedOut(_logger, context.CallId, context.Tool.Id, context.Attempt, abandoned);
+        }
+        catch
+        {
+            // Instrumentation is observational only and cannot change the timeout outcome.
         }
     }
 
@@ -486,6 +647,10 @@ public sealed class BarrierSegmentToolScheduler: IToolScheduler
             }
         }
     }
+
+    private sealed record BatchRun(DateTimeOffset Deadline, ToolBudgetGate? Gate, IToolResultSpill? Spill);
+
+    private sealed record AttemptOutcome(ToolInvocationResult Result, bool Abandoned);
 
     private enum BarrierSegmentKind
     {

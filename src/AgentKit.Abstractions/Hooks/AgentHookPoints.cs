@@ -44,4 +44,16 @@ public static class AgentHookPoints
     /// acceptance with a safe message; a failure fails the turn.
     /// </summary>
     public static HookPointId OutputValidating { get; } = new("agentkit.output.validating");
+
+    /// <summary>Gets the point that runs before a memory proposal is evaluated by memory policy.</summary>
+    public static HookPointId BeforeMemoryProposal { get; } = new("agentkit.memory.proposal.before");
+
+    /// <summary>Gets the point that runs after memory policy allowed a proposal and before the durable record is written.</summary>
+    public static HookPointId BeforeMemoryWrite { get; } = new("agentkit.memory.write.before");
+
+    /// <summary>Gets the point that runs before a retrieval query is authorized and searched.</summary>
+    public static HookPointId BeforeRetrieval { get; } = new("agentkit.memory.retrieval.before");
+
+    /// <summary>Gets the point that runs after retrieval candidates were ranked and authorized and before they are returned for exposure.</summary>
+    public static HookPointId BeforeRetrievalExposure { get; } = new("agentkit.memory.exposure.before");
 }

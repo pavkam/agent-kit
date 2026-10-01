@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
@@ -74,9 +75,8 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
             profile,
             new OpenAIEmbeddingRequestTranslator(),
             new OpenAIEmbeddingResponseParser(),
-            credentials,
             (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress,
-            timeProvider ?? new FakeTimeProvider(Now));
+            timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://api.openai.test/")));
 
     private static CustomizingEmbeddingModel CreateCustomizingModel(
         HttpMessageHandler handler,
@@ -89,8 +89,9 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
             Profile,
             new OpenAIEmbeddingRequestTranslator(),
             new OpenAIEmbeddingResponseParser(),
-            credentials,
-            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress,
+            new FakeTimeProvider(Now),
+            new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://api.openai.test/")),
             scheme,
             adjust);
 
@@ -671,11 +672,12 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
         _ = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
         [
+            ProviderCredentialReadGate.DefaultAudience,
             ProviderEgress.SecurityAudience,
             harness.Resolver.SecurityAudience,
             harness.Transport.SecurityAudience,
         ]);
-        harness.Authority.Requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldEndWith("/embeddings");
+        harness.Authority.Requests[1].Resources.ShouldHaveSingleItem().Identifier.ShouldEndWith("/embeddings");
         harness.Authority.Requests.ShouldAllBe(request => !request.InputFingerprint.Value.Contains("sk-embed-secret", StringComparison.Ordinal));
     }
 

@@ -5,6 +5,7 @@ namespace AgentKit.Providers.DeepSeek.Tests;
 
 using System.Diagnostics;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Groq;
 using AgentKit.TestSupport;
 
@@ -52,8 +53,9 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.CredentialSourceKey);
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
 
@@ -63,8 +65,9 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekOAuthCredential<StaticOAuthTokenProviderRegistration>();
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(DeepSeekProviderDefaults.CredentialSourceKey);
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
 
@@ -123,8 +126,8 @@ public sealed class ServiceExtensionsTests
         await using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
         models.Select(model => model.Alias.Value).ShouldBe(["deepseek-chat", "groq-chat"], ignoreOrder: true);
-        var deepSeekCredential = await ResolveApiKeyAsync(provider, DeepSeekProviderDefaults.ProviderId);
-        var groqCredential = await ResolveApiKeyAsync(provider, GroqProviderDefaults.ProviderId);
+        var deepSeekCredential = await ResolveApiKeyAsync(provider, DeepSeekProviderDefaults.CredentialSourceKey);
+        var groqCredential = await ResolveApiKeyAsync(provider, GroqProviderDefaults.CredentialSourceKey);
         deepSeekCredential.ApiKey.ShouldBe("deepseek-key");
         groqCredential.ApiKey.ShouldBe("groq-key");
     }
@@ -262,12 +265,10 @@ public sealed class ServiceExtensionsTests
         services.ShouldBeEmpty();
     }
 
-    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderId providerId)
+    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderCredentialSourceKey sourceKey)
     {
-        Debug.Assert(provider is not null, "The caller must provide a service provider.");
-        Debug.Assert(!string.IsNullOrWhiteSpace(providerId.Value), "The caller must provide a valid provider identity.");
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(providerId);
-        var credential = await source.GetCredentialAsync(providerId, TestContext.Current.CancellationToken).ConfigureAwait(false);
-        return credential.ShouldBeOfType<ApiKeyProviderCredential>();
+        var probe = await ProviderCredentialProbe.ProbeAsync(provider, sourceKey, cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        _ = probe.Resolution.ShouldBeOfType<ProviderCredentialResolved>();
+        return new ApiKeyProviderCredential(probe.Headers["Authorization"]["Bearer ".Length..]);
     }
 }

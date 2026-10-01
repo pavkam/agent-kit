@@ -18,7 +18,6 @@ scenarios.
 | Find a package and its related projects         | [Project catalog](packages/index.md)                |
 | Select a provider and check its wire behavior   | [Provider reference](providers/index.md)            |
 | Check the repository status and versioning      | [Current status](getting-started.md#current-status) |
-| See how the runtime was built, chunk by chunk   | [Workstreams](workstreams/index.md)                 |
 | Run focused tests or add a regression           | [Testing guide](testing/index.md)                   |
 
 ## Go deeper

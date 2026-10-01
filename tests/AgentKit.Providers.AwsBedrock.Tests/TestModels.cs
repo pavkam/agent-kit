@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.AwsBedrock.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for a Claude 3 Sonnet model served through Bedrock.</summary>
-    public static ModelDescriptor ClaudeSonnet { get; } = new(
+    public static ModelDescriptor ClaudeSonnet { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         AwsBedrockProviderDefaults.ProviderId,
         AwsBedrockProviderDefaults.ApiFamily,
@@ -16,7 +18,7 @@ internal static class TestModels
         AwsBedrockProviderDefaults.DefaultCapabilities,
         AwsBedrockProviderDefaults.DefaultLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = ClaudeSonnet with

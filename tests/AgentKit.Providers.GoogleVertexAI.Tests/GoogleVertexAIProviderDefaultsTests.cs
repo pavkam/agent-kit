@@ -237,7 +237,7 @@ public sealed class GoogleVertexAIProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("some-key"),
             GoogleVertexAIProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             GoogleVertexAIProviderDefaults.AuthorizationScheme);
 
         var denied = result.ShouldBeOfType<ProviderAuthorizationDenied>();

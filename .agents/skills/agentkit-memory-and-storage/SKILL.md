@@ -58,6 +58,13 @@ When changing C#, also read the
 - Retention is fail-closed (`RequireExplicitPolicyAllow`,
   `agentkit.fail-closed`). No store, index, source, embedding model, or reranker
   is installed by default.
+- Memory hooks (`BeforeMemoryProposal`, `BeforeMemoryWrite`, `BeforeRetrieval`,
+  `BeforeRetrievalExposure`) are reached through the `HookDispatchContext?` the
+  coordinator and pipeline accept; `MemoryHookRunner` derives one dispatch per
+  point and refuses fail-closed on a hook fault. Hooks only veto, lower the
+  budget, or drop candidates; delete dispatches none. In-run retrieval gets the
+  context through `ContextAssemblyRequest.Hooks` and
+  `ContextContributionRequest.Hooks`, which the assembler only forwards.
 - Retrieval drops stale, unauthorized, duplicate, and over-budget candidates and
   fails closed when exposure authorization or required observation is
   unavailable; candidates stay `UntrustedData` with their provenance.

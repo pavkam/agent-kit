@@ -118,6 +118,10 @@ public static class AgentKitActivityNames
     /// <remarks>The activity covers only the delay between attempts, never an invocation.</remarks>
     public const string ToolRetryBackoff = "tool.retry.backoff";
 
+    /// <summary>Externalizes one oversized tool result behind a committed artifact reference.</summary>
+    /// <remarks>The activity covers one prepare, finalize, and abort-on-failure sequence and its terminal outcome. It never carries result content, artifact content, or host paths.</remarks>
+    public const string ToolResultSpill = "tool.result.spill";
+
     /// <summary>Resolves the exact retained policy revision for one tool-result projection.</summary>
     /// <remarks>The activity covers one lookup and its terminal outcome, without performing projection or tool invocation.</remarks>
     public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
@@ -295,6 +299,9 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one provider egress boundary crossing: authorization, resolution, and transport send.</summary>
     public const string ProviderEgress = "provider.egress";
+
+    /// <summary>Gets the name for one provider credential-read: grant authorization, source resolution, and lease application.</summary>
+    public const string ProviderCredentialRead = "provider.credential.read";
 
     /// <summary>Gets the name for one bounded language-intelligence query.</summary>
     public const string LanguageQuery = "language.query";

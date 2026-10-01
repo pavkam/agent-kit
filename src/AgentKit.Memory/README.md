@@ -15,6 +15,13 @@ memory policy explicitly allows it. Retrieved candidates are untrusted data that
 keep their source identity and provenance and pass authorization, stale
 filtering, a per-candidate exposure grant, and a budget.
 
+Four typed hook points (`BeforeMemoryProposal`, `BeforeMemoryWrite`,
+`BeforeRetrieval`, `BeforeRetrievalExposure`, registered through
+`AgentKit.Hooks`) let an application veto a proposal or write, lower a retrieval
+budget, or drop candidates before exposure. They can only restrict, never widen;
+delete runs no hook; and a hook fault refuses the operation. See
+[Memory hook points](../../docs/architecture/memory-and-retrieval.md#memory-hook-points).
+
 Register with `AddAgentMemory`, add a store leaf such as
 `AgentKit.Memory.InMemory`, declare a profile with `AddMemoryProfile`, and
 select it on an agent definition. See

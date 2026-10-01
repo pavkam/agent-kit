@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 using AgentKit.TestSupport;
 
@@ -48,7 +49,8 @@ public sealed class ProviderEgressTests
         int attempt = 1,
         DateTimeOffset? deadline = null,
         bool streaming = false,
-        bool unauthenticated = false) =>
+        bool unauthenticated = false,
+        ProviderEgressCredential? credential = null) =>
         new(
             unauthenticated ? null : operation ?? ProviderEgressHarness.Operation,
             kind,
@@ -63,7 +65,23 @@ public sealed class ProviderEgressTests
             attempt,
             deadline ?? Now.AddMinutes(1),
             streaming,
-            message);
+            message,
+            credential ?? Credential(binding ?? Binding, new ApiKeyProviderCredential(Secret)));
+
+    private static SecurityRequest EgressRequest(ProviderEgressHarness harness) =>
+        harness.Authority.Requests.Single(static request => request.Audience == ProviderEgress.SecurityAudience);
+
+    private static ProviderEgressCredential GatedCredential(ProviderEgressHarness harness, ProviderOperationBinding? binding = null) =>
+        new(
+            new StaticProviderProfileRuntimeSelector(
+                new StaticApiKeyCredentialSource(StaticProviderProfileRuntimeSelector.SourceKey, Secret, harness.Gate))
+                .CreateLease(binding ?? Binding),
+            ProviderAuthorizationScheme.BearerToken);
+
+    private static ProviderEgressCredential Credential(ProviderOperationBinding binding, ProviderCredential credential) =>
+        new(
+            new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(credential)).CreateLease(binding),
+            ProviderAuthorizationScheme.BearerToken);
 
     [Fact]
     public async Task SendAsync_WhenConversationSucceeds_RequestsEgressResolutionAndSendGrantsInOrder()
@@ -72,7 +90,7 @@ public sealed class ProviderEgressTests
         var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
         using var message = Message();
 
-        var result = await harness.Egress.SendAsync(Request(message), TestContext.Current.CancellationToken);
+        var result = await harness.Egress.SendAsync(Request(message, credential: GatedCredential(harness)), TestContext.Current.CancellationToken);
 
         var sent = result.ShouldBeOfType<ProviderEgressSent>();
         await using var response = sent.Response;
@@ -80,12 +98,15 @@ public sealed class ProviderEgressTests
         var requests = harness.Authority.Requests;
         requests.Select(static request => request.Audience).ShouldBe(
         [
+            ProviderCredentialReadGate.DefaultAudience,
             ProviderEgress.SecurityAudience,
             harness.Resolver.SecurityAudience,
             harness.Transport.SecurityAudience,
         ]);
-        requests.ShouldAllBe(static request => request.Kind == SecurityOperationKind.Network && request.Effect == SecurityEffect.Egress);
-        requests.Select(static request => request.InputFingerprint).Distinct().Count().ShouldBe(3);
+        requests[0].Kind.ShouldBe(SecurityOperationKind.StateRead);
+        requests[0].Effect.ShouldBe(SecurityEffect.Observe);
+        requests.Skip(1).ShouldAllBe(static request => request.Kind == SecurityOperationKind.Network && request.Effect == SecurityEffect.Egress);
+        requests.Select(static request => request.InputFingerprint).Distinct().Count().ShouldBe(4);
         harness.Grants.Enforcements.Select(static enforcement => enforcement.Audience).ShouldBe(
             requests.Select(static request => request.Audience));
     }
@@ -98,7 +119,7 @@ public sealed class ProviderEgressTests
 
         _ = await harness.Egress.SendAsync(Request(message), TestContext.Current.CancellationToken);
 
-        var egress = harness.Authority.Requests[0];
+        var egress = EgressRequest(harness);
         egress.Audience.ShouldBe(ProviderEgress.SecurityAudience);
         var resource = egress.Resources.ShouldHaveSingleItem();
         resource.Kind.ShouldBe(ProtectedResourceKind.NetworkEndpoint);
@@ -145,7 +166,7 @@ public sealed class ProviderEgressTests
             using var message = Message();
             var request = variant(message);
             _ = await harness.Egress.SendAsync(request, TestContext.Current.CancellationToken);
-            fingerprints.Add(harness.Authority.Requests[0].InputFingerprint);
+            fingerprints.Add(EgressRequest(harness).InputFingerprint);
         }
 
         fingerprints.Distinct().Count().ShouldBe(variants.Length - 1);
@@ -166,8 +187,8 @@ public sealed class ProviderEgressTests
         _ = await baseline.Egress.SendAsync(Request(first), TestContext.Current.CancellationToken);
         _ = await changed.Egress.SendAsync(Request(second), TestContext.Current.CancellationToken);
 
-        changed.Authority.Requests[0].Resources[0].ShouldNotBe(baseline.Authority.Requests[0].Resources[0]);
-        changed.Authority.Requests[0].InputFingerprint.ShouldNotBe(baseline.Authority.Requests[0].InputFingerprint);
+        EgressRequest(changed).Resources[0].ShouldNotBe(EgressRequest(baseline).Resources[0]);
+        EgressRequest(changed).InputFingerprint.ShouldNotBe(EgressRequest(baseline).InputFingerprint);
     }
 
     [Fact]
@@ -189,7 +210,7 @@ public sealed class ProviderEgressTests
         _ = await otherClassification.Egress.SendAsync(Request(third), TestContext.Current.CancellationToken);
 
         var fingerprints = new[] { baseline, otherBody, otherClassification }
-            .Select(static harness => harness.Authority.Requests[0].InputFingerprint)
+            .Select(static harness => EgressRequest(harness).InputFingerprint)
             .ToArray();
         fingerprints.Distinct().Count().ShouldBe(3);
     }
@@ -206,7 +227,8 @@ public sealed class ProviderEgressTests
         var refused = result.ShouldBeOfType<ProviderEgressRefused>();
         refused.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
         refused.Failure.ProviderId.ShouldBe(new ProviderId("openai"));
-        harness.Authority.Requests.Count.ShouldBe(1);
+        harness.Authority.Requests.Select(static request => request.Audience).ShouldBe(
+            [ProviderCredentialReadGate.DefaultAudience, ProviderEgress.SecurityAudience]);
         harness.Resolver.Resolved.ShouldBeEmpty();
         ((HandlerNetworkTransport) harness.Transport).Requests.ShouldBeEmpty();
         harness.Grants.Enforcements.ShouldBeEmpty();
@@ -620,8 +642,297 @@ public sealed class ProviderEgressTests
         var metric = metrics.Snapshot().ShouldHaveSingleItem();
         metric.Tags.Keys.Order().ShouldBe([AgentKitTagNames.Outcome, AgentKitTagNames.ProviderOperation]);
         metric.Tags[AgentKitTagNames.Outcome].ShouldBe("sent");
-        logger.Snapshot().ShouldHaveSingleItem().EventId.Id.ShouldBe(6120);
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([6123, 6120]);
         SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), Secret, "hello");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialIsRead_BindsProfileSourceAttemptAndDeadlineWithoutTheSecret()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var credential = GatedCredential(harness);
+        using var message = Message();
+
+        await using var response = (await harness.Egress.SendAsync(Request(message, credential: credential, attempt: 3), TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ProviderEgressSent>().Response;
+
+        var read = harness.Authority.Requests[0];
+        read.Audience.ShouldBe(ProviderCredentialReadGate.DefaultAudience);
+        read.Kind.ShouldBe(SecurityOperationKind.StateRead);
+        read.Effect.ShouldBe(SecurityEffect.Observe);
+        read.Deadline.ShouldBe(Now.AddMinutes(1));
+        read.Authorization.ShouldBe(ProviderEgressHarness.Operation.Authorization);
+        read.Identity.ShouldBe(ProviderEgressHarness.Operation.Identity);
+        var resource = read.Resources.ShouldHaveSingleItem();
+        resource.Kind.ShouldBe(ProtectedResourceKind.ApplicationState);
+        resource.Identifier.ShouldContain("openai-credential@5");
+        resource.Identifier.ShouldContain("source:test.credentials");
+        var runtime = credential.Runtime;
+        read.InputFingerprint.ShouldBe(ProviderCredentialReadBinding.Fingerprint(runtime.Endpoint, runtime.Credential, 3, Now.AddMinutes(1)));
+        read.InputFingerprint.Value.ShouldNotContain(Secret);
+        resource.Identifier.ShouldNotContain(Secret);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialIsReleased_ConsumesTheCredentialGrantOnceAndSendsTheLeaseHeader()
+    {
+        var handler = Ok();
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        using var message = Message();
+
+        await using var response = (await harness.Egress.SendAsync(Request(message, credential: GatedCredential(harness)), TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ProviderEgressSent>().Response;
+
+        harness.Grants.Enforcements.Count(static enforcement => enforcement.Audience == ProviderCredentialReadGate.DefaultAudience).ShouldBe(1);
+        var sent = ((HandlerNetworkTransport) harness.Transport).Requests.ShouldHaveSingleItem();
+        sent.Headers.Headers.Single(static header => header.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)).Value
+            .ShouldBe($"Bearer {Secret}");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialReadGrantDenied_RefusesBeforeTheSourceReadsAnySecretOrEgressIsRequested()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        harness.Authority.Deny = static request => request.Audience == ProviderCredentialReadGate.DefaultAudience;
+        var source = new StaticProviderCredentialSource(new ApiKeyProviderCredential(Secret));
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(
+            Request(message, credential: new ProviderEgressCredential(new StaticProviderProfileRuntimeSelector(source).CreateLease(Binding), ProviderAuthorizationScheme.BearerToken)),
+            TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ProviderEgressRefused>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failure.SafeMessage.ShouldNotContain(Secret);
+        source.ResolutionCount.ShouldBe(0);
+        harness.Authority.Requests.ShouldHaveSingleItem().Audience.ShouldBe(ProviderCredentialReadGate.DefaultAudience);
+        harness.Resolver.Resolved.ShouldBeEmpty();
+        ((HandlerNetworkTransport) harness.Transport).Requests.ShouldBeEmpty();
+        message.Headers.Authorization!.Parameter.ShouldBe(Secret);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialGrantIsNotConsumableBySource_RefusesAuthorizationBeforeEgressGrant()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        harness.Grants.ConsumptionFault = new InvalidOperationException("store offline " + Secret);
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(Request(message, credential: GatedCredential(harness)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ProviderEgressRefused>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failure.SafeMessage.ShouldNotContain(Secret);
+        harness.Authority.Requests.ShouldHaveSingleItem().Audience.ShouldBe(ProviderCredentialReadGate.DefaultAudience);
+        ((HandlerNetworkTransport) harness.Transport).Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialSourceThrows_RefusesAuthenticationWithFixedMessageAndKeepsCause()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var fault = new InvalidOperationException("token endpoint said " + Secret);
+        var credential = new ProviderEgressCredential(
+            new StaticProviderProfileRuntimeSelector(new ThrowingProviderCredentialSource(fault)).CreateLease(Binding),
+            ProviderAuthorizationScheme.BearerToken);
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(Request(message, credential: credential), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ProviderEgressRefused>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The request credential could not be resolved.");
+        failure.DiagnosticCause.ShouldBeSameAs(fault);
+        harness.Authority.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenLeaseCannotAuthenticateTheTarget_RefusesWithTheLeaseFailureBeforeEgressGrant()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var expired = new OAuthTokenProviderCredential("expired-token-value", Now.AddSeconds(-1));
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(Request(message, credential: Credential(Binding, expired)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ProviderEgressRefused>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The configured OAuth access token has expired.");
+        failure.SafeMessage.ShouldNotContain("expired-token-value");
+        harness.Authority.Requests.Count.ShouldBe(1);
+        ((HandlerNetworkTransport) harness.Transport).Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialIsApplied_UsesTheInjectedClockForTokenExpiry()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var validUntilJustAfterNow = new OAuthTokenProviderCredential("valid-token-value", Now.AddSeconds(1));
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(Request(message, credential: Credential(Binding, validUntilJustAfterNow)), TestContext.Current.CancellationToken);
+
+        await using var response = result.ShouldBeOfType<ProviderEgressSent>().Response;
+        _ = ((HandlerNetworkTransport) harness.Transport).Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenBoundOperationHasNoCredential_RefusesAuthenticationBeforeAnyGrant()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        using var message = Message();
+        var request = Request(message) with { Credential = null };
+
+        var result = await harness.Egress.SendAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ProviderEgressRefused>().Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        harness.Authority.Requests.Count.ShouldBeLessThanOrEqualTo(0);
+        ((HandlerNetworkTransport) harness.Transport).Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialRuntimeDoesNotMatchTheBinding_RefusesAuthenticationBeforeAnyCredentialGrant()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var otherBinding = new ProviderOperationBinding(
+            Binding.Endpoint,
+            new ProviderCredentialProfileReference(new ProviderCredentialProfileKey("other-credential"), new ProviderCredentialProfileVersion(1)));
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(
+            Request(message, credential: Credential(otherBinding, new ApiKeyProviderCredential(Secret))),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ProviderEgressRefused>().Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        harness.Authority.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAttemptCompletes_DisposesTheCredentialLeaseExactlyOnce()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        var source = new SpyCredentialSource();
+        var credential = new ProviderEgressCredential(
+            new StaticProviderProfileRuntimeSelector(source).CreateLease(Binding),
+            ProviderAuthorizationScheme.BearerToken);
+        using var message = Message();
+
+        await using var response = (await harness.Egress.SendAsync(Request(message, credential: credential), TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ProviderEgressSent>().Response;
+
+        source.Lease.ShouldNotBeNull().Applications.ShouldBe(1);
+        source.Lease.Disposals.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCancelledDuringCredentialResolution_ReturnsCancellationWithoutEgressGrant()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        using var cts = new CancellationTokenSource();
+        var credential = new ProviderEgressCredential(
+            new StaticProviderProfileRuntimeSelector(new CancellingCredentialSource(cts)).CreateLease(Binding),
+            ProviderAuthorizationScheme.BearerToken);
+        using var message = Message();
+
+        var result = await harness.Egress.SendAsync(Request(message, credential: credential), cts.Token);
+
+        result.ShouldBeOfType<ProviderEgressRefused>().Failure.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        harness.Authority.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialIsReleased_RecordsCredentialReadSignalsWithBoundedDimensionsOnly()
+    {
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now));
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ProviderCredentialRead);
+        using var metrics = new MetricCollector(AgentKitMetricNames.ProviderCredentialReadCount);
+        using var message = Message();
+
+        await using var response = (await harness.Egress.SendAsync(Request(message, credential: GatedCredential(harness)), TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ProviderEgressSent>().Response;
+
+        var activity = activities.Snapshot().ShouldHaveSingleItem();
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.Tags[AgentKitTagNames.ProviderName].ShouldBe("openai");
+        var metric = metrics.Snapshot().ShouldHaveSingleItem();
+        metric.Tags.Keys.ShouldBe([AgentKitTagNames.Outcome]);
+        metric.Tags[AgentKitTagNames.Outcome].ShouldBe("released");
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), [], metrics.Snapshot(), Secret);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCredentialReadIsRefused_RecordsAFailedActivityAndRefusalMetricWithoutTheSecret()
+    {
+        var logger = new RecordingLogger<ProviderEgress>();
+        var harness = ProviderEgressHarness.Create(Ok(), new FakeTimeProvider(Now), logger: logger);
+        harness.Authority.Deny = static request => request.Audience == ProviderCredentialReadGate.DefaultAudience;
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            static observation => observation.OperationName == AgentKitActivityNames.ProviderCredentialRead);
+        using var metrics = new MetricCollector(AgentKitMetricNames.ProviderCredentialReadCount);
+        using var message = Message();
+
+        _ = await harness.Egress.SendAsync(Request(message, credential: GatedCredential(harness)), TestContext.Current.CancellationToken);
+
+        activities.Snapshot().ShouldHaveSingleItem().Status.ShouldBe(ActivityStatusCode.Error);
+        metrics.Snapshot().ShouldHaveSingleItem().Tags[AgentKitTagNames.Outcome].ShouldBe("authorization");
+        logger.Snapshot().ShouldHaveSingleItem().EventId.Id.ShouldBe(6121);
+        SignalAssertions.ShouldNotContainContent(activities.Snapshot(), logger.Snapshot(), metrics.Snapshot(), Secret);
+    }
+
+    private sealed class SpyLease: IProviderCredentialLease
+    {
+        public int Applications { get; private set; }
+
+        public int Disposals { get; private set; }
+
+        public ValueTask<ProviderFailure?> ApplyAsync(IProviderAuthenticationTarget target, CancellationToken cancellationToken = default)
+        {
+            Applications++;
+            target.SetHeader("Authorization", $"Bearer {Secret}");
+            return ValueTask.FromResult<ProviderFailure?>(null);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Disposals++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class SpyCredentialSource: IProviderCredentialSource
+    {
+        public SpyLease? Lease { get; private set; }
+
+        public ProviderCredentialSourceKey Key => StaticProviderProfileRuntimeSelector.SourceKey;
+
+        public ComponentId SecurityAudience => ProviderCredentialReadGate.DefaultAudience;
+
+        public ValueTask<ProviderCredentialResolutionResult> ResolveAsync(
+            ProviderCredentialResolutionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Lease = new SpyLease();
+            return ValueTask.FromResult<ProviderCredentialResolutionResult>(new ProviderCredentialResolved(Lease));
+        }
+    }
+
+    private sealed class CancellingCredentialSource(CancellationTokenSource cts): IProviderCredentialSource
+    {
+        public ProviderCredentialSourceKey Key => StaticProviderProfileRuntimeSelector.SourceKey;
+
+        public ComponentId SecurityAudience => ProviderCredentialReadGate.DefaultAudience;
+
+        public ValueTask<ProviderCredentialResolutionResult> ResolveAsync(
+            ProviderCredentialResolutionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cts.Cancel();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("The cancelled token must have thrown.");
+        }
     }
 
     [Fact]

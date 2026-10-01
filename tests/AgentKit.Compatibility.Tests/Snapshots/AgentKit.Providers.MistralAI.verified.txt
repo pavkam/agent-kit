@@ -22,7 +22,7 @@ namespace AgentKit.Providers.MistralAI
     }
     public sealed class MistralAIEmbeddingModel : AgentKit.IEmbeddingModel
     {
-        public MistralAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIEmbeddingRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider) { }
+        public MistralAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIEmbeddingRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIEmbeddingResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -43,7 +43,7 @@ namespace AgentKit.Providers.MistralAI
     }
     public sealed class MistralAILlmModel : AgentKit.ILlmModel
     {
-        public MistralAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public MistralAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -52,7 +52,7 @@ namespace AgentKit.Providers.MistralAI
         public const string DefaultChatCompletionsPath = "chat/completions";
         public const string DefaultEmbeddingsPath = "embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
         public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
         public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }

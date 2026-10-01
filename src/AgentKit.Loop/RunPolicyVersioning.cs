@@ -11,7 +11,7 @@ using System.Text;
 /// <remarks>
 /// <para>
 /// No first-party component publishes a versioned run-policy snapshot yet (see
-/// <c>docs/implementation-plan.md</c>, workstream 1): the effective continuation-relevant behavior a run observes
+/// <c>docs/architecture/agent-runtime.md</c>): the effective continuation-relevant behavior a run observes
 /// is the combination of the definition's narrowed turn limit and attempt timeout, the selected
 /// <see cref="IRunContinuationPolicy"/> registration, and the host's live, independently hot-reloadable
 /// <see cref="AgentLoopOptions"/>. This type composes the shared admission-visible core
@@ -36,6 +36,8 @@ public static class RunPolicyVersioning
     /// <param name="attemptTimeout">The run's exact effective attempt timeout, after any narrowing.</param>
     /// <param name="continuationPolicyKey">The exact selected <see cref="IRunContinuationPolicy"/> registration key.</param>
     /// <param name="options">The exact resolved <see cref="AgentLoopOptions"/> this run observes.</param>
+    /// <param name="allowedTools">The run's tool allow-list, or <see langword="null"/> when the run exposes its whole tool surface.</param>
+    /// <param name="budgetParentScopeId">The existing budget scope the run's scope is created beneath, or <see langword="null"/>.</param>
     /// <returns>A positive version that is identical for two calls with identical arguments and differs otherwise.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxTurns"/> is not positive, or <paramref name="attemptTimeout"/> is not positive.</exception>
     /// <exception cref="ArgumentException"><paramref name="continuationPolicyKey"/> is blank.</exception>
@@ -44,10 +46,12 @@ public static class RunPolicyVersioning
         int maxTurns,
         TimeSpan attemptTimeout,
         ComponentKey<IRunContinuationPolicy> continuationPolicyKey,
-        AgentLoopOptions options)
+        AgentLoopOptions options,
+        ImmutableArray<ToolId>? allowedTools = null,
+        BudgetScopeId? budgetParentScopeId = null)
     {
         // Validates maxTurns, attemptTimeout, and continuationPolicyKey identically to the core.
-        var core = AgentKit.RunPolicyVersioning.Compute(maxTurns, attemptTimeout, continuationPolicyKey);
+        var core = AgentKit.RunPolicyVersioning.Compute(maxTurns, attemptTimeout, continuationPolicyKey, allowedTools, budgetParentScopeId);
         ArgumentNullException.ThrowIfNull(options);
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

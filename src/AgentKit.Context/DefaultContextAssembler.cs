@@ -245,7 +245,10 @@ internal sealed class DefaultContextAssembler: IContextAssembler
             request.Model,
             preparedHistory,
             evidence.Authorization,
-            evidence.Configuration);
+            evidence.Configuration)
+        {
+            Hooks = request.Hooks,
+        };
 
         var candidates = ImmutableArray.CreateBuilder<ContextCandidate>();
         foreach (var registered in _services.Contributors)

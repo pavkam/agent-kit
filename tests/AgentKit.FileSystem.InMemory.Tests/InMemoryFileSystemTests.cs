@@ -1018,6 +1018,88 @@ public sealed class InMemoryFileSystemTests
         result.SafeMessage.ShouldNotBeNull().ShouldContain("aggregate byte boundary");
     }
 
+    [Fact]
+    public async Task DeleteAsync_WhenAuthorized_PresentsADeleteEffectOnTheExactResourceWithTheDeleteFingerprint()
+    {
+        var store = new TestSecurity.RecordingGrantStore();
+        var fs = CreateFileSystem(grantStore: store);
+        var operation = DeleteOperation("gone.txt");
+        _ = await WriteSeedAsync(fs, "gone.txt", "data");
+
+        var result = await fs.DeleteAsync(operation, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileDeleteSuccess>().PreviousBytes.ShouldBe(4);
+        var enforcement = store.LastEnforcement.ShouldNotBeNull();
+        enforcement.Kind.ShouldBe(SecurityOperationKind.FileWrite);
+        enforcement.Effect.ShouldBe(SecurityEffect.Delete);
+        enforcement.Audience.ShouldBe(fs.SecurityAudience);
+        enforcement.Resources.ShouldBe([FileSecurityBinding.Resource(operation.ResolvedTarget)]);
+        enforcement.InputFingerprint.ShouldBe(FileSecurityBinding.DeleteFingerprint(operation));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheGrantStoreRefuses_DeniesAndKeepsTheFile()
+    {
+        var store = new TestSecurity.RecordingGrantStore();
+        var fs = CreateFileSystem(grantStore: store);
+        _ = await WriteSeedAsync(fs, "keep.txt", "data");
+        store.Result = new GrantConsumptionResult(GrantConsumptionStatus.Mismatch, 1, "Grant does not match.", null);
+
+        var result = await fs.DeleteAsync(DeleteOperation("keep.txt"), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileDeleteDenied>();
+        store.Result = null;
+        _ = (await fs.GetMetadataAsync(MetadataOperation("keep.txt"), TestContext.Current.CancellationToken)).ShouldBeOfType<FileMetadataSuccess>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheOperationIsNull_ThrowsNamingItBeforeAnyEffect()
+    {
+        var fs = CreateFileSystem();
+
+        (await Should.ThrowAsync<ArgumentNullException>(async () => await fs.DeleteAsync(null!, TestContext.Current.CancellationToken))).ParamName.ShouldBe("operation");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCancelledAfterAuthorization_ThrowsAndKeepsTheFile()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestSecurity.RecordingGrantStore { OnIntentConsumption = cancellation.Cancel };
+        var fs = CreateFileSystem(grantStore: store);
+        _ = await WriteSeedAsync(fs, "keep.txt", "data");
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await fs.DeleteAsync(DeleteOperation("keep.txt"), cancellation.Token));
+
+        _ = (await fs.GetMetadataAsync(MetadataOperation("keep.txt"), TestContext.Current.CancellationToken)).ShouldBeOfType<FileMetadataSuccess>();
+    }
+
+    private static AuthorizedFileDelete DeleteOperation(string path) => new(
+        new ResolvedFileTarget(
+            new FileRootId("workspace"), new NormalizedRelativePath(path), path, FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("target"u8)),
+        null,
+        TestSecurity.Grant());
+
+    private static AuthorizedFileMetadataRead MetadataOperation(string path) => new(
+        new ResolvedFileTarget(
+            new FileRootId("workspace"), new NormalizedRelativePath(path), path, FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("target"u8)),
+        TestSecurity.Grant());
+
+    private static async Task<FileWriteResult> WriteSeedAsync(InMemoryFileSystem fs, string path, string text)
+    {
+        var payload = Encoding.UTF8.GetBytes(text);
+        var target = new ResolvedFileTarget(
+            new FileRootId("workspace"), new NormalizedRelativePath(path), path, FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8), FileSecurityBinding.ContentFingerprint("target"u8));
+        return await fs.WriteAsync(
+            new AuthorizedFileWrite(
+                target, FileWriteDisposition.CreateOrReplace, null, payload.Length, FileSecurityBinding.ContentFingerprint(payload),
+                FileWriteAtomicityMode.Required, FileWriteEffectClass.WorkspaceBytes, TestSecurity.Grant()),
+            new FileWriteContent(payload, FileSecurityBinding.ContentFingerprint(payload)),
+            TestContext.Current.CancellationToken);
+    }
+
     private static InMemoryFileSystem CreateFileSystem(
         Action<InMemoryFileSystemOptions>? configure = null,
         ISecurityGrantStore? grantStore = null,

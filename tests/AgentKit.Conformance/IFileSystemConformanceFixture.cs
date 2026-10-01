@@ -15,6 +15,9 @@ public interface IFileSystemConformanceFixture: IAsyncDisposable
     /// <summary>Gets the writer under test.</summary>
     public IFileWriter Writer { get; }
 
+    /// <summary>Gets the deleter under test.</summary>
+    public IFileDeleter Deleter { get; }
+
     /// <summary>Gets the directory creator under test when the profile exposes directory creation.</summary>
     public IDirectoryCreator? DirectoryCreator { get; }
 
@@ -47,6 +50,12 @@ public interface IFileSystemConformanceFixture: IAsyncDisposable
         ReadOnlyMemory<byte> payload,
         FileWriteDisposition disposition,
         ContentHash? expectedTargetFingerprint = null);
+
+    /// <summary>Builds one authorized deletion of the regular file at a path.</summary>
+    /// <param name="relativePath">The profile-relative path.</param>
+    /// <param name="expectedTargetFingerprint">The optional target fingerprint precondition.</param>
+    /// <returns>The authorized delete operation.</returns>
+    public AuthorizedFileDelete CreateAuthorizedDelete(string relativePath, ContentHash? expectedTargetFingerprint = null);
 
     /// <summary>Builds one authorized directory create.</summary>
     /// <param name="relativePath">The directory path relative to the profile root.</param>

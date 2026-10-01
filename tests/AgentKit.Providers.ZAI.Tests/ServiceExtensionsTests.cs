@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.ZAI.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -73,8 +74,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAI();
         _ = services.AddZAIApiKeyCredential("zai-test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -86,8 +88,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAI();
         _ = services.AddZAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

@@ -161,7 +161,7 @@ multi-agent hosting on one engine, and the hosted worker are implemented. A
 child never runs inside the parent's tool call: it is a durable goal that a
 worker claims and runs, and the parent waits on durable state bounded by the
 deadline it was given. The
-[goals and delegation workstream](../workstreams/goals-and-delegation.md)
+[goals and delegation architecture](../architecture/goals-and-delegation.md)
 records what is deliberately left out.
 
 ## What lives where

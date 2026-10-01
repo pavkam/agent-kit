@@ -399,11 +399,31 @@ optional turn match exactly. It also accepts an `AfterRunOperationCorrelation`
 when the address run is its causal run and the address has no turn; that causal
 relationship never claims an active run. The present address shape cannot
 represent `BeforeRunOperationCorrelation` or sessionless work, so those cases
-are rejected until a future typed address evolves the contract. The lease
-manager allocates fencing tokens atomically, records the injected `WorkerId`,
-and computes and checks `ExpiresAt` only through `TimeProvider`. Renewal may
-advance expiry but never changes operation identity or reuses an older fencing
-token.
+are rejected until a future typed address evolves the contract.
+
+That rejection is a deliberate design, not a gap, for the one first-party
+boundary it affects: explicit maintenance compaction (`Agent.CompactAsync`),
+which runs under a `BeforeRunOperationCorrelation` because no run exists. It has
+no in-run address, and the only way to journal it would be to fabricate a
+`RunId`, which would make recovery report the work as belonging to a run that
+never contained it. A typed address that models run-less work would change the
+address every journal, lease manager, fence, recovery policy, and storage codec
+is keyed by, for work that has no recovery obligation: the engine never resumes
+maintenance on its own, because it is caller-initiated and caller-retried, and
+its activation append is already idempotent and reconcilable without a journal
+(the compaction's identity keys the append, a retry replays the identical
+request, and a reconciliation read of the branch tip proves whether the record
+committed). Explicit maintenance therefore stays unjournaled even when the
+agent's compaction profile is paired with a durability profile that enables
+`agentkit.compaction.activation`; the profile's journaling applies to every
+activation whose capture can be durably addressed, namely in-run compaction and
+compaction that causally follows a settled run (`AfterRunOperationCorrelation`).
+A process lost during maintenance leaves either a committed activation record or
+none, never a half-applied checkpoint, and the caller reissues the identical
+request to learn which. The lease manager allocates fencing tokens atomically,
+records the injected `WorkerId`, and computes and checks `ExpiresAt` only
+through `TimeProvider`. Renewal may advance expiry but never changes operation
+identity or reuses an older fencing token.
 
 An enforcement intent carries that exact existing fencing generation only when
 its immediate protected action operates under an owner already acquired by this
@@ -657,12 +677,21 @@ activation), idempotently with each owner's own registration.
 
 The adapters are explicitly ephemeral: boundaries, checkpoints, and recovery
 decisions are real and inspectable, but nothing survives the process, so the
-sugar claims no crash recovery. An application that needs durable storage or
-cross-process ownership registers keyed SQLite or JSON adapters and calls
-`AddDurabilityProfile` on `AgentEngineBuilder.Services` instead. The journal is
-a protected boundary and needs a grant store and audit dispatcher, so the sugar
-is paired with `UseLocalDevelopmentDefaults` or an explicit security
-composition.
+sugar claims no crash recovery. `WithSqliteDurability(databasePath)` and
+`WithJsonDurability(directoryPath)` select the durable adapters over the same
+profile, handlers, and recovery policy at an explicit absolute path that is
+never implied; the sugar is the trusted bootstrap, so it validates, creates, and
+binds the store (and replays the JSON journal) when the engine first resolves
+the journal. SQLite supplies the journal, lease manager, and backend and is
+durable local storage, authoritative on one host. JSON supplies only the
+journal, so leases and backend ownership remain process-local and it claims no
+multi-process coordination; its root must be canonical because the store refuses
+a root that traverses a symbolic link. A composition selects one store: a
+second, different choice throws. An application that needs cross-process
+ownership registers its own keyed adapters and calls `AddDurabilityProfile` on
+`AgentEngineBuilder.Services` instead. The journal is a protected boundary and
+needs a grant store and audit dispatcher, so the sugar is paired with
+`UseLocalDevelopmentDefaults` or an explicit security composition.
 
 ## Composition validation and unsupported behavior
 

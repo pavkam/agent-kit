@@ -122,6 +122,14 @@ and cost bounded. Missing credentials skip them clearly without weakening the
 offline protocol suite. Test resources use isolated principals and are removed
 according to the provider's retention contract.
 
+The first-party live verification is `tests/AgentKit.Evaluation.Live.Tests`: a
+`ModelJudgeEvaluator` over `ModelRequestJudgeClient` judging a real OpenAI
+answer against a rubric. It runs only when `AGENTKIT_LIVE_TESTS=1` and
+`OPENAI_API_KEY` are set (an optional `AGENTKIT_LIVE_OPENAI_MODEL` names the
+model); otherwise xUnit reports it as skipped with that reason. It is bounded to
+two minutes, a handful of requests, and the judge's own call and token budgets,
+and uses only the in-memory result store.
+
 ## Contract and evaluation shape
 
 Testing support consumes public contracts; it does not add test-only methods to
@@ -419,9 +427,15 @@ reviewers do not rediscover them:
   selected by key.
 - **Fixtures are recorded evidence, not resolved resources.** The host composes
   the engine and fakes that realize a fixture. `EvaluationFixtureReference`
-  travels with every result. A fixture resolver contract is deferred until a
-  second fixture implementation exists, so the "fixture resolvers" validation
-  item in the build validation list is not applicable.
+  travels with every result. There is no fixture resolver contract: no fixture
+  implementation exists in the framework, an abstraction needs a demonstrated
+  extension axis with at least two implementations, and the host that composes
+  the engine already owns realizing and disposing its fixtures. The "fixture
+  resolvers" item in the validation list is therefore not applicable; validation
+  instead checks the part the runner does own, that an evaluator whose
+  descriptor requires a fixture is never run on a case that declares none. A
+  host that later needs resolution adds a contract in its owning package with
+  its first two implementations.
 - **Evaluators declare no artifact requirements.** An approved artifact arrives
   as a fixture or through the evaluator's own collaborators;
   `EvaluatorDescriptor` declares supported criteria and whether a fixture is
@@ -580,8 +594,8 @@ Evaluation is optional and does not participate in normal engine validation
 until registered. Its validation checks runner replacement ambiguity, case
 concurrency and budgets, referenced evaluator/store/exporter keys, service
 scopes, the single engine binding, agent/profile compatibility, trusted
-evaluation identity, fixture resolvers, and model-judge model capabilities. An
-external store/exporter also activates validation for its
+evaluation identity, fixture requirements, and model-judge model capabilities.
+An external store/exporter also activates validation for its
 file/network/security/audit dependencies.
 
 An evaluator declares supported criteria and required artifacts in its

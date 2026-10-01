@@ -10,9 +10,13 @@ using System.Text.Json;
 internal sealed class FakeToolRunCatalogCaptureFactory: IToolRunCatalogCaptureFactory
 {
     /// <inheritdoc/>
+    /// <summary>Gets every capture request the loop issued, in order.</summary>
+    public List<RunToolCatalogCaptureRequest> Requests { get; } = [];
+
     public IToolCatalogCapture Create(RunToolCatalogCaptureRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        Requests.Add(request);
         using var schema = JsonDocument.Parse("{}");
         var descriptor = new ToolDescriptor(
             new ToolId("test-tool"),

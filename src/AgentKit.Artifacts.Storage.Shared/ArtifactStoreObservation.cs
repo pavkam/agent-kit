@@ -79,6 +79,77 @@ internal static class ArtifactStoreObservation
         }
     }
 
+    /// <summary>Runs one synchronous intent-store operation under a correlated activity, structured log, and bounded metrics.</summary>
+    /// <typeparam name="TResult">The operation result type.</typeparam>
+    /// <param name="logger">The content-free logger.</param>
+    /// <param name="time">The clock used only for observational duration.</param>
+    /// <param name="adapter">The bounded adapter name.</param>
+    /// <param name="kind">The intent-store operation.</param>
+    /// <param name="tenantId">The tenant partition, which may be high-cardinality on traces and logs only.</param>
+    /// <param name="operation">The operation to run.</param>
+    /// <param name="outcomeOf">Names the bounded outcome label of a result and whether it is a success.</param>
+    /// <returns>The operation's result, unchanged.</returns>
+    internal static TResult ObserveIntent<TResult>(
+        ILogger logger,
+        TimeProvider time,
+        string adapter,
+        ArtifactStoreOperationKind kind,
+        TenantId tenantId,
+        Func<TResult> operation,
+        Func<TResult, (string Outcome, bool Succeeded)> outcomeOf)
+    {
+        Debug.Assert(logger is not null, "Adapters supply a logger.");
+        Debug.Assert(time is not null, "Adapters supply a clock.");
+        Debug.Assert(operation is not null, "The operation to run is supplied.");
+        var operationName = Name(kind);
+        var started = TryTimestamp(time);
+        var tags = new List<KeyValuePair<string, object?>>
+        {
+            new(AgentKitTagNames.ArtifactStoreAdapter, adapter),
+            new(AgentKitTagNames.ArtifactStoreOperation, operationName),
+        };
+        if (!string.IsNullOrWhiteSpace(tenantId.Value))
+        {
+            tags.Add(new(AgentKitTagNames.TenantId, tenantId.Value));
+        }
+
+        using var scope = AgentKitActivityScope.Start(AgentKitActivityNames.ArtifactStoreOperation, ActivityKind.Internal, tags);
+        try
+        {
+            var result = operation();
+            var (outcome, succeeded) = outcomeOf(result);
+            Safe(() =>
+            {
+                if (succeeded)
+                {
+                    scope.Activity.SetSuccessful(outcome);
+                }
+                else
+                {
+                    scope.Activity.SetFailed(outcome, outcome);
+                }
+            });
+            Safe(() => ArtifactStoreLog.Completed(logger, succeeded ? LogLevel.Information : LogLevel.Warning, adapter, operationName, outcome));
+            Safe(() => ArtifactStoreMetrics.Record(adapter, operationName, outcome, TryElapsed(time, started)));
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            Safe(() => scope.Activity.SetFailed("cancelled", nameof(OperationCanceledException)));
+            Safe(() => ArtifactStoreLog.Cancelled(logger, adapter, operationName));
+            Safe(() => ArtifactStoreMetrics.Record(adapter, operationName, "cancelled", TryElapsed(time, started)));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            Safe(() => scope.Activity.SetFailed("faulted", errorType));
+            Safe(() => ArtifactStoreLog.Faulted(logger, adapter, operationName, errorType));
+            Safe(() => ArtifactStoreMetrics.Record(adapter, operationName, "faulted", TryElapsed(time, started)));
+            throw;
+        }
+    }
+
     /// <summary>Runs an observation step and swallows its failure so observation never changes a semantic result.</summary>
     /// <param name="observation">The observation to run.</param>
     internal static void Safe(Action observation)
@@ -117,6 +188,10 @@ internal static class ArtifactStoreObservation
         ArtifactStoreOperationKind.Abort => "abort",
         ArtifactStoreOperationKind.Read => "read",
         ArtifactStoreOperationKind.Delete => "delete",
+        ArtifactStoreOperationKind.IntentRecord => "intent_record",
+        ArtifactStoreOperationKind.IntentGet => "intent_get",
+        ArtifactStoreOperationKind.IntentTransition => "intent_transition",
+        ArtifactStoreOperationKind.IntentListPending => "intent_list_pending",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "The artifact store operation is undefined."),
     };
 

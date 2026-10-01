@@ -155,7 +155,7 @@ public sealed record ToolInvocationContext
     public DateTimeOffset InvocationStartedAt { get; }
 
     /// <summary>Gets the instant by which this attempt must settle.</summary>
-    /// <value>An advisory bound the invoker should honor; enforcement remains a scheduler/executor responsibility.</value>
+    /// <value>The enforced deadline: the scheduler cancels the attempt's token at this instant, so an invoker should honor the token and settle promptly; an attempt that ignores it is abandoned and reported timed out.</value>
     public DateTimeOffset Deadline { get; }
 
     /// <summary>Gets the bounded live-progress reporter for this attempt.</summary>

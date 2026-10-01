@@ -12,10 +12,13 @@ public sealed class RetrievalContextContributorTests
     {
         internal List<RetrievalQuery> Queries { get; } = [];
 
-        public Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken cancellationToken = default)
+        internal List<HookDispatchContext?> Hooks { get; } = [];
+
+        public Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Queries.Add(query);
+            Hooks.Add(hooks);
             return Task.FromResult(script(query));
         }
     }
@@ -97,6 +100,30 @@ public sealed class RetrievalContextContributorTests
         contribution.Candidates[0].Source.Key.Value.ShouldBe($"memory:{memoryId}");
         ((TextPart) contribution.Candidates[0].Content[0]).Text.ShouldBe("first fact");
         contribution.Diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ContributeAsync_WhenTheRequestCarriesAHookContext_PassesItToThePipelineUnchanged()
+    {
+        var pipeline = new ScriptedPipeline(query => Completed(query));
+        var contributor = Contributor(pipeline, MemoryTestData.Snapshot());
+        var snapshot = new HookCatalogSnapshot(HookRegistrationDescriptors.DefaultProfileKey, new HookCatalogVersion("retrieval-test"), []);
+        var lease = await new StaticHookInstanceFactory(new Dictionary<HookRegistrationId, object>()).CreateAsync(snapshot, TestContext.Current.CancellationToken);
+        await using var scope = new HookActivationScope(snapshot, lease);
+        var request = Request("memory", "question");
+        var hooks = scope.CreateDispatch(new HookDispatchMetadata(
+            AgentHookPoints.BeforeRetrieval,
+            new HookDispatchId(Guid.NewGuid()),
+            request.Authorization.Scope.Correlation,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch.AddSeconds(30)));
+
+        _ = await contributor.ContributeAsync(request with { Hooks = hooks }, TestContext.Current.CancellationToken);
+        _ = await contributor.ContributeAsync(request, TestContext.Current.CancellationToken);
+
+        pipeline.Hooks.Count.ShouldBe(2);
+        pipeline.Hooks[0].ShouldBeSameAs(hooks);
+        pipeline.Hooks[1].ShouldBeNull();
     }
 
     [Fact]

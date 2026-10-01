@@ -32,6 +32,9 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
     public IFileWriter Writer => Provider.GetRequiredKeyedService<IFileWriter>("conformance");
 
     /// <inheritdoc/>
+    public IFileDeleter Deleter => Provider.GetRequiredKeyedService<IFileDeleter>("conformance");
+
+    /// <inheritdoc/>
     public IDirectoryCreator? DirectoryCreator => null;
 
     /// <inheritdoc/>
@@ -99,6 +102,20 @@ public sealed class OperatingSystemFileSystemConformanceFixture: IFileSystemConf
             FileWriteAtomicityMode.Required,
             FileWriteEffectClass.WorkspaceBytes,
             TestSecurity.Grant());
+    }
+
+    /// <inheritdoc/>
+    public AuthorizedFileDelete CreateAuthorizedDelete(string relativePath, ContentHash? expectedTargetFingerprint = null)
+    {
+        var hostTarget = Path.GetFullPath(Path.Combine(_root, relativePath));
+        var resolved = new ResolvedFileTarget(
+            new FileRootId("workspace"),
+            new NormalizedRelativePath(relativePath),
+            hostTarget,
+            FilePathComparisonKind.Ordinal,
+            FileSecurityBinding.ContentFingerprint("no-link"u8),
+            expectedTargetFingerprint ?? FileSecurityBinding.ContentFingerprint("target"u8));
+        return new AuthorizedFileDelete(resolved, expectedTargetFingerprint, TestSecurity.Grant());
     }
 
     /// <inheritdoc/>

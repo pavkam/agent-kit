@@ -52,9 +52,9 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel
     {
-        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
-        protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        protected virtual AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.EmbeddingModelDescriptor Descriptor { get; }
         protected virtual void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.EmbeddingModelRequest request) { }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
@@ -66,9 +66,9 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public abstract class OpenAICompatibleLlmModelBase : AgentKit.ILlmModel
     {
-        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
-        protected virtual AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        protected virtual AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         protected AgentKit.ModelDescriptor Descriptor { get; }
         protected virtual void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.LlmModelRequest request) { }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
@@ -77,7 +77,6 @@ namespace AgentKit.Providers.OpenAICompatible
     {
         public static AgentKit.ProviderOperationBinding RegisterChatProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId chatServiceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey chatEndpointProfileKey, AgentKit.ProviderCredentialProfileKey chatCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
         public static AgentKit.ProviderOperationBinding RegisterChatProfilesFromServices(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId chatServiceSurface, System.Func<System.IServiceProvider, System.Uri> baseAddressFactory, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey chatEndpointProfileKey, AgentKit.ProviderCredentialProfileKey chatCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterDualKeyCredentialSource(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderId providerId, AgentKit.IProviderCredentialSource credentialSource) { }
         public static AgentKit.ProviderOperationBinding RegisterEmbeddingProfiles(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId embeddingServiceSurface, System.Uri baseAddress, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey embeddingEndpointProfileKey, AgentKit.ProviderCredentialProfileKey embeddingCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
         public static AgentKit.ProviderOperationBinding RegisterEmbeddingProfilesFromServices(Microsoft.Extensions.DependencyInjection.IServiceCollection services, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId embeddingServiceSurface, System.Func<System.IServiceProvider, System.Uri> baseAddressFactory, AgentKit.ProviderCredentialSourceKey credentialSourceKey, AgentKit.ProviderEndpointProfileKey embeddingEndpointProfileKey, AgentKit.ProviderCredentialProfileKey embeddingCredentialProfileKey, AgentKit.ProviderEndpointId endpointId) { }
     }

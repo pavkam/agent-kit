@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// Supplies the application's current OAuth access token to a
-/// <see cref="DelegatingOAuthCredentialSource"/>, shared by any provider
+/// <c>DelegatingOAuthCredentialSource</c>, shared by any provider
 /// integration package that supports OAuth bearer-token authentication
 /// regardless of wire protocol.
 /// </summary>

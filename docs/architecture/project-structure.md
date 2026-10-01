@@ -525,6 +525,10 @@ controllable tasks and barriers instead of wall-clock sleeps.
 ## Solution organization
 
 The solution groups projects under source, tests, and examples. Test project
-names mirror package names exactly. Examples reference public packages and use
-the same builder and service registrations available to applications; they do
-not receive privileged internal access.
+names mirror package names exactly, with one deliberate exception class: an
+opt-in live-verification project (`AgentKit.Evaluation.Live.Tests`) names the
+package it exercises plus `.Live`, is non-packable, and skips every test with a
+reported reason unless `AGENTKIT_LIVE_TESTS=1` and the provider credential are
+set. Examples reference public packages and use the same builder and service
+registrations available to applications; they do not receive privileged internal
+access.

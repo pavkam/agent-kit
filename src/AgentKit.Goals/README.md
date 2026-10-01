@@ -74,8 +74,6 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/goals-and-delegation.md) —
   intended ownership, contracts, and recorded deviations.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

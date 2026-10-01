@@ -41,7 +41,12 @@ or
 Reference commitment uses a caller-owned durable intent and a pin/retention
 fence. Timer expiry alone cannot prove an orphan or authorize garbage collection
 that races a late reference commit. Finalize and abort have one conditional
-winner; artifact storage never calls back into the referencing coordinator.
+winner; artifact storage never calls back into the referencing coordinator. The
+intent store has `.InMemory`, `.Sqlite`, and `.Json` adapters over one shared
+transition table (`AddSqliteArtifactReferenceCommitIntentStore`,
+`AddJsonArtifactReferenceCommitIntentStore`); each durable adapter holds its own
+database or root, persists before acknowledging, and runs the intent-store
+conformance suite.
 
 ## Composition
 
@@ -56,6 +61,9 @@ winner; artifact storage never calls back into the referencing coordinator.
 - Finalize, abort, and reconcile carry no directory, so the coordinator probes
   the profile's distinct backends in deterministic order and relies on the
   store's conditional transition as the single winner.
+- The `.FileSystem` adapter deletes released payloads through `IFileDeleter` and
+  sweeps unreferenced payload files at recovery through `IDirectoryReader`, so
+  its file-system profile declares read, write, enumerate, and delete.
 - Storage adapters share the planner, state machine, gateway, and enforcement in
   `AgentKit.Artifacts.Storage.Shared` (compiled into each leaf) and run one
   conformance suite.

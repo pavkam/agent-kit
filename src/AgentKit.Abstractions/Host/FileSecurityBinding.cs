@@ -142,6 +142,37 @@ public static class FileSecurityBinding
             effectClass = effectClass.ToString(),
         }));
 
+    /// <summary>Computes exact mutation evidence for one authorized file deletion.</summary>
+    /// <param name="operation">The authorized deletion evidence.</param>
+    /// <returns>An algorithm-qualified input fingerprint.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="operation"/> is null.</exception>
+    public static InputFingerprint DeleteFingerprint(AuthorizedFileDelete operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return DeleteFingerprint(operation.ResolvedTarget.RootId, operation.ResolvedTarget.RelativePath, operation.ExpectedTargetFingerprint);
+    }
+
+    /// <summary>Computes exact mutation evidence for one logical file deletion before grant binding.</summary>
+    /// <param name="target">The logical deletion target.</param>
+    /// <param name="expectedTargetFingerprint">The fingerprint the target must still have, or <see langword="null"/> when none is required.</param>
+    /// <returns>An algorithm-qualified input fingerprint.</returns>
+    /// <remarks>A deletion is authorized as a file mutation whose effect is <see cref="SecurityEffect.Delete"/> on the exact <see cref="Resource(FileTarget)"/>; the fingerprint binds the root, path, and precondition, so a write grant never authorizes a deletion and a deletion grant never authorizes a write.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="target"/> is null.</exception>
+    public static InputFingerprint DeleteFingerprint(FileTarget target, ContentHash? expectedTargetFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return DeleteFingerprint(target.RootId, target.Path, expectedTargetFingerprint);
+    }
+
+    private static InputFingerprint DeleteFingerprint(FileRootId rootId, NormalizedRelativePath relativePath, ContentHash? expectedTargetFingerprint) =>
+        Hash(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            operation = "delete",
+            root = rootId.Value,
+            path = relativePath.Value,
+            expectedTargetFingerprint = expectedTargetFingerprint?.Value,
+        }));
+
     /// <summary>Computes exact observation evidence for a complete bounded byte snapshot.</summary>
     /// <param name="path">The observed path.</param>
     /// <param name="maximumBytes">The complete-file byte bound.</param>

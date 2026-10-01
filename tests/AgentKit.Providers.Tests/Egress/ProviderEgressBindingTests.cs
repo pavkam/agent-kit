@@ -30,7 +30,8 @@ public sealed class ProviderEgressBindingTests
         attempt: 1,
         Now.AddMinutes(1),
         streaming: false,
-        message);
+        message,
+        credential: null);
 
     [Fact]
     public void Resources_WhenRouteHasQuery_ReplacesTheQueryWithItsFingerprint()

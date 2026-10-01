@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.Ollama.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -70,9 +71,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllama();
         _ = services.AddOllamaApiKeyCredential("test-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            OllamaProviderDefaults.ProviderId);
+            OllamaProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -80,38 +82,32 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task AddOllamaApiKeyCredential_WhenAnotherProviderCredentialCoexists_ResolvesByProviderIdentity(
+    public async Task AddOllamaApiKeyCredential_WhenAnotherProviderCredentialCoexists_ResolvesBySourceKey(
         bool ollamaRegisteredFirst)
     {
         var services = new ServiceCollection();
-        var otherProviderId = new ProviderId("other-provider");
-        var otherSource = new StaticApiKeyCredentialSource("other-key");
+        var otherSourceKey = new ProviderCredentialSourceKey("other-source");
+        var otherSource = new StaticProviderCredentialSource(new ApiKeyProviderCredential("other-key"));
 
         if (ollamaRegisteredFirst)
         {
             _ = services.AddOllamaApiKeyCredential("ollama-key");
-            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherProviderId, otherSource);
+            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherSourceKey, otherSource);
         }
         else
         {
-            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherProviderId, otherSource);
+            _ = services.AddKeyedSingleton<IProviderCredentialSource>(otherSourceKey, otherSource);
             _ = services.AddOllamaApiKeyCredential("ollama-key");
         }
 
+        _ = services.AddProviderEgressTestServices();
         await using var provider = services.BuildServiceProvider();
-        var ollamaSource = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            OllamaProviderDefaults.ProviderId);
-        var resolvedOtherSource = provider.GetRequiredKeyedService<IProviderCredentialSource>(otherProviderId);
 
-        var ollamaCredential = await ollamaSource.GetCredentialAsync(
-            OllamaProviderDefaults.ProviderId,
-            TestContext.Current.CancellationToken);
-        var otherCredential = await resolvedOtherSource.GetCredentialAsync(
-            otherProviderId,
-            TestContext.Current.CancellationToken);
+        var ollamaCredential = await ResolveApiKeyAsync(provider, OllamaProviderDefaults.CredentialSourceKey);
+        var otherCredential = await ResolveApiKeyAsync(provider, otherSourceKey);
 
-        ollamaCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("ollama-key");
-        otherCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("other-key");
+        ollamaCredential.ApiKey.ShouldBe("ollama-key");
+        otherCredential.ApiKey.ShouldBe("other-key");
     }
 
     [Fact]
@@ -121,9 +117,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOllama();
         _ = services.AddOllamaOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(
-            OllamaProviderDefaults.ProviderId);
+            OllamaProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
@@ -255,5 +252,12 @@ public sealed class ServiceExtensionsTests
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new OAuthTokenProviderCredential("token", null));
+    }
+
+    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderCredentialSourceKey sourceKey)
+    {
+        var probe = await ProviderCredentialProbe.ProbeAsync(provider, sourceKey, cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        _ = probe.Resolution.ShouldBeOfType<ProviderCredentialResolved>();
+        return new ApiKeyProviderCredential(probe.Headers["Authorization"]["Bearer ".Length..]);
     }
 }

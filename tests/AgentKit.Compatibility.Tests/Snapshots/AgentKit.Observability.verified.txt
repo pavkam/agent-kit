@@ -96,6 +96,7 @@ namespace AgentKit.Observability
         public const string ProcessResolve = "process.resolve";
         public const string ProcessRun = "process.run";
         public const string ProcessSandboxPrepare = "process.sandbox.prepare";
+        public const string ProviderCredentialRead = "provider.credential.read";
         public const string ProviderEgress = "provider.egress";
         public const string ProviderEmbeddingSend = "provider.embedding.send";
         public const string ProviderRerankSend = "provider.rerank.send";
@@ -161,6 +162,7 @@ namespace AgentKit.Observability
         public const string ToolProviderDiscover = "tool.provider.discover";
         public const string ToolRegistrationSelect = "tool.registration.select";
         public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
+        public const string ToolResultSpill = "tool.result.spill";
         public const string ToolRetryBackoff = "tool.retry.backoff";
         public const string ToolSchemaCompile = "tool.schema.compile";
         public const string ToolSchemaValidate = "tool.schema.validate";
@@ -260,6 +262,8 @@ namespace AgentKit.Observability
         public const string OutputProcessingCount = "agentkit.output.processing.count";
         public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
         public const string ProcessOperationCount = "agentkit.process.operation.count";
+        public const string ProviderCredentialReadCount = "agentkit.provider.credential.read.count";
+        public const string ProviderCredentialReadDuration = "agentkit.provider.credential.read.duration";
         public const string ProviderEgressCount = "agentkit.provider.egress.count";
         public const string ProviderEgressDuration = "agentkit.provider.egress.duration";
         public const string ProviderRequestCount = "agentkit.provider.request.count";
@@ -292,6 +296,7 @@ namespace AgentKit.Observability
         public const string SessionEntryCodecDuration = "agentkit.session.entry.codec.duration";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
+        public const string ToolBudgetReservationCount = "agentkit.tool.budget.reservation.count";
         public const string ToolCallCount = "agentkit.tool.call.count";
         public const string ToolCallDuration = "agentkit.tool.call.duration";
         public const string ToolCallRecordCount = "agentkit.tool.call.record.count";
@@ -314,6 +319,7 @@ namespace AgentKit.Observability
         public const string ToolRegistrationSelectionDuration = "agentkit.tool.registration.selection.duration";
         public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
         public const string ToolResultProjectionPolicyResolutionDuration = "agentkit.tool.result.projection_policy.resolution.duration";
+        public const string ToolResultSpillCount = "agentkit.tool.result.spill.count";
         public const string ToolRetryCount = "agentkit.tool.retry.count";
         public const string ToolSchemaOperationCount = "agentkit.tool.schema.operation.count";
         public const string ToolSchemaOperationDuration = "agentkit.tool.schema.operation.duration";

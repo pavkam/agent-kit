@@ -12,16 +12,18 @@ namespace AgentKit.Artifacts.Sqlite;
 internal sealed class SqliteArtifactDatabase: IDisposable
 {
     private const int _schemaVersion = 1;
-    private const string _expectedTables = "artifact_entries|artifact_metadata|artifact_payloads";
 
+    private readonly SqliteArtifactSchema _schema;
     private SqliteConnection? _connection;
 
-    internal SqliteArtifactDatabase(SqliteArtifactTarget target, SqliteArtifactSettings settings)
+    internal SqliteArtifactDatabase(SqliteArtifactTarget target, SqliteArtifactSettings settings, SqliteArtifactSchema schema)
     {
         Debug.Assert(target is not null, "The store validates its target before creating the database.");
         Debug.Assert(settings is not null, "The store validates its settings before creating the database.");
+        Debug.Assert(schema is not null, "The store names the schema it owns.");
         Target = target;
         Settings = settings;
+        _schema = schema;
     }
 
     internal SqliteArtifactTarget Target { get; }
@@ -43,12 +45,12 @@ internal sealed class SqliteArtifactDatabase: IDisposable
 
         if (!File.Exists(Target.DatabasePath) && Target.OpenMode != SqliteDatabaseOpenMode.CreateIfMissing)
         {
-            throw Unavailable("The configured SQLite artifact database does not exist.");
+            throw Unavailable($"The configured SQLite {_schema.DisplayName} database does not exist.");
         }
 
         if (Path.GetDirectoryName(Target.DatabasePath) is { } directory && !Directory.Exists(directory))
         {
-            throw Unavailable("The configured SQLite artifact database directory does not exist.");
+            throw Unavailable($"The configured SQLite {_schema.DisplayName} database directory does not exist.");
         }
 
         var builder = new SqliteConnectionStringBuilder
@@ -74,16 +76,16 @@ internal sealed class SqliteArtifactDatabase: IDisposable
             {
                 if (Target.SchemaMode != SqliteSchemaMode.ApplyKnownMigrations)
                 {
-                    throw Unavailable("The SQLite target has no initialized artifact schema.");
+                    throw Unavailable($"The SQLite target has no initialized {_schema.DisplayName} schema.");
                 }
 
                 CreateSchema(connection, transaction);
             }
             else
             {
-                if (!string.Equals(string.Join('|', tables), _expectedTables, StringComparison.Ordinal))
+                if (!string.Equals(string.Join('|', tables), _schema.ExpectedTables, StringComparison.Ordinal))
                 {
-                    throw Unavailable("The SQLite artifact schema does not match the supported layout.");
+                    throw Unavailable($"The SQLite {_schema.DisplayName} schema does not match the supported layout.");
                 }
 
                 ValidateIdentity(connection, transaction);
@@ -94,7 +96,7 @@ internal sealed class SqliteArtifactDatabase: IDisposable
         catch (SqliteException exception)
         {
             connection.Dispose();
-            throw Unavailable("The SQLite artifact database could not be opened exclusively.", exception);
+            throw Unavailable($"The SQLite {_schema.DisplayName} database could not be opened exclusively.", exception);
         }
         catch
         {
@@ -131,13 +133,7 @@ internal sealed class SqliteArtifactDatabase: IDisposable
 
     private void CreateSchema(SqliteConnection connection, SqliteTransaction transaction)
     {
-        string[] statements =
-        [
-            "CREATE TABLE artifact_metadata (store_id BLOB NOT NULL CHECK(length(store_id) = 16), schema_version INTEGER NOT NULL)",
-            "CREATE TABLE artifact_entries (tenant TEXT NOT NULL, preparation_id BLOB NOT NULL CHECK(length(preparation_id) = 16), document TEXT NOT NULL, PRIMARY KEY(tenant, preparation_id))",
-            "CREATE TABLE artifact_payloads (tenant TEXT NOT NULL, content_hash TEXT NOT NULL, content BLOB NOT NULL, PRIMARY KEY(tenant, content_hash))",
-        ];
-        foreach (var statement in statements)
+        foreach (var statement in _schema.Statements)
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
@@ -161,18 +157,18 @@ internal sealed class SqliteArtifactDatabase: IDisposable
         using var reader = command.ExecuteReader();
         if (!reader.Read())
         {
-            throw Unavailable("The SQLite artifact database carries no identity.");
+            throw Unavailable($"The SQLite {_schema.DisplayName} database carries no identity.");
         }
 
         var identity = (byte[]) reader["store_id"];
         if (!identity.AsSpan().SequenceEqual(Target.ExpectedInstanceId.Value.ToByteArray()))
         {
-            throw Unavailable("The SQLite artifact database identity does not match bootstrap configuration.");
+            throw Unavailable($"The SQLite {_schema.DisplayName} database identity does not match bootstrap configuration.");
         }
 
         if (reader.GetInt32(1) != _schemaVersion || reader.Read())
         {
-            throw Unavailable("The SQLite artifact database schema version is unsupported.");
+            throw Unavailable($"The SQLite {_schema.DisplayName} database schema version is unsupported.");
         }
     }
 }

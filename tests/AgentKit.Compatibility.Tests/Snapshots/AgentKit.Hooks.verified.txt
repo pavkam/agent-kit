@@ -76,6 +76,14 @@ namespace AgentKit.Hooks
                 where THook :  class, AgentKit.IBeforeModelRequestHook { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeToolInvocationHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
                 where THook :  class, AgentKit.IBeforeToolInvocationHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeMemoryProposalHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
+                where THook :  class, AgentKit.IBeforeMemoryProposalHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeMemoryWriteHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
+                where THook :  class, AgentKit.IBeforeMemoryWriteHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeRetrievalHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
+                where THook :  class, AgentKit.IBeforeRetrievalHook { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBeforeRetrievalExposureHook<THook>(AgentKit.HookRegistrationDescriptor descriptor)
+                where THook :  class, AgentKit.IBeforeRetrievalExposureHook { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookDispatcher<TDispatcher>()
                 where TDispatcher :  class, AgentKit.IHookDispatcher { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceHookCatalog<TCatalog>()

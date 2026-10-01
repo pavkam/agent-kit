@@ -1217,15 +1217,28 @@ recovery, or replace the catalog with an implementation that resolves retained
 policy content through its own storage boundary.
 
 `ToolExecutionCapability` is invocation-only and binds execution to the run's
-exact session profile/coordinators and budget profile/scope. The executor
-validates both bindings and every catalog policy reference against its exact
-policy bindings before preflight. `ValidatedToolCall` contains validated data
-and the policy reference, never a plan that has not been produced yet; a
+exact session profile/coordinators and, for a budgeted run, budget
+profile/scope. A run that declared no limits carries no budget capability
+(`Budget` is null) and the executor then reserves no tool budget dimension. The
+executor validates both bindings and every catalog policy reference against its
+exact policy bindings before preflight. `ValidatedToolCall` contains validated
+data and the policy reference, never a plan that has not been produced yet; a
 successful policy decision creates `PreparedToolCall`. The recorder receives the
 selected session capability on every write and never injects an unkeyed session
-coordinator. The executor reserves attempted, concurrent, retry, result-byte,
-and successful-call dimensions before their corresponding work and settles each
-reservation exactly once.
+coordinator. Through the capability's borrowed scope the tool runtime reserves
+the concurrent-call gauge before an entry's first attempt and commits it when
+the entry settles, counts each retry on the retries dimension before scheduling
+it, and accounts successful calls and retained result bytes after a call
+succeeds. Every reservation carries a stable key derived from the run,
+dimension, call, and attempt, so replay never double-counts. A refused or
+unanswerable concurrent reservation settles the accepted call as
+`ResourceLimitExceeded` with `DefinitelyNotPerformed` before its invoker starts;
+a refused retry reservation declines the retry and returns the failure;
+after-the-fact accounting records an overrun and never erases a delivered
+result. Attempted calls are counted by the caller that admits them (the loop
+counts one per call before it reaches the executor), so the executor never
+counts them twice; an abandoned attempt keeps its started concurrent reservation
+so the gauge keeps counting work that may still be running.
 
 `AgentKit.Tools` supplies sealed first-party catalog, resolver, validator,
 scheduler, normalizer, and executor classes. The shipped executor is the public
@@ -1324,15 +1337,35 @@ holds: the call is read-only; the invoker reports a mutating call
 declares `Idempotent` (or `IdempotentWithKey` with the captured key), and the
 invoker implements `IIdempotencyEnforcingToolInvoker` and confirms enforcement
 for that exact context. A descriptor's declaration alone never proves replay
-safety, so no first-party invoker is retried after a possibly-started failure
-until it opts in. Cancellation and interruption are never retried. An invoker
-that throws is reported `InvocationFailed` with `Unknown` certainty, never
-retried, with no exception text in the result. Backoff is `ComputeDelay` over
-the injected `TimeProvider` and `IRandomizerFactory` (consulted only when jitter
-is configured), is cancellable, and publishes a `ToolRetryScheduledEvent`. The
-per-attempt `InvocationTimeout` remains an advisory
-`ToolInvocationContext.Deadline` that invokers and effecting hosts enforce; the
-executor does not cancel an attempt on its own.
+safety. No first-party tool declares an idempotency classification, so none is
+retried after a possibly-started failure and none implements the confirmation:
+read-only tools (read, list, glob, search, web fetch, web search, language,
+resource, skill, and MCP client tools) need none; write's disposition is an
+argument, so a static declaration would be wrong for create-only and append;
+edit and patch replay as a conflict on their fingerprint precondition rather
+than as a repeated success; command and question run an arbitrary process or ask
+a human again; plan and todo append session entries whose replay can conflict
+with a newer branch version; and task derives its delegation key from the call
+but compares the coordinator's returned delegation identity with the one it
+minted, so a replay reports a protocol failure instead of the original child.
+Cancellation and interruption are never retried. An invoker that throws is
+reported `InvocationFailed` with `Unknown` certainty, never retried, with no
+exception text in the result. Backoff is `ComputeDelay` over the injected
+`TimeProvider` and `IRandomizerFactory` (consulted only when jitter is
+configured), is cancellable, and publishes a `ToolRetryScheduledEvent`. The
+per-attempt `InvocationTimeout` is enforced by the scheduler: each attempt runs
+under a token linked to the caller's and to its deadline (carried to the invoker
+as `ToolInvocationContext.Deadline`). At the deadline the attempt is cancelled
+and has `InvocationDrainPeriod` to settle. A result it still produces is honored
+unless it only reports the cancellation; an attempt that is cancelled or that
+ignores cancellation through the drain is reported `TimedOut`, retryable, with
+`Unknown` side-effect certainty, so a mutating call is retried only through
+idempotency confirmation and an abandoned attempt is never retried. Caller
+cancellation keeps its separate interrupted outcome. The default policy grants a
+descriptor whose `ExecutionHints.ExpectedDuration` exceeds `InvocationTimeout`
+that duration, capped at `MaximumInvocationTimeout`, because hints are
+untrusted; command, question, and task declare one hour and bound their own
+work.
 
 **Events.** `ToolEvent` is a closed, content-free family:
 `ToolCallAcceptedEvent`, `ToolRetryScheduledEvent`, and `ToolCallTerminalEvent`.
@@ -1385,6 +1418,17 @@ per-run overrides may only tighten that captured selection. Precedence is
 explicit call override, agent definition, named toolset/policy, then library
 defaults.
 
+The per-run tightening is `AgentRunOptions.AllowedTools`: a list of canonical
+`ToolId` values captured with the run policy (it changes the policy version hash
+only when set). `ToolRunCatalogCaptureFactory` wraps the run's catalog capture
+in `AllowListedToolCatalogCapture`, which intersects the immutable snapshot with
+the list (`ToolCatalogSnapshot.IntersectWith`) before any schema preflight or
+model exposure. A tool outside the list is neither offered nor resolvable, so a
+call for it fails closed as an unknown tool; an empty list exposes no tools;
+`null` leaves the definition's selection. The list can only remove tools and
+never grants authority, adds a tool, or alters merge or collision results.
+Delegation uses it to enforce a child's recorded `AllowedTools` scope.
+
 ```csharp
 namespace AgentKit.Tools;
 
@@ -1402,6 +1446,9 @@ public sealed class ToolRuntimeOptions
     public int AcceptedRecordLookupEntries { get; set; } = 64;
     public TimeSpan EventSinkTimeout { get; set; } = TimeSpan.FromSeconds(5);
     public TimeSpan InvocationTimeout { get; set; } = TimeSpan.FromMinutes(2);
+    public TimeSpan MaximumInvocationTimeout { get; set; } = TimeSpan.FromHours(1);
+    public TimeSpan InvocationDrainPeriod { get; set; } = TimeSpan.FromSeconds(5);
+    public int ResultSpillPreviewBytes { get; set; } = 2_048;
     public ToolBatchFailureMode BatchFailureMode { get; set; } =
         ToolBatchFailureMode.SettleIndependently;
     public UnknownSchedulingMode UnknownSchedulingMode { get; set; } =
@@ -1563,7 +1610,7 @@ discovery helpers that the specification leaves to composition
 `AddStaticToolProvider`, `AddToolInvoker`, `AddToolPresentation`, and their
 `Replace*` forms).
 
-The ten helpers WS4 closed are `AddToolExecutionPolicy`,
+The ten helpers that close the registration gap are `AddToolExecutionPolicy`,
 `ReplaceToolExecutionPolicy`, `ReplaceToolExecutionPolicySelector`,
 `AddToolEventSink`, `AddToolCallRecorder`, `ReplaceToolCallRecorder`,
 `ReplaceToolResolver`, `ReplaceToolArgumentValidator`,
@@ -1597,7 +1644,7 @@ The ten helpers WS4 closed are `AddToolExecutionPolicy`,
 No store is installed: the default recorder writes through whatever session
 coordinator the run's capability carries.
 
-**Deviations recorded by WS4.** The specification is contradictory or infeasible
+**Recorded deviations.** The specification is contradictory or infeasible
 against shipped code in these places, and the shipped choice governs:
 
 1. _Recorder signature._ `IToolCallRecorder` takes a `ToolCallSessionTarget`
@@ -1629,18 +1676,20 @@ against shipped code in these places, and the shipped choice governs:
    the invoker or host will enforce the declared idempotency mechanism but names
    no contract. `IIdempotencyEnforcingToolInvoker` is that contract, and
    `ToolInvocationContext.ExternalIdempotencyKey` carries the stable key. The
-   shipped retry policy previously refused every possibly-started mutating
-   retry; it now permits it only through this confirmation. Raw
-   `ToolInvocationResult` has no retry-after carrier, so `ToolRetryPolicy` has
-   no retry-after field; `ToolError.RetryAfter` remains terminal-only.
-6. _Timeout enforcement._ `ToolExecutionPlan.InvocationTimeout` sets the
-   advisory per-attempt `Deadline`; the executor does not cancel an attempt.
-   Enforcing it would cut off long-running tools (for example commands) that
-   bound their own work, which changes shipped behavior beyond this chunk.
-7. _Budget reservation._ The specification has the executor reserve attempted,
-   concurrent, retry, result-byte, and successful-call dimensions. The loop
-   still counts attempted calls and the executor reserves nothing; retries
-   therefore consume no separate budget dimension.
+   shipped retry policy refuses every possibly-started mutating retry unless
+   this confirmation holds. Raw `ToolInvocationResult` has no retry-after
+   carrier, so `ToolRetryPolicy` has no retry-after field;
+   `ToolError.RetryAfter` remains terminal-only.
+6. _Timeout enforcement._ The scheduler enforces
+   `ToolExecutionPlan.InvocationTimeout` per attempt with a bounded drain, a
+   `TimedOut` result with unknown certainty, and a host-capped extension for
+   tools that declare an expected duration (see above). The enforced deadline
+   replaced the earlier advisory-only value.
+7. _Budget reservation._ The tool runtime reserves the concurrent-call gauge,
+   counts retries, and accounts successful calls and result bytes through the
+   capability's budget scope. Attempted calls are counted once by the admitting
+   caller, so the executor does not count them; a run with no budget carries no
+   capability and reserves nothing.
 8. _Scheduling rejection stage._ Under `UnknownSchedulingMode.Reject` the
    executor rejects an unspecified-mode call before acceptance, so it never
    records an accepted call it will not invoke; the scheduler keeps its own
@@ -1965,8 +2014,33 @@ content is rejected, transformed, or stored behind authorized
 [artifact references](artifacts.md) according to that snapshot. The executor
 coordinates normalization, authorized artifact creation, and the
 `IToolCallRecorder` terminal commit; the artifact component never calls back
-into the tool recorder. A separate deterministic projection then creates the
-tighter model/history `ToolResultPart`.
+into the tool recorder.
+
+**Oversized-result spill.** A keyed executor may select an artifact coordinator
+with `AddToolResultSpill(executorKey, coordinatorKey, configure)`; an executor
+without one truncates oversized content to the canonical byte bound and records
+`Truncated`. With one, the normalizer externalizes content that exceeds the
+bound when the content is entirely text and the captured snapshot permits
+`Externalization` (the default policy's snapshot permits truncation and
+externalization): `ArtifactToolResultSpill` prepares the complete concatenated
+text through the coordinator under the call's captured authorization, finalizes
+it, and aborts the staging if finalization fails, so a refusal leaves no
+readable artifact. The terminal content is then a bounded UTF-8-safe preview
+(`ResultSpillPreviewBytes`, never above the byte bound) and a
+`ToolResultArtifactContent`, with `Truncated` and `Externalized` recorded and
+the omitted byte count measured. The artifact is session-owned (run-owned
+without a session), immutable, classified and retained under the configured
+options, and the whole sequence is bounded by the spill's own timeout. A
+refused, faulted, or timed-out spill falls back to truncation. The spill never
+appends a session record and records no reconciliation intent: the executor
+returns the reference in the terminal result and the run's committed tool-result
+message is the reference commitment, so reconciliation never collects the
+artifact and the session-owned retention policy does. The terminal session entry
+stays content-free. The projector renders each artifact reference as one bounded
+text part naming the artifact identity, version, length, media type, and content
+hash, and records `Externalized` in the projection losses. A separate
+deterministic projection then creates the tighter model/history
+`ToolResultPart`.
 
 Retries require both a retryable failure and safe execution semantics. A
 possibly-started mutating call needs a declared idempotency mechanism and its

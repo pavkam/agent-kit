@@ -5,7 +5,7 @@ namespace AgentKit.Abstractions.Tests.Hooks;
 
 using AgentKit;
 
-/// <summary>Shared builders and test doubles for the WS2 hook kernel contract types.</summary>
+/// <summary>Shared builders and test doubles for the hook kernel contract types.</summary>
 internal static class HookKernelTestData
 {
     public static HookPointId Point { get; } = new("test.point");

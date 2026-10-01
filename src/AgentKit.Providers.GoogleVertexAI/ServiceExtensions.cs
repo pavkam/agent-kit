@@ -127,11 +127,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(GoogleVertexAIProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                GoogleVertexAIProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
+                GoogleVertexAIProviderDefaults.CredentialSourceKey,
+                GoogleVertexAIProviderDefaults.ProviderId);
 
             return services;
         }
@@ -232,10 +231,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleVertexAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -306,9 +304,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleVertexAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IGoogleVertexAIEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleVertexAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

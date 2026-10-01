@@ -3,7 +3,12 @@
 
 namespace AgentKit.Simple;
 
+using AgentKit.Durability.Sqlite;
 using AgentKit.Providers;
+using AgentKit.Storage.Json;
+
+using SqliteDatabaseOpenMode = SqliteDatabaseOpenMode;
+using SqliteSchemaMode = SqliteSchemaMode;
 
 /// <summary>
 /// The shortest path to a working agent on the real <see cref="AgentEngineBuilder"/>: fluent <c>Use*</c> and
@@ -43,6 +48,10 @@ public static class AgentEngineBuilderExtensions
     /// <summary>The store identity <see cref="UseSqliteSessions"/> stamps into database files when the caller supplies none.</summary>
     internal static SqliteSessionStoreInstanceId DefaultSqliteInstanceId { get; } = new(Guid.Parse("5e1f0a9c-3b2d-4c7e-8f10-a1b2c3d4e5f6"));
 
+    internal static SqliteDurableStoreInstanceId DefaultSqliteDurabilityInstanceId { get; } = new(Guid.Parse("7a3c1e52-9d44-4b8f-a0c6-2f5e8d1b3a70"));
+
+    internal static JsonDurableStoreInstanceId DefaultJsonDurabilityInstanceId { get; } = new(Guid.Parse("c4d91b07-6e28-4f3a-b5d2-90a7e1c8f634"));
+
     /// <summary>Every first-party recoverable operation name the durability sugar enables and permits its backend to own.</summary>
     /// <remarks>
     /// The sugar enables all of them because it configures one profile for one composition: an application that
@@ -56,6 +65,189 @@ public static class AgentEngineBuilderExtensions
         .. PermissionsDurableOperations.All,
         .. EngineDurableOperations.All,
     ];
+
+    private static AgentEngineBuilder ConfigureDurability(
+        AgentEngineBuilder builder,
+        Action<AgentDurabilityOptions>? configure,
+        DurabilityStorageKind storage,
+        string? storagePath,
+        SqliteDurableStoreInstanceId? sqliteInstanceId,
+        JsonDurableStoreInstanceId? jsonInstanceId)
+    {
+        Debug.Assert(builder is not null, "Public entry points validate the builder.");
+        var plan = Plan(builder);
+        var name = storage switch
+        {
+            DurabilityStorageKind.InMemory => "in-memory",
+            DurabilityStorageKind.Sqlite => "sqlite",
+            DurabilityStorageKind.Json => "json",
+            _ => throw new ArgumentOutOfRangeException(nameof(storage), storage, "The durability storage is undefined."),
+        };
+        if (plan.DurabilityStorage is { } selected && !string.Equals(selected, name, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Durability storage '{selected}' was already selected; one composition journals to one store, so '{name}' cannot also be selected.");
+        }
+
+        var first = plan.DurabilityStorage is null;
+        plan.DurableExecution = true;
+        plan.DurabilityStorage = name;
+        var backendKey = new DurableBackendKey($"agentkit.simple.{name}");
+        var journalKey = new DurableJournalKey($"agentkit.simple.{name}");
+        var leaseManagerKey = new DurableLeaseManagerKey($"agentkit.simple.{name}");
+        var recoveryPolicyKey = new RecoveryPolicyKey("agentkit.simple.default");
+        _ = builder.Services.AddAgentDurability(configure);
+        if (!first)
+        {
+            return builder;
+        }
+
+        // The profile below enables every first-party boundary, and a boundary whose handler is absent cannot
+        // be journaled at all. Run settlement and input promotion are driven by the loop but their handlers
+        // belong to AgentKit.IO, which this composition does not otherwise register, and compaction activation
+        // is owned by a package that is only composed when compaction is. TryAddEnumerable makes each
+        // registration idempotent with the owning package's own, because a second handler for one name is a
+        // composition error.
+        builder.Services.TryAddSingleton<DurableBoundaryRegistry>();
+        builder.Services.TryAddEnumerable(
+        [
+            ServiceDescriptor.Singleton<IDurableOperationHandler, InputPromotionDurableOperationHandler>(),
+            ServiceDescriptor.Singleton<IDurableOperationHandler, RunSettlementDurableOperationHandler>(),
+            ServiceDescriptor.Singleton<IDurableOperationHandler, CompactionActivationDurableOperationHandler>(),
+        ]);
+        switch (storage)
+        {
+            case DurabilityStorageKind.InMemory:
+                _ = builder.Services.AddInMemoryDurableExecutionBackend(backendKey, FirstPartyOperations);
+                _ = builder.Services.AddInMemoryDurableOperationJournal(journalKey);
+                _ = builder.Services.AddInMemoryDurableLeaseManager(leaseManagerKey);
+                break;
+            case DurabilityStorageKind.Sqlite:
+                var sqliteTarget = new SqliteDurableStoreTarget(
+                    storagePath!,
+                    sqliteInstanceId ?? DefaultSqliteDurabilityInstanceId,
+                    Durability.Sqlite.SqliteDatabaseOpenMode.CreateIfMissing,
+                    Durability.Sqlite.SqliteSchemaMode.ApplyKnownMigrations);
+                CreateParentDirectory(Path.GetDirectoryName(storagePath!)!, "SQLite durability database");
+                var database = new SqliteDurableDatabase(sqliteTarget, SqliteDurableStoreSettings.CreateDefault());
+                // The adapters refuse use before trusted bootstrap initialization, and this sugar is the trusted
+                // composition root that named the path, so it initializes on first resolution. Registering the keyed
+                // factories first makes the adapters' own TryAdd registrations no-ops for the keys while they still
+                // supply the shared collaborators (observability, clock, identifier generators).
+                _ = builder.Services.AddKeyedSingleton<IDurableOperationJournal>(journalKey.Value, (provider, _) =>
+                {
+                    var journal = new SqliteDurableOperationJournal(
+                        journalKey,
+                        database,
+                        provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                        provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                        provider.GetRequiredService<ISecurityGrantStore>(),
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetRequiredService<ILogger<SqliteDurableOperationJournal>>());
+                    CompleteBootstrap(journal.InitializeAsync());
+                    return journal;
+                });
+                _ = builder.Services.AddKeyedSingleton<IDurableLeaseManager>(leaseManagerKey.Value, (provider, _) =>
+                {
+                    var manager = new SqliteDurableLeaseManager(
+                        database,
+                        provider.GetRequiredService<IIdentifierGenerator<ExecutionLeaseId>>(),
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetRequiredService<ILogger<SqliteDurableLeaseManager>>());
+                    CompleteBootstrap(manager.InitializeAsync());
+                    return manager;
+                });
+                _ = builder.Services.AddSqliteDurableExecutionBackend(backendKey, FirstPartyOperations);
+                _ = builder.Services.AddSqliteDurableOperationJournal(journalKey, database);
+                _ = builder.Services.AddSqliteDurableLeaseManager(leaseManagerKey, database);
+                break;
+            case DurabilityStorageKind.Json:
+                var jsonTarget = new JsonDurableStoreTarget(
+                    storagePath!,
+                    jsonInstanceId ?? DefaultJsonDurabilityInstanceId,
+                    JsonStoreOpenMode.CreateIfMissing,
+                    JsonStoreRecoveryMode.RecoverTornAppends);
+                var jsonOptions = new JsonDurableStoreOptions();
+                var jsonSettings = new JsonDurableStoreSettings(
+                    jsonOptions.MaximumRecordBytes,
+                    jsonOptions.MaximumDocumentBytes,
+                    jsonOptions.CompactionRecordThreshold,
+                    jsonOptions.Encoding);
+                // See the SQLite branch: initialize on first resolution as the trusted bootstrap, ahead of the
+                // adapter's own no-op TryAdd for this key.
+                _ = builder.Services.AddKeyedSingleton<IDurableOperationJournal>(journalKey.Value, (provider, _) =>
+                {
+                    var journal = new JsonDurableOperationJournal(
+                        journalKey,
+                        jsonTarget,
+                        jsonSettings,
+                        provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                        provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                        provider.GetRequiredService<ISecurityGrantStore>(),
+                        provider.GetRequiredService<TimeProvider>(),
+                        provider.GetRequiredService<ILogger<JsonDurableOperationJournal>>());
+                    CompleteBootstrap(journal.InitializeAsync());
+                    return journal;
+                });
+                _ = builder.Services.AddInMemoryDurableExecutionBackend(backendKey, FirstPartyOperations);
+                _ = builder.Services.AddJsonDurableOperationJournal(journalKey, jsonTarget);
+                _ = builder.Services.AddInMemoryDurableLeaseManager(leaseManagerKey);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(storage), storage, "The durability storage is undefined.");
+        }
+
+        _ = builder.Services.AddRecoveryPolicy<DefaultRecoveryPolicy>(recoveryPolicyKey);
+        _ = builder.Services.AddDurabilityProfile(plan.DurabilityProfileKey, options =>
+        {
+            options.BackendKey = backendKey;
+            options.JournalKey = journalKey;
+            options.LeaseManagerKey = leaseManagerKey;
+            options.RecoveryPolicyKey = recoveryPolicyKey;
+            foreach (var operation in FirstPartyOperations)
+            {
+                options.EnabledOperations.Add(operation);
+            }
+        });
+        return builder;
+    }
+
+    /// <summary>Observes the result of a durable-store bootstrap that completes synchronously.</summary>
+    /// <remarks>
+    /// Both adapters validate the root and replay their records inside <c>InitializeAsync</c> without awaiting, so the
+    /// returned task is already complete; reading its result therefore never blocks, and any bootstrap failure surfaces
+    /// from the resolving call instead of from a later journal operation.
+    /// </remarks>
+    private static void CompleteBootstrap(ValueTask initialization)
+    {
+        Debug.Assert(initialization.IsCompleted, "First-party durable bootstrap completes synchronously.");
+        initialization.GetAwaiter().GetResult();
+    }
+
+    private static string FullyQualified(string path, string message, string parameterName)
+    {
+        Debug.Assert(!string.IsNullOrWhiteSpace(path), "Callers validate the path is not blank.");
+        return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : throw new ArgumentException(message, parameterName);
+    }
+
+    private static void CreateParentDirectory(string directory, string description)
+    {
+        try
+        {
+            _ = Directory.CreateDirectory(directory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new InvalidOperationException($"The {description} directory '{directory}' could not be created.", exception);
+        }
+    }
+
+    private enum DurabilityStorageKind
+    {
+        InMemory,
+        Sqlite,
+        Json,
+    }
 
     extension(AgentEngineBuilder builder)
     {
@@ -913,10 +1105,12 @@ public static class AgentEngineBuilderExtensions
         /// The selected journal, lease manager, and backend are the process-local in-memory adapters, which are
         /// explicitly ephemeral: nothing here survives the process, and the lease fencing tokens are authoritative
         /// only inside it. This makes the boundaries, checkpoints, and recovery decisions real and inspectable
-        /// without claiming crash recovery. For durable storage or cross-process ownership, register your own keyed
-        /// <see cref="IDurableOperationJournal"/>, <see cref="IDurableLeaseManager"/>, and
-        /// <see cref="IDurableExecutionBackend"/> and call <c>AddDurabilityProfile</c> on
-        /// <see cref="AgentEngineBuilder.Services"/> instead.
+        /// without claiming crash recovery. For storage a restarted process can read, call
+        /// <see cref="WithSqliteDurability"/> or <see cref="WithJsonDurability"/> with an explicit path; for
+        /// cross-process ownership, register your own keyed <see cref="IDurableOperationJournal"/>,
+        /// <see cref="IDurableLeaseManager"/>, and <see cref="IDurableExecutionBackend"/> and call
+        /// <c>AddDurabilityProfile</c> on <see cref="AgentEngineBuilder.Services"/> instead. Calling this after a
+        /// different durability storage was selected throws <see cref="InvalidOperationException"/>.
         /// </para>
         /// <para>
         /// The journal is a protected boundary, so it needs a grant store and an audit dispatcher: pair this with
@@ -927,43 +1121,86 @@ public static class AgentEngineBuilderExtensions
         public AgentEngineBuilder WithDurability(Action<AgentDurabilityOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
-            var plan = Plan(builder);
-            plan.DurableExecution = true;
-            var backendKey = new DurableBackendKey("agentkit.simple.in-memory");
-            var journalKey = new DurableJournalKey("agentkit.simple.in-memory");
-            var leaseManagerKey = new DurableLeaseManagerKey("agentkit.simple.in-memory");
-            var recoveryPolicyKey = new RecoveryPolicyKey("agentkit.simple.default");
-            _ = builder.Services.AddAgentDurability(configure);
+            return ConfigureDurability(builder, configure, DurabilityStorageKind.InMemory, storagePath: null, sqliteInstanceId: null, jsonInstanceId: null);
+        }
 
-            // The profile below enables every first-party boundary, and a boundary whose handler is absent cannot
-            // be journaled at all. Run settlement and input promotion are driven by the loop but their handlers
-            // belong to AgentKit.IO, which this composition does not otherwise register, and compaction activation
-            // is owned by a package that is only composed when compaction is. TryAddEnumerable makes each
-            // registration idempotent with the owning package's own, because a second handler for one name is a
-            // composition error.
-            builder.Services.TryAddSingleton<DurableBoundaryRegistry>();
-            builder.Services.TryAddEnumerable(
-            [
-                ServiceDescriptor.Singleton<IDurableOperationHandler, InputPromotionDurableOperationHandler>(),
-                ServiceDescriptor.Singleton<IDurableOperationHandler, RunSettlementDurableOperationHandler>(),
-                ServiceDescriptor.Singleton<IDurableOperationHandler, CompactionActivationDurableOperationHandler>(),
-            ]);
-            _ = builder.Services.AddInMemoryDurableExecutionBackend(backendKey, FirstPartyOperations);
-            _ = builder.Services.AddInMemoryDurableOperationJournal(journalKey);
-            _ = builder.Services.AddInMemoryDurableLeaseManager(leaseManagerKey);
-            _ = builder.Services.AddRecoveryPolicy<DefaultRecoveryPolicy>(recoveryPolicyKey);
-            _ = builder.Services.AddDurabilityProfile(plan.DurabilityProfileKey, options =>
-            {
-                options.BackendKey = backendKey;
-                options.JournalKey = journalKey;
-                options.LeaseManagerKey = leaseManagerKey;
-                options.RecoveryPolicyKey = recoveryPolicyKey;
-                foreach (var operation in FirstPartyOperations)
-                {
-                    options.EnabledOperations.Add(operation);
-                }
-            });
-            return builder;
+        /// <summary>
+        /// Records every first-party boundary as a recoverable operation, like <see cref="WithDurability"/>, but stores the
+        /// journal, leases, and backend ownership in one SQLite database at an explicit path, so a restarted process can
+        /// read the records a lost process left behind.
+        /// </summary>
+        /// <param name="databasePath">The absolute path of the SQLite database file; it is created when absent.</param>
+        /// <param name="configure">Optional engine-wide durability settings, such as the unknown-effect mode.</param>
+        /// <param name="instanceId">The expected store instance identity, or null for the sugar's default.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="databasePath"/> is blank or not absolute.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// A different durability storage was already selected, or the database directory could not be created.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// The path is never implied: durable storage is an external fact the caller names. The database is validated,
+        /// created, and bound to <paramref name="instanceId"/> when the engine first resolves the journal or lease
+        /// manager, so a path or schema problem surfaces from that resolution. SQLite is durable local
+        /// storage; it provides no distributed lease, fencing across machines, or cross-store atomicity, so ownership is
+        /// authoritative on one host sharing that file. The journal is still a protected boundary, so pair this with
+        /// <see cref="UseLocalDevelopmentDefaults"/> or register your own grant store and audit dispatcher.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder WithSqliteDurability(
+            string databasePath,
+            Action<AgentDurabilityOptions>? configure = null,
+            SqliteDurableStoreInstanceId? instanceId = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+            return ConfigureDurability(
+                builder,
+                configure,
+                DurabilityStorageKind.Sqlite,
+                FullyQualified(databasePath, "The database path must be absolute.", nameof(databasePath)),
+                instanceId,
+                jsonInstanceId: null);
+        }
+
+        /// <summary>
+        /// Records every first-party boundary as a recoverable operation, like <see cref="WithDurability"/>, but stores the
+        /// journal as inspectable newline-delimited JSON files under an explicit directory.
+        /// </summary>
+        /// <param name="directoryPath">The absolute directory that holds the journal files; it is created when absent.</param>
+        /// <param name="configure">Optional engine-wide durability settings, such as the unknown-effect mode.</param>
+        /// <param name="instanceId">The expected store instance identity, or null for the sugar's default.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="directoryPath"/> is blank or not absolute.</exception>
+        /// <exception cref="InvalidOperationException">A different durability storage was already selected.</exception>
+        /// <remarks>
+        /// <para>
+        /// The path is never implied, and it must be canonical: the store refuses a root that traverses a symbolic link
+        /// (macOS reaches its temp directory through one). The journal is locked, validated, and replayed when the engine
+        /// first resolves it. The JSON journal flushes every acknowledged record, recovers a torn trailing append,
+        /// and holds an advisory exclusive lock, so a second writer on the directory is refused. The JSON family provides
+        /// no lease manager or backend, so those remain the process-local in-memory adapters: fencing tokens are
+        /// authoritative only inside the process, and the sugar claims no multi-process coordination. The journal is still
+        /// a protected boundary, so pair this with <see cref="UseLocalDevelopmentDefaults"/> or register your own grant
+        /// store and audit dispatcher.
+        /// </para>
+        /// </remarks>
+        public AgentEngineBuilder WithJsonDurability(
+            string directoryPath,
+            Action<AgentDurabilityOptions>? configure = null,
+            JsonDurableStoreInstanceId? instanceId = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+            return ConfigureDurability(
+                builder,
+                configure,
+                DurabilityStorageKind.Json,
+                FullyQualified(directoryPath, "The journal directory path must be absolute.", nameof(directoryPath)),
+                sqliteInstanceId: null,
+                instanceId);
         }
 
         /// <summary>

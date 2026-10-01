@@ -3,7 +3,6 @@
 
 namespace AgentKit.Providers.Cohere;
 
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Cohere v2

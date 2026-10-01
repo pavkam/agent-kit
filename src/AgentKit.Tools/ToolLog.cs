@@ -41,6 +41,21 @@ internal static partial class ToolLog
     [LoggerMessage(4140, LogLevel.Information, "Retrying tool call {ToolCallId} for tool {ToolId} after failed attempt {FailedAttempt} with backoff {Delay}.")]
     internal static partial void RetryScheduled(ILogger logger, ToolCallId toolCallId, ToolId toolId, int failedAttempt, TimeSpan delay);
 
+    /// <summary>Records the bounded outcome of externalizing one oversized tool result, without result content or artifact locations.</summary>
+    /// <param name="logger">The spill's type-specific logger.</param><param name="level">Severity matching the semantic outcome.</param><param name="toolCallId">The correlated call.</param><param name="toolId">The tool whose result was oversized.</param><param name="outcome">A closed outcome: spilled, refused, timed_out, or faulted.</param>
+    [LoggerMessage(EventId = 4141, Message = "Tool result spill for call {ToolCallId} of tool {ToolId} ended with {Outcome}.")]
+    internal static partial void ResultSpillCompleted(ILogger logger, LogLevel level, ToolCallId toolCallId, ToolId toolId, string outcome);
+
+    /// <summary>Records that one invocation attempt reached its enforced deadline, without arguments, results, or exception text.</summary>
+    /// <param name="logger">The scheduler's type-specific logger.</param><param name="toolCallId">The correlated call.</param><param name="toolId">The tool that timed out.</param><param name="attempt">The positive attempt that timed out.</param><param name="abandoned">Whether the attempt ignored cancellation through the drain period and was abandoned.</param>
+    [LoggerMessage(4142, LogLevel.Warning, "Tool call {ToolCallId} for tool {ToolId} attempt {Attempt} reached its invocation deadline; abandoned {Abandoned}.")]
+    internal static partial void InvocationTimedOut(ILogger logger, ToolCallId toolCallId, ToolId toolId, int attempt, bool abandoned);
+
+    /// <summary>Records that a tool budget reservation was refused or unavailable and what the executor did about it.</summary>
+    /// <param name="logger">The scheduler's type-specific logger.</param><param name="toolCallId">The correlated call.</param><param name="toolId">The tool whose call was affected.</param><param name="dimension">The first-party tool budget dimension.</param><param name="outcome">A closed outcome: exhausted or unavailable.</param>
+    [LoggerMessage(4143, LogLevel.Warning, "Tool budget dimension {Dimension} for call {ToolCallId} of tool {ToolId} was {Outcome}.")]
+    internal static partial void BudgetReservationDeclined(ILogger logger, string dimension, ToolCallId toolCallId, ToolId toolId, string outcome);
+
     /// <summary>Records entry to coordinated discovery, merge, and schema/capability preflight without publication content.</summary>
     /// <param name="logger">The coordinator's type-specific logger.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
     [LoggerMessage(4100, LogLevel.Debug, "Starting tool catalog coordination for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]

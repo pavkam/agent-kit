@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.OpenAICompatible.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for OpenAI's <c>gpt-4o</c> model.</summary>
-    public static ModelDescriptor Gpt4O { get; } = new(
+    public static ModelDescriptor Gpt4O { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         new ProviderId("openai"),
         new ApiFamilyId("openai-chat-completions"),
@@ -24,7 +26,7 @@ internal static class TestModels
             ExtensionData.Empty),
         new ModelLimits(maxContextTokens: null, maxOutputTokens: null),
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = Gpt4O with
@@ -41,7 +43,7 @@ internal static class TestModels
     };
 
     /// <summary>Gets a representative descriptor for OpenAI's <c>text-embedding-3-small</c> model.</summary>
-    public static EmbeddingModelDescriptor TextEmbedding3Small { get; } = new(
+    public static EmbeddingModelDescriptor TextEmbedding3Small { get; } = ProviderEgressHarness.Bind(new EmbeddingModelDescriptor(
         new EmbeddingModelAlias("embed"),
         new ProviderId("openai"),
         new ApiFamilyId("openai-embeddings"),
@@ -56,5 +58,5 @@ internal static class TestModels
             ExtensionData.Empty),
         new EmbeddingLimits(maxInputsPerRequest: 2048, maxInputTokensPerInput: 8192, defaultDimensions: 1536, maxDimensions: 1536),
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 }

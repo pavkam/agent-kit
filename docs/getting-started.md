@@ -21,9 +21,8 @@ composed by `AgentKit.Simple` over `AgentKit.Conversations`. The same
 `AgentEngine` hosts further agents and many concurrent sessions: an `Agent`
 handle runs typed requests with `RunAsync<T>` and `StreamAsync<T>`, admits
 steering and follow-up input to an active run, and cancels or attaches to a run
-by `RunId`. See the
-[run envelope and admission workstream](workstreams/run-envelope-and-admission.md)
-for the admission protocol.
+by `RunId`. See the [agent runtime](architecture/agent-runtime.md) architecture
+page for the admission protocol.
 
 ## Set up the repository
 

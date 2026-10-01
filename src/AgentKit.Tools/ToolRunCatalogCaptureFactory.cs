@@ -56,6 +56,9 @@ public sealed class ToolRunCatalogCaptureFactory: IToolRunCatalogCaptureFactory
             request.Toolsets,
             modelCapabilities);
 
-        return await _catalog.CaptureAsync(discovery, cancellationToken).ConfigureAwait(false);
+        var capture = await _catalog.CaptureAsync(discovery, cancellationToken).ConfigureAwait(false);
+        return request.AllowedTools is { } allowedTools
+            ? new AllowListedToolCatalogCapture(capture, allowedTools)
+            : capture;
     }
 }

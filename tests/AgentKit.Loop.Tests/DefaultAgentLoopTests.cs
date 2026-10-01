@@ -3077,6 +3077,50 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenARetrievalHookIsRegistered_ForwardsTheCapturedHookContextToContextAssembly()
+    {
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())),
+            contextAssembler: assembler,
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            beforeRetrievalHooks: [new NoOpBeforeRetrievalHook()]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        var hooks = assembler.Requests.ShouldHaveSingleItem().Hooks.ShouldNotBeNull();
+        hooks.Catalog.Registrations.ShouldContain(static registration => registration.Point == AgentHookPoints.BeforeRetrieval);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoRetrievalHookIsRegistered_ContextAssemblyReceivesNoHookContext()
+    {
+        var assembler = new RecordingContextAssembler();
+        var hook = new RecordingRunStartedHook();
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())),
+            contextAssembler: assembler,
+            hookDispatcher: new Hooks.DefaultHookDispatcher(),
+            runStartedHooks: [hook]);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
+        assembler.Requests.ShouldHaveSingleItem().Hooks.ShouldBeNull();
+    }
+
+    private sealed class NoOpBeforeRetrievalHook: IBeforeRetrievalHook
+    {
+        public ValueTask InvokeAsync(BeforeRetrievalEventArgs args, HookInvocationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    [Fact]
     public async Task RunAsync_WhenARunStartedHookThrows_IsIsolatedAndTheRunProceeds()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -3568,6 +3612,80 @@ public sealed class DefaultAgentLoopTests
         exhausted.Limit.Limit.Dimension.ShouldBe(BudgetDimensions.Turns);
         modelCalls.ShouldBe(2);
         result.NewMessages.OfType<ToolMessage>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRequestCarriesAnAllowList_PassesItToTheRunCatalogCapture()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 2 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 3, toolsets: TestFactory.Toolsets())
+            with
+        { AllowedTools = [new ToolId("test-tool")] };
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        var captures = ((FakeToolRunCatalogCaptureFactory) _services.ToolCatalogCaptures!).Requests;
+        captures.ShouldNotBeEmpty();
+        captures.ShouldAllBe(static capture => capture.AllowedTools != null && capture.AllowedTools.Value.SequenceEqual(new[] { new ToolId("test-tool") }));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRequestCarriesNoAllowList_PassesNoRestrictionToTheRunCatalogCapture()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2, toolsets: TestFactory.Toolsets());
+
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        ((FakeToolRunCatalogCaptureFactory) _services.ToolCatalogCaptures!).Requests.ShouldAllBe(static capture => capture.AllowedTools == null);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRequestNamesAParentBudgetScope_IsBoundedByTheParentsRemainingCapacity()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++modelCalls < 5 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var baseline = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8);
+        var parent = await _services.Budgets!.CreateChildScopeAsync(
+            new BudgetScopeRequest(
+                null,
+                new BudgetScopeAddress(baseline.Identity.TenantId, baseline.Identity.PrincipalId, _agentId, sessionId: null, runId: null, operationId: null),
+                [TurnLimit(1)],
+                new IdempotencyKey("goal-scope")),
+            TestContext.Current.CancellationToken);
+        var scope = parent.ShouldBeOfType<BudgetScopeCreated>().Scope;
+
+        var result = await loop.RunAsync(baseline with { BudgetParentScopeId = scope.Id }, _services, TestContext.Current.CancellationToken);
+
+        var exhausted = result.Outcome.ShouldBeOfType<RunLimitReached>();
+        exhausted.Limit.Limit.Dimension.ShouldBe(BudgetDimensions.Turns);
+        modelCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoParentBudgetScopeIsNamed_IsNotBoundedByAnyOtherScope()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 8);
+
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<RunSucceeded>();
     }
 
     [Fact]
@@ -4454,6 +4572,7 @@ public sealed class DefaultAgentLoopTests
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
         IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IEnumerable<IBeforeRetrievalHook>? beforeRetrievalHooks = null,
         IHookCatalog? hookCatalog = null,
         IHookInstanceFactory? hookInstanceFactory = null,
         IHookProfileSelector? hookProfileSelector = null,
@@ -4501,12 +4620,14 @@ public sealed class DefaultAgentLoopTests
             && (hookDispatcher is not null
                 || runStartedHooks is not null
                 || beforeModelRequestHooks is not null
-                || beforeToolInvocationHooks is not null))
+                || beforeToolInvocationHooks is not null
+                || beforeRetrievalHooks is not null))
         {
             (hookCatalog, hookInstanceFactory) = StaticHookRunComposition.Create(
                 runStartedHooks,
                 beforeModelRequestHooks,
-                beforeToolInvocationHooks);
+                beforeToolInvocationHooks,
+                beforeRetrievalHooks);
         }
 
         if (hookDispatcher is not null && hookProfileSelector is null)

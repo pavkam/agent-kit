@@ -39,6 +39,9 @@ public sealed class ToolRuntimeOptionsValidatorTests
 
     public static TheoryData<string, Action<ToolRuntimeOptions>> InvalidOptions => new()
     {
+        { "MaximumInvocationTimeout", static options => options.MaximumInvocationTimeout = options.InvocationTimeout - TimeSpan.FromSeconds(1) },
+        { "InvocationDrainPeriod", static options => options.InvocationDrainPeriod = TimeSpan.FromSeconds(-1) },
+        { "ResultSpillPreviewBytes", static options => options.ResultSpillPreviewBytes = -1 },
         { "MaximumArgumentBytes", static options => options.MaximumArgumentBytes = 0 },
         { "MaximumResultBytes", static options => options.MaximumResultBytes = 0 },
         { "MaximumParallelInvocations", static options => options.MaximumParallelInvocations = 0 },

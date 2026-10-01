@@ -25,8 +25,8 @@ and [workspaces](../profiles/coding-harness/coding-workspaces-and-worktrees.md).
 
 Framework, tool, and integration code MUST NOT call operating-system file APIs
 directly. It MUST depend on narrow capability contracts covering reading,
-writing, directory enumeration, metadata, temporary storage, and optional change
-observation.
+writing, deletion, directory enumeration, metadata, temporary storage, and
+optional change observation.
 
 A consumer MUST receive only the capabilities it uses. One oversized service
 granting every file operation is forbidden. An implementation MUST declare its
@@ -164,6 +164,28 @@ explicit compound operation whose directory and file effects remain separately
 bound and audited. A writer MUST NOT call an implicit recursive create as a
 convenience.
 
+## File deletion
+
+Removing a file is its own protected capability, separate from writing: a
+profile that supports writes does not thereby support deletion, and a writer
+MUST NOT remove a file as a side effect of a disposition. A deletion is
+authorized as a file mutation whose effect is `Delete` on the exact file
+resource, with an input fingerprint that binds the root, the normalized path,
+and an optional expected target fingerprint. A grant issued for a write
+therefore never authorizes a deletion, and a grant issued for a deletion never
+authorizes a write.
+
+The deleter MUST revalidate and atomically consume the grant and emit required
+audit immediately before acting, remove exactly one regular file, and never
+remove a directory. It MUST traverse to the target's parent without following a
+symbolic link, MUST NOT follow a link at the final component, and MUST fail
+closed when the resolved target leaves the configured root. An expected target
+fingerprint is a commit precondition evaluated against the bytes actually
+observed: a racing change reports conflict and removes nothing. A missing target
+reports not found, which makes a repeated deletion idempotent. The outcome is a
+closed result of success (with the removed length), not found, conflict, denial,
+cancellation, unsupported capability, or typed failure.
+
 Directory pages MUST bind continuation to the fingerprint of the complete
 ordered name snapshot. Resumption after a change MUST report a typed
 snapshot-changed result instead of mixing two directory versions.
@@ -205,6 +227,11 @@ for the same versioned inputs.
   size bound is enforced against the committed total.
 - A write to a path whose parent is missing returns parent-not-found without
   creating directories.
+- Deleting an existing regular file removes exactly that file and reports its
+  length; deleting it again reports not found; deleting a directory, a symbolic
+  link, or a file whose fingerprint no longer matches the precondition removes
+  nothing.
+- A grant issued for a write of a path denies when presented for deleting it.
 - A grant issued for one normalized path denies after the path resolves to a
   different symbolic-link target.
 - An expired, consumed, or unauditable grant denies before any host call.

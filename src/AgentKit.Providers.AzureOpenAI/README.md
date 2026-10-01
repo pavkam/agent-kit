@@ -47,8 +47,6 @@ dependencies.
   — intended ownership and contracts.
 - [Azure OpenAI API reference](../../docs/providers/azure-openai.md) — wire
   behavior and capability requirements.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

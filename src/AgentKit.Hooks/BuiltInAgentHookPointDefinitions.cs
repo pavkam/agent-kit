@@ -51,4 +51,36 @@ internal static class BuiltInAgentHookPointDefinitions
     /// <inheritdoc cref="AgentHookPointDefinitions.OutputValidatingRegistration"/>
     internal static HookPointDefinitionRegistration OutputValidatingRegistration =>
         AgentHookPointDefinitions.OutputValidatingRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeMemoryProposal"/>
+    internal static HookPointDefinition<IBeforeMemoryProposalHook, BeforeMemoryProposalEventArgs> BeforeMemoryProposal =>
+        AgentHookPointDefinitions.BeforeMemoryProposal;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeMemoryProposalRegistration"/>
+    internal static HookPointDefinitionRegistration BeforeMemoryProposalRegistration =>
+        AgentHookPointDefinitions.BeforeMemoryProposalRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeMemoryWrite"/>
+    internal static HookPointDefinition<IBeforeMemoryWriteHook, BeforeMemoryWriteEventArgs> BeforeMemoryWrite =>
+        AgentHookPointDefinitions.BeforeMemoryWrite;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeMemoryWriteRegistration"/>
+    internal static HookPointDefinitionRegistration BeforeMemoryWriteRegistration =>
+        AgentHookPointDefinitions.BeforeMemoryWriteRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeRetrieval"/>
+    internal static HookPointDefinition<IBeforeRetrievalHook, BeforeRetrievalEventArgs> BeforeRetrieval =>
+        AgentHookPointDefinitions.BeforeRetrieval;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeRetrievalRegistration"/>
+    internal static HookPointDefinitionRegistration BeforeRetrievalRegistration =>
+        AgentHookPointDefinitions.BeforeRetrievalRegistration;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeRetrievalExposure"/>
+    internal static HookPointDefinition<IBeforeRetrievalExposureHook, BeforeRetrievalExposureEventArgs> BeforeRetrievalExposure =>
+        AgentHookPointDefinitions.BeforeRetrievalExposure;
+
+    /// <inheritdoc cref="AgentHookPointDefinitions.BeforeRetrievalExposureRegistration"/>
+    internal static HookPointDefinitionRegistration BeforeRetrievalExposureRegistration =>
+        AgentHookPointDefinitions.BeforeRetrievalExposureRegistration;
 }

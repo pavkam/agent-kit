@@ -23,14 +23,14 @@ public sealed class GoogleVertexAILlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline ?? Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor(DeploymentId? deploymentId = null) => new(new ModelAlias("chat"), GoogleVertexAIProviderDefaults.ProviderId, GoogleVertexAIProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId, GoogleVertexAIProviderDefaults.DefaultCapabilities, GoogleVertexAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
-    private static GoogleVertexAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static ModelDescriptor CreateDescriptor(DeploymentId? deploymentId = null) => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), GoogleVertexAIProviderDefaults.ProviderId, GoogleVertexAIProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId, GoogleVertexAIProviderDefaults.DefaultCapabilities, GoogleVertexAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
+    private static GoogleVertexAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://us-central1-aiplatform.googleapis.com/")));
     [Fact]
     public async Task ExecuteAsync_WhenUsingOAuthCredential_SendsBearerHeaderAndPublisherModelUri()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -50,7 +50,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor(new DeploymentId("my-endpoint"));
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         _ = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         handler.Requests[0].RequestUri.ShouldBe(new Uri("https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/" + "endpoints/my-endpoint:generateContent"));
     }
@@ -60,7 +60,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, preferStreaming: true);
         _ = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         handler.Requests[0].RequestUri!.ToString().ShouldContain(":streamGenerateContent?alt=sse");
     }
@@ -83,7 +83,7 @@ public sealed class GoogleVertexAILlmModelTests
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = CreateModel(handler, new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(expiredToken), descriptor);
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
@@ -95,7 +95,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_401.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("bad-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("bad-token", expiresAtUtc: null)), descriptor);
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
@@ -110,7 +110,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.TooManyRequests, "responses/error_429.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
@@ -129,7 +129,7 @@ public sealed class GoogleVertexAILlmModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
 
@@ -147,7 +147,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json", Encoding.UTF8, "text/plain") });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
 
@@ -167,7 +167,7 @@ public sealed class GoogleVertexAILlmModelTests
                 SupportsToolCalls = false
             },
         };
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
@@ -185,7 +185,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -208,7 +208,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -226,7 +226,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var requestDescriptor = descriptor with { ModelId = new ModelId("different-model") };
         var observer = new RecordingModelResponseObserver();
 
@@ -243,7 +243,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var requestDescriptor = descriptor with
         {
             Capabilities = descriptor.Capabilities with { SupportsStructuredOutput = !descriptor.Capabilities.SupportsStructuredOutput },
@@ -264,7 +264,7 @@ public sealed class GoogleVertexAILlmModelTests
         {
             Capabilities = GoogleVertexAIProviderDefaults.DefaultCapabilities with { SupportsParallelToolCalls = false },
         };
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, settings, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
@@ -283,7 +283,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, Now.AddSeconds(-1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
         var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
@@ -315,7 +315,7 @@ public sealed class GoogleVertexAILlmModelTests
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -332,7 +332,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -357,7 +357,7 @@ public sealed class GoogleVertexAILlmModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
         using var cancellation = new CancellationTokenSource();
 
@@ -382,7 +382,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()))
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -402,7 +402,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage], [], LlmToolChoice.Auto, settings, ExtensionData.Empty);
@@ -424,7 +424,7 @@ public sealed class GoogleVertexAILlmModelTests
     {
         var handler = new GatedSendHttpMessageHandler();
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
         using var cancellation = new CancellationTokenSource();
 
@@ -444,7 +444,7 @@ public sealed class GoogleVertexAILlmModelTests
         var clock = new FakeTimeProvider(Now);
         var handler = new GatedSendHttpMessageHandler();
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, timeProvider: clock);
         var observer = new RecordingModelResponseObserver();
 
         var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
@@ -467,7 +467,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(body),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, timeProvider: clock);
         var observer = new RecordingModelResponseObserver();
 
         var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
@@ -489,7 +489,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -511,7 +511,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(body),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, timeProvider: clock);
         var observer = new RecordingModelResponseObserver();
 
         var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
@@ -533,7 +533,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -553,7 +553,7 @@ public sealed class GoogleVertexAILlmModelTests
             Content = new StreamContent(FaultingReadStream.ConnectionReset("data: {"u8.ToArray())),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, preferStreaming: true);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -576,7 +576,7 @@ public sealed class GoogleVertexAILlmModelTests
             """;
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(truncatedBody, Encoding.UTF8, "text/event-stream") });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, preferStreaming: true);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -606,7 +606,7 @@ public sealed class GoogleVertexAILlmModelTests
             """;
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(Encoding.UTF8.GetBytes(prefix))) });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, preferStreaming: true);
         var observer = new RecordingModelResponseObserver();
 
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -634,7 +634,7 @@ public sealed class GoogleVertexAILlmModelTests
             """;
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/event-stream") });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", expiresAtUtc: null)), descriptor, preferStreaming: true);
         using var cts = new CancellationTokenSource();
         // Started, PartStarted, two deltas, PartCompleted: cancel once the text part has been completed.
         var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);
@@ -648,12 +648,5 @@ public sealed class GoogleVertexAILlmModelTests
         terminal.PartialParts.ShouldBe(cancelled.PartialParts);
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
-    }
-
-    private sealed class StaticOAuthCredentialSource: IProviderCredentialSource
-    {
-        private readonly string _accessToken;
-        public StaticOAuthCredentialSource(string accessToken) => _accessToken = accessToken;
-        public ValueTask<ProviderCredential> GetCredentialAsync(ProviderId providerId, CancellationToken cancellationToken = default) => ValueTask.FromResult<ProviderCredential>(new OAuthTokenProviderCredential(_accessToken, expiresAtUtc: null));
     }
 }

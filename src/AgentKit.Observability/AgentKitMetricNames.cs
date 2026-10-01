@@ -243,6 +243,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for provider egress boundary duration in seconds.</summary>
     public const string ProviderEgressDuration = "agentkit.provider.egress.duration";
 
+    /// <summary>Gets the counter for terminal provider credential-read outcomes.</summary>
+    public const string ProviderCredentialReadCount = "agentkit.provider.credential.read.count";
+
+    /// <summary>Gets the histogram for provider credential-read duration in seconds.</summary>
+    public const string ProviderCredentialReadDuration = "agentkit.provider.credential.read.duration";
+
     /// <summary>Gets the counter for terminal language-query outcomes.</summary>
     public const string LanguageQueryCount = "agentkit.language.query.count";
 
@@ -331,6 +337,14 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for tool-invocation retry decisions.</summary>
     /// <remarks>The only dimension is the bounded decision outcome.</remarks>
     public const string ToolRetryCount = "agentkit.tool.retry.count";
+
+    /// <summary>Gets the counter for oversized tool-result spill attempts.</summary>
+    /// <remarks>The only dimension is the bounded outcome: spilled, refused, or faulted.</remarks>
+    public const string ToolResultSpillCount = "agentkit.tool.result.spill.count";
+
+    /// <summary>Gets the counter for tool-budget reservations the executor attempted for concurrency, retries, results, and successes.</summary>
+    /// <remarks>Dimensions are the first-party tool budget dimension and the bounded outcome (reserved, exhausted, or unavailable).</remarks>
+    public const string ToolBudgetReservationCount = "agentkit.tool.budget.reservation.count";
 
     /// <summary>Gets the counter for tool-event deliveries to sinks.</summary>
     /// <remarks>The only dimension is the bounded delivery outcome: delivered or failed.</remarks>

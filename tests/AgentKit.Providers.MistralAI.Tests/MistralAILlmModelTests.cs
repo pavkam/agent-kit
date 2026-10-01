@@ -21,7 +21,7 @@ public sealed class MistralAILlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static MistralAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, MistralAIProviderOptions? options = null) => new(descriptor ?? TestModels.MistralLarge, options ?? new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/") }, new MistralAIRequestTranslator(), new MistralAIResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now));
+    private static MistralAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, MistralAIProviderOptions? options = null) => new(descriptor ?? TestModels.MistralLarge, options ?? new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/") }, new MistralAIRequestTranslator(), new MistralAIResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, (options ?? new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/") }).BaseAddress));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsBearerHeaderAndChatCompletionsUri()
     {

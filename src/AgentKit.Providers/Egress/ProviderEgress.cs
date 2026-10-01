@@ -5,6 +5,8 @@ namespace AgentKit.Providers.Egress;
 
 using System.Net.Http;
 
+using AgentKit.Providers.Credentials;
+
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -15,8 +17,11 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// <para>
 /// Every first-party provider adapter sends through this boundary instead of an <c>HttpClient</c>. One call performs,
-/// in order and without any I/O before the first grant is consumed: it selects the security authority captured by the
-/// request's <see cref="ProtectedSemanticOperationContext"/>; obtains and atomically consumes a provider-egress grant
+/// in order and without any network I/O before the first grant is consumed: it selects the security authority captured
+/// by the request's <see cref="ProtectedSemanticOperationContext"/>; when the request names a credential runtime,
+/// obtains and atomically consumes a credential-read grant (<see cref="ProviderCredentialReadGate"/>), resolves one
+/// disposable lease from the profile's captured source, applies it to the request, and disposes it; obtains and
+/// atomically consumes a provider-egress grant
 /// bound to the exact endpoint and credential profile binding, model, attempt, canonical destination, payload hash,
 /// and classification (audience <see cref="SecurityAudience"/>, consumed with required audit); obtains a separate
 /// resolution grant for <see cref="INetworkNameResolver"/>; and obtains a separate send grant for
@@ -26,7 +31,8 @@ using Microsoft.Extensions.Options;
 /// <para>
 /// The body is frozen into immutable bytes before the first grant so every fingerprint covers the bytes actually sent.
 /// Credential headers travel only inside the transport request and are bound solely by the transport's hashed header
-/// fingerprint; they never appear in a security request, an audit record, a log, or a refusal. Redirects are never
+/// fingerprint; they never appear in a security request, an audit record, a log, a metric, or a refusal. The
+/// credential-read grant is distinct from the egress, resolution, and send grants and cannot substitute for any of them. Redirects are never
 /// followed: a redirecting provider endpoint refuses the attempt, so credentials cannot reach another origin. The
 /// network leaf keeps connection pooling and pinned-address behavior.
 /// </para>
@@ -237,7 +243,6 @@ public sealed class ProviderEgress
                 "authority");
         }
 
-        var headers = CreateHeaders(request.Message);
         var method = new NetworkMethod(request.Message.Method.Method);
         var connectTimeout = remaining < _options.ConnectTimeout ? remaining : _options.ConnectTimeout;
         var bounds = new NetworkBounds(
@@ -256,6 +261,32 @@ public sealed class ProviderEgress
                 "authority");
         }
 
+        if (request.Binding is not null && request.Credential is null)
+        {
+            return Refuse(
+                request,
+                ProviderFailureKind.Authentication,
+                "The operation is bound to a credential profile but no credential runtime was supplied.",
+                "credential-grant");
+        }
+
+        if (request.Credential is { } selectedCredential)
+        {
+            var credentialRefusal = await ApplyCredentialAsync(
+                request,
+                operation,
+                selectedCredential,
+                activated,
+                content,
+                enter,
+                cancellationToken).ConfigureAwait(false);
+            if (credentialRefusal is not null)
+            {
+                return credentialRefusal;
+            }
+        }
+
+        var headers = CreateHeaders(request.Message);
         enter("egress-grant");
         var resources = ProviderEgressBinding.Resources(destination);
         var fingerprint = ProviderEgressBinding.Fingerprint(
@@ -367,10 +398,33 @@ public sealed class ProviderEgress
         }
     }
 
-    private async ValueTask<GrantAttempt> AuthorizeAsync(
+    private ValueTask<GrantAttempt> AuthorizeAsync(
         AuthorityActivation activation,
         SecurityAuthorizationContext authorization,
         ComponentId audience,
+        ImmutableArray<ProtectedResource> resources,
+        InputFingerprint fingerprint,
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken) =>
+        AuthorizeCoreAsync(
+            activation,
+            authorization,
+            audience,
+            SecurityOperationKind.Network,
+            SecurityEffect.Egress,
+            "Provider egress",
+            resources,
+            fingerprint,
+            deadline,
+            cancellationToken);
+
+    private async ValueTask<GrantAttempt> AuthorizeCoreAsync(
+        AuthorityActivation activation,
+        SecurityAuthorizationContext authorization,
+        ComponentId audience,
+        SecurityOperationKind kind,
+        SecurityEffect effect,
+        string subject,
         ImmutableArray<ProtectedResource> resources,
         InputFingerprint fingerprint,
         DateTimeOffset deadline,
@@ -387,8 +441,8 @@ public sealed class ProviderEgress
                     authorization.Identity,
                     authorization,
                     audience,
-                    SecurityOperationKind.Network,
-                    SecurityEffect.Egress,
+                    kind,
+                    effect,
                     resources,
                     fingerprint,
                     deadline),
@@ -397,15 +451,163 @@ public sealed class ProviderEgress
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return GrantAttempt.Refused("The security authority was unavailable, so provider egress was not authorized.", exception);
+            return GrantAttempt.Refused($"The security authority was unavailable, so {subject.ToLowerInvariant()} was not authorized.", exception);
         }
 
         return decision switch
         {
             SecurityAllowed allowed => GrantAttempt.Allowed(allowed.Grant),
-            SecurityApprovalRequired => GrantAttempt.Refused("Provider egress requires an approval that cannot be awaited at this boundary."),
-            _ => GrantAttempt.Refused("Provider egress was denied by the security authority."),
+            SecurityApprovalRequired => GrantAttempt.Refused($"{subject} requires an approval that cannot be awaited at this boundary."),
+            _ => GrantAttempt.Refused($"{subject} was denied by the security authority."),
         };
+    }
+
+    /// <summary>
+    /// Obtains the credential-read grant, asks the selected source for one lease, applies it to the request, and
+    /// disposes it, refusing before any secret is read when the grant is denied.
+    /// </summary>
+    private async ValueTask<ProviderEgressRefused?> ApplyCredentialAsync(
+        ProviderEgressRequest request,
+        ProtectedSemanticOperationContext operation,
+        ProviderEgressCredential selected,
+        AuthorityActivation activated,
+        NetworkRequestContent? content,
+        Action<string> enter,
+        CancellationToken cancellationToken)
+    {
+        var runtime = selected.Runtime;
+        if (request.Binding is { } binding
+            && (runtime.Endpoint.Reference != binding.Endpoint || runtime.Credential.Reference != binding.Credential))
+        {
+            return Refuse(
+                request,
+                ProviderFailureKind.Authentication,
+                "The credential runtime does not match the operation's endpoint and credential profile binding.",
+                "credential-grant");
+        }
+
+        var started = _timeProvider.GetTimestamp();
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.ProviderCredentialRead);
+        _ = activity?.SetTag(AgentKitTagNames.ProviderName, request.ProviderId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.ProviderOperation, OperationTag(request.Kind));
+
+        ProviderEgressRefused? refusal = null;
+        string outcome;
+        try
+        {
+            refusal = await ReleaseCredentialAsync(
+                request,
+                operation,
+                selected,
+                activated,
+                content,
+                enter,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            ProviderMetrics.RecordCredentialRead("cancelled", _timeProvider.GetElapsedTime(started));
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            throw;
+        }
+
+        if (refusal is null)
+        {
+            outcome = "released";
+            ProviderEgressLog.CredentialApplied(_logger, request.ProviderId, request.Kind);
+            activity.SetSuccessful(outcome);
+        }
+        else
+        {
+            outcome = refusal.Failure.Kind.ToString().ToLowerInvariant();
+            activity.SetFailed(outcome, refusal.Failure.Kind.ToString());
+        }
+
+        ProviderMetrics.RecordCredentialRead(outcome, _timeProvider.GetElapsedTime(started));
+        return refusal;
+    }
+
+    private async ValueTask<ProviderEgressRefused?> ReleaseCredentialAsync(
+        ProviderEgressRequest request,
+        ProtectedSemanticOperationContext operation,
+        ProviderEgressCredential selected,
+        AuthorityActivation activated,
+        NetworkRequestContent? content,
+        Action<string> enter,
+        CancellationToken cancellationToken)
+    {
+        var runtime = selected.Runtime;
+        var source = runtime.CredentialSource;
+        enter("credential-grant");
+        var grant = await AuthorizeCoreAsync(
+            activated,
+            operation.Authorization,
+            source.SecurityAudience,
+            ProviderCredentialReadBinding.OperationKind,
+            ProviderCredentialReadBinding.Effect,
+            "Provider credential read",
+            ProviderCredentialReadBinding.Resources(runtime.Credential),
+            ProviderCredentialReadBinding.Fingerprint(runtime.Endpoint, runtime.Credential, request.Attempt, request.Deadline),
+            request.Deadline,
+            cancellationToken).ConfigureAwait(false);
+        if (grant.Refusal is { } grantRefusal)
+        {
+            return Refuse(request, ProviderFailureKind.Authorization, grantRefusal, "credential-grant", grant.Cause);
+        }
+
+        enter("credential");
+        ProviderCredentialResolutionResult resolution;
+        try
+        {
+            resolution = await source.ResolveAsync(
+                new ProviderCredentialResolutionRequest(
+                    runtime.Endpoint,
+                    runtime.Credential,
+                    operation,
+                    request.Attempt,
+                    request.Deadline,
+                    grant.Grant!),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Refuse(
+                request,
+                ProviderFailureKind.Authentication,
+                "The request credential could not be resolved.",
+                "credential",
+                exception);
+        }
+
+        if (resolution is not ProviderCredentialResolved resolved)
+        {
+            var failure = ((ProviderCredentialUnavailable) resolution).Failure;
+            return Refuse(request, failure.Kind, failure.SafeMessage, "credential", failure.DiagnosticCause);
+        }
+
+        var lease = resolved.Credential;
+        await using (lease.ConfigureAwait(false))
+        {
+            ProviderFailure? applyFailure;
+            try
+            {
+                var target = new ProviderRequestAuthenticationTarget(request.Message, request.ProviderId, selected.Scheme, content, _timeProvider);
+                applyFailure = await lease.ApplyAsync(target, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                return Refuse(
+                    request,
+                    ProviderFailureKind.Authentication,
+                    "The request credential could not be applied.",
+                    "credential",
+                    exception);
+            }
+
+            return applyFailure is null
+                ? null
+                : Refuse(request, applyFailure.Kind, applyFailure.SafeMessage, "credential", applyFailure.DiagnosticCause);
+        }
     }
 
     private async ValueTask<GrantAttempt> ConsumeAsync(

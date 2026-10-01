@@ -19,6 +19,9 @@ internal sealed class ToolRuntimeOptionsValidator: IValidateOptions<ToolRuntimeO
         Require(options.MaximumParallelInvocations > 0, "MaximumParallelInvocations must be positive.", failures);
         Require(options.MaximumAttempts > 0, "MaximumAttempts must be positive and counts the first attempt.", failures);
         Require(options.InvocationTimeout > TimeSpan.Zero, "InvocationTimeout must be positive.", failures);
+        Require(options.MaximumInvocationTimeout >= options.InvocationTimeout, "MaximumInvocationTimeout must not be less than InvocationTimeout.", failures);
+        Require(options.InvocationDrainPeriod >= TimeSpan.Zero, "InvocationDrainPeriod must not be negative.", failures);
+        Require(options.ResultSpillPreviewBytes >= 0, "ResultSpillPreviewBytes must not be negative.", failures);
         Require(options.RetryInitialDelay >= TimeSpan.Zero, "RetryInitialDelay must not be negative.", failures);
         Require(double.IsFinite(options.RetryBackoffMultiplier) && options.RetryBackoffMultiplier >= 1.0, "RetryBackoffMultiplier must be a finite value of at least one.", failures);
         Require(options.RetryMaximumDelay >= options.RetryInitialDelay, "RetryMaximumDelay must not be less than RetryInitialDelay.", failures);

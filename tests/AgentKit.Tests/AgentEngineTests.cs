@@ -367,6 +367,61 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenOverrideCarriesAToolAllowListAndBudgetParent_HandsBothToTheLoop()
+    {
+        var loop = new RecordingAgentLoop();
+        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
+        var agent = (await engine.GetAgentAsync(
+            CompositionTestData.AgentId,
+            TestContext.Current.CancellationToken)).RequireResolved();
+        var parent = new BudgetScopeId(Guid.Parse("f0000000-0000-0000-0000-000000000002"));
+
+        _ = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: new AgentRunOptions(allowedTools: [new ToolId("read")], budgetParentScopeId: parent),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var request = loop.ReceivedRequests.ShouldHaveSingleItem();
+        request.AllowedTools.ShouldNotBeNull().ShouldBe([new ToolId("read")]);
+        request.BudgetParentScopeId.ShouldBe(parent);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOverrideCarriesAnEmptyAllowList_HandsAnEmptyListNotNullToTheLoop()
+    {
+        var loop = new RecordingAgentLoop();
+        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
+        var agent = (await engine.GetAgentAsync(
+            CompositionTestData.AgentId,
+            TestContext.Current.CancellationToken)).RequireResolved();
+
+        _ = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            options: new AgentRunOptions(allowedTools: []),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        loop.ReceivedRequests.ShouldHaveSingleItem().AllowedTools.ShouldNotBeNull().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOverrideCarriesNoRestriction_HandsTheLoopNoRestriction()
+    {
+        var loop = new RecordingAgentLoop();
+        await using var engine = CompositionTestData.RunnableBuilder(loop).Build();
+        var agent = (await engine.GetAgentAsync(
+            CompositionTestData.AgentId,
+            TestContext.Current.CancellationToken)).RequireResolved();
+
+        _ = await agent.RunAsync<string>(
+            CompositionTestData.SessionId, CompositionTestData.Identity(), CompositionTestData.Input(),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var request = loop.ReceivedRequests.ShouldHaveSingleItem();
+        request.AllowedTools.ShouldBeNull();
+        request.BudgetParentScopeId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOverrideWidensTurnLimit_ThrowsBeforeRunning()
     {
         var loop = new RecordingAgentLoop();

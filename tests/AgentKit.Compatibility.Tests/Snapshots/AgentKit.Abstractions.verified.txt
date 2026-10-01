@@ -304,8 +304,16 @@ namespace AgentKit
     }
     public static class AgentHookPointDefinitions
     {
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeMemoryProposalHook, AgentKit.BeforeMemoryProposalEventArgs> BeforeMemoryProposal { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeMemoryProposalRegistration { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeMemoryWriteHook, AgentKit.BeforeMemoryWriteEventArgs> BeforeMemoryWrite { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeMemoryWriteRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IBeforeModelRequestHook, AgentKit.BeforeModelRequestEventArgs> BeforeModelRequest { get; }
         public static AgentKit.HookPointDefinitionRegistration BeforeModelRequestRegistration { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeRetrievalHook, AgentKit.BeforeRetrievalEventArgs> BeforeRetrieval { get; }
+        public static AgentKit.HookPointDefinition<AgentKit.IBeforeRetrievalExposureHook, AgentKit.BeforeRetrievalExposureEventArgs> BeforeRetrievalExposure { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeRetrievalExposureRegistration { get; }
+        public static AgentKit.HookPointDefinitionRegistration BeforeRetrievalRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IBeforeToolInvocationHook, AgentKit.BeforeToolInvocationEventArgs> BeforeToolInvocation { get; }
         public static AgentKit.HookPointDefinitionRegistration BeforeToolInvocationRegistration { get; }
         public static AgentKit.HookPointDefinition<AgentKit.IContextAssembledHook, AgentKit.ContextAssembledEventArgs> ContextAssembled { get; }
@@ -319,7 +327,11 @@ namespace AgentKit
     }
     public static class AgentHookPoints
     {
+        public static AgentKit.HookPointId BeforeMemoryProposal { get; }
+        public static AgentKit.HookPointId BeforeMemoryWrite { get; }
         public static AgentKit.HookPointId BeforeModelRequest { get; }
+        public static AgentKit.HookPointId BeforeRetrieval { get; }
+        public static AgentKit.HookPointId BeforeRetrievalExposure { get; }
         public static AgentKit.HookPointId BeforeToolInvocation { get; }
         public static AgentKit.HookPointId ContextAssembled { get; }
         public static AgentKit.HookPointId OutputValidating { get; }
@@ -375,9 +387,11 @@ namespace AgentKit
         public AgentLoopRunRequest(AgentKit.AgentDefinition agent, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.SessionProfileSnapshot sessionProfile, AgentKit.EffectiveConfigurationSnapshot configuration, int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ExtensionData extensions) { }
         public AgentKit.AgentDefinition Agent { get; }
         public AgentKit.AgentId AgentId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? AllowedTools { get; init; }
         public System.TimeSpan AttemptTimeout { get; init; }
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
         public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.BudgetScopeId? BudgetParentScopeId { get; init; }
         public AgentKit.BudgetProfileKey BudgetProfile { get; }
         public AgentKit.EffectiveConfigurationSnapshot Configuration { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
@@ -1608,6 +1622,13 @@ namespace AgentKit
         public AgentKit.DurableJournalKey JournalKey { get; }
         public TRequest Request { get; }
     }
+    public sealed class AuthorizedFileDelete : System.IEquatable<AgentKit.AuthorizedFileDelete>
+    {
+        public AuthorizedFileDelete(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.ContentHash? expectedTargetFingerprint, AgentKit.SecurityGrant grant) { }
+        public AgentKit.ContentHash? ExpectedTargetFingerprint { get; init; }
+        public AgentKit.SecurityGrant Grant { get; init; }
+        public AgentKit.ResolvedFileTarget ResolvedTarget { get; init; }
+    }
     public sealed class AuthorizedFileMetadataRead : System.IEquatable<AgentKit.AuthorizedFileMetadataRead>
     {
         public AuthorizedFileMetadataRead(AgentKit.ResolvedFileTarget resolvedTarget, AgentKit.SecurityGrant grant) { }
@@ -1669,6 +1690,29 @@ namespace AgentKit
         Drop = 1,
         Disconnect = 2,
     }
+    public sealed class BeforeMemoryProposalEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage, AgentKit.IShortCircuitingHookArgs
+    {
+        public BeforeMemoryProposalEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.MemoryProposal proposal) { }
+        public AgentKit.AgentId AgentId { get; }
+        public bool IsShortCircuited { get; }
+        public AgentKit.MemoryProposal Proposal { get; }
+        public AgentKit.SessionId? SessionId { get; }
+        public AgentKit.MemoryHookVeto? Veto { get; set; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+    }
+    public sealed class BeforeMemoryWriteEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage, AgentKit.IShortCircuitingHookArgs
+    {
+        public BeforeMemoryWriteEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.MemoryOperationContext context, AgentKit.DurableMemoryRecord record) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.MemoryOperationContext Context { get; }
+        public bool IsShortCircuited { get; }
+        public AgentKit.DurableMemoryRecord Record { get; }
+        public AgentKit.SessionId? SessionId { get; }
+        public AgentKit.MemoryHookVeto? Veto { get; set; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+    }
     public sealed class BeforeModelRequestEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
     {
         public BeforeModelRequestEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, int turn, AgentKit.LlmRequestContext request) { }
@@ -1681,6 +1725,33 @@ namespace AgentKit
         public bool SettingsChanged { get; }
         public int Turn { get; }
         public AgentKit.TurnId TurnId { get; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+        public override void Validate() { }
+    }
+    public sealed class BeforeRetrievalEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
+    {
+        public BeforeRetrievalEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.RetrievalQuery query, AgentKit.RetrievalBudget effectiveBudget) { }
+        public AgentKit.AgentId AgentId { get; }
+        public bool BudgetNarrowed { get; }
+        public AgentKit.RetrievalBudget EffectiveBudget { get; }
+        public int MaximumBytes { get; set; }
+        public int MaximumItems { get; set; }
+        public AgentKit.RetrievalQuery Query { get; }
+        public AgentKit.SessionId? SessionId { get; }
+        public override object? CaptureMutableState() { }
+        public override void RestoreMutableState(object? snapshot) { }
+        public override void Validate() { }
+    }
+    public sealed class BeforeRetrievalExposureEventArgs : AgentKit.AgentHookEventArgs, AgentKit.IAgentScopedHookStage
+    {
+        public BeforeRetrievalExposureEventArgs(AgentKit.HookDispatchMetadata dispatch, AgentKit.RetrievalQuery query, System.Collections.Immutable.ImmutableArray<AgentKit.RetrievalCandidate> candidates) { }
+        public AgentKit.AgentId AgentId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RetrievalCandidate> Candidates { get; }
+        public System.Collections.Immutable.ImmutableArray<int> ExcludedPositions { get; set; }
+        public AgentKit.RetrievalQuery Query { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.RetrievalCandidate> Remaining { get; }
+        public AgentKit.SessionId? SessionId { get; }
         public override object? CaptureMutableState() { }
         public override void RestoreMutableState(object? snapshot) { }
         public override void Validate() { }
@@ -3338,6 +3409,7 @@ namespace AgentKit
         public AgentKit.ContextAssemblyEvidence Evidence { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> History { get; }
+        public AgentKit.HookDispatchContext? Hooks { get; init; }
         public AgentKit.ModelDescriptor Model { get; init; }
         public AgentKit.ModelRequestId ModelRequestId { get; init; }
         public AgentKit.OutputDefinition? Output { get; init; }
@@ -3409,6 +3481,7 @@ namespace AgentKit
         public AgentKit.EffectiveConfigurationSnapshot Configuration { get; }
         public AgentKit.ConversationId? ConversationId { get; }
         public AgentKit.HistoryView History { get; }
+        public AgentKit.HookDispatchContext? Hooks { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; }
         public AgentKit.ModelDescriptor Model { get; }
         public AgentKit.ModelRequestId ModelRequestId { get; }
@@ -3711,11 +3784,6 @@ namespace AgentKit
         public AgentKit.ExecutionIdentity Parent { get; }
         public bool Equals(AgentKit.DelegatedIdentityRequest? other) { }
         public override int GetHashCode() { }
-    }
-    public sealed class DelegatingOAuthCredentialSource : AgentKit.IProviderCredentialSource
-    {
-        public DelegatingOAuthCredentialSource(AgentKit.IOAuthAccessTokenProvider tokenProvider) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.ProviderCredential> GetCredentialAsync(AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public enum DelegationCancellationMode
     {
@@ -5227,6 +5295,43 @@ namespace AgentKit
         Renamed = 3,
         Overflow = 4,
     }
+    public sealed class FileDeleteCancelled : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteCancelled>
+    {
+        public FileDeleteCancelled(AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; init; }
+    }
+    public sealed class FileDeleteConflict : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteConflict>
+    {
+        public FileDeleteConflict(AgentKit.ResolvedFileTarget target, string safeMessage) { }
+        public string SafeMessage { get; init; }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public sealed class FileDeleteDenied : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteDenied>
+    {
+        public FileDeleteDenied(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class FileDeleteFailed : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteFailed>
+    {
+        public FileDeleteFailed(string safeMessage) { }
+        public string SafeMessage { get; init; }
+    }
+    public sealed class FileDeleteNotFound : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteNotFound>
+    {
+        public FileDeleteNotFound(AgentKit.ResolvedFileTarget target) { }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public abstract class FileDeleteResult : System.IEquatable<AgentKit.FileDeleteResult> { }
+    public sealed class FileDeleteSuccess : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteSuccess>
+    {
+        public FileDeleteSuccess(AgentKit.ResolvedFileTarget target, long previousBytes) { }
+        public long PreviousBytes { get; init; }
+        public AgentKit.ResolvedFileTarget Target { get; init; }
+    }
+    public sealed class FileDeleteUnsupported : AgentKit.FileDeleteResult, System.IEquatable<AgentKit.FileDeleteUnsupported>
+    {
+        public FileDeleteUnsupported() { }
+    }
     public static class FileHostTargetBinding
     {
         public static AgentKit.ResolvedFileTarget Resolve(AgentKit.FileRootId rootId, AgentKit.NormalizedRelativePath relativePath, string hostRootPath) { }
@@ -5423,6 +5528,8 @@ namespace AgentKit
         public static System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> AtomicReplaceResources(AgentKit.WorkspaceMutationId id, AgentKit.FileSystemPath path) { }
         public static AgentKit.FileSystemPath AtomicReplaceStagingPath(AgentKit.WorkspaceMutationId id, AgentKit.FileSystemPath path) { }
         public static AgentKit.ContentHash ContentFingerprint(System.ReadOnlySpan<byte> content) { }
+        public static AgentKit.InputFingerprint DeleteFingerprint(AgentKit.AuthorizedFileDelete operation) { }
+        public static AgentKit.InputFingerprint DeleteFingerprint(AgentKit.FileTarget target, AgentKit.ContentHash? expectedTargetFingerprint) { }
         public static AgentKit.InputFingerprint ReadFingerprint(AgentKit.FileReadRequest request) { }
         public static AgentKit.InputFingerprint ReadFingerprint(AgentKit.FileSystemPath path) { }
         public static AgentKit.ProtectedResource Resource(AgentKit.FileSystemPath path) { }
@@ -5478,6 +5585,7 @@ namespace AgentKit
         Watch = 16,
         Temporary = 32,
         CreateDirectory = 64,
+        Delete = 128,
     }
     public sealed class FileSystemCapabilityUnsupported : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemCapabilityUnsupported>
     {
@@ -5512,6 +5620,13 @@ namespace AgentKit
         public FileSystemEntry(AgentKit.NormalizedRelativePath name, bool isDirectory) { }
         public bool IsDirectory { get; init; }
         public AgentKit.NormalizedRelativePath Name { get; init; }
+    }
+    public sealed class FileSystemFileDeleterSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemFileDeleterSelected>
+    {
+        public FileSystemFileDeleterSelected(AgentKit.FileSystemProfileKey key, AgentKit.IFileDeleter deleter, AgentKit.FileSystemCapabilities capabilities) { }
+        public AgentKit.FileSystemCapabilities Capabilities { get; init; }
+        public AgentKit.IFileDeleter Deleter { get; init; }
+        public AgentKit.FileSystemProfileKey Key { get; init; }
     }
     public sealed class FileSystemMetadataReaderSelected : AgentKit.FileSystemSelectionResult, System.IEquatable<AgentKit.FileSystemMetadataReaderSelected>
     {
@@ -6412,6 +6527,7 @@ namespace AgentKit
         public AgentKit.IHookActivationLease Activation { get; }
         public AgentKit.HookCatalogSnapshot Catalog { get; }
         public AgentKit.HookDispatchMetadata Dispatch { get; }
+        public AgentKit.HookDispatchContext ForPoint(AgentKit.HookPointId point, AgentKit.HookDispatchId dispatchId, System.DateTimeOffset timestamp) { }
     }
     public readonly struct HookDispatchId : System.IEquatable<AgentKit.HookDispatchId>
     {
@@ -6862,9 +6978,25 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IBeforeMemoryProposalHook
+    {
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeMemoryProposalEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IBeforeMemoryWriteHook
+    {
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeMemoryWriteEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IBeforeModelRequestHook
     {
         System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeModelRequestEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IBeforeRetrievalExposureHook
+    {
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeRetrievalExposureEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IBeforeRetrievalHook
+    {
+        System.Threading.Tasks.ValueTask InvokeAsync(AgentKit.BeforeRetrievalEventArgs args, AgentKit.HookInvocationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IBeforeToolInvocationHook
     {
@@ -7201,6 +7333,11 @@ namespace AgentKit
         AgentKit.ComponentId SecurityAudience { get; }
         System.Threading.Tasks.ValueTask<AgentKit.FileSearchResult> SearchAsync(AgentKit.FileSearchRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IFileDeleter
+    {
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.FileDeleteResult> DeleteAsync(AgentKit.AuthorizedFileDelete operation, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IFileGlobber
     {
         AgentKit.ComponentId SecurityAudience { get; }
@@ -7414,9 +7551,9 @@ namespace AgentKit
     }
     public interface IMemoryCoordinator
     {
-        System.Threading.Tasks.ValueTask<AgentKit.MemoryTransitionResult> CorrectAsync(AgentKit.MemoryCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.ValueTask<AgentKit.MemoryDeleteResult> DeleteAsync(AgentKit.MemoryDeleteCommand command, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.ValueTask<AgentKit.MemoryProposalResult> ProposeAsync(AgentKit.MemoryProposal proposal, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.MemoryTransitionResult> CorrectAsync(AgentKit.MemoryCorrectionRequest request, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.MemoryDeleteResult> DeleteAsync(AgentKit.MemoryDeleteCommand command, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.MemoryProposalResult> ProposeAsync(AgentKit.MemoryProposal proposal, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IMemoryEventDispatcher
     {
@@ -7616,9 +7753,26 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxSelectionResult> SelectAsync(AgentKit.SandboxProfileId profileId, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IProviderAuthenticationTarget
+    {
+        System.ReadOnlyMemory<byte> Body { get; }
+        string? ContentType { get; }
+        string Method { get; }
+        AgentKit.ProviderId ProviderId { get; }
+        System.Uri RequestUri { get; }
+        AgentKit.ProviderAuthorizationScheme Scheme { get; }
+        System.DateTimeOffset UtcNow { get; }
+        void SetHeader(string name, string value);
+    }
+    public interface IProviderCredentialLease : System.IAsyncDisposable
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ProviderFailure?> ApplyAsync(AgentKit.IProviderAuthenticationTarget target, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IProviderCredentialSource
     {
-        System.Threading.Tasks.ValueTask<AgentKit.ProviderCredential> GetCredentialAsync(AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default);
+        AgentKit.ProviderCredentialSourceKey Key { get; }
+        AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ProviderCredentialResolutionResult> ResolveAsync(AgentKit.ProviderCredentialResolutionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IProviderProfileRuntimeLease : System.IAsyncDisposable
     {
@@ -7678,7 +7832,7 @@ namespace AgentKit
     }
     public interface IRetrievalPipeline
     {
-        System.Threading.Tasks.Task<AgentKit.RetrievalResult> RetrieveAsync(AgentKit.RetrievalQuery query, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.RetrievalResult> RetrieveAsync(AgentKit.RetrievalQuery query, AgentKit.HookDispatchContext? hooks, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IRetrievalSource
     {
@@ -7960,7 +8114,7 @@ namespace AgentKit
     }
     public interface IToolResultNormalizer
     {
-        System.Threading.Tasks.ValueTask<AgentKit.ToolResultNormalizationResult> NormalizeAsync(AgentKit.ValidatedToolCall validatedCall, AgentKit.ToolInvocationResult invocation, AgentKit.ToolResultNormalizationSnapshot snapshot, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResultNormalizationResult> NormalizeAsync(AgentKit.ValidatedToolCall validatedCall, AgentKit.ToolInvocationResult invocation, AgentKit.ToolResultNormalizationSnapshot snapshot, AgentKit.IToolResultSpill? spill = null, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolResultProjectionPolicyCatalog
     {
@@ -7969,6 +8123,10 @@ namespace AgentKit
     public interface IToolResultProjector
     {
         System.Threading.Tasks.ValueTask<AgentKit.ToolResultPart> ProjectAsync(AgentKit.ToolCallResult result, AgentKit.ToolResultProjectionPolicySnapshot policy, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IToolResultSpill
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResultSpillResult> SpillAsync(AgentKit.ToolResultSpillRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolRunCatalogCaptureFactory
     {
@@ -8751,6 +8909,12 @@ namespace AgentKit
         RetrievalRejected = 6,
         DocumentPublished = 7,
         DocumentDeleted = 8,
+    }
+    public sealed class MemoryHookVeto : System.IEquatable<AgentKit.MemoryHookVeto>
+    {
+        public MemoryHookVeto(string code, string safeReason) { }
+        public string Code { get; }
+        public string SafeReason { get; }
     }
     public readonly struct MemoryId : System.IEquatable<AgentKit.MemoryId>
     {
@@ -10839,6 +11003,16 @@ namespace AgentKit
         public string? Value { get; }
         public override string ToString() { }
     }
+    public sealed class ProviderAuthorizationScheme : System.IEquatable<AgentKit.ProviderAuthorizationScheme>
+    {
+        public ProviderAuthorizationScheme(string? apiKeyHeaderName, string apiKeyValuePrefix) { }
+        public string? ApiKeyHeaderName { get; init; }
+        public string ApiKeyValuePrefix { get; init; }
+        public bool SupportsApiKey { get; }
+        public static AgentKit.ProviderAuthorizationScheme BearerToken { get; }
+        public static AgentKit.ProviderAuthorizationScheme OAuthTokenOnly { get; }
+        public static AgentKit.ProviderAuthorizationScheme ForApiKeyHeader(string headerName) { }
+    }
     public sealed class ProviderContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ProviderContentDelta>
     {
         public ProviderContentDelta(AgentKit.ProviderId providerId, AgentKit.ExtensionData extensions) { }
@@ -10876,11 +11050,34 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class ProviderCredentialResolutionRequest : System.IEquatable<AgentKit.ProviderCredentialResolutionRequest>
+    {
+        public ProviderCredentialResolutionRequest(AgentKit.ProviderEndpointProfileSnapshot endpoint, AgentKit.ProviderCredentialProfileSnapshot credential, AgentKit.ProtectedSemanticOperationContext operation, int attempt, System.DateTimeOffset deadline, AgentKit.SecurityGrant credentialGrant) { }
+        public int Attempt { get; init; }
+        public AgentKit.ProviderCredentialProfileSnapshot Credential { get; init; }
+        public AgentKit.SecurityGrant CredentialGrant { get; init; }
+        public System.DateTimeOffset Deadline { get; init; }
+        public AgentKit.ProviderEndpointProfileSnapshot Endpoint { get; init; }
+        public AgentKit.ProtectedSemanticOperationContext Operation { get; init; }
+    }
+    public abstract class ProviderCredentialResolutionResult : System.IEquatable<AgentKit.ProviderCredentialResolutionResult> { }
+    public sealed class ProviderCredentialResolved : AgentKit.ProviderCredentialResolutionResult, System.IEquatable<AgentKit.ProviderCredentialResolved>
+    {
+        public ProviderCredentialResolved(AgentKit.IProviderCredentialLease credential) { }
+        public AgentKit.IProviderCredentialLease Credential { get; }
+        protected override bool PrintMembers(System.Text.StringBuilder builder) { }
+        public override string ToString() { }
+    }
     public readonly struct ProviderCredentialSourceKey : System.IEquatable<AgentKit.ProviderCredentialSourceKey>
     {
         public ProviderCredentialSourceKey(string value) { }
         public string? Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ProviderCredentialUnavailable : AgentKit.ProviderCredentialResolutionResult, System.IEquatable<AgentKit.ProviderCredentialUnavailable>
+    {
+        public ProviderCredentialUnavailable(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; }
     }
     public readonly struct ProviderEndpointId : System.IEquatable<AgentKit.ProviderEndpointId>
     {
@@ -11861,7 +12058,7 @@ namespace AgentKit
     }
     public static class RunPolicyVersioning
     {
-        public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey) { }
+        public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey, System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? allowedTools = default, AgentKit.BudgetScopeId? budgetParentScopeId = default) { }
     }
     public static class RunRootGoal
     {
@@ -11909,6 +12106,7 @@ namespace AgentKit
     {
         public RunToolCatalogCaptureRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.SecurityAuthorizationContext authorization, System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> toolsets = default, AgentKit.EffectiveConfigurationSnapshot? configuration = null, AgentKit.ModelCapabilities? modelCapabilities = null) { }
         public AgentKit.AgentId AgentId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? AllowedTools { get; init; }
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
         public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.ModelCapabilities? ModelCapabilities { get; }
@@ -13534,11 +13732,6 @@ namespace AgentKit
         PartiallyPerformed = 3,
         NotApplicable = 4,
     }
-    public sealed class StaticApiKeyCredentialSource : AgentKit.IProviderCredentialSource
-    {
-        public StaticApiKeyCredentialSource(string apiKey) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.ProviderCredential> GetCredentialAsync(AgentKit.ProviderId providerId, System.Threading.CancellationToken cancellationToken = default) { }
-    }
     public sealed class StructuredDataContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.StructuredDataContentDelta>
     {
         public StructuredDataContentDelta(string jsonFragment) { }
@@ -13623,11 +13816,13 @@ namespace AgentKit
     }
     public sealed class ToolBatch : System.IEquatable<AgentKit.ToolBatch>
     {
-        public ToolBatch(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, System.Collections.Immutable.ImmutableArray<AgentKit.ToolBatchEntry> entries, AgentKit.ToolBatchFailureMode failureMode, AgentKit.UnknownSchedulingMode unknownSchedulingMode, System.DateTimeOffset deadline) { }
+        public ToolBatch(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, System.Collections.Immutable.ImmutableArray<AgentKit.ToolBatchEntry> entries, AgentKit.ToolBatchFailureMode failureMode, AgentKit.UnknownSchedulingMode unknownSchedulingMode, System.DateTimeOffset deadline, AgentKit.BudgetExecutionCapability? budget = null, AgentKit.IToolResultSpill? resultSpill = null) { }
         public AgentKit.AgentId AgentId { get; }
+        public AgentKit.BudgetExecutionCapability? Budget { get; }
         public System.DateTimeOffset Deadline { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolBatchEntry> Entries { get; }
         public AgentKit.ToolBatchFailureMode FailureMode { get; }
+        public AgentKit.IToolResultSpill? ResultSpill { get; }
         public AgentKit.RunId RunId { get; }
         public AgentKit.SessionId SessionId { get; }
         public AgentKit.UnknownSchedulingMode UnknownSchedulingMode { get; }
@@ -13941,6 +14136,7 @@ namespace AgentKit
         public AgentKit.ToolCatalogVersion Version { get; }
         public bool Equals(AgentKit.ToolCatalogSnapshot? other) { }
         public override int GetHashCode() { }
+        public AgentKit.ToolCatalogSnapshot IntersectWith(System.Collections.Immutable.ImmutableArray<AgentKit.ToolId> allowedTools) { }
     }
     public readonly struct ToolCatalogVersion : System.IEquatable<AgentKit.ToolCatalogVersion>
     {
@@ -14031,8 +14227,8 @@ namespace AgentKit
     }
     public sealed class ToolExecutionCapability : System.IEquatable<AgentKit.ToolExecutionCapability>
     {
-        public ToolExecutionCapability(AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability budget, AgentKit.ToolCallSessionTarget sessionTarget, System.Collections.Immutable.ImmutableArray<AgentKit.ToolExecutionPolicyBinding> executionPolicies, AgentKit.ToolExecutionHookBinding? hooks = null) { }
-        public AgentKit.BudgetExecutionCapability Budget { get; }
+        public ToolExecutionCapability(AgentKit.SessionExecutionCapability session, AgentKit.BudgetExecutionCapability? budget, AgentKit.ToolCallSessionTarget sessionTarget, System.Collections.Immutable.ImmutableArray<AgentKit.ToolExecutionPolicyBinding> executionPolicies, AgentKit.ToolExecutionHookBinding? hooks = null) { }
+        public AgentKit.BudgetExecutionCapability? Budget { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolExecutionPolicyBinding> ExecutionPolicies { get; }
         public AgentKit.ToolExecutionHookBinding? Hooks { get; }
         public AgentKit.SessionExecutionCapability Session { get; }
@@ -14400,6 +14596,11 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultContent> Content { get; }
         public AgentKit.ToolResultNormalizationInfo Info { get; }
     }
+    public sealed class ToolResultNotSpilled : AgentKit.ToolResultSpillResult, System.IEquatable<AgentKit.ToolResultNotSpilled>
+    {
+        public ToolResultNotSpilled(string safeReason) { }
+        public string SafeReason { get; }
+    }
     public sealed class ToolResultOpaqueContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultOpaqueContent>
     {
         public ToolResultOpaqueContent(string typeDiscriminator, AgentKit.ExtensionValue canonicalPayload, AgentKit.ExtensionData extensions) { }
@@ -14518,6 +14719,18 @@ namespace AgentKit
         public ToolResultRejectionPolicyVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ToolResultSpillRequest : System.IEquatable<AgentKit.ToolResultSpillRequest>
+    {
+        public ToolResultSpillRequest(AgentKit.ValidatedToolCall call, System.Collections.Immutable.ImmutableArray<byte> content) { }
+        public AgentKit.ValidatedToolCall Call { get; }
+        public System.Collections.Immutable.ImmutableArray<byte> Content { get; }
+    }
+    public abstract class ToolResultSpillResult : System.IEquatable<AgentKit.ToolResultSpillResult> { }
+    public sealed class ToolResultSpilled : AgentKit.ToolResultSpillResult, System.IEquatable<AgentKit.ToolResultSpilled>
+    {
+        public ToolResultSpilled(AgentKit.ArtifactReference reference) { }
+        public AgentKit.ArtifactReference Reference { get; }
     }
     public sealed class ToolResultStructuredContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultStructuredContent>
     {

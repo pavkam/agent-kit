@@ -5,7 +5,7 @@ namespace AgentKit.Providers.Anthropic
 {
     public sealed class AnthropicLlmModel : AgentKit.ILlmModel
     {
-        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -26,7 +26,7 @@ namespace AgentKit.Providers.Anthropic
         public const long DefaultMaxOutputTokensFallback = 4096;
         public const string DefaultMessagesPath = "v1/messages";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
         public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
         public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }

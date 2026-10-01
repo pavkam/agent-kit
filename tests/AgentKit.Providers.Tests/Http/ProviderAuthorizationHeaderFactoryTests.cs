@@ -5,8 +5,6 @@ namespace AgentKit.Providers.Tests.Http;
 
 using AgentKit.Providers.Http;
 
-using Microsoft.Extensions.Time.Testing;
-
 /// <summary>
 /// Verifies that <see cref="ProviderAuthorizationHeaderFactory"/> maps an API
 /// key through the supplied <see cref="ProviderAuthorizationScheme"/>, always
@@ -18,13 +16,12 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
 {
     private static readonly ProviderId ProviderId = new("test-provider");
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static readonly TimeProvider Clock = new FakeTimeProvider(Now);
 
     [Fact]
     public void Create_WhenApiKeyAndBearerScheme_ReturnsAuthorizationBearerHeader()
     {
         var result = ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("sk-test-key"), ProviderId, Clock, ProviderAuthorizationScheme.BearerToken);
+            new ApiKeyProviderCredential("sk-test-key"), ProviderId, Now, ProviderAuthorizationScheme.BearerToken);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
         granted.HeaderName.ShouldBe("Authorization");
@@ -37,7 +34,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var scheme = ProviderAuthorizationScheme.ForApiKeyHeader("x-api-key");
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("sk-ant-test"), ProviderId, Clock, scheme);
+            new ApiKeyProviderCredential("sk-ant-test"), ProviderId, Now, scheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
         granted.HeaderName.ShouldBe("x-api-key");
@@ -50,7 +47,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var scheme = new ProviderAuthorizationScheme("Authorization", "Token ");
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("abc"), ProviderId, Clock, scheme);
+            new ApiKeyProviderCredential("abc"), ProviderId, Now, scheme);
 
         result.ShouldBeOfType<ProviderAuthorizationGranted>().HeaderValue.ShouldBe("Token abc");
     }
@@ -59,7 +56,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
     public void Create_WhenApiKeyAndOAuthTokenOnlyScheme_ReturnsDeniedAuthenticationFailure()
     {
         var result = ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("some-key"), ProviderId, Clock, ProviderAuthorizationScheme.OAuthTokenOnly);
+            new ApiKeyProviderCredential("some-key"), ProviderId, Now, ProviderAuthorizationScheme.OAuthTokenOnly);
 
         var denied = result.ShouldBeOfType<ProviderAuthorizationDenied>();
         denied.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
@@ -76,7 +73,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var credential = new OAuthTokenProviderCredential("access-token-123", Now.AddMinutes(5));
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, Clock, ProviderAuthorizationScheme.ForApiKeyHeader("x-goog-api-key"));
+            credential, ProviderId, Now, ProviderAuthorizationScheme.ForApiKeyHeader("x-goog-api-key"));
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
         granted.HeaderName.ShouldBe("Authorization");
@@ -89,7 +86,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var credential = new OAuthTokenProviderCredential("gcp-token", Now.AddMinutes(5));
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, Clock, ProviderAuthorizationScheme.OAuthTokenOnly);
+            credential, ProviderId, Now, ProviderAuthorizationScheme.OAuthTokenOnly);
 
         result.ShouldBeOfType<ProviderAuthorizationGranted>().HeaderValue.ShouldBe("Bearer gcp-token");
     }
@@ -100,7 +97,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var credential = new OAuthTokenProviderCredential("access-token-123", expiresAtUtc: null);
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, Clock, ProviderAuthorizationScheme.BearerToken);
+            credential, ProviderId, Now, ProviderAuthorizationScheme.BearerToken);
 
         _ = result.ShouldBeOfType<ProviderAuthorizationGranted>();
     }
@@ -111,7 +108,7 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var credential = new OAuthTokenProviderCredential("access-token-123", Now.AddSeconds(-1));
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, Clock, ProviderAuthorizationScheme.BearerToken);
+            credential, ProviderId, Now, ProviderAuthorizationScheme.BearerToken);
 
         var denied = result.ShouldBeOfType<ProviderAuthorizationDenied>();
         denied.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
@@ -126,20 +123,19 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
         var credential = new OAuthTokenProviderCredential("access-token-123", Now);
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, Clock, ProviderAuthorizationScheme.BearerToken);
+            credential, ProviderId, Now, ProviderAuthorizationScheme.BearerToken);
 
         _ = result.ShouldBeOfType<ProviderAuthorizationDenied>();
     }
 
     [Fact]
-    public void Create_WhenOAuthTokenExpiryIsEvaluated_UsesInjectedClockNotAmbientTime()
+    public void Create_WhenOAuthTokenExpiryIsEvaluated_UsesSuppliedInstantNotAmbientTime()
     {
         var farFuture = new DateTimeOffset(2099, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var clock = new FakeTimeProvider(farFuture.AddSeconds(1));
         var credential = new OAuthTokenProviderCredential("access-token-123", farFuture);
 
         var result = ProviderAuthorizationHeaderFactory.Create(
-            credential, ProviderId, clock, ProviderAuthorizationScheme.BearerToken);
+            credential, ProviderId, farFuture.AddSeconds(1), ProviderAuthorizationScheme.BearerToken);
 
         _ = result.ShouldBeOfType<ProviderAuthorizationDenied>();
     }
@@ -148,25 +144,16 @@ public sealed class ProviderAuthorizationHeaderFactoryTests
     public void Create_WhenCredentialIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => ProviderAuthorizationHeaderFactory.Create(
-            null!, ProviderId, Clock, ProviderAuthorizationScheme.BearerToken));
+            null!, ProviderId, Now, ProviderAuthorizationScheme.BearerToken));
 
         exception.ParamName.ShouldBe("credential");
-    }
-
-    [Fact]
-    public void Create_WhenTimeProviderIsNull_ThrowsArgumentNullException()
-    {
-        var exception = Should.Throw<ArgumentNullException>(() => ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("k"), ProviderId, null!, ProviderAuthorizationScheme.BearerToken));
-
-        exception.ParamName.ShouldBe("timeProvider");
     }
 
     [Fact]
     public void Create_WhenSchemeIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => ProviderAuthorizationHeaderFactory.Create(
-            new ApiKeyProviderCredential("k"), ProviderId, Clock, null!));
+            new ApiKeyProviderCredential("k"), ProviderId, Now, null!));
 
         exception.ParamName.ShouldBe("scheme");
     }

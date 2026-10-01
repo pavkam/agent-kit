@@ -21,7 +21,7 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>
         /// Registers, under <paramref name="key"/>, the <see cref="IFileReader"/>, <see cref="IFileWriter"/>,
-        /// <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>, <see cref="IFileContentSearcher"/>,
+        /// <see cref="IFileDeleter"/>, <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>, <see cref="IFileContentSearcher"/>,
         /// <see cref="IFileSnapshotReader"/>, <see cref="IAtomicFileReplacer"/>, and <see cref="IWorkspacePatchApplier"/>
         /// capabilities plus the profile registration that <see cref="IFileSystemSelector"/> discovers. Workspace
         /// operations observe the first registered root. The delegate runs once, during this call.

@@ -90,6 +90,50 @@ public sealed class DefaultMemoryPolicyDispatcherTests
         _ = (await EvaluateAsync(harness, TestContext.Current.CancellationToken)).ShouldBeOfType<MemoryPolicyAllowed>();
     }
 
+    private sealed class UnresolvablePolicy: IMemoryPolicy
+    {
+        public ValueTask<MemoryPolicyDecision> EvaluateAsync(MemoryProposal proposal, MemoryPolicyContext context, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Never resolved.");
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_WhenAConfiguredPolicyCannotBeResolved_LogsTheUnavailableEventWithTheOwnedId()
+    {
+        var logger = new RecordingLogger<DefaultMemoryPolicyDispatcher>();
+        using var harness = MemoryHarness.Create(arrange: services =>
+        {
+            _ = services.AddSingleton<ILogger<DefaultMemoryPolicyDispatcher>>(logger);
+            _ = services.AddSingleton(new MemoryPolicyDeclaration(Registration("tests.unresolvable", 5), typeof(UnresolvablePolicy)));
+        });
+
+        var decision = await EvaluateAsync(harness, TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<MemoryPolicyDenied>().Code.ShouldBe("policy-unavailable");
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(32300);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain("tests.unresolvable");
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_WhenAPolicyThrows_LogsTheFailedEventWithTheErrorTypeAndNoMessage()
+    {
+        var logger = new RecordingLogger<DefaultMemoryPolicyDispatcher>();
+        using var harness = MemoryHarness.Create(arrange: services =>
+        {
+            _ = services.AddSingleton<ILogger<DefaultMemoryPolicyDispatcher>>(logger);
+            _ = services.AddMemoryPolicy<ThrowingPolicy>(Registration("tests.throwing", 5));
+        });
+
+        _ = await EvaluateAsync(harness, TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(32301);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain(nameof(InvalidOperationException));
+        entry.Message.ShouldNotContain("The policy failed.");
+    }
+
     [Fact]
     public async Task EvaluateAsync_WhenArgumentsAreNull_ThrowArgumentNullException()
     {

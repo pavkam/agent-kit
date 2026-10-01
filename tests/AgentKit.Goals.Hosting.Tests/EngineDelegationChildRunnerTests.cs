@@ -114,6 +114,44 @@ public sealed class EngineDelegationChildRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenDelegationNarrowsTheToolsAndReservedABudgetScope_BindsBothToTheChildRun()
+    {
+        var loop = new GatedAgentLoop();
+        var (engine, _, runner) = await BuildAsync(loop);
+        await using var owned = engine;
+        var template = Delegation(_specialist);
+        var scopeId = new BudgetScopeId(Guid.Parse("f0000000-0000-0000-0000-000000000001"));
+        var delegation = template.With(
+            template.Id,
+            new DelegationScope([new ToolId("read"), new ToolId("search")], []),
+            new GoalBudgetReservation(template.Budget.Budget, scopeId));
+        var session = (await runner.ProvisionSessionAsync(delegation, new GoalId(Guid.NewGuid()), 1, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+
+        _ = await runner.RunAsync(Run(delegation, session), TestContext.Current.CancellationToken);
+
+        var request = loop.Requests.ShouldHaveSingleItem();
+        request.AllowedTools.ShouldNotBeNull().ShouldBe([new ToolId("read"), new ToolId("search")]);
+        request.BudgetParentScopeId.ShouldBe(scopeId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDelegationAllowsNoToolsAndHasNoBudgetScope_RunsTheChildWithAnEmptyAllowList()
+    {
+        var loop = new GatedAgentLoop();
+        var (engine, _, runner) = await BuildAsync(loop);
+        await using var owned = engine;
+        var template = Delegation(_specialist);
+        var delegation = template.With(template.Id, new DelegationScope([], []), new GoalBudgetReservation(template.Budget.Budget));
+        var session = (await runner.ProvisionSessionAsync(delegation, new GoalId(Guid.NewGuid()), 1, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+
+        _ = await runner.RunAsync(Run(delegation, session), TestContext.Current.CancellationToken);
+
+        var request = loop.Requests.ShouldHaveSingleItem();
+        request.AllowedTools.ShouldNotBeNull().ShouldBeEmpty();
+        request.BudgetParentScopeId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task RunAsync_WhenTargetIsHosted_RunsOneTurnInTheProvisionedSessionAndReportsRunAndSummary()
     {
         var loop = new GatedAgentLoop();

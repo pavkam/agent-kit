@@ -237,17 +237,26 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
             lock (state.SyncRoot)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!GrantMatches(state.Grant, grant) || state.RemainingUses == 0)
+                if (!GrantMatches(state.Grant, grant))
                 {
                     return Result(GrantConsumptionStatus.Unknown, state.RemainingUses,
                         "The security grant changed before consumption could commit.");
                 }
 
                 var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
-                if (_intentReceipts.ContainsKey(intent.Id))
+                if (_intentReceipts.TryGetValue(intent.Id, out var concurrent))
                 {
-                    return Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
-                        "The enforcement intent identity was reused concurrently.");
+                    return ReceiptMatches(concurrent, grant, enforcement, intent, effectFingerprint)
+                        ? Result(GrantConsumptionStatus.Reconciled, state.RemainingUses,
+                            "The enforcement intent receipt was reconciled without granting another effect.", concurrent)
+                        : Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
+                            "The enforcement intent identity was reused with different evidence.");
+                }
+
+                if (state.RemainingUses == 0)
+                {
+                    return Result(GrantConsumptionStatus.Exhausted, 0,
+                        "The security grant has no remaining uses.");
                 }
 
                 var now = _timeProvider.GetUtcNow();

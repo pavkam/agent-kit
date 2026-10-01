@@ -20,7 +20,7 @@ public sealed class XAILlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), XAIProviderDefaults.ProviderId, XAIProviderDefaults.ApiFamily, new ModelId("grok-4"), deploymentId: null, XAIProviderDefaults.DefaultCapabilities, XAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), XAIProviderDefaults.ProviderId, XAIProviderDefaults.ApiFamily, new ModelId("grok-4"), deploymentId: null, XAIProviderDefaults.DefaultCapabilities, XAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -30,7 +30,7 @@ public sealed class XAILlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new XAILlmModel(descriptor, XAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new XAILlmModel(descriptor, XAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("real-looking-key")), XAIProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -52,7 +52,7 @@ public sealed class XAILlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new XAILlmModel(descriptor, XAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new XAILlmModel(descriptor, XAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(expiredToken), XAIProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();

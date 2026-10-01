@@ -15,6 +15,7 @@ public interface IToolResultNormalizer
     /// <param name="validatedCall">The validated call whose terminal record is being constructed.</param>
     /// <param name="invocation">The owned raw invocation evidence.</param>
     /// <param name="snapshot">The immutable normalization rules captured for this path.</param>
+    /// <param name="spill">The optional externalization the executor selected, consulted only when the snapshot permits externalization and the content exceeds its aggregate bound; <see langword="null"/> means oversized content is truncated.</param>
     /// <param name="cancellationToken">Signals cancellation before a closed outcome is returned.</param>
     /// <returns>The closed normalized or normalization-failed outcome.</returns>
     /// <exception cref="ArgumentNullException">
@@ -24,5 +25,6 @@ public interface IToolResultNormalizer
         ValidatedToolCall validatedCall,
         ToolInvocationResult invocation,
         ToolResultNormalizationSnapshot snapshot,
+        IToolResultSpill? spill = null,
         CancellationToken cancellationToken = default);
 }

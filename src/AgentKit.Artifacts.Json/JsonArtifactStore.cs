@@ -45,7 +45,7 @@ public sealed class JsonArtifactStore: IArtifactStore, IDisposable
         ArgumentNullException.ThrowIfNull(intentIds);
         ArgumentNullException.ThrowIfNull(time);
         var resolvedLogger = (ILogger?) logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-        _backend = new JsonArtifactBackend(new JsonArtifactFile(target, settings, resolvedLogger), resolvedLogger);
+        _backend = new JsonArtifactBackend(new JsonArtifactFile(target, settings, JsonArtifactFileKind.Store, resolvedLogger), resolvedLogger);
         _gateway = new ArtifactStoreGateway("json", new ComponentId("agentkit.artifacts.json"), _backend, grants, intentIds, time, resolvedLogger);
     }
 

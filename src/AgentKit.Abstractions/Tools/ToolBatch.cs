@@ -23,6 +23,8 @@ public sealed record ToolBatch
     /// <param name="failureMode">The defined batch failure-settlement policy.</param>
     /// <param name="unknownSchedulingMode">The defined policy for entries with no declared scheduling compatibility.</param>
     /// <param name="deadline">The instant by which the whole batch must settle.</param>
+    /// <param name="budget">The borrowed budget capability the scheduler reserves concurrent-call and retry capacity through, or <see langword="null"/> when no tool budget dimension is reserved.</param>
+    /// <param name="resultSpill">The optional externalization the normalizer may use for oversized results, or <see langword="null"/> when oversized results are truncated.</param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="agentId"/>, <paramref name="sessionId"/>, or <paramref name="runId"/> is default, or
     /// <paramref name="failureMode"/> or <paramref name="unknownSchedulingMode"/> is undefined.
@@ -38,7 +40,9 @@ public sealed record ToolBatch
         ImmutableArray<ToolBatchEntry> entries,
         ToolBatchFailureMode failureMode,
         UnknownSchedulingMode unknownSchedulingMode,
-        DateTimeOffset deadline)
+        DateTimeOffset deadline,
+        BudgetExecutionCapability? budget = null,
+        IToolResultSpill? resultSpill = null)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
@@ -63,6 +67,8 @@ public sealed record ToolBatch
         FailureMode = failureMode;
         UnknownSchedulingMode = unknownSchedulingMode;
         Deadline = deadline;
+        Budget = budget;
+        ResultSpill = resultSpill;
     }
 
     /// <summary>Gets the owning agent shared by every entry.</summary>
@@ -89,6 +95,14 @@ public sealed record ToolBatch
     /// <value>The bound the scheduler uses to interrupt calls that never settle.</value>
     public DateTimeOffset Deadline { get; }
 
+    /// <summary>Gets the borrowed budget capability the scheduler reserves concurrent-call and retry capacity through.</summary>
+    /// <value>Null when no tool budget dimension is reserved; the scheduler then performs no budget reservation.</value>
+    public BudgetExecutionCapability? Budget { get; }
+
+    /// <summary>Gets the optional externalization the normalizer may use for oversized results.</summary>
+    /// <value>Null when oversized results are truncated.</value>
+    public IToolResultSpill? ResultSpill { get; }
+
     /// <summary>Determines complete structural batch equality.</summary>
     /// <param name="other">The record to compare, or null.</param>
     /// <returns>True when every scalar field and ordered entry is equal.</returns>
@@ -100,7 +114,9 @@ public sealed record ToolBatch
         && Entries.SequenceEqual(other.Entries)
         && FailureMode == other.FailureMode
         && UnknownSchedulingMode == other.UnknownSchedulingMode
-        && Deadline == other.Deadline;
+        && Deadline == other.Deadline
+        && Budget == other.Budget
+        && ResultSpill == other.ResultSpill;
 
     /// <summary>Returns a hash compatible with complete structural equality.</summary>
     /// <returns>A hash over every scalar field and ordered entry.</returns>
@@ -118,6 +134,8 @@ public sealed record ToolBatch
         hash.Add(FailureMode);
         hash.Add(UnknownSchedulingMode);
         hash.Add(Deadline);
+        hash.Add(Budget);
+        hash.Add(ResultSpill);
         return hash.ToHashCode();
     }
 }

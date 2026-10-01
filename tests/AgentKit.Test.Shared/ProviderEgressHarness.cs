@@ -5,6 +5,7 @@ namespace AgentKit.TestSupport;
 
 using System.Net.Http;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 
 using Microsoft.Extensions.Logging;
@@ -24,7 +25,8 @@ public sealed class ProviderEgressHarness
         GrantingSecurityAuthority authority,
         RecordingAuditDispatcher audit,
         FixedAddressNameResolver resolver,
-        INetworkTransport transport)
+        INetworkTransport transport,
+        ProviderCredentialReadGate gate)
     {
         Egress = egress;
         Grants = grants;
@@ -32,6 +34,7 @@ public sealed class ProviderEgressHarness
         Audit = audit;
         Resolver = resolver;
         Transport = transport;
+        Gate = gate;
     }
 
     /// <summary>Gets the egress boundary under test.</summary>
@@ -52,9 +55,43 @@ public sealed class ProviderEgressHarness
     /// <summary>Gets the transport the egress sends through.</summary>
     public INetworkTransport Transport { get; }
 
+    /// <summary>Gets the credential-read gate over the same grant store and audit dispatcher the egress uses.</summary>
+    /// <value>A gate first-party credential sources enforce credential-read grants through in tests.</value>
+    public ProviderCredentialReadGate Gate { get; }
+
     /// <summary>Gets the protected operation context that selects the harness authority.</summary>
     /// <value>A stable service-subject operation shared by all adapter tests.</value>
     public static ProtectedSemanticOperationContext Operation { get; } = CreateOperation();
+
+    /// <summary>Binds a conversational descriptor to the standard test endpoint and credential profile binding.</summary>
+    /// <param name="descriptor">The descriptor to bind.</param>
+    /// <returns>The descriptor with <see cref="StaticProviderProfileRuntimeSelector.Binding"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
+    public static ModelDescriptor Bind(ModelDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return descriptor with { Binding = StaticProviderProfileRuntimeSelector.Binding };
+    }
+
+    /// <summary>Binds an embedding descriptor to the standard test endpoint and credential profile binding.</summary>
+    /// <param name="descriptor">The descriptor to bind.</param>
+    /// <returns>The descriptor with <see cref="StaticProviderProfileRuntimeSelector.Binding"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
+    public static EmbeddingModelDescriptor Bind(EmbeddingModelDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return descriptor with { Binding = StaticProviderProfileRuntimeSelector.Binding };
+    }
+
+    /// <summary>Binds a reranker descriptor to the standard test endpoint and credential profile binding.</summary>
+    /// <param name="descriptor">The descriptor to bind.</param>
+    /// <returns>The descriptor with <see cref="StaticProviderProfileRuntimeSelector.Binding"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
+    public static RerankerDescriptor Bind(RerankerDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return descriptor with { Binding = StaticProviderProfileRuntimeSelector.Binding };
+    }
 
     /// <summary>Creates a harness whose transport answers through <paramref name="handler"/>.</summary>
     /// <param name="handler">The handler script; it is borrowed, not disposed.</param>
@@ -117,7 +154,13 @@ public sealed class ProviderEgressHarness
             timeProvider,
             Options.Create(options),
             logger);
-        return new ProviderEgressHarness(egress, grants, authority, audit, resolver, transport);
+        var gate = new ProviderCredentialReadGate(
+            grants,
+            audit,
+            new SequentialGenerator<SecurityEnforcementIntentId>(value => new SecurityEnforcementIntentId(value), "41000000"),
+            new SequentialGenerator<SecurityAuditRecordId>(value => new SecurityAuditRecordId(value), "51000000"),
+            timeProvider);
+        return new ProviderEgressHarness(egress, grants, authority, audit, resolver, transport, gate);
     }
 
     private static ProtectedSemanticOperationContext CreateOperation()

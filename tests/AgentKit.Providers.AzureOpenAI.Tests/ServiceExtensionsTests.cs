@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -107,8 +108,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
         _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -120,8 +122,9 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
         _ = services.AddAzureOpenAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
+        _ = services.AddProviderEgressTestServices();
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.CredentialSourceKey);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

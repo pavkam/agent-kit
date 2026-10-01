@@ -493,7 +493,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <remarks>
     /// This is best-effort: release failure never changes the run's already-determined outcome. A lane the run
     /// could not release stays durably accepted; nothing today reconciles it, matching the narrow scope of this
-    /// increment (see <c>docs/implementation-plan.md</c>, workstream 1). Uses <see cref="CancellationToken.None"/>
+    /// increment (see <c>docs/architecture/agent-runtime.md</c>). Uses <see cref="CancellationToken.None"/>
     /// throughout so a caller's cancellation, already reflected in the settled outcome, cannot also prevent this
     /// cleanup. The presented revision is <paramref name="laneState"/>'s current value rather than the value
     /// admission first installed, so a run that advanced the lane's state mid-run (for example by promoting
@@ -761,7 +761,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 var address = new BudgetScopeAddress(
                     request.Identity.TenantId, request.Identity.PrincipalId, request.AgentId, request.SessionId, request.RunId, operationId);
                 var scopeRequest = new BudgetScopeRequest(
-                    null, address, request.BudgetProfile, [], new IdempotencyKey($"run:{request.RunId}:budget"));
+                    request.BudgetParentScopeId, address, request.BudgetProfile, [], new IdempotencyKey($"run:{request.RunId}:budget"));
                 var scopeResult = await budgets.CreateChildScopeAsync(scopeRequest, cancellationToken).ConfigureAwait(false);
                 if (scopeResult is not BudgetScopeCreated created)
                 {
@@ -1331,6 +1331,17 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ModelAttemptResult attemptResult;
         while (true)
         {
+            // Retrieval runs inside context assembly, so the assembler forwards this captured context to the contributor;
+            // the contributor derives a fresh dispatch per retrieval point from it. Only built when the catalog
+            // registers a retrieval hook, so a run without one behaves exactly as before.
+            HookDispatchContext? retrievalHooks = null;
+            if (hookScope is not null
+                && (CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeRetrieval)
+                    || CatalogIncludesPoint(hookScope.Catalog, AgentHookPoints.BeforeRetrievalExposure)))
+            {
+                retrievalHooks = hookScope.CreateDispatch(CreateHookDispatch(AgentHookPoints.BeforeRetrieval, turnCorrelation));
+            }
+
             var assembleRequest = new ContextAssemblyRequest(
                 request.AgentId,
                 request.SessionId,
@@ -1346,6 +1357,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 ExtensionData.Empty)
             {
                 Output = request.Output,
+                Hooks = retrievalHooks,
             };
 
             var assembleResult = await services.Context.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
@@ -2619,6 +2631,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     request.SessionId,
                     request.RunId,
                     turnSessionContext.Authorization)
+                {
+                    AllowedTools = request.AllowedTools,
+                }
                 : new RunToolCatalogCaptureRequest(
                     request.AgentId,
                     request.SessionId,
@@ -2626,7 +2641,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     turnSessionContext.Authorization,
                     toolsets,
                     request.Configuration,
-                    modelCapabilities);
+                    modelCapabilities)
+                {
+                    AllowedTools = request.AllowedTools,
+                };
             var createdCapture = await services.ToolCatalogCaptures
                 .CreateAsync(captureRequest, cancellationToken)
                 .ConfigureAwait(false);
@@ -2921,7 +2939,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(assistantMessage.State == MessageState.Complete, "Only a committed complete response reaches continuation.");
         var turnId = turnCorrelation.TurnId.Value;
         var policyVersion = RunPolicyVersioning.Compute(
-            request.MaxTurns, request.AttemptTimeout, request.Agent.Components.ContinuationPolicy, EffectiveLoopOptions());
+            request.MaxTurns,
+            request.AttemptTimeout,
+            request.Agent.Components.ContinuationPolicy,
+            EffectiveLoopOptions(),
+            request.AllowedTools,
+            request.BudgetParentScopeId);
 
         // The continuation context and the PromotedInputContinuationCause it may carry must describe the exact
         // same pre-promotion evidence (see ArgumentExceptionExtensions.ThrowIfInconsistentContinuationEvidence):
@@ -4349,7 +4372,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
             runAuthorization,
             request.Agent.Toolsets,
             request.Configuration,
-            model.Capabilities);
+            model.Capabilities)
+        {
+            AllowedTools = request.AllowedTools,
+        };
         var capture = await services.ToolCatalogCaptures
             .CreateAsync(captureRequest, cancellationToken)
             .ConfigureAwait(false);

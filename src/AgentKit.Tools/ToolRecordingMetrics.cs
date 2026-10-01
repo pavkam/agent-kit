@@ -25,6 +25,18 @@ internal static class ToolRecordingMetrics
         unit: "{decision}",
         description: "Number of tool-invocation retry decisions.");
 
+    /// <summary>Counts oversized tool-result spill attempts by bounded outcome.</summary>
+    internal static readonly Counter<long> ResultSpillCount = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.ToolResultSpillCount,
+        unit: "{spill}",
+        description: "Number of oversized tool-result spill attempts.");
+
+    /// <summary>Counts tool budget reservations by first-party dimension and bounded outcome.</summary>
+    internal static readonly Counter<long> BudgetReservationCount = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.ToolBudgetReservationCount,
+        unit: "{reservation}",
+        description: "Number of tool budget reservations attempted by the tool runtime.");
+
     /// <summary>Counts tool-event deliveries to sinks by bounded result.</summary>
     internal static readonly Counter<long> EventPublishCount = AgentKitDiagnostics.Metrics.CreateCounter<long>(
         AgentKitMetricNames.ToolEventPublishCount,

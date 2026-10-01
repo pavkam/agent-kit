@@ -439,6 +439,7 @@ public sealed record ProviderCredentialUnavailable(ProviderFailure Failure)
 public interface IProviderCredentialSource
 {
     ProviderCredentialSourceKey Key { get; }
+    ComponentId SecurityAudience { get; }
 
     ValueTask<ProviderCredentialResolutionResult> ResolveAsync(
         ProviderCredentialResolutionRequest request,
@@ -447,9 +448,21 @@ public interface IProviderCredentialSource
 
 public interface IProviderCredentialLease : IAsyncDisposable
 {
-    ValueTask ApplyAsync(
+    ValueTask<ProviderFailure?> ApplyAsync(
         IProviderAuthenticationTarget target,
         CancellationToken cancellationToken = default);
+}
+
+public interface IProviderAuthenticationTarget
+{
+    ProviderId ProviderId { get; }
+    ProviderAuthorizationScheme Scheme { get; }
+    DateTimeOffset UtcNow { get; }
+    string Method { get; }
+    Uri RequestUri { get; }
+    string? ContentType { get; }
+    ReadOnlyMemory<byte> Body { get; }
+    void SetHeader(string name, string value);
 }
 
 public abstract record ProviderProfileRuntimeSelectionResult;
@@ -1385,8 +1398,11 @@ An adapter never injects an unkeyed authority, reuses a grant for another
 boundary or retry, exposes raw credential material, or treats the
 semantic-operation context as authority.
 
-The egress half of this rule is shipped; the credential-read half is not. See
-[Provider egress: shipped design and deviations](#provider-egress-shipped-design-and-deviations).
+Both halves of this rule ship: `ProviderEgress` runs the credential-read step
+and then the egress step for every first-party adapter. See
+[Provider egress: shipped design and deviations](#provider-egress-shipped-design-and-deviations)
+and
+[Credential read: shipped design and deviations](#credential-read-shipped-design-and-deviations).
 
 ## Provider egress: shipped design and deviations
 
@@ -1479,14 +1495,10 @@ Recorded deviations from the architecture above:
 - **Unbound operations.** A descriptor with no `ProviderOperationBinding`
   (legacy-shaped registration) still passes the destination, payload, and
   attempt checks; its fingerprint records no profile references.
-- **Credential read is not yet a protected effect.** The credential-read grant,
-  the `ProviderCredentialResolutionRequest` carrying it, and the disposable
-  `IProviderCredentialLease` described above are not shipped:
-  `IProviderCredentialSource.GetCredentialAsync(ProviderId)` is unchanged, and
-  adapters apply the resulting header themselves. The credential value reaches
-  only the transport request; it is bound into the send grant by hash and never
-  enters a security request, audit record, log, or refusal. Introducing the
-  credential-read effect is a separate change to the credential-source contract.
+- **Credential read is a protected effect.** See the next section. The
+  credential value reaches only the transport request through the lease; it is
+  bound into the send grant by hash and never enters a security request, audit
+  record, log, metric, tag, or refusal.
 - **Web search is separate, and is closed by its own change.**
   `NetworkWebSearchProvider` in `AgentKit.Tools.WebSearch` is not a
   `ProviderEgress` caller, because a search endpoint is a tool-leaf destination,
@@ -1496,8 +1508,70 @@ Recorded deviations from the architecture above:
   intent, then obtains separate resolution and send grants and sends one
   bodyless `GET` with zero redirects, a streamed response bound, and a
   host-configured classification (default `Confidential`). It owns no
-  `HttpClient` and has no fallback transport. See [tools.md](tools.md) and
-  [WS4-C12](../workstreams/tool-runtime.md#ws4-c12-first-party-iwebsearchprovider).
+  `HttpClient` and has no fallback transport. See [tools.md](tools.md).
+
+## Credential read: shipped design and deviations
+
+Before the egress grant, `ProviderEgress` obtains and consumes a credential-read
+grant for the attempt, resolves one disposable credential lease from the
+profile's captured source, applies it to the outgoing request, and disposes it.
+The order per attempt is credential grant, resolve, apply, dispose, then the
+egress, resolution, and send grants. A denial, refusal, or source failure at any
+step ends the attempt with the stable provider taxonomy before any network I/O,
+and a credential is never read for an attempt whose credential grant was not
+consumed.
+
+- **Effect shape.** The read is `SecurityOperationKind.StateRead` with
+  `SecurityEffect.Observe` over one `ProtectedResourceKind.ApplicationState`
+  resource named
+  `provider-credential:{provider}/{surface}/{profileKey}@{version}/source:{sourceKey}`.
+  No new operation or resource enum value was added: the credential store is
+  application state the provider reads, and the resource name carries the exact
+  profile revision and source. The grant is bound to that resource, the source's
+  `SecurityAudience`, the identity, the attempt number, the deadline, and a
+  fingerprint over the endpoint and credential profile snapshots.
+- **`ProviderCredentialReadGate`** (in `AgentKit.Providers`) validates and
+  consumes the grant with required audit through the selected authority's grant
+  store immediately before the source is called. Consumption is single-use: a
+  retry or fallback attempt requests a new grant. `AddCredentialReadGate`
+  registers it, replaceably.
+- **Sources.** `IProviderCredentialSource` is `Key`, `SecurityAudience`, and
+  `ResolveAsync(ProviderCredentialResolutionRequest)`. `SecurityAudience` is an
+  addition to the specification's key-and-resolve shape: the grant audience must
+  name the component that effects the read. First-party sources are
+  `StaticApiKeyCredentialSource` and `DelegatingOAuthCredentialSource`
+  (registered with `AddStaticApiKeySource` and `AddOAuthTokenSource`), and AWS
+  Bedrock's `AwsSigV4CredentialSource`, which wraps the application-level
+  `IAwsCredentialSource` raw supplier and signs on `ApplyAsync`. A source
+  returns `ProviderCredentialResolved(lease)` or
+  `ProviderCredentialUnavailable(failure)`.
+- **Lease and target.** `IProviderCredentialLease.ApplyAsync` writes the
+  scheme's headers onto an `IProviderAuthenticationTarget` (method, URI, content
+  type, body, and `SetHeader`; Bedrock signs over them) and returns a
+  `ProviderFailure?` instead of throwing for an expired or unusable credential.
+  The lease has no clock; `IProviderAuthenticationTarget.UtcNow` supplies the
+  attempt's time so expiry and signing are deterministic under a fake
+  `TimeProvider`. `ProviderAuthorizationScheme` lives in `AgentKit.Abstractions`
+  (namespace `AgentKit`) because the target contract names it, and
+  `ProviderAuthorizationHeaderFactory.Create` takes a `DateTimeOffset utcNow`
+  rather than a `TimeProvider`.
+- **Disposal is a reference drop, not zeroization.** .NET strings are immutable
+  and cannot be erased. Disposing a lease drops its reference to the secret so
+  it becomes collectable, and a later `ApplyAsync` throws
+  `ObjectDisposedException`. The lease narrows how long the secret is reachable;
+  it does not guarantee the managed memory is cleared.
+- **Selection no longer falls back.** `DefaultProviderProfileRuntimeSelector`
+  never resolves a source keyed by `ProviderId`. A descriptor bound to
+  endpoint/credential profiles must resolve its profile's named source; an
+  unbound descriptor sends no credential at all. An unregistered source is a
+  typed `Authentication` failure, not an implicit default. Native adapters map
+  selector faults (cancellation, timeout, authentication) through
+  `NativeProviderChatSend.BeginAsync`.
+- **Observability.** One `provider.credential.read` activity per read, metrics
+  `agentkit.provider.credential.read.count` and
+  `agentkit.provider.credential.read.duration` (the bounded `outcome` dimension
+  only), and log event 6123 (`CredentialApplied`). No signal carries the secret,
+  a header value, or the profile reference as a metric dimension.
 
 ## DI registration and replacement semantics
 

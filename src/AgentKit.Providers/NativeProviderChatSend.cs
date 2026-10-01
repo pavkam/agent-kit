@@ -5,10 +5,12 @@ namespace AgentKit.Providers;
 
 using System.Diagnostics;
 
+using AgentKit.Providers.Egress;
+
 /// <summary>Shared profile-bound send preparation for native conversational adapters.</summary>
 public static class NativeProviderChatSend
 {
-    /// <summary>Resolved credentials and endpoint override for one chat attempt.</summary>
+    /// <summary>Selected profile runtime and endpoint override for one chat attempt.</summary>
     public sealed class AttemptContext: IAsyncDisposable
     {
         internal AttemptContext(
@@ -16,7 +18,6 @@ public static class NativeProviderChatSend
             TimeProvider timeProvider,
             long sendStartedTimestamp,
             IProviderProfileRuntimeLease? lease,
-            IProviderCredentialSource? credentialSource,
             Uri? endpointBaseOverride,
             ProviderFailure? failure)
         {
@@ -24,7 +25,6 @@ public static class NativeProviderChatSend
             _timeProvider = timeProvider;
             _sendStartedTimestamp = sendStartedTimestamp;
             Lease = lease;
-            CredentialSource = credentialSource;
             EndpointBaseOverride = endpointBaseOverride;
             Failure = failure;
         }
@@ -38,17 +38,24 @@ public static class NativeProviderChatSend
         /// <summary>Gets the runtime lease that must be disposed after the attempt.</summary>
         public IProviderProfileRuntimeLease? Lease { get; }
 
-        /// <summary>Gets the credential source to use when resolution succeeded.</summary>
-        public IProviderCredentialSource? CredentialSource { get; }
-
         /// <summary>Gets the endpoint base address override from profile binding, when present.</summary>
         public Uri? EndpointBaseOverride { get; }
 
-        /// <summary>Gets the typed failure when profile or credential resolution failed.</summary>
+        /// <summary>Creates the egress credential selection for this attempt's runtime lease.</summary>
+        /// <param name="scheme">The branded provider's verified API-key header shape.</param>
+        /// <returns>The selection egress resolves a credential-read grant and lease from, or null for an unbound operation.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="scheme"/> is null.</exception>
+        public ProviderEgressCredential? CreateCredential(ProviderAuthorizationScheme scheme)
+        {
+            ArgumentNullException.ThrowIfNull(scheme);
+            return Lease is null ? null : new ProviderEgressCredential(Lease, scheme);
+        }
+
+        /// <summary>Gets the typed failure when profile selection failed.</summary>
         public ProviderFailure? Failure { get; }
 
         /// <summary>Gets whether send preparation succeeded.</summary>
-        public bool IsSuccess => Failure is null && CredentialSource is not null;
+        public bool IsSuccess => Failure is null;
 
         /// <inheritdoc/>
         public ValueTask DisposeAsync()
@@ -68,12 +75,11 @@ public static class NativeProviderChatSend
     }
 
     /// <summary>
-    /// Starts observability, resolves profile-bound credentials, and returns an attempt context that must be disposed.
+    /// Starts observability, selects the profile runtime, and returns an attempt context that must be disposed.
     /// </summary>
     /// <param name="descriptor">The model descriptor for the attempt.</param>
     /// <param name="request">The conversational request.</param>
-    /// <param name="fallbackCredentials">The credential source used when the descriptor carries no profile binding.</param>
-    /// <param name="profileSelector">The optional profile runtime selector.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector.</param>
     /// <param name="timeProvider">The clock used for timing.</param>
     /// <param name="cancellationToken">A token used to cancel resolution.</param>
     /// <returns>The attempt context.</returns>
@@ -81,27 +87,57 @@ public static class NativeProviderChatSend
     public static async ValueTask<AttemptContext> BeginAsync(
         ModelDescriptor descriptor,
         LlmModelRequest request,
-        IProviderCredentialSource fallbackCredentials,
-        IProviderProfileRuntimeSelector? profileSelector,
+        IProviderProfileRuntimeSelector profileSelector,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(fallbackCredentials);
+        ArgumentNullException.ThrowIfNull(profileSelector);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         var sendStarted = timeProvider.GetTimestamp();
         var activity = ProviderRequestObservability.StartChatSend(descriptor.ProviderId);
 
-        var binding = await ProviderProfileAttemptBinding.ResolveCredentialSourceAsync(
-                descriptor.Binding,
-                request.Operation,
-                fallbackCredentials,
-                profileSelector,
+        ProviderProfileAttemptBinding.ProfileRuntimeSelection binding;
+        try
+        {
+            binding = await ProviderProfileAttemptBinding.SelectRuntimeAsync(
+                    descriptor.Binding,
+                    request.Operation,
+                    profileSelector,
+                    descriptor.ProviderId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            binding = ProviderProfileAttemptBinding.ProfileRuntimeSelection.FromFailure(new ProviderFailure(
+                exception is OperationCanceledException ? ProviderFailureKind.Timeout : ProviderFailureKind.Authentication,
                 descriptor.ProviderId,
-                cancellationToken)
-            .ConfigureAwait(false);
+                requestId: null,
+                statusCode: null,
+                providerCode: null,
+                retryAfter: null,
+                exception is OperationCanceledException
+                    ? "The credential profile was not selected before its own deadline."
+                    : "The credential profile could not be selected.",
+                exception,
+                ExtensionData.Empty));
+        }
+        catch (OperationCanceledException exception)
+        {
+            binding = ProviderProfileAttemptBinding.ProfileRuntimeSelection.FromFailure(new ProviderFailure(
+                ProviderFailureKind.Cancellation,
+                descriptor.ProviderId,
+                requestId: null,
+                statusCode: null,
+                providerCode: null,
+                retryAfter: null,
+                "The attempt was cancelled.",
+                exception,
+                ExtensionData.Empty));
+        }
 
         if (!binding.IsSuccess)
         {
@@ -111,7 +147,6 @@ public static class NativeProviderChatSend
                 timeProvider,
                 sendStarted,
                 lease: null,
-                credentialSource: null,
                 endpointBaseOverride: null,
                 binding.Failure);
             failed.RecordFailed();
@@ -122,8 +157,7 @@ public static class NativeProviderChatSend
             activity,
             timeProvider,
             sendStarted,
-            binding.Lease,
-            binding.CredentialSource,
+            binding.Runtime,
             binding.EndpointBaseAddress,
             failure: null);
     }

@@ -185,6 +185,45 @@ public sealed record AgentLoopRunRequest
     /// </remarks>
     public IAgentRunObserver? Observer { get; init; }
 
+    /// <summary>Gets the per-run tool allow-list, or <see langword="null"/> when the run exposes the definition's whole tool surface.</summary>
+    /// <value>
+    /// The tool identifiers the run may see and call. The loop intersects the run's captured catalog with this list, so a tool
+    /// outside it is neither advertised nor resolvable and a call naming it fails closed as an unknown tool; an empty list
+    /// exposes no tool.
+    /// </value>
+    public ImmutableArray<ToolId>? AllowedTools
+    {
+        get;
+        init
+        {
+            if (value is { } allowed)
+            {
+                ArgumentException.ThrowIfDefault(allowed, nameof(AllowedTools));
+            }
+
+            field = value;
+        }
+    }
+
+    /// <summary>Gets the existing budget scope the run's own scope is created beneath, or <see langword="null"/> for a root run scope.</summary>
+    /// <value>
+    /// A scope the budget authority already holds (for example a delegated goal's reserved child scope). The run's scope
+    /// inherits that scope's remaining capacity, so exhausting the parent stops the run.
+    /// </value>
+    public BudgetScopeId? BudgetParentScopeId
+    {
+        get;
+        init
+        {
+            if (value is { } parent)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(parent, default, nameof(BudgetParentScopeId));
+            }
+
+            field = value;
+        }
+    }
+
     /// <summary>
     /// Gets the durable lane a caller already admitted this run on, when one was admitted through the session
     /// lane protocol.

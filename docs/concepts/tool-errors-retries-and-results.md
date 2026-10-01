@@ -63,6 +63,15 @@ the stable external key carried on `ToolInvocationContext`; an invoker that
 cannot confirm it is never retried after a possibly-started failure. See the
 [tools architecture](../architecture/tools.md#recording-retries-and-events).
 
+The first-party scheduler enforces the planned per-attempt timeout. A timed-out
+attempt is reported `TimedOut`, retryable, with unknown side-effect certainty,
+so a mutating call follows the same idempotency-confirmation rule as any other
+possibly-started failure and an attempt that ignores cancellation through its
+drain period is abandoned and never retried. Retries and concurrent calls
+consume the retries and concurrent-call budget dimensions through the run's
+budget scope; a refused retry reservation declines the retry instead of starting
+an attempt.
+
 ## Model-requested correction
 
 Malformed arguments, schema validation failures, and explicit model-retry

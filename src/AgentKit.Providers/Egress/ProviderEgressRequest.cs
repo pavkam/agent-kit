@@ -38,7 +38,11 @@ public sealed record ProviderEgressRequest
     /// <param name="attempt">The one-based attempt number.</param>
     /// <param name="deadline">The absolute attempt deadline.</param>
     /// <param name="streaming">Whether the response is consumed as a stream.</param>
-    /// <param name="message">The prepared method, URI, headers, and body.</param>
+    /// <param name="message">The prepared method, URI, headers, and body. It must not already carry credential headers.</param>
+    /// <param name="credential">
+    /// The selected credential runtime and scheme egress resolves a lease from, or <see langword="null"/> for an unbound
+    /// operation that sends no credential. A request with a <paramref name="binding"/> requires a matching credential.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is undefined or <paramref name="attempt"/> is below one.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is null.</exception>
     /// <exception cref="ArgumentException">
@@ -58,7 +62,8 @@ public sealed record ProviderEgressRequest
         int attempt,
         DateTimeOffset deadline,
         bool streaming,
-        HttpRequestMessage message)
+        HttpRequestMessage message,
+        ProviderEgressCredential? credential)
     {
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
@@ -82,6 +87,7 @@ public sealed record ProviderEgressRequest
         Deadline = deadline;
         Streaming = streaming;
         Message = message;
+        Credential = credential;
     }
 
     /// <summary>Gets the protected semantic operation that selects the security authority.</summary>
@@ -128,18 +134,24 @@ public sealed record ProviderEgressRequest
     /// <summary>Gets the prepared method, URI, headers, and body; the caller retains ownership.</summary>
     public HttpRequestMessage Message { get; init; }
 
+    /// <summary>Gets the selected credential runtime and scheme, or <see langword="null"/> when no credential is applied.</summary>
+    /// <value>The selection egress resolves a credential-read grant and lease from; the adapter owns the runtime lease.</value>
+    public ProviderEgressCredential? Credential { get; init; }
+
     /// <summary>Creates the egress identity for one conversational attempt.</summary>
     /// <param name="descriptor">The exact descriptor the adapter serves.</param>
     /// <param name="request">The attempt request carrying the operation, attempt number, and deadline.</param>
     /// <param name="message">The prepared wire message.</param>
     /// <param name="streaming">Whether the response is consumed as a stream.</param>
+    /// <param name="credential">The selected credential runtime and scheme, or null for an unbound operation.</param>
     /// <returns>The request binding the egress grant to <paramref name="descriptor"/> and its profile binding.</returns>
     /// <exception cref="ArgumentNullException">Any reference argument is null.</exception>
     public static ProviderEgressRequest ForConversation(
         ModelDescriptor descriptor,
         LlmModelRequest request,
         HttpRequestMessage message,
-        bool streaming)
+        bool streaming,
+        ProviderEgressCredential? credential)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(request);
@@ -158,19 +170,22 @@ public sealed record ProviderEgressRequest
             request.Attempt,
             request.Deadline,
             streaming,
-            message);
+            message,
+            credential);
     }
 
     /// <summary>Creates the egress identity for one embedding attempt.</summary>
     /// <param name="descriptor">The exact descriptor the adapter serves.</param>
     /// <param name="request">The attempt request carrying the operation, attempt number, and deadline.</param>
     /// <param name="message">The prepared wire message.</param>
+    /// <param name="credential">The selected credential runtime and scheme, or null for an unbound operation.</param>
     /// <returns>The request binding the egress grant to <paramref name="descriptor"/> and its profile binding.</returns>
     /// <exception cref="ArgumentNullException">Any argument is null.</exception>
     public static ProviderEgressRequest ForEmbedding(
         EmbeddingModelDescriptor descriptor,
         EmbeddingModelRequest request,
-        HttpRequestMessage message)
+        HttpRequestMessage message,
+        ProviderEgressCredential? credential)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(request);
@@ -189,19 +204,22 @@ public sealed record ProviderEgressRequest
             request.Attempt,
             request.Deadline,
             streaming: false,
-            message);
+            message,
+            credential);
     }
 
     /// <summary>Creates the egress identity for one reranking attempt.</summary>
     /// <param name="descriptor">The exact descriptor the adapter serves.</param>
     /// <param name="request">The attempt request carrying the operation, attempt number, and deadline.</param>
     /// <param name="message">The prepared wire message.</param>
+    /// <param name="credential">The selected credential runtime and scheme, or null for an unbound operation.</param>
     /// <returns>The request binding the egress grant to <paramref name="descriptor"/> and its profile binding.</returns>
     /// <exception cref="ArgumentNullException">Any argument is null.</exception>
     public static ProviderEgressRequest ForReranking(
         RerankerDescriptor descriptor,
         RerankModelRequest request,
-        HttpRequestMessage message)
+        HttpRequestMessage message,
+        ProviderEgressCredential? credential)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(request);
@@ -220,6 +238,7 @@ public sealed record ProviderEgressRequest
             request.Attempt,
             request.Deadline,
             streaming: false,
-            message);
+            message,
+            credential);
     }
 }

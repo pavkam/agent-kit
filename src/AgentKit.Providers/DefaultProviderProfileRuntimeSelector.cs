@@ -47,8 +47,7 @@ internal sealed class DefaultProviderProfileRuntimeSelector(
                 Unavailable(binding, ProviderFailureKind.InvalidRequest, "The endpoint and credential profiles do not describe the same provider surface."));
         }
 
-        var credentialSource = _serviceProvider.GetKeyedService<IProviderCredentialSource>(credential.SourceKey)
-            ?? _serviceProvider.GetKeyedService<IProviderCredentialSource>(credential.ProviderId);
+        var credentialSource = _serviceProvider.GetKeyedService<IProviderCredentialSource>(credential.SourceKey);
         if (credentialSource is null)
         {
             return ValueTask.FromResult<ProviderProfileRuntimeSelectionResult>(

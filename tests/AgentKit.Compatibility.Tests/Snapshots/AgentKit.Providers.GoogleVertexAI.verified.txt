@@ -5,7 +5,7 @@ namespace AgentKit.Providers.GoogleVertexAI
 {
     public sealed class GoogleVertexAIEmbeddingModel : AgentKit.IEmbeddingModel
     {
-        public GoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider) { }
+        public GoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -26,7 +26,7 @@ namespace AgentKit.Providers.GoogleVertexAI
     }
     public sealed class GoogleVertexAILlmModel : AgentKit.ILlmModel
     {
-        public GoogleVertexAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public GoogleVertexAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -36,7 +36,7 @@ namespace AgentKit.Providers.GoogleVertexAI
         public const string DefaultPublisher = "google";
         public const string GlobalLocation = "global";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
         public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
         public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }

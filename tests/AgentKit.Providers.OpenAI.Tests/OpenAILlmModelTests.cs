@@ -20,7 +20,7 @@ public sealed class OpenAILlmModelTests
         return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), OpenAIProviderDefaults.ProviderId, OpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), deploymentId: null, OpenAIProviderDefaults.DefaultCapabilities, OpenAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
+    private static ModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new ModelDescriptor(new ModelAlias("chat"), OpenAIProviderDefaults.ProviderId, OpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), deploymentId: null, OpenAIProviderDefaults.DefaultCapabilities, OpenAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -30,7 +30,7 @@ public sealed class OpenAILlmModelTests
             PreferStreaming = false
         };
         var descriptor = CreateDescriptor();
-        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("sk-real-looking-key"), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-real-looking-key")), OpenAIProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
@@ -51,7 +51,7 @@ public sealed class OpenAILlmModelTests
         };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
-        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(expiredToken), OpenAIProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
@@ -69,7 +69,7 @@ public sealed class OpenAILlmModelTests
         };
         var descriptor = CreateDescriptor();
         var validToken = new OAuthTokenProviderCredential("valid-oauth-token", Now.AddHours(1));
-        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(validToken)), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+        var model = new OpenAILlmModel(descriptor, OpenAIProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(validToken), OpenAIProviderDefaults.DefaultBaseAddress));
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<ModelAttemptCompleted>();

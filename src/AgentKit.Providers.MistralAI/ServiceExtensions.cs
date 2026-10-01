@@ -118,12 +118,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
-                services,
-                MistralAIProviderDefaults.CredentialSourceKey,
-                MistralAIProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, MistralAIProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -154,11 +149,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(MistralAIProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                MistralAIProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
+                MistralAIProviderDefaults.CredentialSourceKey,
+                MistralAIProviderDefaults.ProviderId);
 
             return services;
         }
@@ -254,10 +248,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IMistralAIRequestTranslator>(),
                     provider.GetRequiredService<IMistralAIResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;
@@ -366,9 +359,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IMistralAIEmbeddingRequestTranslator>(),
                     provider.GetRequiredService<IMistralAIEmbeddingResponseParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
-                    provider.GetRequiredService<TimeProvider>());
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

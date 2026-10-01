@@ -41,7 +41,12 @@ reference every first-party tool names. A policy plans scheduling, the
 per-attempt deadline, `ToolRetryPolicy` pacing, and normalization. Retries
 follow the plan only for read-only calls, calls known not to have started, and
 possibly-started mutations whose descriptor declares idempotency and whose
-invoker implements `IIdempotencyEnforcingToolInvoker`. `AddToolEventSink`
+invoker implements `IIdempotencyEnforcingToolInvoker`. The scheduler enforces
+the planned per-attempt timeout (a bounded drain, then a `TimedOut` result with
+unknown certainty) and, for a budgeted run, reserves the concurrent-call gauge
+and counts retries, successes, and result bytes. `AddToolResultSpill` selects an
+artifact coordinator that a keyed executor externalizes oversized all-text
+results through; without it oversized results are truncated. `AddToolEventSink`
 registers observational `IToolEventSink` implementations that receive
 content-free `ToolEvent` values through `ToolEventDispatcher`; a sink failure or
 timeout never changes an outcome. `AddAgentTools` needs the engine-wide
@@ -265,8 +270,6 @@ projects above are composition collaborators, not necessarily dependencies.
   behavior and registration tests.
 - [Component specification](../../docs/architecture/tools.md) — intended
   ownership and contracts.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

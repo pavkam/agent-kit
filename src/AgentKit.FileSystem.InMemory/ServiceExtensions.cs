@@ -18,7 +18,7 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>
         /// Registers one <see cref="InMemoryFileSystem"/> per key, shared by the keyed <see cref="IFileReader"/>,
-        /// <see cref="IFileWriter"/>, <see cref="IFileMetadataReader"/>, <see cref="IDirectoryCreator"/>,
+        /// <see cref="IFileWriter"/>, <see cref="IFileDeleter"/>, <see cref="IFileMetadataReader"/>, <see cref="IDirectoryCreator"/>,
         /// <see cref="IDirectoryReader"/>, <see cref="IFileGlobber"/>, <see cref="IFileContentSearcher"/>,
         /// <see cref="IFileSnapshotReader"/>, <see cref="IAtomicFileReplacer"/>, and <see cref="IWorkspacePatchApplier"/>
         /// registrations, plus the profile registration that <see cref="IFileSystemSelector"/> discovers. Options are

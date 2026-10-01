@@ -1028,7 +1028,12 @@ internal sealed class AgentEngineRuntime
                             beforeRunContext, tip.Cursor, tip.Version, _entryIds.Create(), capability.Profile.Reference,
                             new RunConfigurationReference(
                                 plan.Authorization.ConfigurationVersion,
-                                RunPolicyVersioning.Compute(maxTurns, attemptTimeout, definition.Components.ContinuationPolicy),
+                                RunPolicyVersioning.Compute(
+                                    maxTurns,
+                                    attemptTimeout,
+                                    definition.Components.ContinuationPolicy,
+                                    options?.AllowedTools,
+                                    options?.BudgetParentScopeId),
                                 capability.Profile.ConfigurationFingerprint),
                             TimeProvider.GetUtcNow(),
                             new IdempotencyKey($"agentkit.engine:{sessionId}:lane:{laneId}")),
@@ -1062,7 +1067,12 @@ internal sealed class AgentEngineRuntime
             var effectiveInput = capturedInput ?? throw new InvalidOperationException("Admission did not capture input.");
 
             var now = TimeProvider.GetUtcNow();
-            var policyVersion = RunPolicyVersioning.Compute(maxTurns, attemptTimeout, definition.Components.ContinuationPolicy);
+            var policyVersion = RunPolicyVersioning.Compute(
+                maxTurns,
+                attemptTimeout,
+                definition.Components.ContinuationPolicy,
+                options?.AllowedTools,
+                options?.BudgetParentScopeId);
             var configuration = new RunConfigurationReference(
                 plan.Authorization.ConfigurationVersion, policyVersion, capability.Profile.ConfigurationFingerprint);
             var admissionId = _admissionIds.Create();
@@ -1130,6 +1140,8 @@ internal sealed class AgentEngineRuntime
             {
                 Observer = observer,
                 LaneAdmission = laneAdmission,
+                AllowedTools = options?.AllowedTools,
+                BudgetParentScopeId = options?.BudgetParentScopeId,
             };
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;

@@ -26,6 +26,21 @@ public sealed class ToolBatchTests
     }
 
     [Fact]
+    public void Constructor_WhenBudgetAndSpillAreSupplied_RetainsThemAndTheyParticipateInEquality()
+    {
+        var deadline = DateTimeOffset.UnixEpoch.AddMinutes(1);
+        var spill = new NoSpill();
+        var plain = new ToolBatch(TestAgentId, TestSessionId, TestRunId, [], ToolBatchFailureMode.SettleIndependently, UnknownSchedulingMode.Sequential, deadline);
+        var spilling = new ToolBatch(TestAgentId, TestSessionId, TestRunId, [], ToolBatchFailureMode.SettleIndependently, UnknownSchedulingMode.Sequential, deadline, resultSpill: spill);
+
+        plain.Budget.ShouldBeNull();
+        plain.ResultSpill.ShouldBeNull();
+        spilling.ResultSpill.ShouldBeSameAs(spill);
+        spilling.ShouldNotBe(plain);
+        spilling.ShouldBe(new ToolBatch(TestAgentId, TestSessionId, TestRunId, [], ToolBatchFailureMode.SettleIndependently, UnknownSchedulingMode.Sequential, deadline, resultSpill: spill));
+    }
+
+    [Fact]
     public void Constructor_WhenEntriesIsEmpty_Succeeds()
     {
         var batch = new ToolBatch(TestAgentId, TestSessionId, TestRunId, [], ToolBatchFailureMode.SettleIndependently, UnknownSchedulingMode.Sequential, DateTimeOffset.UnixEpoch.AddMinutes(1));
@@ -83,5 +98,11 @@ public sealed class ToolBatchTests
         var original = new ToolBatch(TestAgentId, TestSessionId, TestRunId, [BatchEntry(0)], ToolBatchFailureMode.SettleIndependently, UnknownSchedulingMode.Sequential, DateTimeOffset.UnixEpoch.AddMinutes(1));
         var copy = original with { };
         copy.ShouldBe(original);
+    }
+
+    private sealed class NoSpill: IToolResultSpill
+    {
+        public ValueTask<ToolResultSpillResult> SpillAsync(ToolResultSpillRequest request, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ToolResultSpillResult>(new ToolResultNotSpilled("none"));
     }
 }

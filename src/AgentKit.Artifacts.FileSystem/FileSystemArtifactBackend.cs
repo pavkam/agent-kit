@@ -7,15 +7,17 @@ namespace AgentKit.Artifacts.FileSystem;
 /// <remarks>
 /// <para>
 /// A plan is committed in a fixed order: the payload is written with create-or-replace, one log record holding every entry of the
-/// plan is appended, then a released payload is truncated. A crash between steps can leave an unreferenced file but never a
-/// committed entry without bytes or readable bytes without an entry. A torn trailing log record found during recovery is repaired by
-/// atomically replacing the log with one snapshot record per entry.
+/// plan is appended, then a released payload is deleted. A crash between steps can leave an unreferenced file but never a committed
+/// entry without bytes or readable bytes without an entry. A torn trailing log record found during recovery is repaired by atomically
+/// replacing the log with one snapshot record per entry.
 /// </para>
 /// <para>
-/// The file-system contracts define no delete and no enumeration, so a released payload is truncated to zero bytes rather than
-/// removed, and unreferenced payload files left by a crash are not swept. A truncated or altered payload fails the integrity check
-/// and is reported unavailable. Payload names are derived from the SHA-256 of the tenant and the content hash, so identical bytes in
-/// two tenants are two files and neither is observable through the other.
+/// A released payload is removed with an explicit authorized delete effect, and recovery sweeps every unreferenced payload file a
+/// crash left behind by enumerating the root through the directory-reader capability and deleting only names this store derives for
+/// payloads that no live entry references; the entry log and any foreign file are never touched. An altered payload fails the
+/// integrity check and is reported unavailable. Payload names are derived from the SHA-256 of the tenant and the content hash, so
+/// identical bytes in two tenants are two files and neither is observable through the other. The selected profile must therefore
+/// declare the read, write, enumerate, and delete capabilities.
 /// </para>
 /// </remarks>
 internal sealed class FileSystemArtifactBackend: ArtifactStateBackend
@@ -46,11 +48,65 @@ internal sealed class FileSystemArtifactBackend: ArtifactStateBackend
         }
 
         var content = await _effects.ReadAsync(authorization, _logName, _settings.MaximumLogBytes, cancellationToken).ConfigureAwait(false);
-        if (content is null)
+        if (content is not null)
+        {
+            await ReplayAsync(authorization, content, cancellationToken).ConfigureAwait(false);
+        }
+
+        await SweepUnreferencedPayloadsAsync(authorization, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    protected override async ValueTask StagePayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, ImmutableArray<byte> content, CancellationToken cancellationToken)
+    {
+        var result = await _effects.WriteAsync(authorization, PayloadName(entry), content.AsMemory(), FileWriteDisposition.CreateOrReplace, cancellationToken).ConfigureAwait(false);
+        Require(result);
+    }
+
+    /// <inheritdoc/>
+    protected override async ValueTask PersistAsync(SecurityAuthorizationContext authorization, ImmutableArray<ArtifactEntry> upserts, CancellationToken cancellationToken)
+    {
+        var record = Frame(new StoredArtifactLogRecord([.. upserts.Select(StoredArtifactEntry.FromDomain)]));
+        var appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.Append, cancellationToken).ConfigureAwait(false);
+        if (appended is FileWriteNotFound)
+        {
+            appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.CreateOnly, cancellationToken).ConfigureAwait(false);
+            if (appended is FileWriteConflict)
+            {
+                appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.Append, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        Require(appended);
+    }
+
+    /// <inheritdoc/>
+    protected override async ValueTask ReleasePayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, bool stillReferenced, CancellationToken cancellationToken)
+    {
+        if (stillReferenced)
         {
             return;
         }
 
+        RequireDeleted(await _effects.DeleteAsync(authorization, PayloadName(entry), cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <inheritdoc/>
+    protected override ValueTask<byte[]?> OpenPayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, CancellationToken cancellationToken) =>
+        _effects.ReadAsync(authorization, PayloadName(entry), _settings.MaximumPayloadBytes, cancellationToken);
+
+    private static string PayloadName(ArtifactEntry entry) => FileSystemArtifactLayout.PayloadName(entry.TenantId, entry.ContentHash);
+
+    private static void Require(FileWriteResult result)
+    {
+        if (result is not FileWriteSuccess)
+        {
+            throw new FileEffectException("The file-system write was refused or did not commit.");
+        }
+    }
+
+    private async ValueTask ReplayAsync(SecurityAuthorizationContext authorization, byte[] content, CancellationToken cancellationToken)
+    {
         var records = 0;
         var start = 0;
         for (var index = 0; index < content.Length; index++)
@@ -86,56 +142,26 @@ internal sealed class FileSystemArtifactBackend: ArtifactStateBackend
         }
     }
 
-    /// <inheritdoc/>
-    protected override async ValueTask StagePayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, ImmutableArray<byte> content, CancellationToken cancellationToken)
+    private static void RequireDeleted(FileDeleteResult result)
     {
-        var result = await _effects.WriteAsync(authorization, PayloadName(entry), content.AsMemory(), FileWriteDisposition.CreateOrReplace, cancellationToken).ConfigureAwait(false);
-        Require(result);
+        if (result is not (FileDeleteSuccess or FileDeleteNotFound))
+        {
+            throw new FileEffectException("The file-system delete was refused or did not commit.");
+        }
     }
 
-    /// <inheritdoc/>
-    protected override async ValueTask PersistAsync(SecurityAuthorizationContext authorization, ImmutableArray<ArtifactEntry> upserts, CancellationToken cancellationToken)
+    private async ValueTask SweepUnreferencedPayloadsAsync(SecurityAuthorizationContext authorization, CancellationToken cancellationToken)
     {
-        var record = Frame(new StoredArtifactLogRecord([.. upserts.Select(StoredArtifactEntry.FromDomain)]));
-        var appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.Append, cancellationToken).ConfigureAwait(false);
-        if (appended is FileWriteNotFound)
+        var live = State.Snapshot()
+            .Where(static entry => entry.HoldsPayload)
+            .Select(PayloadName)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var name in await _effects.EnumerateFilesAsync(authorization, cancellationToken).ConfigureAwait(false))
         {
-            appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.CreateOnly, cancellationToken).ConfigureAwait(false);
-            if (appended is FileWriteConflict)
+            if (FileSystemArtifactLayout.IsPayloadName(name) && !live.Contains(name))
             {
-                appended = await _effects.WriteAsync(authorization, _logName, record, FileWriteDisposition.Append, cancellationToken).ConfigureAwait(false);
+                RequireDeleted(await _effects.DeleteAsync(authorization, name, cancellationToken).ConfigureAwait(false));
             }
-        }
-
-        Require(appended);
-    }
-
-    /// <inheritdoc/>
-    protected override async ValueTask ReleasePayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, bool stillReferenced, CancellationToken cancellationToken)
-    {
-        if (stillReferenced)
-        {
-            return;
-        }
-
-        var result = await _effects.WriteAsync(authorization, PayloadName(entry), ReadOnlyMemory<byte>.Empty, FileWriteDisposition.ReplaceExisting, cancellationToken).ConfigureAwait(false);
-        if (result is not FileWriteNotFound)
-        {
-            Require(result);
-        }
-    }
-
-    /// <inheritdoc/>
-    protected override ValueTask<byte[]?> OpenPayloadAsync(SecurityAuthorizationContext authorization, ArtifactEntry entry, CancellationToken cancellationToken) =>
-        _effects.ReadAsync(authorization, PayloadName(entry), _settings.MaximumPayloadBytes, cancellationToken);
-
-    private static string PayloadName(ArtifactEntry entry) => FileSystemArtifactLayout.PayloadName(entry.TenantId, entry.ContentHash);
-
-    private static void Require(FileWriteResult result)
-    {
-        if (result is not FileWriteSuccess)
-        {
-            throw new FileEffectException("The file-system write was refused or did not commit.");
         }
     }
 

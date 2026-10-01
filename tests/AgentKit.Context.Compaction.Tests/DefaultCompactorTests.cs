@@ -1068,6 +1068,39 @@ public sealed class DefaultCompactorTests: IDisposable
     }
 
     [Fact]
+    public async Task CompactAsync_WhenExplicitMaintenanceHasNoRun_AppendsWithoutJournalingEvenWhenTheProfileEnablesActivation()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile, CompactionDurableOperations.Activation);
+        var request = SeedDurableRequest(
+            coordinator, profile, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), admissionId: null));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+        durable.Executions.ShouldBeEmpty();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCompactionFollowsASettledRun_JournalsTheActivationUnderItsCausalRun()
+    {
+        var profile = new DurabilityProfileKey("test-durability");
+        var (compactor, coordinator, durable) = CreateDurableCompactor(profile, CompactionDurableOperations.Activation);
+        var causalRun = new RunId(Guid.NewGuid());
+        var request = SeedDurableRequest(
+            coordinator, profile, new AfterRunOperationCorrelation(new OperationId(Guid.NewGuid()), causalRun));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+        var activation = durable.Executions.ShouldHaveSingleItem();
+        activation.Address.RunId.ShouldBe(causalRun);
+        activation.Address.TurnId.ShouldBeNull();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenTheRequestSelectsNoProfile_AppendsWithoutJournaling()
     {
         var (compactor, coordinator, durable) = CreateDurableCompactor(
@@ -1288,12 +1321,16 @@ public sealed class DefaultCompactorTests: IDisposable
             };
     }
 
-    private CompactionRequest SeedDurableRequest(FakeSessionCoordinator coordinator, DurabilityProfileKey? profile)
+    private CompactionRequest SeedDurableRequest(
+        FakeSessionCoordinator coordinator, DurabilityProfileKey? profile, OperationCorrelation? correlation = null)
     {
         var address = Address();
         coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
         var request = TestFactory.Request(
-            TestFactory.CompactionContext(_agentId, _sessionId),
+            correlation is null
+                ? TestFactory.CompactionContext(_agentId, _sessionId)
+                : TestSecurityEvidence.CompactionContext(
+                    new CompactionId(Guid.NewGuid()), _agentId, _sessionId, correlation, TestFactory.Identity()),
             _branchId,
             coordinator.Version,
             new SessionSequence(10),

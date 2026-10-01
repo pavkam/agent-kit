@@ -40,6 +40,7 @@ public sealed class ServiceExtensionsTests
         var host = provider.GetRequiredKeyedService<OperatingSystemWorkspaceHost>(_key.Value);
         _ = provider.GetRequiredKeyedService<IFileReader>(_key.Value).ShouldBeOfType<OperatingSystemFileReader>();
         _ = provider.GetRequiredKeyedService<IFileWriter>(_key.Value).ShouldBeOfType<OperatingSystemFileWriter>();
+        _ = provider.GetRequiredKeyedService<IFileDeleter>(_key.Value).ShouldBeOfType<OperatingSystemFileDeleter>();
         foreach (var type in _hostCapabilityTypes)
         {
             provider.GetRequiredKeyedService(type, _key.Value).ShouldBeSameAs(host);
@@ -55,6 +56,7 @@ public sealed class ServiceExtensionsTests
         var audience = provider.GetRequiredKeyedService<IFileReader>(_key.Value).SecurityAudience;
         audience.ShouldBe(new ComponentId("agentkit.filesystem.os.workspace"));
         provider.GetRequiredKeyedService<IFileWriter>(_key.Value).SecurityAudience.ShouldBe(audience);
+        provider.GetRequiredKeyedService<IFileDeleter>(_key.Value).SecurityAudience.ShouldBe(audience);
         provider.GetRequiredKeyedService<IDirectoryReader>(_key.Value).SecurityAudience.ShouldBe(audience);
         provider.GetRequiredKeyedService<IFileGlobber>(_key.Value).SecurityAudience.ShouldBe(audience);
     }
@@ -75,6 +77,19 @@ public sealed class ServiceExtensionsTests
         directory.ShouldBeOfType<FileSystemDirectoryReaderSelected>().DirectoryReader
             .ShouldBeSameAs(provider.GetRequiredKeyedService<IDirectoryReader>(_key.Value));
         _ = missing.ShouldBeOfType<FileSystemProfileMissing>();
+    }
+
+    /// <summary>Verifies the selector discovers the deleter as its own capability the profile declares.</summary>
+    [Fact]
+    public async Task AddOperatingSystemFileSystem_WhenSelectorResolvesProfile_SelectsTheKeyedDeleter()
+    {
+        using var provider = BuildProvider(out _);
+        var selector = provider.GetRequiredService<IFileSystemSelector>();
+
+        var deleter = await selector.SelectAsync(_key, FileSystemCapability.Delete, TestContext.Current.CancellationToken);
+
+        deleter.ShouldBeOfType<FileSystemFileDeleterSelected>().Deleter
+            .ShouldBeSameAs(provider.GetRequiredKeyedService<IFileDeleter>(_key.Value));
     }
 
     /// <summary>Verifies every profile gets its own host rooted at its own directory.</summary>

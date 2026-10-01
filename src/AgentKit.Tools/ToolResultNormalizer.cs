@@ -9,6 +9,13 @@ using System.Text;
 using Microsoft.Extensions.Options;
 
 /// <summary>Maps invoker evidence into bounded normalized terminal content under captured snapshot bounds.</summary>
+/// <remarks>
+/// Content within the bound is retained as is. Content over the bound is externalized when the executor supplied an
+/// <see cref="IToolResultSpill"/>, the all-text content can be stored whole, and the snapshot permits
+/// <see cref="ToolResultProjectionTransformations.Externalization"/>: the terminal content then holds a bounded preview and a
+/// <see cref="ToolResultArtifactContent"/> naming the committed artifact. Every other oversized result, including one whose
+/// spill was refused, is truncated to the bound and recorded as truncated.
+/// </remarks>
 public sealed class ToolResultNormalizer: IToolResultNormalizer
 {
     private readonly ToolRuntimeOptions _options;
@@ -23,10 +30,11 @@ public sealed class ToolResultNormalizer: IToolResultNormalizer
     }
 
     /// <inheritdoc/>
-    public ValueTask<ToolResultNormalizationResult> NormalizeAsync(
+    public async ValueTask<ToolResultNormalizationResult> NormalizeAsync(
         ValidatedToolCall validatedCall,
         ToolInvocationResult invocation,
         ToolResultNormalizationSnapshot snapshot,
+        IToolResultSpill? spill = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(validatedCall);
@@ -36,17 +44,15 @@ public sealed class ToolResultNormalizer: IToolResultNormalizer
 
         if (invocation.Outcome.Kind is not ToolCallOutcomeKind.Success)
         {
-            return ValueTask.FromResult<ToolResultNormalizationResult>(
-                new ToolResultNormalized([], new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty)));
+            return new ToolResultNormalized([], new ToolResultNormalizationInfo([], null, null, null, null, ExtensionData.Empty));
         }
 
         var content = MapContent(invocation.Content);
         if (content.Length > snapshot.Bounds.MaximumParts)
         {
-            return ValueTask.FromResult<ToolResultNormalizationResult>(
-                new ToolResultNormalizationFailed(
-                    ToolTerminalStatus.ResultNormalizationFailed,
-                    "The tool result exceeded the configured maximum part count."));
+            return new ToolResultNormalizationFailed(
+                ToolTerminalStatus.ResultNormalizationFailed,
+                "The tool result exceeded the configured maximum part count.");
         }
 
         var inputCanonicalBytes = MeasureCanonicalBytes(content);
@@ -56,6 +62,15 @@ public sealed class ToolResultNormalizer: IToolResultNormalizer
         long? omittedCanonicalBytes = null;
         if (inputCanonicalBytes > maxCanonicalBytes)
         {
+            if (spill is not null
+                && snapshot.AllowedTransformations.HasFlag(ToolResultProjectionTransformations.Externalization)
+                && TryConcatenateText(content, out var complete)
+                && await spill.SpillAsync(new ToolResultSpillRequest(validatedCall, complete), cancellationToken).ConfigureAwait(false)
+                    is ToolResultSpilled spilled)
+            {
+                return Externalize(content, spilled.Reference, maxCanonicalBytes, inputCanonicalBytes, inputParts);
+            }
+
             content = TruncateToCanonicalByteBudget(content, maxCanonicalBytes, out var omitted);
             omittedCanonicalBytes = omitted;
             transformations = [ToolResultNormalizationTransformation.Truncated];
@@ -64,10 +79,9 @@ public sealed class ToolResultNormalizer: IToolResultNormalizer
         var canonicalBytes = MeasureCanonicalBytes(content);
         if (canonicalBytes > maxCanonicalBytes)
         {
-            return ValueTask.FromResult<ToolResultNormalizationResult>(
-                new ToolResultNormalizationFailed(
-                    ToolTerminalStatus.ResultNormalizationFailed,
-                    "The tool result exceeded the configured maximum canonical byte bound."));
+            return new ToolResultNormalizationFailed(
+                ToolTerminalStatus.ResultNormalizationFailed,
+                "The tool result exceeded the configured maximum canonical byte bound.");
         }
 
         var info = new ToolResultNormalizationInfo(
@@ -77,7 +91,77 @@ public sealed class ToolResultNormalizer: IToolResultNormalizer
             omittedCanonicalBytes,
             omittedCanonicalBytes.HasValue ? 0 : null,
             ExtensionData.Empty);
-        return ValueTask.FromResult<ToolResultNormalizationResult>(new ToolResultNormalized(content, info));
+        return new ToolResultNormalized(content, info);
+    }
+
+    private static bool TryConcatenateText(ImmutableArray<ToolResultContent> content, out ImmutableArray<byte> complete)
+    {
+        var builder = ImmutableArray.CreateBuilder<byte>();
+        foreach (var item in content)
+        {
+            if (item is not ToolResultTextContent text)
+            {
+                complete = default;
+                return false;
+            }
+
+            builder.AddRange(Encoding.UTF8.GetBytes(text.Text));
+        }
+
+        complete = builder.ToImmutable();
+        return complete.Length > 0;
+    }
+
+    private ToolResultNormalized Externalize(
+        ImmutableArray<ToolResultContent> content,
+        ArtifactReference reference,
+        long maxCanonicalBytes,
+        long inputCanonicalBytes,
+        int inputParts)
+    {
+        var previewBudget = Math.Min(_options.ResultSpillPreviewBytes, maxCanonicalBytes);
+        var preview = Utf8Prefix(content, previewBudget);
+        var retained = ImmutableArray.CreateBuilder<ToolResultContent>(2);
+        long previewBytes = 0;
+        if (preview.Length > 0)
+        {
+            previewBytes = Encoding.UTF8.GetByteCount(preview);
+            var first = (ToolResultTextContent) content[0];
+            retained.Add(new ToolResultTextContent(preview, first.Semantics, first.Extensions));
+        }
+
+        retained.Add(new ToolResultArtifactContent(reference, ExtensionData.Empty));
+        var info = new ToolResultNormalizationInfo(
+            [ToolResultNormalizationTransformation.Truncated, ToolResultNormalizationTransformation.Externalized],
+            inputCanonicalBytes,
+            inputParts,
+            inputCanonicalBytes - previewBytes,
+            0,
+            ExtensionData.Empty);
+        return new ToolResultNormalized(retained.ToImmutable(), info);
+    }
+
+    /// <summary>Returns the longest whole-code-point prefix of the concatenated text that fits the byte budget.</summary>
+    private static string Utf8Prefix(ImmutableArray<ToolResultContent> content, long maxBytes)
+    {
+        var builder = new StringBuilder();
+        var used = 0L;
+        foreach (var item in content)
+        {
+            foreach (var rune in ((ToolResultTextContent) item).Text.EnumerateRunes())
+            {
+                var width = rune.Utf8SequenceLength;
+                if (used + width > maxBytes)
+                {
+                    return builder.ToString();
+                }
+
+                _ = builder.Append(rune.ToString());
+                used += width;
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static long MeasureCanonicalBytes(ImmutableArray<ToolResultContent> content)

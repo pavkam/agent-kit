@@ -39,7 +39,7 @@ public sealed record ToolExecutionPlan
     public ToolRetryPolicy Retry { get; }
 
     /// <summary>Gets the per-attempt invocation deadline.</summary>
-    /// <value>A positive duration measured from the instant the attempt starts.</value>
+    /// <value>A positive duration measured from the instant the attempt starts and enforced by the scheduler: cancellation at the deadline, then a bounded drain, then a timed-out terminal result.</value>
     public TimeSpan InvocationTimeout { get; }
 
     /// <summary>Gets the captured normalization rules.</summary>

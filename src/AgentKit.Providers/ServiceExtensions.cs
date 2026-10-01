@@ -259,6 +259,7 @@ public static class ServiceExtensions
 
     private static void AddProviderEgress(IServiceCollection services)
     {
+        _ = ProviderCredentialSourceRegistration.AddCredentialReadGate(services);
         _ = services.AddOptions<ProviderEgressOptions>()
             .Validate(static value => value.ConnectTimeout > TimeSpan.Zero, "ConnectTimeout must be positive.")
             .Validate(static value => value.MaximumRequestBytes > 0, "MaximumRequestBytes must be positive.")

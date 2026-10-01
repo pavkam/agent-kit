@@ -32,6 +32,7 @@ public sealed class ToolResultProjector: IToolResultProjector
             result.Error?.SafeMessage,
             ExtensionData.Empty);
 
+        var externalized = !result.Content.IsDefaultOrEmpty && result.Content.Any(static item => item is ToolResultArtifactContent);
         var part = new ToolResultPart(
             result.CallId,
             resolvedTool,
@@ -39,12 +40,28 @@ public sealed class ToolResultProjector: IToolResultProjector
             MapContent(result.Content),
             new ToolResultProjectionInfo(
                 result.ProjectionPolicy,
-                Enum.IsDefined(result.Status) ? [] : [ToolResultProjectionLoss.StatusCoarsened],
+                ProjectionLosses(result.Status, externalized),
                 0,
                 0),
             ExtensionData.Empty);
 
         return ValueTask.FromResult(part);
+    }
+
+    private static ImmutableArray<ToolResultProjectionLoss> ProjectionLosses(ToolTerminalStatus status, bool externalized)
+    {
+        var losses = ImmutableArray.CreateBuilder<ToolResultProjectionLoss>(2);
+        if (externalized)
+        {
+            losses.Add(ToolResultProjectionLoss.Externalized);
+        }
+
+        if (!Enum.IsDefined(status))
+        {
+            losses.Add(ToolResultProjectionLoss.StatusCoarsened);
+        }
+
+        return losses.ToImmutable();
     }
 
     private static ImmutableArray<ContentPart> MapContent(ImmutableArray<ToolResultContent> content)
@@ -60,6 +77,14 @@ public sealed class ToolResultProjector: IToolResultProjector
             if (item is ToolResultTextContent text)
             {
                 builder.Add(new TextPart(text.Text, text.Semantics, text.Extensions));
+            }
+            else if (item is ToolResultArtifactContent artifact)
+            {
+                var reference = artifact.Reference;
+                builder.Add(new TextPart(
+                    $"The complete tool output was stored as artifact {reference.Id} version {reference.Version} ({reference.Length} bytes, {reference.MediaType}, {reference.Integrity.ContentHash}).",
+                    TextSemantics.Plain,
+                    ExtensionData.Empty));
             }
         }
 

@@ -168,6 +168,15 @@ public interface IFileWriter
         CancellationToken cancellationToken);
 }
 
+public interface IFileDeleter
+{
+    ComponentId SecurityAudience { get; }
+
+    ValueTask<FileDeleteResult> DeleteAsync(
+        AuthorizedFileDelete operation,
+        CancellationToken cancellationToken);
+}
+
 public interface IDirectoryReader
 {
     IAsyncEnumerable<FileSystemEntry> EnumerateAsync(
@@ -289,6 +298,20 @@ implementation bounds and fingerprints the bytes it actually consumes and
 compares them with the declaration before making the result visible. A length or
 fingerprint mismatch is a typed invalid-input or conflict result, never an
 excuse to commit different bytes.
+
+`AuthorizedFileDelete` binds the resolved target, an optional expected target
+fingerprint, and a grant. A deletion is authorized as a `FileWrite` operation
+whose effect is `Delete` on the exact file resource, with a fingerprint
+(`FileSecurityBinding.DeleteFingerprint`) over the root, path, and precondition,
+so write and delete grants never substitute for each other. `FileDeleteResult`
+discriminates success (with the removed length), not found, conflict, denial,
+cancellation, unsupported capability, and typed failure. The operating-system
+deleter removes the file with a descriptor-relative `unlinkat` after a no-follow
+walk to its parent and never removes a directory; the in-memory deleter applies
+the same outcome matrix. `FileSystemCapability.Delete` declares the capability,
+and `FileSystemFileDeleterSelected` is its selection result.
+`AgentKit.Artifacts.FileSystem` is the first consumer: it deletes released
+payloads and sweeps crash leftovers by enumerating its root.
 
 `FileWriteResult` and metadata results discriminate success, not found,
 conflict, denial, limit, cancellation, unsupported capability, and typed I/O

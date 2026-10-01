@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.AwsBedrock;
 
 using AgentKit.Providers;
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -64,10 +65,16 @@ public static class ServiceExtensions
             services.TryAddSingleton<IAwsBedrockRequestTranslator, AwsBedrockRequestTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IAwsBedrockResponseParser, AwsBedrockResponseParser>();
-            services.TryAddSingleton<AwsBedrockProfileCredentialSource>();
+            _ = ProviderCredentialSourceRegistration.AddCredentialReadGate(services);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
                 AwsBedrockProviderDefaults.CredentialSourceKey,
-                static (provider, _) => provider.GetRequiredService<AwsBedrockProfileCredentialSource>());
+                static (provider, _) => new AwsSigV4CredentialSource(
+                    AwsBedrockProviderDefaults.CredentialSourceKey,
+                    provider.GetRequiredKeyedService<IAwsCredentialSource>(AwsBedrockProviderDefaults.ProviderId),
+                    provider.GetRequiredService<IOptions<AwsBedrockProviderOptions>>().Value.Region
+                        ?? throw new InvalidOperationException("The Bedrock region is not configured."),
+                    AwsBedrockProviderDefaults.SigningServiceName,
+                    provider.GetRequiredService<ProviderCredentialReadGate>()));
 
             _ = ProviderOperationProfileRegistration.RegisterDefaultOperationProfilesFromServices(
                 services,
@@ -111,7 +118,9 @@ public static class ServiceExtensions
         /// <see cref="IAwsCredentialSource"/> under the
         /// <see cref="AwsBedrockProviderDefaults.ProviderId"/> key instead
         /// of this method, since a static credential never refreshes or
-        /// expires.
+        /// expires. The supplier is called only after the credential-read
+        /// grant has been validated and consumed by
+        /// <see cref="AwsSigV4CredentialSource"/>.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// <paramref name="accessKeyId"/> or <paramref name="secretAccessKey"/>
@@ -261,11 +270,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IAwsBedrockRequestTranslator>(),
                     provider.GetRequiredService<IAwsBedrockResponseParser>(),
-                    provider.GetRequiredKeyedService<IAwsCredentialSource>(AwsBedrockProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetRequiredService<AwsBedrockProfileCredentialSource>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

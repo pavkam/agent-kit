@@ -131,7 +131,26 @@ network, or process enforcement.
   possibly-started mutating call retries only for a declared `Idempotent` or
   `IdempotentWithKey` descriptor whose invoker implements
   `IIdempotencyEnforcingToolInvoker` and confirms the exact context. The attempt
-  budget counts the first attempt (`MaximumAttempts`).
+  budget counts the first attempt (`MaximumAttempts`). No first-party tool
+  declares idempotency, so none implements the confirmation; document why before
+  adding one.
+- The scheduler enforces the planned per-attempt `InvocationTimeout` (token
+  cancellation, a bounded drain, then abandonment with `TimedOut`, retryable,
+  unknown certainty); a descriptor's `ExpectedDuration` can extend it only up to
+  `MaximumInvocationTimeout`. Through the capability's optional budget scope the
+  runtime reserves the concurrent-call gauge, counts retries, and accounts
+  successes and result bytes; a run without a budget reserves nothing, and the
+  loop alone counts attempted calls.
+- `AgentRunOptions.AllowedTools` narrows a run's catalog: the capture factory
+  wraps the capture in `AllowListedToolCatalogCapture` (snapshot
+  `IntersectWith`) before preflight or exposure, so unlisted tools are unknown
+  at resolution. It only removes tools and grants nothing.
+- Oversized all-text results spill to an artifact only when the keyed executor
+  selected `AddToolResultSpill` and the snapshot permits externalization;
+  otherwise they truncate. The terminal content keeps a bounded preview plus
+  `ToolResultArtifactContent`, the spill appends no session record and records
+  no reconciliation intent, and the projector renders a bounded artifact
+  pointer.
 - `NetworkWebSearchProvider` consumes the tool-issued search grant with required
   audit, then sends one bodyless `GET` through `INetworkNameResolver` and
   `INetworkTransport` under separate resolution and send grants with redirects

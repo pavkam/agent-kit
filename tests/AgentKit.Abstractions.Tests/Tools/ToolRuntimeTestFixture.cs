@@ -10,7 +10,7 @@ using AgentKit.TestSupport;
 
 /// <summary>
 /// Deterministic builders for the spec-shaped tool-runtime batch and executor contract values shared across the
-/// Tools fixture files under workstream 4. Every identity is a fixed GUID so equality assertions never depend on
+/// Tools fixture files. Every identity is a fixed GUID so equality assertions never depend on
 /// generation order. Identity properties carry a <c>Test</c> prefix so a consuming file's <c>using static</c>
 /// import cannot collide with the identically named <see cref="AgentKit"/> identity types themselves.
 /// </summary>

@@ -26,28 +26,32 @@ internal sealed partial class RetrievalPipeline: IRetrievalPipeline
 
     private readonly IMemoryProfileRuntimeSelector _runtimes;
     private readonly MemoryGrantIssuer _grants;
+    private readonly MemoryHookRunner _hooks;
     private readonly TimeProvider _time;
     private readonly ILogger<RetrievalPipeline> _logger;
 
     /// <summary>Initializes the pipeline.</summary>
     /// <param name="runtimes">The selector that activates the exact profile runtime for each retrieval.</param>
     /// <param name="grants">The issuer of single-use grants from the captured authority.</param>
+    /// <param name="hooks">The runner that dispatches the retrieval hook points under the caller's captured hook context.</param>
     /// <param name="time">The injected clock for observation and expiry checks.</param>
     /// <param name="logger">The optional content-free logger.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
-    public RetrievalPipeline(IMemoryProfileRuntimeSelector runtimes, MemoryGrantIssuer grants, TimeProvider time, ILogger<RetrievalPipeline>? logger = null)
+    public RetrievalPipeline(IMemoryProfileRuntimeSelector runtimes, MemoryGrantIssuer grants, MemoryHookRunner hooks, TimeProvider time, ILogger<RetrievalPipeline>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(runtimes);
         ArgumentNullException.ThrowIfNull(grants);
+        ArgumentNullException.ThrowIfNull(hooks);
         ArgumentNullException.ThrowIfNull(time);
         _runtimes = runtimes;
         _grants = grants;
+        _hooks = hooks;
         _time = time;
         _logger = logger ?? NullLogger<RetrievalPipeline>.Instance;
     }
 
     /// <inheritdoc/>
-    public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken cancellationToken = default)
+    public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, HookDispatchContext? hooks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
         var started = MemoryObservation.TryTimestamp(_time);
@@ -71,7 +75,7 @@ internal sealed partial class RetrievalPipeline: IRetrievalPipeline
             }
 
             await using var lease = selected.Runtime;
-            var result = await RunAsync(query, lease, cancellationToken).ConfigureAwait(false);
+            var result = await RunAsync(query, hooks, lease, cancellationToken).ConfigureAwait(false);
             return Finish(scope, query, started, result);
         }
         catch (OperationCanceledException)

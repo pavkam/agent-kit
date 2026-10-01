@@ -3,15 +3,18 @@
 Store artifact content through AgentKit's protected file-system contracts.
 
 Unlike the SQLite and JSON leaves, this backend never opens a host path itself:
-every read and write is a typed security request whose single-use grant the
-selected `IFileReader` or `IFileWriter` revalidates and consumes, and every
-write names an explicit disposition. Entry state is a flushed newline-delimited
-log replayed through the planner the other backends share; payloads are
-content-addressed files partitioned per tenant. The contracts define no delete
-and no enumeration, so a released payload is truncated rather than removed and
-crash leftovers are not swept. The store creates no directories and holds no
-lock, so the root must exist and have one writer. It advertises durability only
-to the extent the selected file-system profile provides it.
+every read, write, delete, and root enumeration is a typed security request
+whose single-use grant the selected `IFileReader`, `IFileWriter`,
+`IFileDeleter`, or `IDirectoryReader` revalidates and consumes, and every write
+names an explicit disposition. Entry state is a flushed newline-delimited log
+replayed through the planner the other backends share; payloads are
+content-addressed files partitioned per tenant. A released payload is deleted,
+and recovery sweeps unreferenced payload files left by a crash by enumerating
+the root and deleting only names the store derives for payloads, never the log
+or a foreign file. The selected profile must therefore declare the read, write,
+enumerate, and delete capabilities. The store creates no directories and holds
+no lock, so the root must exist and have one writer. It advertises durability
+only to the extent the selected file-system profile provides it.
 
 ## Use this project
 

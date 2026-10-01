@@ -34,45 +34,41 @@ public sealed class MistralAILlmModel: ILlmModel
     private readonly MistralAIProviderOptions _options;
     private readonly IMistralAIRequestTranslator _translator;
     private readonly IMistralAIResponseParser _responseParser;
-    private readonly IProviderCredentialSource _credentials;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
-    private readonly IProviderProfileRuntimeSelector? _profileSelector;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
 
     /// <summary>Initializes a new instance of the <see cref="MistralAILlmModel"/> class.</summary>
     /// <param name="descriptor">The descriptor of the model this instance serves.</param>
     /// <param name="options">The validated Mistral AI provider options.</param>
     /// <param name="translator">Translates provider-neutral requests into Mistral AI Chat Completions request bodies.</param>
     /// <param name="responseParser">Parses Mistral AI Chat Completions responses into normalized events.</param>
-    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
-    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
-    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
+    /// <param name="timeProvider">The clock used for deadline evaluation.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public MistralAILlmModel(
         ModelDescriptor descriptor,
         MistralAIProviderOptions options,
         IMistralAIRequestTranslator translator,
         IMistralAIResponseParser responseParser,
-        IProviderCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderProfileRuntimeSelector? profileSelector = null)
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
-        ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(profileSelector);
 
         Alias = descriptor.Alias;
         _descriptor = descriptor;
         _options = options;
         _translator = translator;
         _responseParser = responseParser;
-        _credentials = credentials;
         _egress = egress;
         _timeProvider = timeProvider;
         _profileSelector = profileSelector;
@@ -162,39 +158,17 @@ public sealed class MistralAILlmModel: ILlmModel
         await using var sendContext = await NativeProviderChatSend.BeginAsync(
                 _descriptor,
                 request,
-                _credentials,
                 _profileSelector,
                 _timeProvider,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!sendContext.IsSuccess)
         {
-            return await FailAsync(sendContext.Failure!).ConfigureAwait(false);
+            return sendContext.Failure!.Kind is ProviderFailureKind.Cancellation
+                ? await CancelAsync(sendContext.Failure).ConfigureAwait(false)
+                : await FailAsync(sendContext.Failure).ConfigureAwait(false);
         }
 
-        ProviderCredential credential;
-        try
-        {
-            credential = await sendContext.CredentialSource!
-                .GetCredentialAsync(_descriptor.ProviderId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return await CancelAsync().ConfigureAwait(false);
-        }
-
-        var authorization = ProviderAuthorizationHeaderFactory.Create(
-            credential,
-            _descriptor.ProviderId,
-            _timeProvider,
-            MistralAIProviderDefaults.AuthorizationScheme);
-        if (authorization is ProviderAuthorizationDenied denied)
-        {
-            return await FailAsync(denied.Failure).ConfigureAwait(false);
-        }
-
-        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -210,12 +184,12 @@ public sealed class MistralAILlmModel: ILlmModel
                 exception).ConfigureAwait(false);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, granted, sendContext.EndpointBaseOverride);
+        using var httpRequest = CreateHttpRequest(payload, sendContext.EndpointBaseOverride);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
         var sent = await _egress
-            .SendAsync(ProviderEgressRequest.ForConversation(_descriptor, request, httpRequest, useStreaming), cancellationToken)
+            .SendAsync(ProviderEgressRequest.ForConversation(_descriptor, request, httpRequest, useStreaming, sendContext.CreateCredential(MistralAIProviderDefaults.AuthorizationScheme)), cancellationToken)
             .ConfigureAwait(false);
         if (sent is ProviderEgressRefused refused)
         {
@@ -304,7 +278,6 @@ public sealed class MistralAILlmModel: ILlmModel
 
     private HttpRequestMessage CreateHttpRequest(
         JsonObject payload,
-        ProviderAuthorizationGranted authorization,
         Uri? endpointBaseOverride)
     {
         var uri = MistralAIProviderDefaults.BuildChatCompletionsUri(_options, endpointBaseOverride);
@@ -313,7 +286,6 @@ public sealed class MistralAILlmModel: ILlmModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

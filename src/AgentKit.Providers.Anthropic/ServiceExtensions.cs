@@ -106,12 +106,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            _ = ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
-                services,
-                AnthropicProviderDefaults.CredentialSourceKey,
-                AnthropicProviderDefaults.ProviderId,
-                credentialSource);
+            _ = ProviderCredentialSourceRegistration.AddStaticApiKeySource(services, AnthropicProviderDefaults.CredentialSourceKey, apiKey);
 
             return services;
         }
@@ -142,15 +137,10 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(AnthropicProviderDefaults.ProviderId);
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+            _ = ProviderCredentialSourceRegistration.AddOAuthTokenSource<TProvider>(
+                services,
                 AnthropicProviderDefaults.CredentialSourceKey,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(AnthropicProviderDefaults.ProviderId)));
-            services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                AnthropicProviderDefaults.ProviderId,
-                static (provider, key) => new DelegatingOAuthCredentialSource(
-                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
+                AnthropicProviderDefaults.ProviderId);
 
             return services;
         }
@@ -240,10 +230,9 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IAnthropicMessageTranslator>(),
                     provider.GetRequiredService<IAnthropicMessageStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(AnthropicProviderDefaults.ProviderId),
                     provider.GetRequiredService<ProviderEgress>(),
                     provider.GetRequiredService<TimeProvider>(),
-                    provider.GetService<IProviderProfileRuntimeSelector>());
+                    provider.GetRequiredService<IProviderProfileRuntimeSelector>());
             });
 
             return services;

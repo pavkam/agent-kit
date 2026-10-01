@@ -22,7 +22,7 @@ internal static class ToolRuntimeNormalizationDefaults
         ToolResultProjectionTransformations.None,
         ExtensionData.Empty);
 
-    /// <summary>Builds the normalization snapshot captured for one resolved descriptor.</summary>
+    /// <summary>Builds the normalization snapshot captured for one resolved descriptor; it permits truncation and, when the executor composes a spill, externalization.</summary>
     /// <param name="executionPolicy">The selected execution-policy reference from the catalog snapshot.</param>
     /// <returns>The immutable normalization rules for accepted and terminal paths.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="executionPolicy"/> is null.</exception>
@@ -35,7 +35,7 @@ internal static class ToolRuntimeNormalizationDefaults
             executionPolicy,
             _algorithmVersion,
             new ToolResultBounds(4_194_304, 64),
-            ToolResultProjectionTransformations.None,
+            ToolResultProjectionTransformations.Truncation | ToolResultProjectionTransformations.Externalization,
             ExtensionData.Empty);
     }
 }

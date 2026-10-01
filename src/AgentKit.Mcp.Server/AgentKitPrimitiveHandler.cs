@@ -105,12 +105,7 @@ public sealed class AgentKitPrimitiveHandler: IMcpPrimitiveHandler
 
         var capability = new ToolExecutionCapability(
             new SessionExecutionCapability(profile, sessionCoordinator, runCoordinator),
-            new BudgetExecutionCapability(
-                new BudgetProfileKey("mcp-server"),
-                new BudgetProfileVersion(1),
-                operation.Identity,
-                correlation,
-                new McpServerBudgetScope()),
+            budget: null,
             new ToolCallSessionTarget(loaded.Descriptor.ActiveBranchId, laneId),
             [.. capture.Snapshot.ExecutionPolicies.Values
                 .Distinct()
@@ -148,40 +143,5 @@ public sealed class AgentKitPrimitiveHandler: IMcpPrimitiveHandler
         var text = result.Content.OfType<TextPart>().FirstOrDefault()?.Text ?? string.Empty;
         using var payload = JsonDocument.Parse(JsonSerializer.Serialize(new { result = text }));
         return new McpResponseSucceeded(toolCall.Id, payload);
-    }
-
-    private sealed class McpServerBudgetScope: IBudgetScope
-    {
-        public BudgetScopeId Id { get; } = new(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-
-        public BudgetScopeAddress Address { get; } = new(
-            new TenantId("mcp-server"),
-            new PrincipalId("peer"),
-            new AgentId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
-            new SessionId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")),
-            new RunId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd")),
-            new OperationId(Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")));
-
-        public ValueTask<BudgetReservationResult> ReserveAsync(
-            BudgetReservationRequest request,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<BudgetReservationResult>(
-                new BudgetRejected(new BudgetLimitFailure(
-                    Id,
-                    request.Dimension,
-                    BudgetLimitKind.Hard,
-                    configuredValue: 0,
-                    observedValue: new BudgetQuantity(System.Numerics.BigInteger.Zero, 0),
-                    requestedAmount: new BudgetQuantity(System.Numerics.BigInteger.One, 0),
-                    request.Unit,
-                    "MCP server tool dispatch does not reserve budget dimensions.")));
-
-        public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
-            ImmutableArray<BudgetReservationRequest> requests,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 }

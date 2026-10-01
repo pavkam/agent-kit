@@ -63,7 +63,7 @@ public sealed class CohereProviderDefaultsTests
         var result = ProviderAuthorizationHeaderFactory.Create(
             new ApiKeyProviderCredential("co-test-key"),
             CohereProviderDefaults.ProviderId,
-            clock,
+            clock.GetUtcNow(),
             CohereProviderDefaults.AuthorizationScheme);
 
         var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();

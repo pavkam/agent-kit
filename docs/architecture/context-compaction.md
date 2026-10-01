@@ -63,7 +63,14 @@ When it loads history whose newest active checkpoint carries a different
 `CompactionTriggerKind.InstructionEpochChanged` before the first turn. Callers
 outside a run request `CompactionTriggerKind.ExplicitMaintenance` through
 `Agent.CompactAsync`, which builds the request from the session's pinned branch
-snapshot and the definition's revision as the epoch.
+snapshot and the definition's revision as the epoch. Maintenance has no run, so
+its activation is not journaled through the durability coordinator (the durable
+address requires a run and a run identity is never fabricated); it relies on the
+idempotent append and tip reconciliation described below, and the caller retries
+the identical request after a lost process. In-run and after-run activations are
+journaled when the selected durability profile enables
+`agentkit.compaction.activation`; see [durable execution](durable-execution.md)
+for the address rule and the reasoning.
 
 ## Normative identities and correlation
 

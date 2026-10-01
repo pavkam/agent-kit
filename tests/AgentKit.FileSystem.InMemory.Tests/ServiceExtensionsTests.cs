@@ -14,6 +14,7 @@ public sealed class ServiceExtensionsTests
     [
         typeof(IFileReader),
         typeof(IFileWriter),
+        typeof(IFileDeleter),
         typeof(IFileMetadataReader),
         typeof(IDirectoryCreator),
         typeof(IDirectoryReader),
@@ -29,6 +30,7 @@ public sealed class ServiceExtensionsTests
     [
         typeof(IFileReader),
         typeof(IFileWriter),
+        typeof(IFileDeleter),
         typeof(IFileMetadataReader),
         typeof(IDirectoryCreator),
         typeof(IDirectoryReader),
@@ -50,6 +52,19 @@ public sealed class ServiceExtensionsTests
         {
             provider.GetRequiredKeyedService(type, _key.Value).ShouldBeSameAs(volume);
         }
+    }
+
+    /// <summary>Verifies the selector discovers the deleter as its own capability the profile declares.</summary>
+    [Fact]
+    public async Task AddInMemoryFileSystem_WhenSelectorResolvesProfile_SelectsTheKeyedDeleter()
+    {
+        using var provider = BuildProvider();
+        var selector = provider.GetRequiredService<IFileSystemSelector>();
+
+        var deleter = await selector.SelectAsync(_key, FileSystemCapability.Delete, TestContext.Current.CancellationToken);
+
+        deleter.ShouldBeOfType<FileSystemFileDeleterSelected>().Deleter
+            .ShouldBeSameAs(provider.GetRequiredKeyedService<IFileDeleter>(_key.Value));
     }
 
     /// <summary>Verifies the volume's audience is scoped to its profile key.</summary>

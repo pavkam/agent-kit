@@ -967,7 +967,14 @@ encoded-payload fingerprint, bounds, and atomicity. Parent-directory creation is
 a separate effect and grant. Provider credential read/refresh likewise uses a
 credential-source grant bound to the captured profile/account/audience and is
 distinct from both provider-egress and lower-level network grants; none can be
-substituted for another.
+substituted for another. First-party providers ship this: `ProviderEgress`
+requests a `StateRead`/`Observe` grant over a
+`provider-credential:{provider}/{surface}/{profileKey}@{version}/source:{sourceKey}`
+application-state resource, `ProviderCredentialReadGate` consumes it with
+required audit immediately before the source runs, and a token refresh performed
+by the source (for example an OAuth access-token provider) happens inside that
+one consumed read. See
+[Credential read](model-and-embedding-providers.md#credential-read-shipped-design-and-deviations).
 
 ### Policy decision algebra and revocation
 

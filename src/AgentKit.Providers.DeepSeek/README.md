@@ -46,8 +46,6 @@ dependencies.
   — intended ownership and contracts.
 - [DeepSeek API reference](../../docs/providers/deepseek.md) — wire behavior and
   capability requirements.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

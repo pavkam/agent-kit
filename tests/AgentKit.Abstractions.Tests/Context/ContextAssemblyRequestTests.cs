@@ -3,6 +3,8 @@
 
 namespace AgentKit.Abstractions.Tests.Context;
 
+using AgentKit.TestSupport;
+
 /// <summary>Verifies <see cref="ContextAssemblyRequest"/> evidence-bound construction.</summary>
 public sealed class ContextAssemblyRequestTests
 {
@@ -35,6 +37,21 @@ public sealed class ContextAssemblyRequestTests
         request.Settings.ShouldBe(settings);
         request.Extensions.ShouldBe(extensions);
         request.Output.ShouldBeNull();
+        request.Hooks.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Equals_WhenOnlyTheHookContextDiffers_ReportsInequality()
+    {
+        var evidence = CreateEvidence();
+        var model = Model();
+        var plain = Request(evidence, model, [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var hooks = await HookDispatchContextFixtures.CreateAsync(AgentHookPoints.BeforeRetrieval, Correlation(evidence));
+        var hooked = plain with { Hooks = hooks };
+
+        hooked.Equals(plain).ShouldBeFalse();
+        hooked.Equals(plain with { Hooks = hooks }).ShouldBeTrue();
+        hooked.Hooks.ShouldBeSameAs(hooks);
     }
 
     [Fact]
@@ -99,8 +116,8 @@ public sealed class ContextAssemblyRequestTests
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = TestSupport.AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var agent = AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
+        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), null);
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
         var history = new HistoryView(new MessageCursor(agentId, sessionId, null, new BranchId(Guid.Parse("30000000-0000-0000-0000-000000000001")), new SessionVersion(1), new SessionSequence(0)), [], []);
@@ -206,8 +223,8 @@ public sealed class ContextAssemblyRequestTests
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var sessionId = new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var revision = new AgentDefinitionRevision(1);
-        var agent = TestSupport.AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var agent = AgentDefinitionFixtures.Create(agentId, revision: revision.Value, displayName: "agent");
+        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var correlation = new InRunOperationCorrelation(new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000001")), new RunId(Guid.Parse("50000000-0000-0000-0000-000000000001")), new TurnId(Guid.Parse("60000000-0000-0000-0000-000000000001")));
         var authorization = new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("70000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), revision, new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
         var history = new HistoryView(new MessageCursor(agentId, sessionId, null, new BranchId(Guid.Parse("30000000-0000-0000-0000-000000000001")), new SessionVersion(1), new SessionSequence(0)), [], []);

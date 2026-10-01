@@ -49,6 +49,10 @@ internal static class MemoryServiceRegistration
         services.TryAddSingleton<IMemoryPolicyDispatcher, DefaultMemoryPolicyDispatcher>();
         services.TryAddSingleton<IMemoryProfileRuntimeSelector, DefaultMemoryProfileRuntimeSelector>();
         services.TryAddSingleton<MemoryGrantIssuer>();
+        services.TryAddSingleton(static provider => new MemoryHookRunner(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<IHookDispatcher>(),
+            provider.GetService<IIdentifierGenerator<HookDispatchId>>()));
         services.TryAddSingleton<IMemoryCoordinator, DefaultMemoryCoordinator>();
         services.TryAddSingleton<IDocumentLifecycleCoordinator, DefaultDocumentLifecycleCoordinator>();
         services.TryAddSingleton<IRetrievalPipeline, RetrievalPipeline>();

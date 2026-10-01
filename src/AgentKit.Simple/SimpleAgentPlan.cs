@@ -125,6 +125,15 @@ internal sealed class SimpleAgentPlan
     public bool DurableExecution { get; set; }
 
     /// <summary>
+    /// Gets or sets the storage the durability sugar selected (<c>in-memory</c>, <c>sqlite</c>, or <c>json</c>), or
+    /// <see langword="null"/> when durability was not requested.
+    /// </summary>
+    /// <value>
+    /// One explicit choice per plan: selecting a second, different store is refused so a composition never mixes journals.
+    /// </value>
+    public string? DurabilityStorage { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether every hosted definition selects this plan's goal profile, so each
     /// agent owns goals and may delegate to its peers.
     /// </summary>

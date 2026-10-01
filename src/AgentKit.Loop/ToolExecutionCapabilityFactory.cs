@@ -6,7 +6,7 @@ namespace AgentKit.Loop;
 /// <summary>Composes invocation-only <see cref="ToolExecutionCapability"/> values for tool batches.</summary>
 internal static class ToolExecutionCapabilityFactory
 {
-    /// <summary>Creates the session and budget bindings for one tool batch.</summary>
+    /// <summary>Creates the session and budget bindings for one tool batch; a run that declared no limits carries no budget binding.</summary>
     /// <param name="request">The active run request.</param>
     /// <param name="services">The compiled run services.</param>
     /// <param name="turnCorrelation">The turn operation correlation.</param>
@@ -33,36 +33,15 @@ internal static class ToolExecutionCapabilityFactory
 
         var runCoordinator = services.RunCoordinator ?? UnsupportedRunCoordinator.Instance;
         var session = new SessionExecutionCapability(request.SessionProfile, services.Session, runCoordinator);
-        IBudgetScope scope;
-        BudgetProfileKey profileKey;
-        BudgetProfileVersion profileVersion;
-        if (runBudget is not null && runBudgetCapability is not null)
-        {
-            scope = runBudget.GetScopeForToolExecution();
-            profileKey = runBudgetCapability.ProfileKey;
-            profileVersion = runBudgetCapability.ProfileVersion;
-        }
-        else
-        {
-            scope = new ToolBatchBudgetScope(
-                new BudgetScopeId(Guid.Parse("00000000-0000-0000-0000-000000000001")),
-                new BudgetScopeAddress(
-                    request.Identity.TenantId,
-                    request.Identity.PrincipalId,
-                    request.AgentId,
-                    request.SessionId,
-                    request.RunId,
-                    turnCorrelation.OperationId));
-            profileKey = new BudgetProfileKey("tool-batch");
-            profileVersion = new BudgetProfileVersion(1);
-        }
-
-        var budget = new BudgetExecutionCapability(
-            profileKey,
-            profileVersion,
-            request.Identity,
-            turnCorrelation,
-            scope);
+        // A run that declared no limits has no scope to reserve through, so the executor reserves no tool budget dimension.
+        var budget = runBudget is not null && runBudgetCapability is not null
+            ? new BudgetExecutionCapability(
+                runBudgetCapability.ProfileKey,
+                runBudgetCapability.ProfileVersion,
+                request.Identity,
+                turnCorrelation,
+                runBudget.GetScopeForToolExecution())
+            : null;
 
         var bindings = catalogSnapshot.ExecutionPolicies.Values
             .Distinct()
@@ -74,36 +53,6 @@ internal static class ToolExecutionCapabilityFactory
             new ToolCallSessionTarget(request.BranchId, executionLaneId),
             bindings,
             hooks);
-    }
-
-    /// <summary>A budget scope that rejects every reservation; used only to satisfy capability shape for unbudgeted runs.</summary>
-    private sealed class ToolBatchBudgetScope(BudgetScopeId id, BudgetScopeAddress address): IBudgetScope
-    {
-        public BudgetScopeId Id { get; } = id;
-        public BudgetScopeAddress Address { get; } = address;
-
-        public ValueTask<BudgetReservationResult> ReserveAsync(BudgetReservationRequest request, CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(request);
-            return ValueTask.FromResult<BudgetReservationResult>(
-                new BudgetRejected(new BudgetLimitFailure(
-                    Id,
-                    request.Dimension,
-                    BudgetLimitKind.Hard,
-                    configuredValue: 0,
-                    observedValue: BudgetQuantity.FromDecimal(0),
-                    requestedAmount: BudgetQuantity.FromDecimal(1),
-                    request.Unit,
-                    "Unbudgeted runs do not reserve tool budget dimensions through this scope.")));
-        }
-
-        public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
-            ImmutableArray<BudgetReservationRequest> requests,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class UnsupportedRunCoordinator: ISessionRunCoordinator

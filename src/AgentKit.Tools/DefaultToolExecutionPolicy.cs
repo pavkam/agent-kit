@@ -10,7 +10,10 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// <para>
 /// The policy keeps each descriptor's own scheduling hints, applies the configured per-attempt timeout and retry pacing,
-/// and captures the default result-normalization rules for the reference. It is a pure planner: it performs no I/O,
+/// and captures the default result-normalization rules for the reference. A descriptor whose
+/// <see cref="ToolExecutionHints.ExpectedDuration"/> exceeds the configured timeout is granted that duration, capped at
+/// <see cref="ToolRuntimeOptions.MaximumInvocationTimeout"/>, because the executor enforces the planned timeout and the hint is
+/// untrusted. It is a pure planner: it performs no I/O,
 /// authorizes nothing, and cannot widen a descriptor's declared effects. Whether a failed attempt is actually retried is
 /// decided by the executor from the tool's declared effects and idempotency, not by this plan.
 /// </para>
@@ -25,6 +28,7 @@ public sealed class DefaultToolExecutionPolicy: IToolExecutionPolicy
 {
     private readonly ToolRetryPolicy _retry;
     private readonly TimeSpan _invocationTimeout;
+    private readonly TimeSpan _maximumInvocationTimeout;
 
     /// <summary>Initializes the default policy for one exact reference.</summary>
     /// <param name="reference">The exact policy key and revision this instance implements, supplied by the DI service key.</param>
@@ -44,6 +48,7 @@ public sealed class DefaultToolExecutionPolicy: IToolExecutionPolicy
             configured.RetryMaximumDelay,
             configured.RetryJitterFraction);
         _invocationTimeout = configured.InvocationTimeout;
+        _maximumInvocationTimeout = configured.MaximumInvocationTimeout;
     }
 
     /// <summary>Gets the reference first-party tool descriptors name: the <c>standard</c> family at revision one.</summary>
@@ -72,9 +77,14 @@ public sealed class DefaultToolExecutionPolicy: IToolExecutionPolicy
             ArgumentException.ThrowIfNotEqual(call.ExecutionPolicy, Reference, nameof(calls));
             prepared.Add(new PreparedToolCall(
                 call,
-                new ToolExecutionPlan(call.Tool.ExecutionHints, _retry, _invocationTimeout, normalization)));
+                new ToolExecutionPlan(call.Tool.ExecutionHints, _retry, TimeoutFor(call.Tool.ExecutionHints), normalization)));
         }
 
         return ValueTask.FromResult<ToolExecutionPlanResult>(new ToolExecutionPlanned(prepared.ToImmutable()));
     }
+
+    private TimeSpan TimeoutFor(ToolExecutionHints hints) =>
+        hints.ExpectedDuration is { } expected && expected > _invocationTimeout
+            ? expected < _maximumInvocationTimeout ? expected : _maximumInvocationTimeout
+            : _invocationTimeout;
 }

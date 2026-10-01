@@ -15,6 +15,7 @@ global using AgentKit.Context.Retrieval;
 global using AgentKit.Conversations;
 global using AgentKit.Durability;
 global using AgentKit.Durability.InMemory;
+global using AgentKit.Durability.Json;
 global using AgentKit.FileSystem;
 global using AgentKit.Goals;
 global using AgentKit.Goals.Hosting;

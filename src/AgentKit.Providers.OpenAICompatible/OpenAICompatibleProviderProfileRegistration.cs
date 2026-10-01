@@ -149,22 +149,4 @@ public static class OpenAICompatibleProviderProfileRegistration
             embeddingCredentialProfileKey,
             endpointId);
     }
-
-    /// <summary>Registers one credential source under both the source key and provider id.</summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="credentialSourceKey">The profile credential source key.</param>
-    /// <param name="providerId">The provider identity key.</param>
-    /// <param name="credentialSource">The credential source instance.</param>
-    /// <returns>The same <paramref name="services"/> instance.</returns>
-    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
-    public static IServiceCollection RegisterDualKeyCredentialSource(
-        IServiceCollection services,
-        ProviderCredentialSourceKey credentialSourceKey,
-        ProviderId providerId,
-        IProviderCredentialSource credentialSource) =>
-        ProviderCredentialSourceRegistration.RegisterDualKeyCredentialSource(
-            services,
-            credentialSourceKey,
-            providerId,
-            credentialSource);
 }

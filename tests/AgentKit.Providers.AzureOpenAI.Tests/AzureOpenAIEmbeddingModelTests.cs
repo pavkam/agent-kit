@@ -15,15 +15,15 @@ using AgentKit.TestSupport;
 public sealed class AzureOpenAIEmbeddingModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static EmbeddingModelDescriptor CreateDescriptor() => new(new EmbeddingModelAlias("embed"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-3-small"), new DeploymentId("prod-embed"), AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities, AzureOpenAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
+    private static EmbeddingModelDescriptor CreateDescriptor() => ProviderEgressHarness.Bind(new EmbeddingModelDescriptor(new EmbeddingModelAlias("embed"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-3-small"), new DeploymentId("prod-embed"), AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities, AzureOpenAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty));
     private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty) { Operation = ProviderEgressHarness.Operation };
-    private static AzureOpenAIEmbeddingModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), }), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), credentials, ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now));
+    private static AzureOpenAIEmbeddingModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), }), new OpenAIEmbeddingRequestTranslator(), new OpenAIEmbeddingResponseParser(), ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://my-resource.openai.azure.test/")));
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsApiKeyHeaderAndOverridesModelFieldWithDeploymentName()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         var vector = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Vector.ShouldBeOfType<DenseFloatVector>();
@@ -43,7 +43,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_success.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         var requestDescriptor = descriptor with { ModelId = new ModelId("different-embedding-model") };
 
         var result = await model.GenerateAsync(CreateRequest(requestDescriptor), TestContext.Current.CancellationToken);
@@ -63,7 +63,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 
@@ -85,7 +85,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 
@@ -102,7 +102,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_401.json");
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("bad-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("bad-key")), descriptor);
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
@@ -116,7 +116,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
             new TimeoutException("The operation was canceled.")));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 
@@ -130,7 +130,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
     {
         var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 
@@ -153,7 +153,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             return response;
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
         using var cancellation = new CancellationTokenSource();
 
         var pending = model.GenerateAsync(CreateRequest(descriptor), cancellation.Token);
@@ -176,7 +176,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()))
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 
@@ -197,7 +197,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
             Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"object\":\"list\",\"data\":["u8.ToArray())),
         });
         var descriptor = CreateDescriptor();
-        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("azure-resource-key")), descriptor);
 
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
 

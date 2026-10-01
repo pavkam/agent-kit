@@ -7,6 +7,7 @@ namespace AgentKit.FileSystem.InMemory.Tests;
 internal sealed class ReplacementFileCapabilities:
     IFileReader,
     IFileWriter,
+    IFileDeleter,
     IFileMetadataReader,
     IDirectoryCreator,
     IDirectoryReader,
@@ -21,6 +22,10 @@ internal sealed class ReplacementFileCapabilities:
 
     /// <inheritdoc/>
     public ValueTask<FileReadOpenResult> OpenReadAsync(AuthorizedFileRead operation, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public ValueTask<FileDeleteResult> DeleteAsync(AuthorizedFileDelete operation, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     /// <inheritdoc/>

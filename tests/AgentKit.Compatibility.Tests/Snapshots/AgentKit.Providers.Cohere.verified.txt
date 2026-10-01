@@ -5,7 +5,7 @@ namespace AgentKit.Providers.Cohere
 {
     public sealed class CohereEmbeddingModel : AgentKit.IEmbeddingModel
     {
-        public CohereEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereEmbeddingRequestTranslator translator, AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider) { }
+        public CohereEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereEmbeddingRequestTranslator translator, AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.EmbeddingModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -27,7 +27,7 @@ namespace AgentKit.Providers.Cohere
     }
     public sealed class CohereLlmModel : AgentKit.ILlmModel
     {
-        public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.ModelAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -37,7 +37,7 @@ namespace AgentKit.Providers.Cohere
         public const string DefaultEmbedPath = "v2/embed";
         public const string DefaultRerankPath = "v2/rerank";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
-        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
+        public static AgentKit.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ProviderCredentialProfileKey ChatCredentialProfileKey { get; }
         public static AgentKit.ProviderEndpointProfileKey ChatEndpointProfileKey { get; }
         public static AgentKit.ProviderServiceSurfaceId ChatServiceSurface { get; }
@@ -97,7 +97,7 @@ namespace AgentKit.Providers.Cohere
     }
     public sealed class CohereReranker : AgentKit.IReranker
     {
-        public CohereReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRerankRequestTranslator translator, AgentKit.Providers.Cohere.ICohereRerankResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector? profileSelector = null) { }
+        public CohereReranker(AgentKit.RerankerDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRerankRequestTranslator translator, AgentKit.Providers.Cohere.ICohereRerankResponseParser responseParser, AgentKit.Providers.Egress.ProviderEgress egress, System.TimeProvider timeProvider, AgentKit.IProviderProfileRuntimeSelector profileSelector) { }
         public AgentKit.RerankerAlias Alias { get; }
         public System.Threading.Tasks.Task<AgentKit.RerankModelResult> RerankAsync(AgentKit.RerankModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

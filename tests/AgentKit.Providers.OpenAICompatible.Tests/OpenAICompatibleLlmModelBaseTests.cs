@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Credentials;
 using AgentKit.Providers.Egress;
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
@@ -70,9 +71,8 @@ public sealed class OpenAICompatibleLlmModelBaseTests
             profile,
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
-            credentials,
             (harness ?? ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now))).Egress,
-            timeProvider ?? new FakeTimeProvider(Now));
+            timeProvider ?? new FakeTimeProvider(Now), new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://api.openai.test/")));
 
     private static CustomizingLlmModel CreateCustomizingModel(
         HttpMessageHandler handler,
@@ -85,8 +85,9 @@ public sealed class OpenAICompatibleLlmModelBaseTests
             NonStreamingProfile,
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
-            credentials,
-            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress, new FakeTimeProvider(Now),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress,
+            new FakeTimeProvider(Now),
+            new StaticProviderProfileRuntimeSelector(credentials, new Uri("https://api.openai.test/")),
             scheme,
             adjust);
 
@@ -973,12 +974,13 @@ public sealed class OpenAICompatibleLlmModelBaseTests
         var requests = boundHarness.Authority.Requests;
         requests.Select(static request => request.Audience).ShouldBe(
         [
+            ProviderCredentialReadGate.DefaultAudience,
             ProviderEgress.SecurityAudience,
             boundHarness.Resolver.SecurityAudience,
             boundHarness.Transport.SecurityAudience,
         ]);
-        requests[0].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://api.openai.test:443/v1/chat/completions");
-        requests[0].InputFingerprint.ShouldNotBe(unboundHarness.Authority.Requests[0].InputFingerprint);
+        requests[1].Resources.ShouldHaveSingleItem().Identifier.ShouldBe("https://api.openai.test:443/v1/chat/completions");
+        requests[1].InputFingerprint.ShouldNotBe(unboundHarness.Authority.Requests[1].InputFingerprint);
         requests.ShouldAllBe(request => !request.InputFingerprint.Value.Contains("sk-test", StringComparison.Ordinal));
     }
 
@@ -1041,6 +1043,93 @@ public sealed class OpenAICompatibleLlmModelBaseTests
         result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
         harness.Authority.Requests.ShouldBeEmpty();
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCredentialReadGrantDenied_FailsAuthorizationWithoutReadingTheSecretOrSending()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var harness = ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now));
+        harness.Authority.Deny = static request => request.Audience == ProviderCredentialReadGate.DefaultAudience;
+        var source = new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-unread-secret"));
+        var model = CreateModel(handler, NonStreamingProfile, source, harness: harness);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
+        failed.Failure.SafeMessage.ShouldNotContain("sk-unread-secret");
+        source.ResolutionCount.ShouldBe(0);
+        handler.Requests.ShouldBeEmpty();
+        _ = harness.Authority.Requests.ShouldHaveSingleItem();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAttemptCompletes_DisposesTheSelectedRuntimeLeaseOnce()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var selector = new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")), new Uri("https://api.openai.test/"));
+        var model = new TestLlmModel(
+            TestModels.Gpt4O,
+            NonStreamingProfile,
+            new OpenAIRequestTranslator(),
+            new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress,
+            new FakeTimeProvider(Now),
+            selector);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        selector.Selections.ShouldBe(1);
+        selector.Disposals.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCredentialIsRefusedByTheLease_DisposesTheRuntimeLeaseAndSendsNothing()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var selector = new StaticProviderProfileRuntimeSelector(
+            new StaticProviderCredentialSource(new OAuthTokenProviderCredential("expired-token", Now.AddMinutes(-1))),
+            new Uri("https://api.openai.test/"));
+        var model = new TestLlmModel(
+            TestModels.Gpt4O,
+            NonStreamingProfile,
+            new OpenAIRequestTranslator(),
+            new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress,
+            new FakeTimeProvider(Now),
+            selector);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        selector.Disposals.ShouldBe(1);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenDescriptorIsUnbound_SendsNoCredentialAndSelectsNoProfile()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var selector = new StaticProviderProfileRuntimeSelector(new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-never-sent")));
+        var unbound = TestModels.Gpt4O with { Binding = null };
+        var model = new TestLlmModel(
+            unbound,
+            NonStreamingProfile,
+            new OpenAIRequestTranslator(),
+            new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
+            ProviderEgressHarness.Create(handler, new FakeTimeProvider(Now)).Egress,
+            new FakeTimeProvider(Now),
+            selector);
+
+        var result = await model.ExecuteAsync(CreateRequest(unbound, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        selector.Selections.ShouldBe(0);
+        handler.Requests.ShouldHaveSingleItem().Headers.Authorization.ShouldBeNull();
     }
 
     [Theory]

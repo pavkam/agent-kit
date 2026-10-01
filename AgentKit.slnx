@@ -162,6 +162,7 @@
     <Project Path="tests/AgentKit.Evaluation.Tests/AgentKit.Evaluation.Tests.csproj"/>
     <Project Path="tests/AgentKit.Evaluation.InMemory.Tests/AgentKit.Evaluation.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Evaluation.Json.Tests/AgentKit.Evaluation.Json.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Evaluation.Live.Tests/AgentKit.Evaluation.Live.Tests.csproj"/>
     <Project Path="tests/AgentKit.Evaluation.Sqlite.Tests/AgentKit.Evaluation.Sqlite.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Tests/AgentKit.Tools.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Read.Tests/AgentKit.Tools.Read.Tests.csproj"/>

@@ -41,8 +41,6 @@ above are composition collaborators, not necessarily dependencies.
   — intended ownership and contracts.
 - [Mistral AI API reference](../../docs/providers/mistral-ai.md) — wire behavior
   and capability requirements.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

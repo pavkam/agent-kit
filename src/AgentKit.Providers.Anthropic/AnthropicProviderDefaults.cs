@@ -3,7 +3,6 @@
 
 namespace AgentKit.Providers.Anthropic;
 
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Anthropic

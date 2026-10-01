@@ -21,7 +21,14 @@ public sealed class AwsBedrockLlmModelTests
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty, ProviderEgressHarness.Operation);
     }
 
-    private static AwsBedrockLlmModel CreateModel(HttpMessageHandler handler, IAwsCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AwsBedrockProviderOptions? options = null) => new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AwsBedrockProviderOptions { Region = "us-east-1" }, new AwsBedrockRequestTranslator(), new AwsBedrockResponseParser(new SequentialToolCallIdGenerator()), credentials, ProviderEgressHarness.Create(handler, timeProvider ?? new FakeTimeProvider(Now)).Egress, timeProvider ?? new FakeTimeProvider(Now), new AwsBedrockProfileCredentialSource());
+    private static AwsBedrockLlmModel CreateModel(HttpMessageHandler handler, IAwsCredentialSource credentials, ModelDescriptor? descriptor = null, TimeProvider? timeProvider = null, AwsBedrockProviderOptions? options = null)
+    {
+        var clock = timeProvider ?? new FakeTimeProvider(Now);
+        var harness = ProviderEgressHarness.Create(handler, clock);
+        var source = new AwsSigV4CredentialSource(StaticProviderProfileRuntimeSelector.SourceKey, credentials, "us-east-1", AwsBedrockProviderDefaults.SigningServiceName, harness.Gate);
+        return new(descriptor ?? TestModels.ClaudeSonnet, options ?? new AwsBedrockProviderOptions { Region = "us-east-1" }, new AwsBedrockRequestTranslator(), new AwsBedrockResponseParser(new SequentialToolCallIdGenerator()), harness.Egress, clock, new StaticProviderProfileRuntimeSelector(source, new Uri("https://bedrock-runtime.us-east-1.amazonaws.com/")));
+    }
+
     private static StaticAwsCredentialSource CreateCredentials() => new(new AwsSigV4Credential("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", null));
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_SendsSignedConverseRequest()

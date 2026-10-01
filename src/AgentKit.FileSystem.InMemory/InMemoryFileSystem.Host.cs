@@ -149,6 +149,59 @@ public sealed partial class InMemoryFileSystem
     }
 
     /// <inheritdoc/>
+    public async ValueTask<FileDeleteResult> DeleteAsync(
+        AuthorizedFileDelete operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        var path = VirtualPath(operation.ResolvedTarget);
+        var enforcement = FileSystemEnforcementReceipt.Create(
+            operation.Grant,
+            SecurityAudience,
+            SecurityOperationKind.FileWrite,
+            SecurityEffect.Delete,
+            [FileSecurityBinding.Resource(operation.ResolvedTarget)],
+            FileSecurityBinding.DeleteFingerprint(operation));
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var denial = await InMemoryFileSystemHostGuard.ConsumeWithRequiredAuditAsync(
+            operation.Grant,
+            enforcement,
+            intent,
+            _grantStore,
+            _hostAuditDispatcher,
+            _hostAuditRecordIds,
+            _timeProvider,
+            cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (denial is not null)
+        {
+            return new FileDeleteDenied(denial);
+        }
+
+        lock (_gate)
+        {
+            if (_directories.Contains(path))
+            {
+                return new FileDeleteConflict(operation.ResolvedTarget, "The target is not a regular file.");
+            }
+
+            if (!_files.TryGetValue(path, out var existing))
+            {
+                return new FileDeleteNotFound(operation.ResolvedTarget);
+            }
+
+            if (operation.ExpectedTargetFingerprint is { } expected
+                && FileSecurityBinding.ContentFingerprint(existing.AsSpan()) != expected)
+            {
+                return new FileDeleteConflict(operation.ResolvedTarget, "The target fingerprint did not match the required precondition.");
+            }
+
+            _ = _files.Remove(path);
+            return new FileDeleteSuccess(operation.ResolvedTarget, existing.Length);
+        }
+    }
+
+    /// <inheritdoc/>
     public async ValueTask<FileMetadataResult> GetMetadataAsync(
         AuthorizedFileMetadataRead operation,
         CancellationToken cancellationToken = default)

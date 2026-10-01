@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.Cohere.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for Cohere's <c>command-a-plus-05-2026</c> model.</summary>
-    public static ModelDescriptor CommandAPlus { get; } = new(
+    public static ModelDescriptor CommandAPlus { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         CohereProviderDefaults.ProviderId,
         CohereProviderDefaults.ApiFamily,
@@ -16,7 +18,7 @@ internal static class TestModels
         CohereProviderDefaults.DefaultCapabilities,
         CohereProviderDefaults.DefaultLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = CommandAPlus with

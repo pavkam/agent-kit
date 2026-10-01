@@ -15,11 +15,13 @@ public static class StaticHookRunComposition
     /// <param name="runStartedHooks">Optional run-started observers.</param>
     /// <param name="beforeModelRequestHooks">Optional before-model-request mutators.</param>
     /// <param name="beforeToolInvocationHooks">Optional before-tool-invocation short-circuit hooks.</param>
+    /// <param name="beforeRetrievalHooks">Optional before-retrieval budget-narrowing hooks.</param>
     /// <returns>A catalog and factory that expose the supplied hooks through the kernel dispatch path.</returns>
     public static (IHookCatalog Catalog, IHookInstanceFactory Factory) Create(
         IEnumerable<IRunStartedHook>? runStartedHooks = null,
         IEnumerable<IBeforeModelRequestHook>? beforeModelRequestHooks = null,
-        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null)
+        IEnumerable<IBeforeToolInvocationHook>? beforeToolInvocationHooks = null,
+        IEnumerable<IBeforeRetrievalHook>? beforeRetrievalHooks = null)
     {
         var descriptors = ImmutableArray.CreateBuilder<HookRegistrationDescriptor>();
         var instances = new Dictionary<HookRegistrationId, object>();
@@ -27,6 +29,7 @@ public static class StaticHookRunComposition
         Add(descriptors, instances, runStartedHooks, AgentHookPointDefinitions.RunStartedRegistration);
         Add(descriptors, instances, beforeModelRequestHooks, AgentHookPointDefinitions.BeforeModelRequestRegistration);
         Add(descriptors, instances, beforeToolInvocationHooks, AgentHookPointDefinitions.BeforeToolInvocationRegistration);
+        Add(descriptors, instances, beforeRetrievalHooks, AgentHookPointDefinitions.BeforeRetrievalRegistration);
 
         var snapshot = new HookCatalogSnapshot(
             DefaultProfileKey,

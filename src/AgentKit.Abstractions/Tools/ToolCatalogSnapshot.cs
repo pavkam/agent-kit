@@ -125,6 +125,36 @@ public sealed record ToolCatalogSnapshot
     /// <value>A default-comparer immutable map; multiple aliases may target one identity.</value>
     public ImmutableDictionary<ToolAlias, ToolIdentity> ProviderAliases { get; }
 
+    /// <summary>Creates the snapshot that exposes only the tools whose identifiers appear in <paramref name="allowedTools"/>.</summary>
+    /// <param name="allowedTools">The tool identifiers to retain. An empty set retains nothing; identifiers absent from this catalog are ignored.</param>
+    /// <returns>
+    /// A snapshot with the same run, identity, policy, and version evidence whose tools, execution policies, and provider
+    /// aliases are restricted to the intersection. Every call that names a tool outside the intersection resolves to an unknown
+    /// tool against the result, so restriction fails closed.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="allowedTools"/> is the default array.</exception>
+    public ToolCatalogSnapshot IntersectWith(ImmutableArray<ToolId> allowedTools)
+    {
+        ArgumentException.ThrowIfDefault(allowedTools);
+
+        var allowed = allowedTools.ToHashSet();
+        var retained = Tools.Where(tool => allowed.Contains(tool.Id)).ToImmutableArray();
+        var identities = retained.Select(static tool => new ToolIdentity(tool.Id, tool.Version)).ToHashSet();
+        return new ToolCatalogSnapshot(
+            AgentId,
+            SessionId,
+            RunId,
+            Identity,
+            SecurityPolicy,
+            AgentDefinitionRevision,
+            ConfigurationVersion,
+            Version,
+            SourceVersions,
+            retained,
+            ExecutionPolicies.Where(pair => identities.Contains(pair.Key)).ToImmutableDictionary(),
+            ProviderAliases.Where(pair => identities.Contains(pair.Value)).ToImmutableDictionary());
+    }
+
     /// <summary>Determines whether another snapshot contains the same complete bound evidence.</summary>
     /// <param name="other">The snapshot to compare, or null.</param>
     /// <returns>True when scalar evidence matches, descriptors match in order, and all maps contain the same exact entries independent of enumeration order.</returns>

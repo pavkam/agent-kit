@@ -3,7 +3,6 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
-using AgentKit.Providers.Http;
 
 /// <summary>
 /// The fixed identity and capability defaults for the Google Cloud Vertex

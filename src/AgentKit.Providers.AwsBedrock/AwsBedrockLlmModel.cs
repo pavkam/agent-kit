@@ -20,11 +20,12 @@ using AgentKit.Providers.Http;
 /// </summary>
 /// <remarks>
 /// Unlike this repository's other provider integrations, authentication is
-/// not an <see cref="IProviderCredentialSource"/>/<see cref="ProviderCredential"/>
-/// bearer-token or API-key header; every request is signed in place with
-/// AWS Signature Version 4 using an <see cref="IAwsCredentialSource"/>-resolved
-/// <see cref="AwsSigV4Credential"/>, and a streaming response is framed as
-/// a binary AWS event stream rather than server-sent events.
+/// not a bearer-token or API-key header: <see cref="AwsSigV4CredentialSource"/>
+/// releases an <see cref="AwsSigV4CredentialLease"/> under a credential-read
+/// grant, and the lease signs the prepared request with AWS Signature
+/// Version 4 when <see cref="ProviderEgress"/> applies it. A streaming
+/// response is framed as a binary AWS event stream rather than server-sent
+/// events.
 /// </remarks>
 public sealed class AwsBedrockLlmModel: ILlmModel
 {
@@ -37,11 +38,9 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     private readonly AwsBedrockProviderOptions _options;
     private readonly IAwsBedrockRequestTranslator _translator;
     private readonly IAwsBedrockResponseParser _responseParser;
-    private readonly IAwsCredentialSource _credentials;
     private readonly ProviderEgress _egress;
     private readonly TimeProvider _timeProvider;
-    private readonly IProviderProfileRuntimeSelector? _profileSelector;
-    private readonly IProviderCredentialSource _profileCredentialPlaceholder;
+    private readonly IProviderProfileRuntimeSelector _profileSelector;
 
     /// <summary>Initializes a new instance of the <see cref="AwsBedrockLlmModel"/> class.</summary>
     /// <param name="descriptor">
@@ -54,43 +53,34 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     /// <param name="options">The validated Bedrock provider options.</param>
     /// <param name="translator">Translates provider-neutral requests into Converse request bodies.</param>
     /// <param name="responseParser">Parses Converse/ConverseStream responses into normalized events.</param>
-    /// <param name="credentials">Resolves the current AWS credential to sign a request with.</param>
     /// <param name="egress">The provider-egress boundary every attempt sends through.</param>
     /// <param name="timeProvider">The clock used for deadline and request-signing timestamps.</param>
-    /// <param name="profileCredentialPlaceholder">
-    /// The profile-runtime placeholder credential source; SigV4 signing uses <paramref name="credentials"/> instead.
-    /// </param>
-    /// <param name="profileSelector">The optional profile runtime selector used when the descriptor carries a binding.</param>
+    /// <param name="profileSelector">The engine-wide profile runtime selector that resolves the descriptor's captured endpoint and credential profile binding.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public AwsBedrockLlmModel(
         ModelDescriptor descriptor,
         AwsBedrockProviderOptions options,
         IAwsBedrockRequestTranslator translator,
         IAwsBedrockResponseParser responseParser,
-        IAwsCredentialSource credentials,
         ProviderEgress egress,
         TimeProvider timeProvider,
-        IProviderCredentialSource profileCredentialPlaceholder,
-        IProviderProfileRuntimeSelector? profileSelector = null)
+        IProviderProfileRuntimeSelector profileSelector)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(translator);
         ArgumentNullException.ThrowIfNull(responseParser);
-        ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(egress);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(profileCredentialPlaceholder);
+        ArgumentNullException.ThrowIfNull(profileSelector);
 
         Alias = descriptor.Alias;
         _descriptor = descriptor;
         _options = options;
         _translator = translator;
         _responseParser = responseParser;
-        _credentials = credentials;
         _egress = egress;
         _timeProvider = timeProvider;
-        _profileCredentialPlaceholder = profileCredentialPlaceholder;
         _profileSelector = profileSelector;
     }
 
@@ -178,24 +168,15 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         await using var sendContext = await NativeProviderChatSend.BeginAsync(
                 _descriptor,
                 request,
-                _profileCredentialPlaceholder,
                 _profileSelector,
                 _timeProvider,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!sendContext.IsSuccess)
         {
-            return await FailAsync(sendContext.Failure!).ConfigureAwait(false);
-        }
-
-        AwsSigV4Credential credential;
-        try
-        {
-            credential = await _credentials.GetCredentialAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return await CancelAsync().ConfigureAwait(false);
+            return sendContext.Failure!.Kind is ProviderFailureKind.Cancellation
+                ? await CancelAsync(sendContext.Failure).ConfigureAwait(false)
+                : await FailAsync(sendContext.Failure).ConfigureAwait(false);
         }
 
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
@@ -213,12 +194,12 @@ public sealed class AwsBedrockLlmModel: ILlmModel
                 exception).ConfigureAwait(false);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, credential, useStreaming, sendContext.EndpointBaseOverride);
+        using var httpRequest = CreateHttpRequest(payload, useStreaming, sendContext.EndpointBaseOverride);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
         var sent = await _egress
-            .SendAsync(ProviderEgressRequest.ForConversation(_descriptor, request, httpRequest, useStreaming), cancellationToken)
+            .SendAsync(ProviderEgressRequest.ForConversation(_descriptor, request, httpRequest, useStreaming, sendContext.CreateCredential(ProviderAuthorizationScheme.OAuthTokenOnly)), cancellationToken)
             .ConfigureAwait(false);
         if (sent is ProviderEgressRefused refused)
         {
@@ -307,7 +288,6 @@ public sealed class AwsBedrockLlmModel: ILlmModel
 
     private HttpRequestMessage CreateHttpRequest(
         JsonObject payload,
-        AwsSigV4Credential credential,
         bool useStreaming,
         Uri? endpointBaseOverride)
     {
@@ -320,32 +300,12 @@ public sealed class AwsBedrockLlmModel: ILlmModel
 
         var body = Encoding.UTF8.GetBytes(payload.ToJsonString());
 
-        var signingHeaders = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["content-type"] = _jsonContentType.MediaType!,
-        };
-
-        var signedHeaders = AwsSigV4Signer.SignRequest(
-            HttpMethod.Post.Method,
-            uri,
-            signingHeaders,
-            body,
-            credential,
-            _options.Region,
-            AwsBedrockProviderDefaults.SigningServiceName,
-            _timeProvider.GetUtcNow());
-
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = new ByteArrayContent(body),
         };
 
         httpRequest.Content.Headers.ContentType = _jsonContentType;
-
-        foreach (var (name, value) in signedHeaders)
-        {
-            _ = httpRequest.Headers.TryAddWithoutValidation(name, value);
-        }
 
         return httpRequest;
     }

@@ -38,4 +38,33 @@ public sealed class ServiceExtensionsTests
         File.Exists(database.PathOf()).ShouldBeTrue();
         File.Exists(database.PathOf("ignored")).ShouldBeFalse();
     }
+
+    [Fact]
+    public void AddSqliteArtifactReferenceCommitIntentStore_WhenArgumentsAreInvalid_ThrowsNamingThem()
+    {
+        using var database = new SqliteArtifactTestDatabase();
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddSqliteArtifactReferenceCommitIntentStore(database.Target())).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => new ServiceCollection().AddSqliteArtifactReferenceCommitIntentStore(null!)).ParamName.ShouldBe("target");
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => new ServiceCollection().AddSqliteArtifactReferenceCommitIntentStore(database.Target(), static options => options.MaximumRecordBytes = 0));
+    }
+
+    [Fact]
+    public async Task AddSqliteArtifactReferenceCommitIntentStore_WhenRegisteredTwice_ResolvesTheFirstUnkeyedStoreThatOpensLazily()
+    {
+        using var database = new SqliteArtifactTestDatabase();
+        var services = new ServiceCollection();
+        _ = services.AddSqliteArtifactReferenceCommitIntentStore(database.Target());
+        _ = services.AddSqliteArtifactReferenceCommitIntentStore(database.Target("ignored"));
+        await using var provider = services.BuildServiceProvider();
+
+        var store = provider.GetRequiredService<IArtifactReferenceCommitIntentStore>();
+
+        store.ShouldBeOfType<SqliteArtifactReferenceCommitIntentStore>().ShouldBeSameAs(provider.GetRequiredService<IArtifactReferenceCommitIntentStore>());
+        File.Exists(database.PathOf()).ShouldBeFalse();
+        await ((SqliteArtifactReferenceCommitIntentStore) store).InitializeAsync(TestContext.Current.CancellationToken);
+        File.Exists(database.PathOf()).ShouldBeTrue();
+        File.Exists(database.PathOf("ignored")).ShouldBeFalse();
+    }
 }

@@ -34,6 +34,47 @@ public sealed class DefaultProviderProfileRuntimeSelectorTests
         _ = result.ShouldBeOfType<ProviderProfileRuntimeUnavailable>();
     }
 
+    [Fact]
+    public async Task SelectAsync_WhenSourceIsRegisteredOnlyUnderTheProviderIdentity_ReturnsUnavailableInsteadOfFallingBack()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddProviderEndpointProfile(new ProviderEndpointProfileKey("endpoint"), static options =>
+        {
+            options.ProviderId = new ProviderId("openai");
+            options.ServiceSurface = new ProviderServiceSurfaceId("chat");
+            options.EndpointId = new ProviderEndpointId("primary");
+            options.BaseAddress = new Uri("https://api.example.test");
+        });
+        _ = services.AddProviderCredentialProfile(new ProviderCredentialProfileKey("credential"), static options =>
+        {
+            options.ProviderId = new ProviderId("openai");
+            options.ServiceSurface = new ProviderServiceSurfaceId("chat");
+            options.SourceKey = new ProviderCredentialSourceKey("api-key");
+        });
+        _ = services.AddKeyedSingleton<IProviderCredentialSource, StubCredentialSource>(new ProviderId("openai"));
+        _ = services.AddAgentProviders();
+        using var provider = services.BuildServiceProvider();
+        var selector = provider.GetRequiredService<IProviderProfileRuntimeSelector>();
+
+        var result = await selector.SelectAsync(Binding(provider), Operation(), TestContext.Current.CancellationToken);
+
+        var unavailable = result.ShouldBeOfType<ProviderProfileRuntimeUnavailable>();
+        unavailable.Failure.SafeMessage.ShouldBe("No credential source is registered for the selected credential profile.");
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenSelected_ExposesTheSourceThatEnforcesCredentialReadGrants()
+    {
+        using var provider = BuildProvider();
+        var selector = provider.GetRequiredService<IProviderProfileRuntimeSelector>();
+
+        var result = await selector.SelectAsync(Binding(provider), Operation(), TestContext.Current.CancellationToken);
+
+        var source = result.ShouldBeOfType<ProviderProfileRuntimeSelected>().Runtime.CredentialSource;
+        source.Key.ShouldBe(new ProviderCredentialSourceKey("api-key"));
+        source.SecurityAudience.ShouldBe(new ComponentId("test.credentials"));
+    }
+
     private static ServiceProvider BuildProvider(bool registerEndpoint = true, bool registerCredential = true, bool registerSource = true)
     {
         var services = new ServiceCollection();
@@ -94,7 +135,13 @@ public sealed class DefaultProviderProfileRuntimeSelectorTests
 
     private sealed class StubCredentialSource: IProviderCredentialSource
     {
-        public ValueTask<ProviderCredential> GetCredentialAsync(ProviderId providerId, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ProviderCredential>(new ApiKeyProviderCredential("test"));
+        public ProviderCredentialSourceKey Key { get; } = new("api-key");
+
+        public ComponentId SecurityAudience { get; } = new("test.credentials");
+
+        public ValueTask<ProviderCredentialResolutionResult> ResolveAsync(
+            ProviderCredentialResolutionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Selector tests never resolve a credential.");
     }
 }

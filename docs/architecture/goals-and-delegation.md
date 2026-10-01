@@ -741,11 +741,19 @@ minimal shape left open, and none widens authority.
   so the first committed intent starts it and disposing the engine's provider
   stops it.
 - The child budget is reserved as a child scope through `IBudgetAuthority` when
-  one is composed, but the engine exposes no per-run budget injection, so the
-  child run is bounded by its turn limit and the delegation deadline rather than
-  by that scope. The recorded `AllowedTools` scope is narrowed and audited, but
-  the engine has no per-run tool filter, so the child's tool surface is its own
-  definition's.
+  one is composed, and the child run is placed under it:
+  `AgentRunOptions.BudgetParentScopeId` makes the delegation's scope the parent
+  of the run's own budget scope, so the child's spend and reservations roll up
+  to and are bounded by the delegated budget as well as by its turn limit and
+  the delegation deadline. Without a composed budget authority there is no scope
+  and only the turn limit and deadline bound the child.
+- The recorded `AllowedTools` scope is enforced as a per-run tool filter:
+  `AgentRunOptions.AllowedTools` is captured with the run policy, and the run's
+  tool catalog capture is intersected with it before any model exposure, so a
+  tool outside the list is not offered and a model call for it resolves as an
+  unknown tool and fails closed. An empty list exposes no tools; `null` leaves
+  the definition's own surface. The filter only narrows: it cannot add a tool
+  the definition does not already expose, and it grants no authority.
 - `IDelegationChildRunner` provisions a session and runs one claimed attempt.
   The engine-backed runner awaits `Agent.RunAsync`, which works with every
   output publisher; replace it to run children elsewhere.
@@ -757,7 +765,17 @@ the recipient's public input path. The input identity derives deterministically
 from the sender, recipient session, and idempotency key, and the sender,
 recipient, causal goal and attempt, and key travel as input extension data
 marked `instruction_authority: false`. The recipient session's store owns
-idempotency and conflict detection. No model-facing messaging tool is provided.
+idempotency and conflict detection.
+
+There is deliberately no model-facing messaging tool. A tool would let a model
+steer another agent's session, which is an authority-bearing action: it needs a
+sender-to-recipient policy (who may message whom, how often, with what trust)
+that the specification does not define and that differs per application, and the
+recipient treats the content as untrusted data either way. An application that
+wants one writes a tool over `IAgentMessageChannel`, so the message is admitted
+through the same public input path and the same security authority as any other
+input. Delegation (`AgentKit.Tools.Task`) remains the first-party model-facing
+way to hand work to another agent.
 
 ### Composition validation
 

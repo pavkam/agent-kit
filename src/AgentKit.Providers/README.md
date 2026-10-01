@@ -34,12 +34,24 @@ classification, then obtains separate resolution and send grants for
 authority, grant store, or required audit, an elapsed deadline, and every
 transport failure return a typed `ProviderEgressRefused` carrying the stable
 `ProviderFailure` taxonomy before any DNS or I/O where the failure precedes it.
+Before the egress grant, a request that names a credential runtime obtains and
+consumes a distinct credential-read grant (`ProviderCredentialReadGate`),
+resolves one disposable `IProviderCredentialLease` from the profile's captured
+`IProviderCredentialSource`, applies it to the request through
+`IProviderAuthenticationTarget`, and drops it; a descriptor bound to profiles
+must resolve its named source and an unbound descriptor sends no credential.
 Redirects are never followed, and credentials appear only in the transport
 request. The composition must register the network leaf (`AddAgentNetwork` or
 `AddAgentNetworkInMemory`) and the security services it requires;
 `ProviderEgressOptions` configures the connect, request-size, and response-size
 bounds and the payload classification. See
-[Provider egress: shipped design and deviations](../../docs/architecture/model-and-embedding-providers.md#provider-egress-shipped-design-and-deviations).
+[Provider egress: shipped design and deviations](../../docs/architecture/model-and-embedding-providers.md#provider-egress-shipped-design-and-deviations)
+and
+[Credential read](../../docs/architecture/model-and-embedding-providers.md#credential-read-shipped-design-and-deviations).
+`AddStaticApiKeySource`, `AddOAuthTokenSource`, and `AddCredentialReadGate` in
+`ProviderCredentialSourceRegistration` register the first-party sources and
+gate; a lease drops its secret reference on disposal but cannot zero a .NET
+string.
 
 ## Shared HTTP helpers
 
@@ -179,8 +191,6 @@ projects above are composition collaborators, not necessarily dependencies.
   focused behavior and registration tests.
 - [Component specification](../../docs/architecture/model-and-embedding-providers.md)
   — intended ownership and contracts.
-- [Workstreams](../../docs/workstreams/index.md) — how this component was built,
-  chunk by chunk.
 
 [Project catalog](../../docs/packages/index.md) ·
 [Contributing](../../CONTRIBUTING.md)

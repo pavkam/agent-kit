@@ -82,8 +82,48 @@ public sealed class DefaultContextAssemblerContributorTests
         CountingContributor.InvocationCount.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task AssembleAsync_WhenTheRequestCarriesAHookContext_ForwardsItToEveryContributor()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentContext();
+        _ = services.AddContextContributor<HookCapturingContributor>(
+            AgentContextComponentDefaults.AssemblerKey,
+            new ContextContributorRegistration(
+                new ContextSourceKey("hooks"),
+                order: 0,
+                ContextEvaluationFrequency.OncePerModelRequest,
+                required: false));
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var assembler = scope.ServiceProvider.GetRequiredService<IContextAssembler>();
+        var request = CreateEvidenceRequest([TestFactory.UserMessage()]);
+        var hooks = await HookDispatchContextFixtures.CreateAsync(AgentHookPoints.BeforeRetrieval, request.Evidence.Authorization.Scope.Correlation);
+
+        HookCapturingContributor.Seen.Clear();
+        _ = await assembler.AssembleAsync(request with { Hooks = hooks }, TestContext.Current.CancellationToken);
+        _ = await assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        HookCapturingContributor.Seen.Count.ShouldBe(2);
+        HookCapturingContributor.Seen[0].ShouldBeSameAs(hooks);
+        HookCapturingContributor.Seen[1].ShouldBeNull();
+    }
+
     private static ContextAssemblyRequest CreateEvidenceRequest(ImmutableArray<AgentMessage> history) =>
         TestFactory.AssemblyRequest(history);
+
+    private sealed class HookCapturingContributor: IContextContributor
+    {
+        internal static List<HookDispatchContext?> Seen { get; } = [];
+
+        public ValueTask<ContextContribution> ContributeAsync(
+            ContextContributionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Seen.Add(request.Hooks);
+            return ValueTask.FromResult(new ContextContribution([], []));
+        }
+    }
 
     private sealed class ReferenceContributor: IContextContributor
     {

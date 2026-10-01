@@ -3,11 +3,13 @@
 
 namespace AgentKit.Providers.GoogleGemini.Tests;
 
+using AgentKit.TestSupport;
+
 /// <summary>Shared <see cref="ModelDescriptor"/> fixtures reused across tests.</summary>
 internal static class TestModels
 {
     /// <summary>Gets a representative descriptor for Gemini's <c>gemini-2.5-flash</c> model.</summary>
-    public static ModelDescriptor GeminiFlash { get; } = new(
+    public static ModelDescriptor GeminiFlash { get; } = ProviderEgressHarness.Bind(new ModelDescriptor(
         new ModelAlias("chat"),
         GoogleGeminiProviderDefaults.ProviderId,
         GoogleGeminiProviderDefaults.ApiFamily,
@@ -16,7 +18,7 @@ internal static class TestModels
         GoogleGeminiProviderDefaults.DefaultCapabilities,
         GoogleGeminiProviderDefaults.DefaultLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 
     /// <summary>Gets a representative descriptor for a model that does not support tool calls.</summary>
     public static ModelDescriptor NoToolSupport { get; } = GeminiFlash with
@@ -33,7 +35,7 @@ internal static class TestModels
     };
 
     /// <summary>Gets a representative descriptor for Gemini's <c>text-embedding-004</c> model.</summary>
-    public static EmbeddingModelDescriptor TextEmbedding004 { get; } = new(
+    public static EmbeddingModelDescriptor TextEmbedding004 { get; } = ProviderEgressHarness.Bind(new EmbeddingModelDescriptor(
         new EmbeddingModelAlias("embed"),
         GoogleGeminiProviderDefaults.ProviderId,
         GoogleGeminiProviderDefaults.EmbeddingApiFamily,
@@ -42,5 +44,5 @@ internal static class TestModels
         GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities,
         GoogleGeminiProviderDefaults.DefaultEmbeddingLimits,
         pricing: null,
-        ExtensionData.Empty);
+        ExtensionData.Empty));
 }

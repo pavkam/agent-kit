@@ -75,7 +75,7 @@ namespace AgentKit.Loop
     }
     public static class RunPolicyVersioning
     {
-        public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey, AgentKit.Loop.AgentLoopOptions options) { }
+        public static AgentKit.RunPolicyVersion Compute(int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> continuationPolicyKey, AgentKit.Loop.AgentLoopOptions options, System.Collections.Immutable.ImmutableArray<AgentKit.ToolId>? allowedTools = default, AgentKit.BudgetScopeId? budgetParentScopeId = default) { }
     }
     public static class ServiceExtensions
     {

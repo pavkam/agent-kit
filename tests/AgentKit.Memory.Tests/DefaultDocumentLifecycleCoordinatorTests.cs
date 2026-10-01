@@ -275,6 +275,46 @@ public sealed class DefaultDocumentLifecycleCoordinatorTests
     }
 
     [Fact]
+    public async Task PublishAsync_WhenCompleted_LogsTheDocumentOperationEventWithoutContent()
+    {
+        var logger = new RecordingLogger<DefaultDocumentLifecycleCoordinator>();
+        using var harness = DocumentHarness.Create(arrange: services => services.AddSingleton<ILogger<DefaultDocumentLifecycleCoordinator>>(logger));
+        var owner = MemoryTestData.NewOwner();
+
+        _ = await Coordinator(harness).PublishAsync(
+            DocumentHarness.Publish(owner, new DocumentId(Guid.NewGuid()), "v1", "xxx protected document body.", "publish-log"), TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(32330);
+        entry.Level.ShouldBe(LogLevel.Information);
+        entry.Message.ShouldNotContain("protected document body");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAVectorIndexCannotBeCleaned_LogsTheCleanupPendingEvent()
+    {
+        var logger = new RecordingLogger<DefaultDocumentLifecycleCoordinator>();
+        using var harness = DocumentHarness.Create(
+            arrange: services =>
+            {
+                _ = services.AddSingleton<ILogger<DefaultDocumentLifecycleCoordinator>>(logger);
+                _ = services.AddVectorIndex<UncleanableIndex>(DocumentHarness.Space.IndexKey);
+            },
+            withVectors: false,
+            profile: configured => configured.VectorIndexes = [DocumentHarness.Space.IndexKey]);
+        var owner = MemoryTestData.NewOwner();
+        var id = new DocumentId(Guid.NewGuid());
+        _ = await Coordinator(harness).PublishAsync(DocumentHarness.Publish(owner, id, "v1", "xxx alpha.", "publish-pending"), TestContext.Current.CancellationToken);
+
+        _ = await Coordinator(harness).DeleteAsync(
+            new DocumentRemovalCommand(owner.Context, id, DocumentDeleteMode.Purge, new IdempotencyKey("delete-pending")), TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().Single(static candidate => candidate.EventId.Id == 32331);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.Message.ShouldContain(id.ToString());
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenTheDocumentIsMissing_RejectsAsNotFound()
     {
         using var harness = DocumentHarness.Create();
@@ -319,11 +359,11 @@ public sealed class DefaultDocumentLifecycleCoordinatorTests
         var owner = MemoryTestData.NewOwner();
         var id = new DocumentId(Guid.NewGuid());
         _ = await Coordinator(harness).PublishAsync(DocumentHarness.Publish(owner, id, "v1", "xxx alpha.", "publish-1"), TestContext.Current.CancellationToken);
-        var before = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), TestContext.Current.CancellationToken);
+        var before = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), hooks: null, TestContext.Current.CancellationToken);
         _ = await Coordinator(harness).DeleteAsync(
             new DocumentRemovalCommand(owner.Context, id, DocumentDeleteMode.Purge, new IdempotencyKey("delete-1")), TestContext.Current.CancellationToken);
 
-        var after = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), TestContext.Current.CancellationToken);
+        var after = await harness.Pipeline.RetrieveAsync(MemoryTestData.Query(owner, "x"), hooks: null, TestContext.Current.CancellationToken);
 
         before.Candidates.Any(static candidate => candidate.DocumentId is not null).ShouldBeTrue();
         after.Candidates.Any(static candidate => candidate.DocumentId is not null).ShouldBeFalse();

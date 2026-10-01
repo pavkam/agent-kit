@@ -60,6 +60,12 @@ When changing C#, also read the
 - Register each hook with `Add*Hook<T>(HookRegistrationDescriptor)` using
   `HookRegistrationDescriptors.ForPoint` or an explicit descriptor (profile key,
   order, lifetime, failure mode, reentrancy, edges).
+- Memory points (`AddBeforeMemoryProposalHook`, `AddBeforeMemoryWriteHook`,
+  `AddBeforeRetrievalHook`, `AddBeforeRetrievalExposureHook`) are registered
+  like any other point; the proposal and write points short-circuit with a
+  `MemoryHookVeto`, retrieval narrows the budget only, and exposure drops
+  candidates only. The memory runtime derives per-point dispatches from the
+  caller's `HookDispatchContext` (`HookDispatchContext.ForPoint`).
 - Named profiles: `AddHookProfile` / `ReplaceHookProfile` on
   `HookProfileOptions` (registration filter, profile failure default, reload
   boundary). Agent definitions select profiles through `HookProfile`.
