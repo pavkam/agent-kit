@@ -19,6 +19,13 @@ existing search API, not through the model provider.
 ## Compose the engine
 
 ```csharp
+sealed record SearchHit(string Title, string Url, string Snippet, DateTimeOffset? PublishedAt);
+
+interface ISearchApi
+{
+    Task<IReadOnlyList<SearchHit>> QueryAsync(string query, int maximumResults, CancellationToken cancellationToken);
+}
+
 static AgentEngine CreateResearcher(string notesRoot, string apiKey, ISearchApi searchApi)
 {
     var builder = AgentEngine.CreateBuilder()
@@ -135,6 +142,7 @@ model sees; do not put the upstream exception text in it.
 ## Use it
 
 ```csharp
+ISearchApi searchApi = application.Search; // your search service client
 await using var engine = CreateResearcher("/data/research", apiKey, searchApi);
 
 var result = await engine.SendAsync(

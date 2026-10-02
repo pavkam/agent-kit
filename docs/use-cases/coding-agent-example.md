@@ -33,6 +33,8 @@ what a host that owns its own container writes.
 `AgentRuntime.Create` builds the whole graph. Read it as blocks, each of which
 [Composing an application](../guides/composition.md) explains:
 
+<!-- doc-sample: skip - excerpt compiled by examples/CodingAgent -->
+
 ```csharp
 var builder = AgentEngine.CreateBuilder();
 var services = builder.Services;
@@ -149,6 +151,8 @@ Two details are easy to miss and worth copying:
 not a workspace mutation or a process execution is allowed; those two are
 decided by the current mode:
 
+<!-- doc-sample: skip - excerpt compiled by examples/CodingAgent -->
+
 ```csharp
 var workspaceMutation = kind is SecurityOperationKind.FileWrite or SecurityOperationKind.DirectoryCreate;
 var processExecution = kind == SecurityOperationKind.Process && effect == SecurityEffect.Execute;
@@ -197,6 +201,8 @@ foreach (var conversationEvent in result.Events)
 Interactive, the screen is itself the `IConversationEventObserver`, so text
 deltas, reasoning, tool calls, tool results, usage, and the completed event
 reach the UI as they are committed:
+
+<!-- doc-sample: skip - excerpt compiled by examples/CodingAgent -->
 
 ```csharp
 _ = await _conversation.SendAsync(userText, this, _turnCancellation.Token);

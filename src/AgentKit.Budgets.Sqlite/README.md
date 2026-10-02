@@ -14,6 +14,12 @@ delegate to adjust the documented defaults; invalid bounds throw at
 registration:
 
 ```csharp
+var target = new SqliteBudgetLedgerTarget(
+    Path.GetFullPath("data/agentkit-budgets.db"),
+    new SqliteBudgetLedgerInstanceId(configuredInstanceId),
+    SqliteDatabaseOpenMode.CreateIfMissing,
+    SqliteSchemaMode.ApplyKnownMigrations);
+
 services.AddSqliteBudgetLedger(target, options => options.MaximumBatchSize = 64);
 ```
 

@@ -60,8 +60,8 @@ Adjust the limits when the defaults do not fit:
 ```csharp
 .UseWorkspace("/data/corpus", options =>
 {
-    options.MaximumReadBytes = 50 * 1024 * 1024;
-    options.MaximumSearchFiles = 100_000;
+    options.Bounds = new FileSystemBounds(50 * 1024 * 1024, 10 * 1024 * 1024);
+    options.WorkspaceBounds = FileSystemWorkspaceBounds.Default with { MaximumSearchFiles = 100_000 };
 })
 ```
 

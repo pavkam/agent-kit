@@ -1,4 +1,4 @@
-.PHONY: build clean coverage coverage-check format format-check help lint pack restore test
+.PHONY: build clean coverage coverage-check docs-samples format format-check help lint pack restore test
 
 .DEFAULT_GOAL := help
 
@@ -16,7 +16,8 @@ help:
 	@echo "  make coverage      Run all tests with code coverage and generate an HTML/text report"
 	@echo "  make coverage-check  Run coverage and fail if line coverage is below COVERAGE_MINIMUM_LINE"
 	@echo "  make pack          Create local NuGet packages"
-	@echo "  make lint          Check C# and repository documentation"
+	@echo "  make docs-samples  Compile every C# code sample in the documentation against the Release build"
+	@echo "  make lint          Check C#, repository documentation, and documentation code samples"
 	@echo "  make format        Format C# and repository documentation"
 	@echo "  make format-check  Check formatting without changing files"
 	@echo "  make clean         Clean .NET output"
@@ -40,6 +41,7 @@ test: build
 	else \
 		echo "ℹ️  No test projects exist yet."; \
 	fi
+	@npm run test:docs
 	@echo "✅ Test phase complete."
 
 coverage: build
@@ -73,7 +75,14 @@ pack: build
 	@dotnet pack $(SOLUTION) --configuration $(CONFIGURATION) --no-build --no-restore -p:PackageOutputPath=$(CURDIR)/artifacts/packages
 	@echo "✅ Packages written to artifacts/packages."
 
-lint: restore
+# The sample checker reads the Release output of src/*, examples/*, and the test stack
+# assemblies, so it always depends on a Release build regardless of CONFIGURATION.
+docs-samples: restore
+	@echo "📝 Compiling documentation code samples..."
+	@dotnet build $(SOLUTION) --configuration Release --no-restore
+	@npm run lint:docs-samples
+
+lint: restore docs-samples
 	@echo "🔍 Checking source and documentation..."
 	@dotnet format $(SOLUTION) --verify-no-changes --no-restore --verbosity diagnostic
 	@npm run format:check

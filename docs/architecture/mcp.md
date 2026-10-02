@@ -73,6 +73,10 @@ validates it before invocation, and every catalog refresh publishes a new
 immutable generation.
 
 ```csharp
+public sealed record WeatherRequest(string City);
+
+public sealed record WeatherResponse(double TemperatureCelsius);
+
 public abstract class WeatherTools
 {
     [McpTool("weather.get", "2.1", ReadOnly = true)]
@@ -82,6 +86,7 @@ public abstract class WeatherTools
 }
 
 services.AddMcpToolClient<WeatherTools>();
+var factory = services.BuildServiceProvider().GetRequiredService<McpToolClientFactory<WeatherTools>>();
 var client = await factory.ConnectAsync(transport, cancellationToken: cancellationToken);
 var response = await client.CallAsync(
     tools => tools.GetAsync(new WeatherRequest("Lisbon"), cancellationToken),

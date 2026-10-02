@@ -124,6 +124,11 @@ past `AgentIOOptions.MaximumBestEffortSinkWait`) are isolated and logged
 instead.
 
 ```csharp
+public sealed class MySink : IRunEventSink
+{
+    public ValueTask PublishAsync(RunEvent runEvent, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+}
+
 services.AddAgentIO(inputKey, outputKey, o => o.MaximumBestEffortSinkWait = TimeSpan.FromSeconds(5));
 services.AddRunEventSink<MySink>(new RunEventSinkRegistration("my-sink", RunEventDelivery.BestEffort, order: 0));
 ```

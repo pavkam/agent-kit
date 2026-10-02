@@ -100,7 +100,7 @@ Each `SendAsync` creates a session owned by the identity (or opens the named one
 after checking the agent, tenant, and principal own it), enters that session's
 lane, appends the user message, and runs the agent in its own scope. Turns on
 different sessions run concurrently; a second turn on a busy session is rejected
-with `AgentSessionBusyException` or waits, as the session profile's
+with an `AgentAdmissionRejectedException` or waits, as the session profile's
 `SessionBusyBehavior` says. `AgentLoopResult.SessionId` is the resume token and
 `NewMessages` holds what the turn committed. On a raw `ServiceCollection`, the
 same surface is `AddAgent(AgentDefinition)` plus `AddAgentRunProfilePublication`

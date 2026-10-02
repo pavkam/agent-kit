@@ -27,6 +27,12 @@ anything is registered. The options object itself is never added to the
 container.
 
 ```csharp
+var target = new SqliteSessionStoreTarget(
+    Path.GetFullPath("data/agentkit-sessions.db"),
+    new SqliteSessionStoreInstanceId(configuredInstanceId),
+    SqliteDatabaseOpenMode.CreateIfMissing,
+    SqliteSchemaMode.ApplyKnownMigrations);
+
 services.AddSqliteSessionStore(target, options =>
 {
     options.LockTimeout = TimeSpan.FromSeconds(10);      // whole seconds, >= 1s

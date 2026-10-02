@@ -24,6 +24,13 @@ already-validated JSON and a `ToolInvocationContext` whose grant carries the
 authorization the runtime already obtained:
 
 ```csharp
+sealed record Order(string Number, string Status, string[] Items, DateTimeOffset ShippedAt, string Carrier, string Tracking);
+
+interface IOrderService
+{
+    Task<Order?> FindAsync(PrincipalId customer, string orderNumber, CancellationToken cancellationToken);
+}
+
 sealed class OrderLookupTool(IOrderService orders) : IToolInvoker
 {
     public static readonly ToolId Id = new("lookup_order");
@@ -135,6 +142,7 @@ request, is rejected with a typed result before `InvokeAsync` runs.
 ## Use it
 
 ```csharp
+IOrderService orders = application.Orders; // your order system
 await using var engine = CreateOrderAssistant(customer, orders, apiKey);
 
 var result = await engine.SendAsync("Where is my order UK-00123456?", cancellationToken);

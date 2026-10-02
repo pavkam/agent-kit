@@ -914,6 +914,8 @@ a stale expected revision, a missing session or lane, or an authorization
 failure — appends nothing and prunes nothing. An equivalent idempotent retry
 returns `SessionRunAbortRecorded` without a second revision advance.
 
+<!-- doc-sample: skip - contract shapes of sealed hierarchies -->
+
 ```csharp
 public abstract record SessionRunAbortResult;
 public sealed record SessionRunAbortRecorded(

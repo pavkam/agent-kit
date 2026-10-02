@@ -25,12 +25,19 @@ Telemetry and the shared stores belong to the host. The engine is built once and
 registered as a singleton; each ticket becomes one session on it, so jobs are
 isolated by session while sharing the model catalog, stores, and audit sink:
 
-```csharp
-var host = Host.CreateApplicationBuilder(args);
+<!-- doc-sample: skip - needs the OpenTelemetry SDK packages -->
 
+```csharp
 host.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddSource(AgentKitDiagnostics.ActivitySourceName).AddOtlpExporter())
     .WithMetrics(m => m.AddMeter(AgentKitDiagnostics.MeterName).AddOtlpExporter());
+```
+
+The queue, ticket API, and audit sink are your integrations; the worker and the
+engine are registered beside them:
+
+```csharp
+var host = Host.CreateApplicationBuilder(args);
 
 host.Services.AddSingleton<ITicketQueue, ServiceBusTicketQueue>();
 host.Services.AddSingleton<ITicketApi, HttpTicketApi>();
@@ -44,8 +51,59 @@ await host.Build().RunAsync();
 
 ## Compose the engine
 
+The application contracts the worker depends on, and their implementations
+against your queue, ticketing system, and audit store, are your integrations
+(stubbed here). The policy is the one piece of security state this host owns:
+
 ```csharp
-sealed class TriageWorker(ITicketQueue queue, ITicketApi tickets, AgentEngine engine, ILogger<TriageWorker> logger)
+sealed class ServiceBusTicketQueue : ITicketQueue
+{
+    public IAsyncEnumerable<Ticket> ReadAllAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
+
+    public Task DeadLetterAsync(Ticket ticket, string reason, CancellationToken cancellationToken) => throw new NotImplementedException();
+}
+
+sealed class HttpTicketApi : ITicketApi
+{
+    public Task UpdateAsync(string ticketId, string category, int priority, string draftReply, CancellationToken cancellationToken) => throw new NotImplementedException();
+}
+
+sealed class AuditLogSink : ISecurityAuditSink
+{
+    public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+}
+
+sealed record Ticket(string Id, string Subject, string Body);
+
+interface ITicketQueue
+{
+    IAsyncEnumerable<Ticket> ReadAllAsync(CancellationToken cancellationToken);
+
+    Task DeadLetterAsync(Ticket ticket, string reason, CancellationToken cancellationToken);
+}
+
+interface ITicketApi
+{
+    Task UpdateAsync(string ticketId, string category, int priority, string draftReply, CancellationToken cancellationToken);
+}
+
+sealed class TriagePolicy : ISecurityPolicy
+{
+    public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, SecurityPolicyContext context, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(request.Kind is SecurityOperationKind.StateRead or SecurityOperationKind.StateMutation
+            ? new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "triage.session", "Session state may be read and appended.")
+            : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));
+}
+
+static class TriageLog
+{
+    public static void LogTriageCompleted(this ILogger logger, string ticketId, SessionId sessionId, string outcome, long inputTokens, long outputTokens, decimal cost) =>
+        logger.LogInformation("Triaged ticket {TicketId} in session {SessionId}: {Outcome} (in={InputTokens} out={OutputTokens} cost={Cost})", ticketId, sessionId.Value, outcome, inputTokens, outputTokens, cost);
+}
+```
+
+```csharp
+sealed partial class TriageWorker(ITicketQueue queue, ITicketApi tickets, AgentEngine engine, ILogger<TriageWorker> logger)
     : BackgroundService
 {
     static readonly ExecutionIdentity WorkerIdentity = ExecutionIdentity.ForService(
@@ -115,32 +173,35 @@ the model to repair an invalid one before the turn fails.
 ## Use it
 
 ```csharp
-protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+sealed partial class TriageWorker
 {
-    var definition = (await engine.GetAgentsAsync(stoppingToken)).Definitions.Single();
-    var triage = ((ResolvedAgent) await engine.GetAgentAsync(definition.Id, stoppingToken)).Agent;
-
-    await Parallel.ForEachAsync(queue.ReadAllAsync(stoppingToken), new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = stoppingToken }, async (ticket, ct) =>
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        jobCancellation.CancelAfter(TimeSpan.FromMinutes(3));
+        var definition = (await engine.GetAgentsAsync(stoppingToken)).Definitions.Single();
+        var triage = ((ResolvedAgent) await engine.GetAgentAsync(definition.Id, stoppingToken)).Agent;
 
-        var result = await triage.SendAsync(new AgentSendRequest(WorkerIdentity, TicketPrompt(ticket)), jobCancellation.Token);
-
-        var usage = result.NewMessages.OfType<AssistantMessage>().Select(m => m.Response.Usage)
-            .Where(u => u.ReportState != ModelUsageReportState.NotReported).ToList();
-        logger.LogTriageCompleted(ticket.Id, result.SessionId, result.Outcome.GetType().Name,
-            usage.Sum(u => u.InputTokens ?? 0), usage.Sum(u => u.OutputTokens ?? 0), usage.Sum(u => u.EstimatedCost ?? 0m));
-
-        if (result is { Outcome: RunSucceeded, Output.Value: TriageDecision decision })
+        await Parallel.ForEachAsync(queue.ReadAllAsync(stoppingToken), new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = stoppingToken }, async (ticket, ct) =>
         {
-            await tickets.UpdateAsync(ticket.Id, decision.Category, decision.Priority, decision.DraftReply, ct);
-        }
-        else
-        {
-            await queue.DeadLetterAsync(ticket, result.Outcome.GetType().Name, ct);
-        }
-    });
+            using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            jobCancellation.CancelAfter(TimeSpan.FromMinutes(3));
+
+            var result = await triage.SendAsync(new AgentSendRequest(WorkerIdentity, TicketPrompt(ticket)), jobCancellation.Token);
+
+            var usage = result.NewMessages.OfType<AssistantMessage>().Select(m => m.Response.Usage)
+                .Where(u => u.ReportState != ModelUsageReportState.NotReported).ToList();
+            logger.LogTriageCompleted(ticket.Id, result.SessionId, result.Outcome.GetType().Name,
+                usage.Sum(u => u.InputTokens ?? 0), usage.Sum(u => u.OutputTokens ?? 0), usage.Sum(u => u.EstimatedCost ?? 0m));
+
+            if (result is { Outcome: RunSucceeded, Output.Value: TriageDecision decision })
+            {
+                await tickets.UpdateAsync(ticket.Id, decision.Category, decision.Priority, decision.DraftReply, ct);
+            }
+            else
+            {
+                await queue.DeadLetterAsync(ticket, result.Outcome.GetType().Name, ct);
+            }
+        });
+    }
 }
 ```
 

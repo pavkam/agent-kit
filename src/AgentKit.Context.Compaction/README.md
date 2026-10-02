@@ -52,6 +52,15 @@ strategies, and an agent definition opts in by naming the profile in its
 `AgentOptionalCapabilitySelection.CompactionProfile`:
 
 ```csharp
+public sealed class MyStrategy : ICompactionStrategy
+{
+    public Task<CompactionStrategyResult> ProduceAsync(
+        CompactionStrategyRequest request,
+        BudgetExecutionCapability? budget,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+}
+
 var key = new ComponentKey<ICompactor>("archive");
 services.AddAgentContextCompaction(key, o => o.MinimumRetainedEntries = 4);
 services.AddCompactionStrategy<MyStrategy>(key, new CompactionStrategyRegistration(

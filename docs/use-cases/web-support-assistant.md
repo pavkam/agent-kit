@@ -100,6 +100,8 @@ server-sent events. The engine is resolved once; each request drives the support
 agent for one customer:
 
 ```csharp
+sealed record ChatRequest(string Text);
+
 app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, HttpContext http, AgentEngine engine, CancellationToken ct) =>
 {
     var customer = IdentityFor(http.User, authenticatedAt, expiresAt);   // from the auth ticket
@@ -115,13 +117,11 @@ app.MapPost("/support/{sessionId?}", async (Guid? sessionId, ChatRequest body, H
             new AgentSendRequest(customer, body.Text, sessionId is { } id ? new SessionId(id) : null, observer: observer),
             ct);
     }
-    catch (AgentAdmissionRejectedException)
+    catch (AgentAdmissionRejectedException rejection)
     {
-        return Results.NotFound();          // unknown session, or one that belongs to someone else
-    }
-    catch (AgentSessionBusyException)
-    {
-        return Results.Conflict();          // the customer double-submitted; the first turn is still running
+        // An unknown session, one that belongs to someone else, or a turn that is still running
+        // because the customer double-submitted: the reason is safe to return and says which.
+        return Results.Problem(rejection.Rejection.Reason, statusCode: StatusCodes.Status409Conflict);
     }
 
     await observer.CompleteAsync(result, ct);
@@ -166,8 +166,8 @@ session id that belongs to someone else is rejected before anything is appended.
   with a safe reason.
 - **One turn per session at a time.** The engine enters the session's lane
   before recording the message; the session profile decides whether a second
-  turn waits or fails with `AgentSessionBusyException`. Other customers'
-  sessions are unaffected.
+  turn waits or fails with an `AgentAdmissionRejectedException`. Other
+  customers' sessions are unaffected.
 - **Client disconnect is a clean cancellation.** Cancelling `ct` before the
   message is committed leaves no trace; afterwards the run settles with
   `RunCancelled` and the next `SendAsync` continues from the committed history.

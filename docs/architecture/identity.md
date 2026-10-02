@@ -127,6 +127,8 @@ Rejection uses `AgentErrorCodes.AuthenticationFailed` on typed facade methods
 and throws `AgentAdmissionRejectedException` on legacy `SendAsync` before any
 session mutation occurs.
 
+<!-- doc-sample: skip - internal admission pseudocode -->
+
 ```csharp
 // AgentEngineRuntime admission (conceptual)
 var validation = await identityValidationPolicy.ValidateAsync(identity, cancellationToken);

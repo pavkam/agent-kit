@@ -65,16 +65,16 @@ public static class ModelDescriptorExtensions
 {
     extension(ModelDescriptor descriptor)
     {
-        public bool SupportsStreaming =>
-            descriptor.Capabilities.Contains(ModelCapability.Streaming);
+        public bool CanStreamToolCalls =>
+            descriptor.Capabilities.SupportsStreaming && descriptor.Capabilities.SupportsToolCalls;
 
-        public ValueTask ValidateAsync(CancellationToken cancellationToken) =>
-            descriptor.Validator.ValidateAsync(descriptor, cancellationToken);
+        public bool Supports(ModelCapabilities required) =>
+            descriptor.Capabilities.SupportsStreaming || !required.SupportsStreaming;
     }
 
     extension(ModelDescriptor)
     {
-        public static ModelDescriptor Empty { get; } = new([], []);
+        public static string DisplayPrefix => "model";
     }
 }
 ```

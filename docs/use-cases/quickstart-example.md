@@ -79,7 +79,10 @@ which is the pattern
 
 ```csharp
 var builder = QuickStartAgent.CreateBuilder("sk-test");
-builder.Services.ReplaceNetworkWithHandler(handler); // test helper over INetworkNameResolver and INetworkTransport
+builder.Services.RemoveAll<INetworkNameResolver>();
+builder.Services.RemoveAll<INetworkTransport>();
+builder.Services.AddSingleton(scriptedResolver); // deterministic INetworkNameResolver
+builder.Services.AddSingleton(scriptedTransport); // deterministic INetworkTransport
 await using var engine = builder.Build();
 ```
 

@@ -741,5 +741,15 @@ make build
 make test
 ```
 
+`make lint` also compiles every ```csharp block in the repository's Markdown
+against the Release build (`scripts/validate-doc-samples.mjs`, also
+`make docs-samples`). A sample may omit setup, which the checker stubs, but it
+must otherwise compile against the real API; fix a failing sample rather than
+exempting it. Only an excerpt of code that another build step already compiles,
+or explicit pseudocode, may carry `<!-- doc-sample: skip - reason -->`
+immediately before its fence. Contract-shape blocks that declare a file-scoped
+`namespace X;` are design text and are not compiled. The checker's own tests run
+under `make test`.
+
 Preserve unrelated user work. Do not commit, push, publish packages, rotate
 credentials, or mutate external services unless the task explicitly requests it.

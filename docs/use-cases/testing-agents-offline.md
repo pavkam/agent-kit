@@ -96,16 +96,16 @@ sealed class ScriptedOpenAINetwork
         });
     }
 
-    public static string Text(string content) => $$"""
+    public static string Text(string content) => $$$"""
         {"id":"chatcmpl-1","object":"chat.completion","model":"gpt-4o-mini",
-         "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":{{JsonSerializer.Serialize(content)}}}}],
+         "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":{{{JsonSerializer.Serialize(content)}}}}}],
          "usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
         """;
 
-    public static string ToolCall(string callId, string name, string argumentsJson) => $$"""
+    public static string ToolCall(string callId, string name, string argumentsJson) => $$$"""
         {"id":"chatcmpl-2","object":"chat.completion","model":"gpt-4o-mini",
          "choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":null,
-           "tool_calls":[{"id":"{{callId}}","type":"function","function":{"name":"{{name}}","arguments":{{JsonSerializer.Serialize(argumentsJson)}}}}]}}],
+           "tool_calls":[{"id":"{{{callId}}}","type":"function","function":{"name":"{{{name}}}","arguments":{{{JsonSerializer.Serialize(argumentsJson)}}}}}]}}],
          "usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}
         """;
 }
@@ -142,7 +142,7 @@ public async Task Build_WhenComposed_ValidatesWithoutTouchingTheNetwork()
 {
     await using var engine = TestEngine(ScriptedOpenAINetwork.Replies("unused"));
 
-    (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).ShouldHaveSingleItem();
+    (await engine.GetAgentsAsync(TestContext.Current.CancellationToken)).Definitions.ShouldHaveSingleItem();
 }
 ```
 

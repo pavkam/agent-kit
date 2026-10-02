@@ -88,7 +88,15 @@ For a documentation-only change, format the files you edited, then run:
 ```sh
 npm run format:check
 npm run lint:markdown
+npm run lint:docs-samples
 ```
+
+`lint:docs-samples` compiles every `csharp` code block against the Release build
+(`make docs-samples` builds first), so run
+`dotnet build AgentKit.slnx --configuration Release` beforehand. A sample may
+omit setup such as `apiKey`, which the checker stubs, but must otherwise
+compile; only an excerpt of code that another build already compiles may be
+exempted with `<!-- doc-sample: skip - reason -->`.
 
 Check relative links and heading anchors, and run any changed examples. Keep
 formatting limited to your change if a repository-wide formatter would rewrite
