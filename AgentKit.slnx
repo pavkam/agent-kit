@@ -23,7 +23,6 @@
     <Project Path="src/AgentKit.Providers.Ollama/AgentKit.Providers.Ollama.csproj"/>
     <Project Path="src/AgentKit.Mcp/AgentKit.Mcp.csproj"/>
     <Project Path="src/AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
-    <Project Path="src/AgentKit.Mcp.Server/AgentKit.Mcp.Server.csproj"/>
     <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
     <Project Path="src/AgentKit.Storage.Json/AgentKit.Storage.Json.csproj"/>
     <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
@@ -123,7 +122,6 @@
     <Project Path="tests/AgentKit.Providers.Ollama.Tests/AgentKit.Providers.Ollama.Tests.csproj"/>
     <Project Path="tests/AgentKit.Mcp.Tests/AgentKit.Mcp.Tests.csproj"/>
     <Project Path="tests/AgentKit.Mcp.Client.Tests/AgentKit.Mcp.Client.Tests.csproj"/>
-    <Project Path="tests/AgentKit.Mcp.Server.Tests/AgentKit.Mcp.Server.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
     <Project Path="tests/AgentKit.Storage.Json.Tests/AgentKit.Storage.Json.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>

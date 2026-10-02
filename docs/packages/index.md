@@ -166,7 +166,6 @@ waits, and compaction activation. A profile enables each by operation name; see
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | [AgentKit.Mcp](../../src/AgentKit.Mcp/README.md)               | Describe reflected MCP tool contracts and keep protocol and tool-version identities explicit. | [Tests](../../tests/AgentKit.Mcp.Tests/README.md)        |
 | [AgentKit.Mcp.Client](../../src/AgentKit.Mcp.Client/README.md) | Expose remote MCP tools through reflected, typed client surfaces.                             | [Tests](../../tests/AgentKit.Mcp.Client.Tests/README.md) |
-| [AgentKit.Mcp.Server](../../src/AgentKit.Mcp.Server/README.md) | Expose reflected tool classes through an MCP server.                                          | [Tests](../../tests/AgentKit.Mcp.Server.Tests/README.md) |
 
 ## Examples
 

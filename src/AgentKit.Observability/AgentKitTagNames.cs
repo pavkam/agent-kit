@@ -193,10 +193,6 @@ public static class AgentKitTagNames
     /// <summary>Gets the bounded MCP lifecycle operation attribute.</summary>
     public const string McpOperation = "agentkit.mcp.operation";
 
-    /// <summary>Gets the configured MCP server key attribute.</summary>
-    /// <remarks>The key comes from host configuration and is bounded; it is a span and log attribute, never a metric dimension.</remarks>
-    public const string McpServerKey = "agentkit.mcp.server.key";
-
     /// <summary>Gets the immutable model-catalog generation attribute.</summary>
     public const string ModelCatalogVersion = "agentkit.model.catalog.version";
 

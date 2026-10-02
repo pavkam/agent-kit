@@ -112,7 +112,7 @@ Audit MUST cover:
 - approval and grant creation, consumption, expiry, denial, and revocation;
 - tool call start/terminal status and effect certainty;
 - memory proposal/accept/delete and retrieval authorization;
-- MCP/server identity and negotiated security context; and
+- MCP remote-server identity and negotiated security context; and
 - recovery, reconciliation, branch, revert, and deletion actions.
 
 Audit records are append-oriented, tamper-evident where required, and use

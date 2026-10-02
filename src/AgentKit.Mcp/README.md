@@ -21,8 +21,6 @@ described in the [composition guide](../../docs/guides/composition.md).
 
 - [AgentKit.Mcp.Client](../AgentKit.Mcp.Client/README.md) — expose remote MCP
   tools through reflected, typed client surfaces.
-- [AgentKit.Mcp.Server](../AgentKit.Mcp.Server/README.md) — expose reflected
-  tool classes through an MCP server.
 - [AgentKit.Abstractions](../AgentKit.Abstractions/README.md) — implement
   AgentKit extensions against provider-neutral contracts and typed domain
   values.

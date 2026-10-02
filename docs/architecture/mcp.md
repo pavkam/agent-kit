@@ -4,23 +4,23 @@
 with application authority.
 
 MCP is a leaf integration, not a synonym for tools. AgentKit separates host
-policy, protocol primitives, client or server lifecycle, request correlation,
-transport, and authorization.
+policy, protocol primitives, client lifecycle, request correlation, transport,
+and authorization. AgentKit consumes MCP; it does not host an MCP server.
 
 Shared protocol-version identities and reflection contracts belong in
-AgentKit.Mcp. Client support belongs in AgentKit.Mcp.Client and server support
-in AgentKit.Mcp.Server; both depend inward on AgentKit.Mcp and use the official
-protocol SDK at their leaf integration boundary. None is referenced by the
-facade, loop, tool runtime, or context package.
+AgentKit.Mcp. Client support belongs in AgentKit.Mcp.Client, which depends
+inward on AgentKit.Mcp and uses the official protocol SDK at its leaf
+integration boundary. Neither is referenced by the facade, loop, tool runtime,
+or context package.
 
 ## Roles and packages
 
 The AgentKit host coordinates models, consent, roots, and MCP clients. An MCP
 client connects to one server and establishes the version/capability rules for
-its requests. An MCP server exposes selected AgentKit-backed primitives to
-external clients. Client and server support belong in separate integration
-packages. Shared object-in/object-out method reflection belongs in AgentKit.Mcp,
-and MCP SDK types never enter AgentKit.Abstractions.
+its requests; servers are remote peers that AgentKit consumes and never hosts.
+Client support lives in its own integration package. Shared object-in/object-out
+method reflection belongs in AgentKit.Mcp, and MCP SDK types never enter
+AgentKit.Abstractions.
 
 The internal layering runs from AgentKit host policy through a primitive
 adapter, protocol-version lifecycle and correlation, and finally the transport.
@@ -60,18 +60,17 @@ request parameter name, request and response types, description, effect hints,
 protocol-facing name, and `ToolVersion`. Duplicate names fail because MCP names
 do not select versions.
 
-AgentKit.Mcp.Server converts those descriptors into the official SDK's
-`tools/list` schemas and `tools/call` handlers. AgentKit.Mcp.Client uses an
-expression over the same class contract to select a method, serializes the
-request object beneath the reflected parameter name, and deserializes structured
-content into the reflected response object. The official SDK owns JSON-RPC 2.0
-framing and request correlation; AgentKit never hand-maintains a second wire
-model.
+AgentKit.Mcp.Client uses an expression over the same class contract to select a
+method, serializes the request object beneath the reflected parameter name, and
+deserializes structured content into the reflected response object. The official
+SDK owns JSON-RPC 2.0 framing and request correlation; AgentKit never
+hand-maintains a second wire model.
 
 MCP protocol revision, AgentKit package/SDK version, individual `ToolVersion`,
-and local `McpCatalogVersion` are distinct identities. The server publishes the
-tool contract version under namespaced metadata, the client validates it before
-invocation, and every catalog refresh publishes a new immutable generation.
+and local `McpCatalogVersion` are distinct identities. The remote server
+publishes the tool contract version under namespaced metadata, the client
+validates it before invocation, and every catalog refresh publishes a new
+immutable generation.
 
 ```csharp
 public abstract class WeatherTools
@@ -81,17 +80,6 @@ public abstract class WeatherTools
         WeatherRequest request,
         CancellationToken cancellationToken = default);
 }
-
-public sealed class WeatherToolImplementation : WeatherTools
-{
-    public override Task<WeatherResponse> GetAsync(
-        WeatherRequest request,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(new WeatherResponse($"Sunny in {request.City}"));
-}
-
-services.AddAgentKitMcpServer()
-    .WithAgentKitTools<WeatherToolImplementation>();
 
 services.AddMcpToolClient<WeatherTools>();
 var client = await factory.ConnectAsync(transport, cancellationToken: cancellationToken);
@@ -188,7 +176,6 @@ namespace AgentKit;
 public readonly record struct McpSessionId(Guid Value);
 public readonly record struct McpRequestId(Guid Value);
 public readonly record struct McpEndpointKey(string Value);
-public readonly record struct McpServerKey(string Value);
 public readonly record struct McpEndpointRevision(long Value);
 public readonly record struct McpCapabilityProfileRevision(long Value);
 public readonly record struct McpCatalogVersion(long Value);
@@ -272,21 +259,6 @@ public interface IMcpCapabilityProfileCatalog
         AgentCapabilityReference capability,
         CancellationToken cancellationToken);
 }
-
-public interface IMcpServer
-{
-    Task RunAsync(
-        McpServerEndpoint endpoint,
-        CancellationToken cancellationToken);
-}
-
-public interface IMcpPrimitiveHandler
-{
-    ValueTask<McpResponse> HandleAsync(
-        McpPeerContext peer,
-        McpRequest request,
-        CancellationToken cancellationToken);
-}
 ```
 
 The types above that this chunk introduces live in `AgentKit.Mcp`, not
@@ -334,17 +306,17 @@ covering success, protocol failure, denial, unsupported capability,
 cancellation, and unknown effect certainty. `McpSessionId` and `McpRequestId`
 are validated readonly identifiers. JSON-RPC IDs remain typed external
 correlation values and never replace `OperationId` or `ToolCallId`.
-`McpEndpointKey` and `McpServerKey` are validated non-empty semantic keys from
-configuration, never generated session/request identities.
-`McpClientOpenRequest` captures the resolved endpoint revision and complete
-execution identity, agent/session correlation, operation, and security-profile
-context through `ProtectedSemanticOperationContext`. Opening or resuming a
-connection never rediscovers a mutable current agent or silently substitutes a
-newer endpoint or security profile. `McpCapabilityProfile` is owned by the MCP
-package: it maps a neutral `AgentCapabilityReference` to MCP-owned endpoint keys
-without exposing those keys in an agent definition. The reference uses the
-stable `McpCapabilityIds.Client` capability ID; the catalog rejects any other ID
-rather than treating a coincidentally equal profile name as MCP configuration.
+`McpEndpointKey` is a validated non-empty semantic key from configuration, never
+a generated session/request identity. `McpClientOpenRequest` captures the
+resolved endpoint revision and complete execution identity, agent/session
+correlation, operation, and security-profile context through
+`ProtectedSemanticOperationContext`. Opening or resuming a connection never
+rediscovers a mutable current agent or silently substitutes a newer endpoint or
+security profile. `McpCapabilityProfile` is owned by the MCP package: it maps a
+neutral `AgentCapabilityReference` to MCP-owned endpoint keys without exposing
+those keys in an agent definition. The reference uses the stable
+`McpCapabilityIds.Client` capability ID; the catalog rejects any other ID rather
+than treating a coincidentally equal profile name as MCP configuration.
 
 The session validates lifecycle and negotiated capability before writing a
 frame, validates that each request carries the same immutable identity and
@@ -359,13 +331,11 @@ at that lower boundary.
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `McpToolContract<TTools>` in AgentKit.Mcp                               | Validate and capture one immutable object-in/object-out reflection surface, including distinct tool contract versions                                                                                                               |
 | `McpToolClientFactory<TTools>` and `McpToolClient<TTools>`              | Connect an official SDK transport, capture the negotiated protocol revision, validate versioned remote tools, publish immutable catalog generations, and invoke through expressions                                                 |
-| `WithAgentKitTools<TTools>` in AgentKit.Mcp.Server                      | Generate JSON schemas and official SDK handlers from one concrete reflected tool class and publish namespaced tool-version metadata                                                                                                 |
 | `McpClientSessionFactory` and `McpClientSession` in AgentKit.Mcp.Client | Protocol lifecycle, correlation, bounds, catalog snapshots, `IIdentifierGenerator<McpSessionId>`, `IIdentifierGenerator<McpRequestId>`, `TimeProvider`, security authority/grant store, audit, and a keyed MCP transport factory    |
 | `McpToolProvider` / `McpToolInvoker`                                    | Adapt a catalog snapshot to `IToolProvider` / `IToolInvoker`; use the ordinary tool validation, scheduling, security, result, and audit pipeline                                                                                    |
 | `McpResourceSource` and `McpPromptSource`                               | Adapt resources or user-selected prompts through retrieval/context trust and security contracts; never inject them directly into history                                                                                            |
 | `StdioMcpTransportFactory`                                              | Uses process contracts and a process grant; owns the child, bounded stderr, and streams                                                                                                                                             |
 | `HttpMcpTransportFactory` and `NetworkMcpHttpHandler`                   | Hand the official SDK transport an `HttpClient` over the handler, which sends every exchange through `INetworkNameResolver`/`INetworkTransport` under per-exchange grants; credential acquisition stays in the endpoint integration |
-| `McpServer` and `AgentKitPrimitiveHandler` in AgentKit.Mcp.Server       | Authenticate the peer, map requests to selected AgentKit capabilities, and invoke the shared security authority before exposing any effect                                                                                          |
 
 The client factory owns mechanics rather than policy or agent state:
 
@@ -412,8 +382,7 @@ The official MCP SDK and JSON-RPC implementation stay within the MCP leaf
 packages. SDK transport and builder types may appear at those explicit leaf
 composition boundaries, but never enter AgentKit.Abstractions or runtime
 packages. `McpClientSession` does not depend on `AgentEngine`; it depends on
-narrow services. `McpServer` may use public runner, tool, retrieval, and output
-contracts, never a service locator or loop internals.
+narrow services, never a service locator or loop internals.
 
 ## Lifetime, concurrency, and ownership
 
@@ -535,66 +504,43 @@ public static class ServiceExtensions
 }
 ```
 
-```csharp
-namespace AgentKit.Mcp.Server;
-
-public static class ServiceExtensions
-{
-    extension(IServiceCollection services)
-    {
-        public IServiceCollection AddMcpServer(
-            McpServerKey key,
-            Action<McpServerOptions> configure) =>
-            McpServerRegistration.Add(services, key, configure);
-
-        public IServiceCollection ReplaceMcpServer(
-            McpServerKey key,
-            Action<McpServerOptions> configure) =>
-            McpServerRegistration.Replace(services, key, configure);
-    }
-}
-```
-
 `AddMcpClient` `TryAdd`s one singular, explicitly replaceable
 `IMcpClientSessionFactory`, `IMcpCapabilityProfileCatalog`, and
-`IMcpEndpointCatalog`. Endpoint and server registrations are additive and keyed;
-keys must be unique, and selection is explicit through those catalogs rather
-than `IServiceProvider`. Primitive adapters are additive in deterministic order.
+`IMcpEndpointCatalog`. Endpoint registrations are additive and keyed; keys must
+be unique, and selection is explicit through those catalogs rather than
+`IServiceProvider`. Primitive adapters are additive in deterministic order.
 Transport factories are keyed by declared transport profile. Repeating an
 identical registration is idempotent; conflicting reuse of a capability profile,
-endpoint, transport, or server key is a composition error, never
-last-registration-wins. An MCP capability profile maps a definition's neutral
-`AgentCapabilityReference` and `CapabilityProfileId` to zero or more MCP-owned
-`McpEndpointKey` values; definitions never carry endpoint keys directly. A run
-captures the capability-profile, endpoint, and `McpCatalogVersion` revisions
-together with `ProtectedSemanticOperationContext` before preparing an MCP
-request. `AddMcpClient` validates its mutable binding options and captures one
-immutable `McpClientOptionsSnapshot` for the provider lifetime. Stdio and HTTP
-endpoint options are named by `McpEndpointKey`, validated, and copied into
-immutable versioned `McpEndpoint` records; neither the singleton factory nor an
-open session injects unkeyed or monitored endpoint options. The defaults are
-finite client-mechanics bounds only. Server commands/URLs, credentials,
-authentication audiences, and endpoint selection remain explicit host
-configuration; AgentKit never invents them. Validation rejects non-positive
-timeouts or limits, a frame limit larger than the message limit, an HTTP
-response bound below the message limit, an undefined HTTP data classification
-(default `Confidential`), and any endpoint whose transport or credential
-reference is incomplete. Each endpoint kind registers only its own transport
-factory (`AddMcpHttpEndpoint` the HTTP one, `AddMcpStdioEndpoint` the stdio
-one), so an application that uses one kind never needs the other's process or
-network collaborators; the HTTP factory additionally requires
-`INetworkNameResolver` and `INetworkTransport`, and resolving it without them
-fails instead of reaching a raw client.
+endpoint, or transport key is a composition error, never last-registration-wins.
+An MCP capability profile maps a definition's neutral `AgentCapabilityReference`
+and `CapabilityProfileId` to zero or more MCP-owned `McpEndpointKey` values;
+definitions never carry endpoint keys directly. A run captures the
+capability-profile, endpoint, and `McpCatalogVersion` revisions together with
+`ProtectedSemanticOperationContext` before preparing an MCP request.
+`AddMcpClient` validates its mutable binding options and captures one immutable
+`McpClientOptionsSnapshot` for the provider lifetime. Stdio and HTTP endpoint
+options are named by `McpEndpointKey`, validated, and copied into immutable
+versioned `McpEndpoint` records; neither the singleton factory nor an open
+session injects unkeyed or monitored endpoint options. The defaults are finite
+client-mechanics bounds only. Server commands/URLs, credentials, authentication
+audiences, and endpoint selection remain explicit host configuration; AgentKit
+never invents them. Validation rejects non-positive timeouts or limits, a frame
+limit larger than the message limit, an HTTP response bound below the message
+limit, an undefined HTTP data classification (default `Confidential`), and any
+endpoint whose transport or credential reference is incomplete. Each endpoint
+kind registers only its own transport factory (`AddMcpHttpEndpoint` the HTTP
+one, `AddMcpStdioEndpoint` the stdio one), so an application that uses one kind
+never needs the other's process or network collaborators; the HTTP factory
+additionally requires `INetworkNameResolver` and `INetworkTransport`, and
+resolving it without them fails instead of reaching a raw client.
 
 ## Build validation and unsupported behavior
 
 MCP remains optional. Registering a client endpoint validates its transport,
 bounds, authentication reference, security authority/grant store and audit
 collaborators, open-request profile/version binding, and the required network or
-process implementation. Registering server mode validates its listener
-transport, peer-authentication policy, primitive handlers, output bounds, and
-shutdown ownership. Stdio without process enforcement and HTTP without network
-enforcement fail composition; neither silently falls back to raw
+process implementation. Stdio without process enforcement and HTTP without
+network enforcement fail composition; neither silently falls back to raw
 operating-system APIs.
 
 Unsupported negotiated methods return a typed capability result before a frame

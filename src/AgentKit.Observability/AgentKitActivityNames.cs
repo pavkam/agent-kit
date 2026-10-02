@@ -372,12 +372,6 @@ public static class AgentKitActivityNames
     /// <remarks>The bounded adapter and operation are tags, so every backend shares one activity name.</remarks>
     public const string ArtifactStoreOperation = "artifact.store.operation";
 
-    /// <summary>Gets the name for one inbound MCP server request dispatch.</summary>
-    public const string McpServerRequest = "mcp.server.request";
-
-    /// <summary>Gets the name for one MCP server tool invocation.</summary>
-    public const string McpServerToolCall = "mcp.server.tool.call";
-
     /// <summary>Gets the name for one Simple facade ask operation.</summary>
     public const string SimpleAsk = "simple.ask";
 

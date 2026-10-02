@@ -1694,14 +1694,8 @@ against shipped code in these places, and the shipped choice governs:
    executor rejects an unspecified-mode call before acceptance, so it never
    records an accepted call it will not invoke; the scheduler keeps its own
    rejection for direct callers.
-9. _MCP server dispatch._ The MCP server's `tools/call` path builds its own
-   capability. It now loads the session to find the active branch and uses the
-   loop's default lane for runs without an explicit admission; a session it
-   cannot load, or a store that rejects the append, denies the call before any
-   effect.
-10. _Options naming._ `MaximumRetryAttempts` is renamed `MaximumAttempts`
-    because it counts the first attempt (the concept requires an unambiguous
-    name).
+9. _Options naming._ `MaximumRetryAttempts` is renamed `MaximumAttempts` because
+   it counts the first attempt (the concept requires an unambiguous name).
 
 `AddAgentTools` is idempotent and uses `TryAdd` for the engine-wide registration
 catalog, resolver, argument validator, policy selector, scheduler, and

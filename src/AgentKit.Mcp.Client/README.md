@@ -31,8 +31,6 @@ described in the [composition guide](../../docs/guides/composition.md).
 
 - [AgentKit.Mcp](../AgentKit.Mcp/README.md) — describe reflected MCP tool
   contracts and keep protocol and tool-version identities explicit.
-- [AgentKit.Mcp.Server](../AgentKit.Mcp.Server/README.md) — expose reflected
-  tool classes through an MCP server.
 - [AgentKit.Tools](../AgentKit.Tools/README.md) — catalog, validate, authorize,
   and invoke application tools.
 

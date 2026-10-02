@@ -1,8 +1,8 @@
 ---
 name: agentkit-mcp
 description:
-  "Implement or debug AgentKit MCP clients, servers, lifecycle, transports,
-  capability negotiation, and primitive adapters. Use for Model Context Protocol
+  "Implement or debug the AgentKit MCP client, lifecycle, transports, capability
+  negotiation, and primitive adapters. Use for Model Context Protocol
   integration; not generic tools or application security policy."
 ---
 
@@ -25,9 +25,9 @@ verify volatile details against the current official MCP specification.
 
 ## Decision guide
 
-1. State the role: AgentKit host, MCP client, MCP server, or an explicit
-   combination. Shared reflection/version contracts belong in AgentKit.Mcp;
-   client and server support remain separate leaf packages.
+1. State the role: AgentKit host or MCP client. AgentKit consumes MCP and does
+   not host an MCP server. Shared reflection/version contracts belong in
+   AgentKit.Mcp; client support is the AgentKit.Mcp.Client leaf package.
 2. Keep host policy, primitive adapters, protocol-era selection and correlation,
    capability enforcement, and transport as distinct layers. Protocol SDK types
    do not enter `AgentKit.Abstractions`.
@@ -58,7 +58,7 @@ verify volatile details against the current official MCP specification.
 9. Test lifecycle and capability rejection, request correlation, reflected
    request/response schemas, tool-version mismatch, list changes, concurrent
    calls, malformed frames, disconnects, cancellation, cleanup, and security
-   denial before transport or exposed effects.
+   denial before transport or any consumed effect.
 
 Use the official SDK when it preserves these seams; wrap it at the integration
 boundary rather than reshaping AgentKit around SDK types.

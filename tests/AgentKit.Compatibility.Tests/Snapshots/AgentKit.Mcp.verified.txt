@@ -29,14 +29,6 @@ namespace AgentKit.Mcp
     {
         System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpEndpointResolution> ResolveAsync(AgentKit.Mcp.McpEndpointKey key, System.Threading.CancellationToken cancellationToken);
     }
-    public interface IMcpPrimitiveHandler
-    {
-        System.Threading.Tasks.ValueTask<AgentKit.Mcp.McpResponse> HandleAsync(AgentKit.Mcp.McpPeerContext peer, AgentKit.Mcp.McpRequest request, System.Threading.CancellationToken cancellationToken);
-    }
-    public interface IMcpServer
-    {
-        System.Threading.Tasks.Task RunAsync(AgentKit.Mcp.McpServerEndpoint endpoint, System.Threading.CancellationToken cancellationToken);
-    }
     public interface IMcpTransport : System.IAsyncDisposable { }
     public interface IMcpTransportFactory
     {
@@ -215,12 +207,6 @@ namespace AgentKit.Mcp
     {
         public AgentKit.Mcp.McpSessionId SessionId { get; }
     }
-    public sealed class McpPeerContext : System.IEquatable<AgentKit.Mcp.McpPeerContext>
-    {
-        public McpPeerContext(AgentKit.Mcp.McpServerKey serverKey, string? peerIdentity = null) { }
-        public string? PeerIdentity { get; }
-        public AgentKit.Mcp.McpServerKey ServerKey { get; }
-    }
     public sealed class McpProgressNotification : AgentKit.Mcp.McpNotification, System.IEquatable<AgentKit.Mcp.McpProgressNotification>
     {
         public McpProgressNotification(AgentKit.Mcp.McpSessionId sessionId, string progressToken, double progress, double? total = default) { }
@@ -370,18 +356,6 @@ namespace AgentKit.Mcp
     {
         public McpSamplingCreateMessageRequest(AgentKit.Mcp.McpRequestId id, AgentKit.ProtectedSemanticOperationContext operation, System.Text.Json.JsonDocument payload) { }
         public System.Text.Json.JsonDocument Payload { get; }
-    }
-    public sealed class McpServerEndpoint : System.IEquatable<AgentKit.Mcp.McpServerEndpoint>
-    {
-        public McpServerEndpoint(AgentKit.Mcp.McpServerKey key, AgentKit.Mcp.McpTransportProfile transport) { }
-        public AgentKit.Mcp.McpServerKey Key { get; }
-        public AgentKit.Mcp.McpTransportProfile Transport { get; }
-    }
-    public readonly struct McpServerKey : System.IEquatable<AgentKit.Mcp.McpServerKey>
-    {
-        public McpServerKey(string value) { }
-        public string Value { get; }
-        public override string ToString() { }
     }
     public readonly struct McpSessionId : System.IEquatable<AgentKit.Mcp.McpSessionId>
     {

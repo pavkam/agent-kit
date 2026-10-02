@@ -6,7 +6,7 @@ namespace AgentKit;
 /// <summary>Builds run-bound <see cref="IToolCatalogCapture"/> evidence for one run's tool surface.</summary>
 /// <remarks>
 /// The first-party implementation captures through the configured <see cref="IToolCatalog"/>; the run-plan compiler
-/// and the MCP server's tool dispatch resolve it to obtain the capture they hand to <see cref="IToolExecutor"/>.
+/// resolves it to obtain the capture it hands to <see cref="IToolExecutor"/>.
 /// </remarks>
 public interface IToolRunCatalogCaptureFactory
 {

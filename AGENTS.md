@@ -685,8 +685,8 @@ The architecture index defines document authority and change rules.
   for system-wide security policy, approvals, bounded grants, enforcement,
   audit, secondary effects such as parent creation, or an end-to-end protected
   tool-call flow.
-- Use [agentkit-mcp](.agents/skills/agentkit-mcp/SKILL.md) for MCP clients,
-  servers, shared reflection contracts, object-in/object-out tool classes,
+- Use [agentkit-mcp](.agents/skills/agentkit-mcp/SKILL.md) for the MCP client,
+  shared reflection contracts, object-in/object-out tool classes,
   protocol-era/version distinctions, transports, capability negotiation,
   primitives, adapters, and protocol lifecycle, including coding-host namespace,
   instruction, root, catalog-generation, and endpoint-bound OAuth/callback

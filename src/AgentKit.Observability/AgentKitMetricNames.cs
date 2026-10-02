@@ -323,9 +323,6 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for artifact store adapter operation duration in seconds.</summary>
     public const string ArtifactStoreOperationDuration = "agentkit.artifact.store.operation.duration";
 
-    /// <summary>Gets the counter for terminal MCP server operation outcomes.</summary>
-    public const string McpServerOperationCount = "agentkit.mcp.server.operation.count";
-
     /// <summary>Gets the counter for completed tool-call recorder writes.</summary>
     /// <remarks>Dimensions are limited to the bounded record stage (accepted or terminal) and the bounded outcome.</remarks>
     public const string ToolCallRecordCount = "agentkit.tool.call.record.count";

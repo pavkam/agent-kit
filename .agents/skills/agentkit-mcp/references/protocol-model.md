@@ -12,8 +12,9 @@ copy a dated handshake or event sequence from this file.
   security policy.
 - A client speaks MCP to one server endpoint through a transport and exposes the
   server's negotiated capabilities to its host.
-- A server exposes focused capabilities and may also request client features
-  when the negotiated protocol permits them.
+- A remote server exposes focused capabilities and may also request client
+  features when the negotiated protocol permits them. AgentKit only consumes
+  servers; it does not host one.
 - JSON-RPC request IDs correlate requests and responses. Notifications do not
   receive responses. Protocol correlation is separate from AgentKit agent-run
   and tool-call correlation.

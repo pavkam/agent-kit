@@ -23,13 +23,13 @@ and primitive adapters separate.
 AgentKit MUST state its role explicitly:
 
 - a **host** coordinates model use, consent, roots, and client instances;
-- a **client** connects to one MCP server and negotiates capabilities;
-- a **server** exposes AgentKit-backed primitives to external clients.
+- a **client** connects to one remote MCP server and negotiates capabilities.
+
+AgentKit consumes MCP and does not host an MCP server.
 
 Shared protocol-version and reflected tool contracts SHOULD live in
-`AgentKit.Mcp`; client and server support SHOULD live in separate leaf packages.
-The first integration MAY implement host/client only. MCP SDK types MUST NOT
-leak into `AgentKit.Abstractions` or runtime packages.
+`AgentKit.Mcp`; client support lives in the `AgentKit.Mcp.Client` leaf package.
+MCP SDK types MUST NOT leak into `AgentKit.Abstractions` or runtime packages.
 
 ## Layering
 
@@ -94,14 +94,14 @@ each accept one request object plus an optional trailing `CancellationToken` and
 return `Task<TResponse>` or `ValueTask<TResponse>` containing one response
 object. The reflection contract MUST derive the JSON-RPC argument member and
 JSON schemas from the method shape, reject ambiguous or primitive-only shapes,
-and reject duplicate MCP names before transport or server registration.
+and reject duplicate MCP names before transport registration.
 
 Protocol revision, SDK/package version, tool contract version, and catalog
-generation MUST remain separate. A server exposing reflected AgentKit tools MUST
-publish the tool contract version as namespaced untrusted metadata. A typed
-client MUST validate the expected name and tool contract version against an
-immutable catalog snapshot before invocation; it MUST NOT infer compatibility
-from the MCP protocol revision.
+generation MUST remain separate. A remote server publishes the tool contract
+version as namespaced untrusted metadata. A typed client MUST validate the
+expected name and tool contract version against an immutable catalog snapshot
+before invocation; it MUST NOT infer compatibility from the MCP protocol
+revision.
 
 MCP tool descriptors MUST receive stable source-qualified AgentKit identities.
 Remote names, descriptions, schemas, annotations, and effect hints are

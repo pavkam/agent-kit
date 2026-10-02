@@ -418,9 +418,6 @@ documented ways:
   `ToolLeafObservation.RunAsync` and a package-owned `ToolLeafLogEvents`
   (`execute_tool` activity, `agentkit.tool.leaf.operation.count`, and 100-ID
   blocks from 33000 to 34599; the `todo` alias reports under its own identity).
-  `AgentKit.Mcp.Server` emits `mcp.server.request` and `mcp.server.tool.call`
-  activities, `agentkit.mcp.server.operation.count`, and the 13200 block, and
-  `AddAgentKitMcpServer` installs a call-tool filter for SDK-dispatched tools.
   `AgentKit.Mcp` contains only contracts and one-shot reflection validation with
   no runtime operation, so it emits nothing and its 13100 block stays unclaimed.
   Artifacts use 29000, `AgentKit.Simple` 27000, the shared budget-ledger log

@@ -72,8 +72,6 @@ namespace AgentKit.Observability
         public const string LanguageQuery = "language.query";
         public const string McpCatalogRefresh = "mcp.catalog.refresh";
         public const string McpConnect = "mcp.connect";
-        public const string McpServerRequest = "mcp.server.request";
-        public const string McpServerToolCall = "mcp.server.tool.call";
         public const string McpToolCall = "mcp.tool.call";
         public const string MemoryCorrect = "memory.correct";
         public const string MemoryDelete = "memory.delete";
@@ -247,7 +245,6 @@ namespace AgentKit.Observability
         public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
         public const string LanguageQueryCount = "agentkit.language.query.count";
         public const string McpClientOperationCount = "agentkit.mcp.client.operation.count";
-        public const string McpServerOperationCount = "agentkit.mcp.server.operation.count";
         public const string MemoryOperationCount = "agentkit.memory.operation.count";
         public const string MemoryOperationDuration = "agentkit.memory.operation.duration";
         public const string MemoryStoreOperationCount = "agentkit.memory.store.operation.count";
@@ -379,7 +376,6 @@ namespace AgentKit.Observability
         public const string McpCatalogVersion = "agentkit.mcp.catalog.version";
         public const string McpOperation = "agentkit.mcp.operation";
         public const string McpProtocolVersion = "agentkit.mcp.protocol.version";
-        public const string McpServerKey = "agentkit.mcp.server.key";
         public const string MemoryDocumentId = "agentkit.memory.document.id";
         public const string MemoryId = "agentkit.memory.id";
         public const string MemoryProfileKey = "agentkit.memory.profile.key";
