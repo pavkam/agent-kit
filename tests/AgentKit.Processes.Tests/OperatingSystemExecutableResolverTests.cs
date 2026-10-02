@@ -21,7 +21,8 @@ public sealed class OperatingSystemExecutableResolverTests
         var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
 
         var resolved = result.ShouldBeOfType<ExecutableResolved>().Resolved;
-        resolved.Executable.AbsolutePath.ShouldBe("/bin/echo");
+        var binDirectory = Directory.ResolveLinkTarget("/bin", returnFinalTarget: true)?.FullName ?? "/bin";
+        resolved.Executable.AbsolutePath.ShouldBe(Path.Combine(binDirectory, "echo"));
         NormalizeTempPath(resolved.WorkingDirectory)
             .ShouldBe(NormalizeTempPath(Path.Combine(root.Path, "run")));
     }

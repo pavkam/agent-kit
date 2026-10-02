@@ -8,6 +8,7 @@ public sealed class PlatformProcessSandboxProviderTests
 {
     private const string _sandboxExecPath = "/usr/bin/sandbox-exec";
     private const string _bubblewrapPath = "/usr/bin/bwrap";
+    private const string _workspacePath = "/agentkit-test-workspace";
 
     [Fact]
     public async Task PrepareAsync_WhenWorkspaceAccessIsNone_ReturnsUnsupportedIntentRegardlessOfPlatform()
@@ -150,7 +151,8 @@ public sealed class PlatformProcessSandboxProviderTests
         var launch = result.Launch.ShouldNotBeNull();
         launch.ExecutablePath.ShouldBe(_bubblewrapPath);
         var arguments = launch.Arguments;
-        var workspaceIndex = arguments.IndexOf(arguments.First(argument => argument.StartsWith(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar), StringComparison.Ordinal)));
+        var workspaceIndex = arguments.IndexOf(_workspacePath);
+        workspaceIndex.ShouldBeGreaterThan(0);
         arguments[workspaceIndex - 1].ShouldBe("--ro-bind");
     }
 
@@ -164,7 +166,8 @@ public sealed class PlatformProcessSandboxProviderTests
 
         result.Status.ShouldBe(ProcessSandboxStatus.Ready);
         var arguments = result.Launch.ShouldNotBeNull().Arguments;
-        var workspaceIndex = arguments.IndexOf(arguments.First(argument => argument.StartsWith(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar), StringComparison.Ordinal)));
+        var workspaceIndex = arguments.IndexOf(_workspacePath);
+        workspaceIndex.ShouldBeGreaterThan(0);
         arguments[workspaceIndex - 1].ShouldBe("--bind");
     }
 
@@ -272,8 +275,8 @@ public sealed class PlatformProcessSandboxProviderTests
             request,
             "/bin/sh",
             new ContentHash("sha256:executable"),
-            Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar),
-            Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar),
+            _workspacePath,
+            _workspacePath,
             new ContentHash("sha256:environment"),
             new ContentHash("sha256:input"));
     }
